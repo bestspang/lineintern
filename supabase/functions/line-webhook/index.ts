@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { formatDistanceToNow } from "https://esm.sh/date-fns@3.0.0";
 
 // =============================
 // TYPES & INTERFACES
@@ -1413,6 +1414,202 @@ Content: ${messageText}`;
 }
 
 // =============================
+// PHASE 4: Task Scheduler & Reminders with /todo, /remind
+// =============================
+
+async function handleTodoCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleTodoCommand] Creating task from: ${userMessage}`);
+
+  try {
+    const parsePrompt = `Extract task information from this message:
+"${userMessage}"
+
+Extract:
+1. Task title (brief, under 50 chars)
+2. Task description (optional, details)
+3. Due date/time (if mentioned, convert to ISO timestamp, assume current timezone is UTC+7 Bangkok)
+4. Assigned person (if mentioned)
+
+Respond in this exact format:
+TITLE: <title>
+DESCRIPTION: <description or "none">
+DUE_AT: <ISO timestamp or "none">
+ASSIGNED_TO: <name or "none">`;
+
+    const aiResponse = await generateAiReply(
+      parsePrompt,
+      "helper",
+      "ask",
+      "N/A",
+      "N/A",
+      "N/A",
+      "N/A"
+    );
+
+    console.log(`[handleTodoCommand] AI parsed response: ${aiResponse}`);
+
+    const titleMatch = aiResponse.match(/TITLE:\s*(.+)/);
+    const descMatch = aiResponse.match(/DESCRIPTION:\s*(.+)/);
+    const dueMatch = aiResponse.match(/DUE_AT:\s*(.+)/);
+    const assignedMatch = aiResponse.match(/ASSIGNED_TO:\s*(.+)/);
+
+    const title = titleMatch?.[1]?.trim() || userMessage.substring(0, 50);
+    const description = descMatch?.[1]?.trim();
+    const dueAtStr = dueMatch?.[1]?.trim();
+    const assignedTo = assignedMatch?.[1]?.trim();
+
+    let dueAt: string;
+    if (dueAtStr && dueAtStr !== "none" && !dueAtStr.includes("none")) {
+      try {
+        dueAt = new Date(dueAtStr).toISOString();
+      } catch {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        dueAt = tomorrow.toISOString();
+      }
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      dueAt = tomorrow.toISOString();
+    }
+
+    let assignedToUserId = null;
+    if (assignedTo && assignedTo !== "none" && !assignedTo.includes("none")) {
+      const { data: assignedUser } = await supabase
+        .from("users")
+        .select("id")
+        .ilike("display_name", `%${assignedTo}%`)
+        .limit(1)
+        .single();
+      
+      if (assignedUser) {
+        assignedToUserId = assignedUser.id;
+      }
+    }
+
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .insert({
+        group_id: groupId,
+        created_by_user_id: userId,
+        assigned_to_user_id: assignedToUserId,
+        title,
+        description: description && description !== "none" ? description : null,
+        due_at: dueAt,
+        status: "pending",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[handleTodoCommand] Error creating task:`, error);
+      await replyToLine(replyToken, "Sorry, I couldn't create the task. Please try again.");
+      return;
+    }
+
+    console.log(`[handleTodoCommand] Task created:`, task);
+
+    const assignedText = assignedToUserId ? ` (assigned to ${assignedTo})` : "";
+    const descText = description && description !== "none" ? `\n📝 ${description}` : "";
+    
+    const reply = `✅ Task created!${assignedText}\n\n📌 ${title}${descText}\n⏰ Due: ${formatDistanceToNow(new Date(dueAt), { addSuffix: true })}`;
+    
+    await replyToLine(replyToken, reply);
+  } catch (error) {
+    console.error(`[handleTodoCommand] Error:`, error);
+    await replyToLine(replyToken, "Sorry, I encountered an error creating the task.");
+  }
+}
+
+async function handleRemindCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleRemindCommand] Creating reminder from: ${userMessage}`);
+
+  try {
+    const parsePrompt = `Extract reminder information from this message:
+"${userMessage}"
+
+Extract:
+1. What to remind about (brief message)
+2. When to remind (convert to ISO timestamp, assume current timezone is UTC+7 Bangkok)
+
+Respond in this exact format:
+MESSAGE: <what to remind>
+REMIND_AT: <ISO timestamp>`;
+
+    const aiResponse = await generateAiReply(
+      parsePrompt,
+      "helper",
+      "ask",
+      "N/A",
+      "N/A",
+      "N/A",
+      "N/A"
+    );
+
+    console.log(`[handleRemindCommand] AI parsed response: ${aiResponse}`);
+
+    const messageMatch = aiResponse.match(/MESSAGE:\s*(.+)/);
+    const remindMatch = aiResponse.match(/REMIND_AT:\s*(.+)/);
+
+    const reminderMessage = messageMatch?.[1]?.trim() || userMessage;
+    const remindAtStr = remindMatch?.[1]?.trim();
+
+    let remindAt: string;
+    if (remindAtStr && !remindAtStr.includes("none")) {
+      try {
+        remindAt = new Date(remindAtStr).toISOString();
+      } catch {
+        const oneHour = new Date();
+        oneHour.setHours(oneHour.getHours() + 1);
+        remindAt = oneHour.toISOString();
+      }
+    } else {
+      const oneHour = new Date();
+      oneHour.setHours(oneHour.getHours() + 1);
+      remindAt = oneHour.toISOString();
+    }
+
+    const { data: reminder, error } = await supabase
+      .from("tasks")
+      .insert({
+        group_id: groupId,
+        created_by_user_id: userId,
+        title: `🔔 Reminder: ${reminderMessage.substring(0, 80)}`,
+        description: reminderMessage.length > 80 ? reminderMessage : null,
+        due_at: remindAt,
+        status: "pending",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[handleRemindCommand] Error creating reminder:`, error);
+      await replyToLine(replyToken, "Sorry, I couldn't set the reminder. Please try again.");
+      return;
+    }
+
+    console.log(`[handleRemindCommand] Reminder created:`, reminder);
+
+    const reply = `⏰ Reminder set!\n\n📌 ${reminderMessage}\n🕐 I'll remind you ${formatDistanceToNow(new Date(remindAt), { addSuffix: true })}`;
+    
+    await replyToLine(replyToken, reply);
+  } catch (error) {
+    console.error(`[handleRemindCommand] Error:`, error);
+    await replyToLine(replyToken, "Sorry, I encountered an error setting the reminder.");
+  }
+}
+
+// =============================
 // LOVABLE AI INTEGRATION
 // =============================
 
@@ -1782,6 +1979,18 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 2: Handle /mentions command
   if (parsed.commandType === 'mentions') {
     await handleMentionsCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 4: Handle /todo command
+  if (parsed.commandType === 'todo') {
+    await handleTodoCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 4: Handle /remind command
+  if (parsed.commandType === 'remind') {
+    await handleRemindCommand(group.id, user.id, parsed.userMessage, event.replyToken);
     return;
   }
 

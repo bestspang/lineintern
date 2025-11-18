@@ -1,10 +1,16 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Table,
   TableBody,
@@ -15,10 +21,22 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
+import { CalendarIcon, CheckCircle2, Plus, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export default function Tasks() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: '',
+    description: '',
+    dueDate: new Date(),
+    groupId: '',
+  });
+  
+  const queryClient = useQueryClient();
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks', search, statusFilter],
@@ -42,6 +60,65 @@ export default function Tasks() {
     },
   });
 
+  const { data: groups } = useQuery({
+    queryKey: ['groups'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, display_name')
+        .eq('status', 'active')
+        .order('display_name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: async (task: typeof newTask) => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          title: task.title,
+          description: task.description || null,
+          due_at: task.dueDate.toISOString(),
+          group_id: task.groupId,
+          status: 'pending',
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Task created successfully!');
+      setIsCreateOpen(false);
+      setNewTask({ title: '', description: '', dueDate: new Date(), groupId: '' });
+    },
+    onError: (error) => {
+      toast.error('Failed to create task: ' + error.message);
+    },
+  });
+
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'completed' | 'cancelled' }) => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status })
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Task updated successfully!');
+    },
+    onError: (error) => {
+      toast.error('Failed to update task: ' + error.message);
+    },
+  });
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
       pending: 'default',
@@ -53,9 +130,96 @@ export default function Tasks() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Tasks & Reminders</h1>
-        <p className="text-muted-foreground">Manage scheduled tasks across all groups</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold">Tasks & Reminders</h1>
+          <p className="text-muted-foreground">Manage scheduled tasks across all groups</p>
+        </div>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Task
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Task</DialogTitle>
+              <DialogDescription>
+                Create a new task or reminder for a group
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="title">Title</Label>
+                <Input
+                  id="title"
+                  placeholder="Task title..."
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="description">Description (optional)</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Task details..."
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="group">Group</Label>
+                <Select value={newTask.groupId} onValueChange={(value) => setNewTask({ ...newTask, groupId: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups?.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !newTask.dueDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newTask.dueDate}
+                      onSelect={(date) => date && setNewTask({ ...newTask, dueDate: date })}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => createTaskMutation.mutate(newTask)}
+                disabled={!newTask.title || !newTask.groupId || createTaskMutation.isPending}
+              >
+                {createTaskMutation.isPending ? 'Creating...' : 'Create Task'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card>
@@ -97,6 +261,7 @@ export default function Tasks() {
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -129,6 +294,30 @@ export default function Tasks() {
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(task.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {task.status === 'pending' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
+                                disabled={updateTaskStatusMutation.isPending}
+                              >
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
+                                disabled={updateTaskStatusMutation.isPending}
+                              >
+                                <XCircle className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
