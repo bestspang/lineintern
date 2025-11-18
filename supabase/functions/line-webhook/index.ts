@@ -713,6 +713,127 @@ async function handleLeaveEvent(event: LineEvent) {
   }
 }
 
+async function handleMemberJoinedEvent(event: LineEvent) {
+  console.log(`[handleMemberJoinedEvent] Members joined group`);
+  
+  if (!event.joined?.members || event.source.type !== "group" || !event.source.groupId) {
+    console.log(`[handleMemberJoinedEvent] Invalid event data or not a group`);
+    return;
+  }
+
+  const lineGroupId = event.source.groupId;
+  
+  // Ensure group exists
+  const group = await ensureGroup(lineGroupId);
+  
+  // Process each member that joined
+  for (const member of event.joined.members) {
+    if (member.type === "user" && member.userId) {
+      console.log(`[handleMemberJoinedEvent] Processing user: ${member.userId}`);
+      
+      try {
+        // Ensure user exists in users table
+        const user = await ensureUser(member.userId);
+        
+        // Add to group_members table
+        await ensureGroupMember(group.id, user.id);
+        
+        console.log(`[handleMemberJoinedEvent] Added user ${user.id} to group ${group.id}`);
+      } catch (error) {
+        console.error(`[handleMemberJoinedEvent] Error processing member ${member.userId}:`, error);
+      }
+    }
+  }
+  
+  // Update group member count
+  const { count } = await supabase
+    .from("group_members")
+    .select("*", { count: "exact", head: true })
+    .eq("group_id", group.id)
+    .is("left_at", null);
+  
+  if (count !== null) {
+    await supabase
+      .from("groups")
+      .update({ member_count: count })
+      .eq("id", group.id);
+  }
+}
+
+async function handleMemberLeftEvent(event: LineEvent) {
+  console.log(`[handleMemberLeftEvent] Members left group`);
+  
+  if (!event.left?.members || event.source.type !== "group" || !event.source.groupId) {
+    console.log(`[handleMemberLeftEvent] Invalid event data or not a group`);
+    return;
+  }
+
+  const lineGroupId = event.source.groupId;
+  
+  // Get group
+  const { data: group } = await supabase
+    .from("groups")
+    .select("id")
+    .eq("line_group_id", lineGroupId)
+    .single();
+  
+  if (!group) {
+    console.log(`[handleMemberLeftEvent] Group not found: ${lineGroupId}`);
+    return;
+  }
+  
+  // Process each member that left
+  for (const member of event.left.members) {
+    if (member.type === "user" && member.userId) {
+      console.log(`[handleMemberLeftEvent] Processing user: ${member.userId}`);
+      
+      try {
+        // Find user in database
+        const { data: user } = await supabase
+          .from("users")
+          .select("id")
+          .eq("line_user_id", member.userId)
+          .single();
+        
+        if (!user) {
+          console.log(`[handleMemberLeftEvent] User not found: ${member.userId}`);
+          continue;
+        }
+        
+        // Mark as left in group_members table
+        const { error } = await supabase
+          .from("group_members")
+          .update({ left_at: new Date().toISOString() })
+          .eq("group_id", group.id)
+          .eq("user_id", user.id)
+          .is("left_at", null);
+        
+        if (error) {
+          console.error(`[handleMemberLeftEvent] Error updating member:`, error);
+        } else {
+          console.log(`[handleMemberLeftEvent] Marked user ${user.id} as left from group ${group.id}`);
+        }
+      } catch (error) {
+        console.error(`[handleMemberLeftEvent] Error processing member ${member.userId}:`, error);
+      }
+    }
+  }
+  
+  // Update group member count
+  const { count } = await supabase
+    .from("group_members")
+    .select("*", { count: "exact", head: true })
+    .eq("group_id", group.id)
+    .is("left_at", null);
+  
+  if (count !== null) {
+    await supabase
+      .from("groups")
+      .update({ member_count: count })
+      .eq("id", group.id);
+  }
+}
+
 async function handleMessageEvent(event: LineEvent) {
   if (!event.message || event.message.type !== "text" || !event.message.text) {
     return;
@@ -879,6 +1000,12 @@ async function handleEvent(event: LineEvent) {
         break;
       case "leave":
         await handleLeaveEvent(event);
+        break;
+      case "memberJoined":
+        await handleMemberJoinedEvent(event);
+        break;
+      case "memberLeft":
+        await handleMemberLeftEvent(event);
         break;
       default:
         console.log(`[handleEvent] Unhandled event type: ${event.type}`);
