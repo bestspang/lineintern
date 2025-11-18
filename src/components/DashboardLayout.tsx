@@ -10,7 +10,8 @@ import {
   Webhook, 
   Settings,
   TestTube2,
-  LogOut
+  LogOut,
+  Brain
 } from 'lucide-react';
 import {
   Sidebar,
@@ -34,6 +35,7 @@ const navItems = [
   { title: 'Users', url: '/users', icon: Users },
   { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
   { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
+  { title: 'Memory Bot', url: '/memory', icon: Brain },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
   { title: 'Alerts & Logs', url: '/alerts', icon: AlertTriangle },
   { title: 'Integrations', url: '/integrations', icon: Webhook },
