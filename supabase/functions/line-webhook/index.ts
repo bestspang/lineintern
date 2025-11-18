@@ -867,6 +867,271 @@ async function loadRelevantMemories({
 }
 
 // =============================
+// SAFETY MONITORING SYSTEM (Phase 3)
+// =============================
+
+interface SafetyRule {
+  id: string;
+  name: string;
+  rule_type: string;
+  pattern: string;
+  severity: string;
+  action: string;
+  scope: string;
+  group_id: string | null;
+  match_count: number;
+  last_matched_at: string | null;
+}
+
+let safetyRulesCache: {
+  rules: SafetyRule[];
+  lastFetched: number;
+} | null = null;
+
+const SAFETY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function loadSafetyRules(groupId: string): Promise<SafetyRule[]> {
+  // Check cache
+  if (safetyRulesCache && Date.now() - safetyRulesCache.lastFetched < SAFETY_CACHE_TTL) {
+    return safetyRulesCache.rules.filter(
+      r => r.scope === 'global' || (r.scope === 'group' && r.group_id === groupId)
+    );
+  }
+
+  console.log('[loadSafetyRules] Fetching from database...');
+
+  const { data, error } = await supabase
+    .from('safety_rules')
+    .select('*')
+    .eq('is_enabled', true);
+
+  if (error) {
+    console.error('[loadSafetyRules] Error:', error);
+    return [];
+  }
+
+  safetyRulesCache = {
+    rules: data || [],
+    lastFetched: Date.now(),
+  };
+
+  return safetyRulesCache.rules.filter(
+    r => r.scope === 'global' || (r.scope === 'group' && r.group_id === groupId)
+  );
+}
+
+async function passiveSafetyMonitoring(
+  groupId: string,
+  userId: string,
+  messageText: string,
+  messageId: string
+): Promise<void> {
+  const rules = await loadSafetyRules(groupId);
+  const matchedRules: string[] = [];
+  let maxSeverity = 'low';
+  let riskScore = 0;
+
+  for (const rule of rules) {
+    let matches = false;
+
+    if (rule.rule_type === 'url_pattern') {
+      const urls = messageText.match(/https?:\/\/[^\s]+/g);
+      if (urls) {
+        const regex = new RegExp(rule.pattern, 'i');
+        matches = urls.some(url => regex.test(url));
+      }
+    } else if (rule.rule_type === 'keyword') {
+      const regex = new RegExp(rule.pattern, 'i');
+      matches = regex.test(messageText);
+    } else if (rule.rule_type === 'toxicity') {
+      const regex = new RegExp(rule.pattern, 'i');
+      matches = regex.test(messageText);
+    }
+
+    if (matches) {
+      matchedRules.push(rule.id);
+      if (rule.severity === 'high') {
+        maxSeverity = 'high';
+        riskScore = Math.max(riskScore, 80);
+      } else if (rule.severity === 'medium' && maxSeverity !== 'high') {
+        maxSeverity = 'medium';
+        riskScore = Math.max(riskScore, 50);
+      } else {
+        riskScore = Math.max(riskScore, 20);
+      }
+
+      // Update rule match count (fire and forget - don't await)
+      supabase
+        .from('safety_rules')
+        .update({
+          match_count: (rule.match_count || 0) + 1,
+          last_matched_at: new Date().toISOString(),
+        })
+        .eq('id', rule.id)
+        .then(() => {});
+    }
+  }
+
+  if (matchedRules.length > 0) {
+    console.log(`[passiveSafetyMonitoring] Matched ${matchedRules.length} rules, severity: ${maxSeverity}`);
+
+    // Determine alert type
+    let alertType = 'other';
+    const firstRule = rules.find(r => r.id === matchedRules[0]);
+    if (firstRule?.rule_type === 'url_pattern') alertType = 'scam_link';
+    else if (firstRule?.rule_type === 'keyword') alertType = 'spam';
+    else if (firstRule?.rule_type === 'toxicity') alertType = 'toxicity';
+
+    // Create alert
+    const { error } = await supabase
+      .from('alerts')
+      .insert({
+        group_id: groupId,
+        type: alertType,
+        severity: maxSeverity,
+        summary: `Detected ${alertType}: ${matchedRules.length} rule(s) matched`,
+        details: {
+          message_preview: messageText.substring(0, 200),
+          matched_rule_ids: matchedRules,
+        },
+        message_id: messageId,
+        risk_score: riskScore,
+        matched_rules: matchedRules,
+        source_user_id: userId,
+        action_taken: maxSeverity === 'high' ? 'warned' : 'logged',
+      });
+
+    if (error) {
+      console.error('[passiveSafetyMonitoring] Error creating alert:', error);
+    }
+
+    // If severity is high and action is warn, we could send a warning message
+    // (but respecting LINE's constraint that we cannot delete messages)
+    if (maxSeverity === 'high' && firstRule?.action === 'warn') {
+      console.log('[passiveSafetyMonitoring] High severity detected, warning should be sent by admin');
+    }
+  }
+}
+
+// =============================
+// FAQ LOGGING SYSTEM (Phase 1)
+// =============================
+
+async function logFaqInteraction(
+  groupId: string,
+  userId: string,
+  question: string,
+  answer: string,
+  knowledgeItemIds: string[],
+  language: string,
+  responseTimeMs: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('faq_logs')
+    .insert({
+      group_id: groupId,
+      user_id: userId,
+      question,
+      answer,
+      knowledge_item_ids: knowledgeItemIds,
+      language,
+      response_time_ms: responseTimeMs,
+    });
+
+  if (error) {
+    console.error('[logFaqInteraction] Error:', error);
+  }
+}
+
+// =============================
+// TRAINING COMMAND HANDLER (Phase 1)
+// =============================
+
+async function handleTrainingCommand(
+  groupId: string,
+  userId: string,
+  messageText: string,
+  replyToken: string
+): Promise<void> {
+  console.log('[handleTrainingCommand] Processing training request');
+
+  // Extract URL or content
+  const urlMatch = messageText.match(/https?:\/\/[^\s]+/);
+  let sourceType = 'text';
+  let sourceUrl: string | null = null;
+  let sourceContent: string | null = messageText;
+
+  if (urlMatch) {
+    sourceType = 'url';
+    sourceUrl = urlMatch[0];
+    sourceContent = '';
+  }
+
+  // Use AI to extract knowledge items from content
+  let extractedItems = [];
+  try {
+    const extractPrompt = `Extract key facts and information from the following content. Format as JSON array of objects with: title, category, content (detailed), tags (array).
+
+Content: ${messageText}`;
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: "You are a knowledge extraction assistant. Extract facts and format as JSON." },
+          { role: "user", content: extractPrompt },
+        ],
+        max_completion_tokens: 1000,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const reply = data.choices?.[0]?.message?.content?.trim();
+      try {
+        extractedItems = JSON.parse(reply);
+      } catch (e) {
+        console.error('[handleTrainingCommand] Failed to parse extracted items:', e);
+      }
+    }
+  } catch (error) {
+    console.error('[handleTrainingCommand] Error extracting knowledge:', error);
+  }
+
+  // Create training request
+  const { data: trainingRequest, error } = await supabase
+    .from('training_requests')
+    .insert({
+      requested_by_user_id: userId,
+      group_id: groupId,
+      source_type: sourceType,
+      source_url: sourceUrl,
+      source_content: sourceContent,
+      extracted_items: extractedItems,
+      status: 'pending',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[handleTrainingCommand] Error creating request:', error);
+    await replyToLine(replyToken, 'Sorry, failed to create training request.');
+    return;
+  }
+
+  const itemCount = Array.isArray(extractedItems) ? extractedItems.length : 0;
+  await replyToLine(
+    replyToken,
+    `✅ Training request created! Extracted ${itemCount} knowledge item(s). An admin will review and approve them shortly.`
+  );
+}
+
+// =============================
 // LOVABLE AI INTEGRATION
 // =============================
 
@@ -1201,8 +1466,8 @@ async function handleMessageEvent(event: LineEvent) {
   // Parse command dynamically from database
   const parsed = await parseCommandDynamic(event.message.text, isDM);
 
-  // Insert human message
-  await insertMessage(
+  // Insert human message and get the inserted record
+  const insertedMessage = await insertMessage(
     group.id,
     user.id,
     "human",
@@ -1211,24 +1476,14 @@ async function handleMessageEvent(event: LineEvent) {
     parsed.commandType
   );
 
-  // Safety check for URLs
-  const messageText = event.message.text;
-  if (messageText && /https?:\/\/[^\s]+/.test(messageText)) {
-    // Simple heuristic: if URL contains certain patterns, flag as potential risk
-    const suspiciousPatterns = ["bit.ly", "tinyurl", "t.co", "goo.gl"];
-    const hasSuspicious = suspiciousPatterns.some(pattern => 
-      messageText.toLowerCase().includes(pattern)
-    );
-    
-    if (hasSuspicious) {
-      await insertAlert(
-        group.id,
-        "scam_link",
-        "medium",
-        "Potentially risky shortened URL detected",
-        { message: messageText, user_id: user.id }
-      );
-    }
+  // PHASE 3: Passive Safety Monitoring (runs for EVERY message)
+  const messageIdForAlert = (insertedMessage as any)?.id || event.message.id || '';
+  await passiveSafetyMonitoring(group.id, user.id, event.message.text, messageIdForAlert);
+
+  // PHASE 1: Handle /train command
+  if (parsed.commandType === 'train') {
+    await handleTrainingCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
   }
 
   // Check if we should respond
@@ -1250,7 +1505,10 @@ async function handleMessageEvent(event: LineEvent) {
     : "N/A";
 
   // Generate AI reply
+  const startTime = Date.now();
   let aiReply: string;
+  let usedKnowledgeItemIds: string[] = [];
+
   try {
     aiReply = await generateAiReply(
       parsed.userMessage,
@@ -1261,6 +1519,15 @@ async function handleMessageEvent(event: LineEvent) {
       knowledgeSnippets,
       analyticsSnapshot
     );
+
+    // PHASE 1: Extract knowledge item IDs from snippets if FAQ command
+    if (parsed.commandType === 'faq' && knowledgeSnippets !== 'N/A') {
+      // Extract IDs from knowledge snippets (assuming format includes IDs)
+      const idMatches = knowledgeSnippets.match(/\[ID: ([a-f0-9-]+)\]/g);
+      if (idMatches) {
+        usedKnowledgeItemIds = idMatches.map(m => m.replace(/\[ID: |\]/g, ''));
+      }
+    }
   } catch (error) {
     console.error(`[handleMessageEvent] Error generating reply:`, error);
     await insertAlert(
@@ -1273,12 +1540,28 @@ async function handleMessageEvent(event: LineEvent) {
     aiReply = "Sorry, I encountered an error processing your request.";
   }
 
+  const responseTime = Date.now() - startTime;
+
   // Send reply to LINE
   try {
     await replyToLine(event.replyToken, aiReply);
     
     // Insert bot message
     await insertMessage(group.id, null, "bot", aiReply);
+
+    // PHASE 1: Log FAQ interaction
+    if (parsed.commandType === 'faq') {
+      const language = /[\u0E00-\u0E7F]/.test(parsed.userMessage) ? 'th' : 'en';
+      await logFaqInteraction(
+        group.id,
+        user.id,
+        parsed.userMessage,
+        aiReply,
+        usedKnowledgeItemIds,
+        language,
+        responseTime
+      );
+    }
     
     // Trigger memory writer (async, non-blocking)
     if (parsed.commandType !== "help") {

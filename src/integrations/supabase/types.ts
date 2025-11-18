@@ -16,38 +16,50 @@ export type Database = {
     Tables: {
       alerts: {
         Row: {
+          action_taken: string | null
           created_at: string
           details: Json | null
           group_id: string
           id: string
+          matched_rules: string[] | null
           message_id: string | null
           resolved: boolean | null
           resolved_at: string | null
+          risk_score: number | null
           severity: Database["public"]["Enums"]["alert_severity"]
+          source_user_id: string | null
           summary: string
           type: Database["public"]["Enums"]["alert_type"]
         }
         Insert: {
+          action_taken?: string | null
           created_at?: string
           details?: Json | null
           group_id: string
           id?: string
+          matched_rules?: string[] | null
           message_id?: string | null
           resolved?: boolean | null
           resolved_at?: string | null
+          risk_score?: number | null
           severity: Database["public"]["Enums"]["alert_severity"]
+          source_user_id?: string | null
           summary: string
           type: Database["public"]["Enums"]["alert_type"]
         }
         Update: {
+          action_taken?: string | null
           created_at?: string
           details?: Json | null
           group_id?: string
           id?: string
+          matched_rules?: string[] | null
           message_id?: string | null
           resolved?: boolean | null
           resolved_at?: string | null
+          risk_score?: number | null
           severity?: Database["public"]["Enums"]["alert_severity"]
+          source_user_id?: string | null
           summary?: string
           type?: Database["public"]["Enums"]["alert_type"]
         }
@@ -64,6 +76,13 @@ export type Database = {
             columns: ["message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_source_user_id_fkey"
+            columns: ["source_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -255,6 +274,66 @@ export type Database = {
             columns: ["command_id"]
             isOneToOne: false
             referencedRelation: "bot_commands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faq_logs: {
+        Row: {
+          answer: string
+          created_at: string | null
+          feedback_text: string | null
+          group_id: string | null
+          id: string
+          knowledge_item_ids: string[] | null
+          language: string | null
+          question: string
+          rating: number | null
+          response_time_ms: number | null
+          user_id: string | null
+          was_helpful: boolean | null
+        }
+        Insert: {
+          answer: string
+          created_at?: string | null
+          feedback_text?: string | null
+          group_id?: string | null
+          id?: string
+          knowledge_item_ids?: string[] | null
+          language?: string | null
+          question: string
+          rating?: number | null
+          response_time_ms?: number | null
+          user_id?: string | null
+          was_helpful?: boolean | null
+        }
+        Update: {
+          answer?: string
+          created_at?: string | null
+          feedback_text?: string | null
+          group_id?: string | null
+          id?: string
+          knowledge_item_ids?: string[] | null
+          language?: string | null
+          question?: string
+          rating?: number | null
+          response_time_ms?: number | null
+          user_id?: string | null
+          was_helpful?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faq_logs_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "faq_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -656,6 +735,65 @@ export type Database = {
           },
         ]
       }
+      safety_rules: {
+        Row: {
+          action: string
+          created_at: string | null
+          description: string | null
+          group_id: string | null
+          id: string
+          is_enabled: boolean | null
+          last_matched_at: string | null
+          match_count: number | null
+          name: string
+          pattern: string
+          rule_type: string
+          scope: string
+          severity: string
+          updated_at: string | null
+        }
+        Insert: {
+          action?: string
+          created_at?: string | null
+          description?: string | null
+          group_id?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          last_matched_at?: string | null
+          match_count?: number | null
+          name: string
+          pattern: string
+          rule_type: string
+          scope?: string
+          severity: string
+          updated_at?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          description?: string | null
+          group_id?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          last_matched_at?: string | null
+          match_count?: number | null
+          name?: string
+          pattern?: string
+          rule_type?: string
+          scope?: string
+          severity?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "safety_rules_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to_user_id: string | null
@@ -713,6 +851,76 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_requests: {
+        Row: {
+          created_at: string | null
+          extracted_items: Json | null
+          group_id: string | null
+          id: string
+          notes: string | null
+          requested_by_user_id: string | null
+          reviewed_at: string | null
+          reviewed_by_user_id: string | null
+          source_content: string | null
+          source_type: string
+          source_url: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          extracted_items?: Json | null
+          group_id?: string | null
+          id?: string
+          notes?: string | null
+          requested_by_user_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
+          source_content?: string | null
+          source_type: string
+          source_url?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          extracted_items?: Json | null
+          group_id?: string | null
+          id?: string
+          notes?: string | null
+          requested_by_user_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
+          source_content?: string | null
+          source_type?: string
+          source_url?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_requests_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_requests_requested_by_user_id_fkey"
+            columns: ["requested_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_requests_reviewed_by_user_id_fkey"
+            columns: ["reviewed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
