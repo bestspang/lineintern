@@ -427,6 +427,30 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           avatar_url: string | null
@@ -465,7 +489,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       alert_severity: "low" | "medium" | "high"
@@ -475,6 +505,7 @@ export type Database = {
         | "error"
         | "rate_limit"
         | "failed_reply"
+      app_role: "admin" | "moderator" | "user"
       group_mode: "helper" | "faq" | "report" | "fun" | "safety"
       group_status: "active" | "left" | "error" | "pending"
       knowledge_scope: "global" | "group"
@@ -617,6 +648,7 @@ export const Constants = {
         "rate_limit",
         "failed_reply",
       ],
+      app_role: ["admin", "moderator", "user"],
       group_mode: ["helper", "faq", "report", "fun", "safety"],
       group_status: ["active", "left", "error", "pending"],
       knowledge_scope: ["global", "group"],
