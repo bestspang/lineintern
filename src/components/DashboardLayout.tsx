@@ -9,6 +9,7 @@ import {
   AlertTriangle, 
   Webhook, 
   Settings,
+  TestTube2,
   LogOut
 } from 'lucide-react';
 import {
@@ -36,6 +37,7 @@ const navItems = [
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
   { title: 'Alerts & Logs', url: '/alerts', icon: AlertTriangle },
   { title: 'Integrations', url: '/integrations', icon: Webhook },
+  { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 

@@ -17,6 +17,7 @@ import Analytics from "./pages/Analytics";
 import Alerts from "./pages/Alerts";
 import Integrations from "./pages/Integrations";
 import Settings from "./pages/Settings";
+import TestBot from "./pages/TestBot";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/integrations" element={<Integrations />} />
+                    <Route path="/test-bot" element={<TestBot />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
