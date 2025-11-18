@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 // =============================
 // TYPES & INTERFACES
@@ -96,6 +97,51 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// =============================
+// VALIDATION SCHEMAS
+// =============================
+
+const messageTextSchema = z.string()
+  .min(1, "Message cannot be empty")
+  .max(5000, "Message exceeds maximum length of 5000 characters");
+
+const lineIdSchema = z.string()
+  .regex(/^[a-zA-Z0-9_-]+$/, "Invalid LINE ID format");
+
+// Sanitize message text by removing control characters except newlines/tabs
+function sanitizeMessageText(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  
+  // Enforce max length (LINE messages are max 5000 chars)
+  let sanitized = text.substring(0, 5000);
+  
+  // Trim whitespace
+  sanitized = sanitized.trim();
+  
+  // Remove control characters except newlines and tabs
+  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+  
+  return sanitized;
+}
+
+function validateLineId(id: string, idType: string): string {
+  const result = lineIdSchema.safeParse(id);
+  if (!result.success) {
+    console.error(`[validateLineId] Invalid ${idType}:`, result.error.errors[0].message);
+    throw new Error(`Invalid ${idType}: ${result.error.errors[0].message}`);
+  }
+  return result.data;
+}
+
+function validateMessageText(text: string): string {
+  const result = messageTextSchema.safeParse(text);
+  if (!result.success) {
+    console.error('[validateMessageText] Validation failed:', result.error.errors[0].message);
+    throw new Error(`Invalid message text: ${result.error.errors[0].message}`);
+  }
+  return result.data;
+}
 
 // =============================
 // SIGNATURE VERIFICATION
@@ -240,14 +286,24 @@ async function insertMessage(
   lineMessageId?: string,
   commandType?: string
 ) {
-  const hasUrl = /https?:\/\/[^\s]+/.test(text);
+  // Sanitize and validate message text
+  const sanitizedText = sanitizeMessageText(text);
+  
+  try {
+    validateMessageText(sanitizedText);
+  } catch (error) {
+    console.error(`[insertMessage] Text validation failed:`, error);
+    return; // Skip storing invalid messages
+  }
+  
+  const hasUrl = /https?:\/\/[^\s]+/.test(sanitizedText);
   
   const { error } = await supabase.from("messages").insert({
     group_id: groupId,
     user_id: userId,
     line_message_id: lineMessageId,
     direction,
-    text,
+    text: sanitizedText,
     has_url: hasUrl,
     command_type: commandType,
     sent_at: new Date().toISOString(),
@@ -599,8 +655,19 @@ async function handleMessageEvent(event: LineEvent) {
   console.log(`[handleMessageEvent] Processing message: "${event.message.text.substring(0, 50)}..."`);
 
   const isDM = event.source.type === "user";
-  const lineUserId = event.source.userId!;
-  const lineGroupId = event.source.groupId || event.source.userId!; // Use userId for DMs
+  const rawLineUserId = event.source.userId!;
+  const rawLineGroupId = event.source.groupId || event.source.userId!; // Use userId for DMs
+
+  // Validate LINE IDs
+  let lineUserId: string;
+  let lineGroupId: string;
+  try {
+    lineUserId = validateLineId(rawLineUserId, "user ID");
+    lineGroupId = validateLineId(rawLineGroupId, "group ID");
+  } catch (error) {
+    console.error(`[handleMessageEvent] ID validation failed:`, error);
+    return; // Skip processing if IDs are invalid
+  }
 
   // Ensure user exists
   const user = await ensureUser(lineUserId);

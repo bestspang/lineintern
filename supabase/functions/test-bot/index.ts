@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 // CORS headers for web app access
 const corsHeaders = {
@@ -51,6 +52,30 @@ Analytics snapshot:
 
 Respond naturally and helpfully. Keep it concise.`;
 
+// Validation schemas
+const testBotRequestSchema = z.object({
+  message: z.string()
+    .min(1, "Message cannot be empty")
+    .max(5000, "Message exceeds maximum length of 5000 characters"),
+  groupId: z.string()
+    .regex(/^[a-zA-Z0-9_-]+$/, "Invalid group ID format")
+    .min(1, "Group ID is required"),
+  userId: z.string()
+    .regex(/^[a-zA-Z0-9_-]+$/, "Invalid user ID format")
+    .min(1, "User ID is required"),
+});
+
+// Sanitize message text
+function sanitizeMessageText(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  
+  let sanitized = text.substring(0, 5000);
+  sanitized = sanitized.trim();
+  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+  
+  return sanitized;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -87,15 +112,23 @@ Deno.serve(async (req) => {
 
     console.log(`[test-bot] Authenticated user: ${user.email} (${user.id})`);
 
-    // Parse request
-    const { message, groupId, userId } = await req.json();
-
-    if (!message || !groupId || !userId) {
+    // Parse and validate request
+    const body = await req.json();
+    const validationResult = testBotRequestSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      console.error("[test-bot] Validation failed:", validationResult.error.errors);
       return new Response(
-        JSON.stringify({ error: "Missing required fields: message, groupId, userId" }),
+        JSON.stringify({ 
+          error: "Invalid input", 
+          details: validationResult.error.errors[0].message 
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const { message, groupId, userId } = validationResult.data;
+    const sanitizedMessage = sanitizeMessageText(message);
 
     console.log(`[test-bot] Authenticated dashboard user testing message from userId=${userId} in groupId=${groupId}`);
 
@@ -153,39 +186,38 @@ Deno.serve(async (req) => {
       dbUserId = newUser.id;
     }
 
-    // Parse command
-    const messageText = message.trim();
+    // Parse command (use sanitized message)
     let commandType = "ask";
-    let cleanedMessage = messageText;
+    let cleanedMessage = sanitizedMessage;
 
-    if (messageText.toLowerCase().startsWith("/summary")) {
+    if (sanitizedMessage.toLowerCase().startsWith("/summary")) {
       commandType = "summary";
-      cleanedMessage = messageText.substring(8).trim();
-    } else if (messageText.toLowerCase().startsWith("/faq")) {
+      cleanedMessage = sanitizedMessage.substring(8).trim();
+    } else if (sanitizedMessage.toLowerCase().startsWith("/faq")) {
       commandType = "faq";
-      cleanedMessage = messageText.substring(4).trim();
-    } else if (messageText.toLowerCase().startsWith("/todo")) {
+      cleanedMessage = sanitizedMessage.substring(4).trim();
+    } else if (sanitizedMessage.toLowerCase().startsWith("/todo")) {
       commandType = "todo";
-      cleanedMessage = messageText.substring(5).trim();
-    } else if (messageText.toLowerCase().startsWith("/report")) {
+      cleanedMessage = sanitizedMessage.substring(5).trim();
+    } else if (sanitizedMessage.toLowerCase().startsWith("/report")) {
       commandType = "report";
-      cleanedMessage = messageText.substring(7).trim();
-    } else if (messageText.toLowerCase().startsWith("/help")) {
+      cleanedMessage = sanitizedMessage.substring(7).trim();
+    } else if (sanitizedMessage.toLowerCase().startsWith("/help")) {
       commandType = "help";
-      cleanedMessage = messageText.substring(5).trim();
-    } else if (messageText.toLowerCase().startsWith("@intern")) {
+      cleanedMessage = sanitizedMessage.substring(5).trim();
+    } else if (sanitizedMessage.toLowerCase().startsWith("@intern")) {
       commandType = "ask";
-      cleanedMessage = messageText.substring(7).trim();
+      cleanedMessage = sanitizedMessage.substring(7).trim();
     }
 
-    // Store human message
+    // Store human message (using sanitized text)
     const { error: msgError } = await adminClient.from("messages").insert({
       group_id: dbGroupId,
       user_id: dbUserId,
       direction: "human",
-      text: messageText,
+      text: sanitizedMessage,
       command_type: commandType,
-      has_url: /https?:\/\//.test(messageText),
+      has_url: /https?:\/\//.test(sanitizedMessage),
     });
 
     if (msgError) console.error("[test-bot] Error storing message:", msgError);
