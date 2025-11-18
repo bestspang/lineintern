@@ -57,9 +57,6 @@ const App = () => (
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/test-bot" element={<TestBot />} />
                     <Route path="*" element={<NotFound />} />
-                    <Route path="/test-bot" element={<TestBot />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<NotFound />} />
                   </Routes>
                 </DashboardLayout>
               </ProtectedRoute>
