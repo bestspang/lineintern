@@ -14,8 +14,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const AI_MODEL = "google/gemini-2.5-flash";
 
-// System prompt for LINE Intern
-const SYSTEM_KNOWLEDGE_PROMPT = `You are LINE Intern, an AI teammate that lives inside LINE group chats and DMs.
+// System prompt for GoodLime
+const SYSTEM_KNOWLEDGE_PROMPT = `You are GoodLime, an AI teammate that lives inside LINE group chats and DMs.
 Your job is to make the group more productive, informed, and organized, while staying light, polite, and efficient.
 
 You are an intern-level teammate with good judgment and fast execution.
