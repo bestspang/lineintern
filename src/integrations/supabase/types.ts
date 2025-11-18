@@ -14,7 +14,452 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alerts: {
+        Row: {
+          created_at: string
+          details: Json | null
+          group_id: string
+          id: string
+          message_id: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          severity: Database["public"]["Enums"]["alert_severity"]
+          summary: string
+          type: Database["public"]["Enums"]["alert_type"]
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          group_id: string
+          id?: string
+          message_id?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          severity: Database["public"]["Enums"]["alert_severity"]
+          summary: string
+          type: Database["public"]["Enums"]["alert_type"]
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          group_id?: string
+          id?: string
+          message_id?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["alert_severity"]
+          summary?: string
+          type?: Database["public"]["Enums"]["alert_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_settings: {
+        Row: {
+          created_at: string
+          default_language: string | null
+          default_mode: Database["public"]["Enums"]["group_mode"] | null
+          environment_name: string | null
+          id: string
+          max_summary_messages: number | null
+          openai_model: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_language?: string | null
+          default_mode?: Database["public"]["Enums"]["group_mode"] | null
+          environment_name?: string | null
+          id?: string
+          max_summary_messages?: number | null
+          openai_model?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_language?: string | null
+          default_mode?: Database["public"]["Enums"]["group_mode"] | null
+          environment_name?: string | null
+          id?: string
+          max_summary_messages?: number | null
+          openai_model?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      group_members: {
+        Row: {
+          group_id: string
+          id: string
+          joined_at: string
+          left_at: string | null
+          role: Database["public"]["Enums"]["member_role"] | null
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          joined_at?: string
+          left_at?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          joined_at?: string
+          left_at?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          alert_thresholds: Json | null
+          avatar_url: string | null
+          created_at: string
+          display_name: string
+          features: Json | null
+          id: string
+          joined_at: string
+          language: string | null
+          last_activity_at: string | null
+          line_group_id: string
+          member_count: number | null
+          mode: Database["public"]["Enums"]["group_mode"]
+          status: Database["public"]["Enums"]["group_status"]
+          updated_at: string
+        }
+        Insert: {
+          alert_thresholds?: Json | null
+          avatar_url?: string | null
+          created_at?: string
+          display_name: string
+          features?: Json | null
+          id?: string
+          joined_at?: string
+          language?: string | null
+          last_activity_at?: string | null
+          line_group_id: string
+          member_count?: number | null
+          mode?: Database["public"]["Enums"]["group_mode"]
+          status?: Database["public"]["Enums"]["group_status"]
+          updated_at?: string
+        }
+        Update: {
+          alert_thresholds?: Json | null
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          features?: Json | null
+          id?: string
+          joined_at?: string
+          language?: string | null
+          last_activity_at?: string | null
+          line_group_id?: string
+          member_count?: number | null
+          mode?: Database["public"]["Enums"]["group_mode"]
+          status?: Database["public"]["Enums"]["group_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      knowledge_items: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          group_id: string | null
+          id: string
+          is_active: boolean | null
+          last_used_at: string | null
+          scope: Database["public"]["Enums"]["knowledge_scope"]
+          tags: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          content: string
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          scope: Database["public"]["Enums"]["knowledge_scope"]
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          scope?: Database["public"]["Enums"]["knowledge_scope"]
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_items_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          command_type: string | null
+          direction: Database["public"]["Enums"]["message_direction"]
+          group_id: string
+          has_url: boolean | null
+          id: string
+          risk_score: number | null
+          sent_at: string
+          sentiment: string | null
+          text: string
+          user_id: string | null
+        }
+        Insert: {
+          command_type?: string | null
+          direction: Database["public"]["Enums"]["message_direction"]
+          group_id: string
+          has_url?: boolean | null
+          id?: string
+          risk_score?: number | null
+          sent_at?: string
+          sentiment?: string | null
+          text: string
+          user_id?: string | null
+        }
+        Update: {
+          command_type?: string | null
+          direction?: Database["public"]["Enums"]["message_direction"]
+          group_id?: string
+          has_url?: boolean | null
+          id?: string
+          risk_score?: number | null
+          sent_at?: string
+          sentiment?: string | null
+          text?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          created_at: string
+          data: Json
+          from_date: string
+          group_id: string
+          id: string
+          period: Database["public"]["Enums"]["report_period"]
+          summary_text: string | null
+          to_date: string
+        }
+        Insert: {
+          created_at?: string
+          data: Json
+          from_date: string
+          group_id: string
+          id?: string
+          period: Database["public"]["Enums"]["report_period"]
+          summary_text?: string | null
+          to_date: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          from_date?: string
+          group_id?: string
+          id?: string
+          period?: Database["public"]["Enums"]["report_period"]
+          summary_text?: string | null
+          to_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          assigned_to_user_id: string | null
+          created_at: string
+          created_by_user_id: string | null
+          description: string | null
+          due_at: string
+          group_id: string
+          id: string
+          status: Database["public"]["Enums"]["task_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_user_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          description?: string | null
+          due_at: string
+          group_id: string
+          id?: string
+          status?: Database["public"]["Enums"]["task_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_user_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          description?: string | null
+          due_at?: string
+          group_id?: string
+          id?: string
+          status?: Database["public"]["Enums"]["task_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_to_user_id_fkey"
+            columns: ["assigned_to_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string
+          id: string
+          last_seen_at: string | null
+          line_user_id: string
+          primary_language: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name: string
+          id?: string
+          last_seen_at?: string | null
+          line_user_id: string
+          primary_language?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          last_seen_at?: string | null
+          line_user_id?: string
+          primary_language?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +468,20 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      alert_severity: "low" | "medium" | "high"
+      alert_type:
+        | "scam_link"
+        | "spam_burst"
+        | "error"
+        | "rate_limit"
+        | "failed_reply"
+      group_mode: "helper" | "faq" | "report" | "fun" | "safety"
+      group_status: "active" | "left" | "error" | "pending"
+      knowledge_scope: "global" | "group"
+      member_role: "member" | "admin" | "owner"
+      message_direction: "human" | "bot"
+      report_period: "daily" | "weekly" | "custom"
+      task_status: "pending" | "completed" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +608,22 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      alert_severity: ["low", "medium", "high"],
+      alert_type: [
+        "scam_link",
+        "spam_burst",
+        "error",
+        "rate_limit",
+        "failed_reply",
+      ],
+      group_mode: ["helper", "faq", "report", "fun", "safety"],
+      group_status: ["active", "left", "error", "pending"],
+      knowledge_scope: ["global", "group"],
+      member_role: ["member", "admin", "owner"],
+      message_direction: ["human", "bot"],
+      report_period: ["daily", "weekly", "custom"],
+      task_status: ["pending", "completed", "cancelled"],
+    },
   },
 } as const
