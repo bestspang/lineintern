@@ -824,10 +824,13 @@ async function handleEvent(event: LineEvent) {
 // =============================
 
 serve(async (req) => {
+  console.log(`[webhook] ===== NEW REQUEST =====`);
   console.log(`[webhook] ${req.method} ${req.url}`);
+  console.log(`[webhook] Headers:`, Object.fromEntries(req.headers.entries()));
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
+    console.log(`[webhook] Handling CORS preflight`);
     return new Response(null, {
       status: 200,
       headers: {
@@ -839,12 +842,15 @@ serve(async (req) => {
   }
 
   if (req.method !== "POST") {
+    console.log(`[webhook] Rejected: Method not POST`);
     return new Response("Method not allowed", { status: 405 });
   }
 
   try {
     // Get raw body and signature
     const body = await req.text();
+    console.log(`[webhook] Body length: ${body.length} characters`);
+    
     const signature = req.headers.get("X-Line-Signature");
 
     if (!signature) {
@@ -862,17 +868,23 @@ serve(async (req) => {
     // Parse webhook body
     const webhookBody: WebhookBody = JSON.parse(body);
     console.log(`[webhook] Received ${webhookBody.events.length} event(s)`);
+    console.log(`[webhook] Event types:`, webhookBody.events.map(e => e.type));
 
     // Process events
     const promises = webhookBody.events.map(event => handleEvent(event));
     await Promise.all(promises);
 
+    console.log(`[webhook] ===== SUCCESS =====`);
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
+    console.error("[webhook] ===== ERROR =====");
     console.error("[webhook] Error:", error);
+    if (error instanceof Error) {
+      console.error("[webhook] Stack:", error.stack);
+    }
     return new Response(
       JSON.stringify({ error: "Internal server error", message: String(error) }),
       {
