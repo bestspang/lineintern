@@ -228,6 +228,86 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_summaries: {
+        Row: {
+          action_items: Json | null
+          created_at: string
+          created_by_user_id: string | null
+          decisions: Json | null
+          from_message_id: string | null
+          from_time: string
+          group_id: string
+          id: string
+          main_topics: string[] | null
+          message_count: number | null
+          open_questions: string[] | null
+          summary_text: string
+          to_message_id: string | null
+          to_time: string
+        }
+        Insert: {
+          action_items?: Json | null
+          created_at?: string
+          created_by_user_id?: string | null
+          decisions?: Json | null
+          from_message_id?: string | null
+          from_time: string
+          group_id: string
+          id?: string
+          main_topics?: string[] | null
+          message_count?: number | null
+          open_questions?: string[] | null
+          summary_text: string
+          to_message_id?: string | null
+          to_time: string
+        }
+        Update: {
+          action_items?: Json | null
+          created_at?: string
+          created_by_user_id?: string | null
+          decisions?: Json | null
+          from_message_id?: string | null
+          from_time?: string
+          group_id?: string
+          id?: string
+          main_topics?: string[] | null
+          message_count?: number | null
+          open_questions?: string[] | null
+          summary_text?: string
+          to_message_id?: string | null
+          to_time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_summaries_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_summaries_from_message_id_fkey"
+            columns: ["from_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_summaries_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_summaries_to_message_id_fkey"
+            columns: ["to_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       command_aliases: {
         Row: {
           alias_text: string
