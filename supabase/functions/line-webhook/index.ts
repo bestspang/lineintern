@@ -90,8 +90,8 @@ Keep responses concise (2-3 short paragraphs max). Use bullets for lists. Reply 
 
 const LINE_CHANNEL_SECRET = Deno.env.get("LINE_CHANNEL_SECRET")!;
 const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
-const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const AI_MODEL = "google/gemini-2.5-flash"; // Cost-efficient default
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -449,7 +449,7 @@ async function getAnalyticsSnapshot(groupId: string): Promise<string> {
 }
 
 // =============================
-// OPENAI INTEGRATION
+// LOVABLE AI INTEGRATION
 // =============================
 
 async function generateAiReply(
@@ -469,34 +469,46 @@ async function generateAiReply(
     .replace("{ANALYTICS_SNAPSHOT}", analyticsSnapshot);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: OPENAI_MODEL,
+        model: AI_MODEL,
         messages: [
           { role: "system", content: SYSTEM_KNOWLEDGE_PROMPT },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.7,
-        max_tokens: 500,
+        max_completion_tokens: 500,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[generateAiReply] OpenAI error: ${response.status} ${errorText}`);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      
+      // Handle rate limiting
+      if (response.status === 429) {
+        console.error(`[generateAiReply] Rate limit exceeded`);
+        return "I'm currently experiencing high demand. Please try again in a moment.";
+      }
+      
+      // Handle payment required
+      if (response.status === 402) {
+        console.error(`[generateAiReply] Payment required - out of credits`);
+        return "Sorry, the AI service is temporarily unavailable. Please contact the administrator.";
+      }
+      
+      console.error(`[generateAiReply] Lovable AI error: ${response.status} ${errorText}`);
+      throw new Error(`Lovable AI error: ${response.status}`);
     }
 
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content?.trim();
 
     if (!reply) {
-      throw new Error("Empty response from OpenAI");
+      throw new Error("Empty response from Lovable AI");
     }
 
     console.log(`[generateAiReply] Generated reply (${reply.length} chars)`);
