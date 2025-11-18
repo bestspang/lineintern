@@ -244,6 +244,138 @@ export type Database = {
           },
         ]
       }
+      memory_items: {
+        Row: {
+          category: string
+          content: string
+          created_at: string | null
+          group_id: string | null
+          id: string
+          importance_score: number
+          is_deleted: boolean | null
+          last_used_at: string | null
+          pinned: boolean | null
+          scope: string
+          source_message_ids: string[] | null
+          source_type: string
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          category: string
+          content: string
+          created_at?: string | null
+          group_id?: string | null
+          id?: string
+          importance_score?: number
+          is_deleted?: boolean | null
+          last_used_at?: string | null
+          pinned?: boolean | null
+          scope: string
+          source_message_ids?: string[] | null
+          source_type: string
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string | null
+          group_id?: string | null
+          id?: string
+          importance_score?: number
+          is_deleted?: boolean | null
+          last_used_at?: string | null
+          pinned?: boolean | null
+          scope?: string
+          source_message_ids?: string[] | null
+          source_type?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_items_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memory_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      memory_settings: {
+        Row: {
+          auto_decay_enabled: boolean | null
+          created_at: string | null
+          decay_threshold_days: number | null
+          group_id: string | null
+          id: string
+          max_items: number | null
+          max_items_per_group: number | null
+          max_items_per_user: number | null
+          memory_enabled: boolean | null
+          passive_learning_enabled: boolean | null
+          scope: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          auto_decay_enabled?: boolean | null
+          created_at?: string | null
+          decay_threshold_days?: number | null
+          group_id?: string | null
+          id?: string
+          max_items?: number | null
+          max_items_per_group?: number | null
+          max_items_per_user?: number | null
+          memory_enabled?: boolean | null
+          passive_learning_enabled?: boolean | null
+          scope: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          auto_decay_enabled?: boolean | null
+          created_at?: string | null
+          decay_threshold_days?: number | null
+          group_id?: string | null
+          id?: string
+          max_items?: number | null
+          max_items_per_group?: number | null
+          max_items_per_user?: number | null
+          memory_enabled?: boolean | null
+          passive_learning_enabled?: boolean | null
+          scope?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_settings_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memory_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           command_type: string | null
@@ -459,6 +591,7 @@ export type Database = {
           id: string
           last_seen_at: string | null
           line_user_id: string
+          memory_opt_out: boolean | null
           primary_language: string | null
           updated_at: string
         }
@@ -469,6 +602,7 @@ export type Database = {
           id?: string
           last_seen_at?: string | null
           line_user_id: string
+          memory_opt_out?: boolean | null
           primary_language?: string | null
           updated_at?: string
         }
@@ -479,6 +613,7 @@ export type Database = {
           id?: string
           last_seen_at?: string | null
           line_user_id?: string
+          memory_opt_out?: boolean | null
           primary_language?: string | null
           updated_at?: string
         }

@@ -62,6 +62,9 @@ const COMMON_BEHAVIOR_PROMPT = `
 
 **COMMAND**: {COMMAND}
 
+**MEMORY_CONTEXT**: 
+{MEMORY_CONTEXT}
+
 **RECENT_MESSAGES**: 
 {RECENT_MESSAGES}
 
@@ -571,6 +574,143 @@ async function getAnalyticsSnapshot(groupId: string): Promise<string> {
 }
 
 // =============================
+// MEMORY SYSTEM
+// =============================
+
+async function checkMemorySettings(
+  userId: string,
+  groupId: string
+): Promise<boolean> {
+  const { data: globalSettings } = await supabase
+    .from("memory_settings")
+    .select("memory_enabled")
+    .eq("scope", "global")
+    .single();
+
+  if (!globalSettings?.memory_enabled) return false;
+
+  if (groupId) {
+    const { data: groupSettings } = await supabase
+      .from("memory_settings")
+      .select("memory_enabled")
+      .eq("scope", "group")
+      .eq("group_id", groupId)
+      .maybeSingle();
+
+    if (groupSettings && !groupSettings.memory_enabled) return false;
+  }
+
+  if (userId) {
+    const { data: userSettings } = await supabase
+      .from("memory_settings")
+      .select("memory_enabled")
+      .eq("scope", "user")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (userSettings && !userSettings.memory_enabled) return false;
+  }
+
+  return true;
+}
+
+async function loadRelevantMemories({
+  userId,
+  groupId,
+  isDM,
+}: {
+  userId: string;
+  groupId: string;
+  isDM: boolean;
+}): Promise<string> {
+  console.log(
+    `[loadRelevantMemories] Loading for user=${userId}, group=${groupId}, isDM=${isDM}`
+  );
+
+  const memoryEnabled = await checkMemorySettings(userId, groupId);
+  if (!memoryEnabled) {
+    return "N/A";
+  }
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("memory_opt_out")
+    .eq("id", userId)
+    .single();
+
+  if (user?.memory_opt_out) {
+    return "N/A";
+  }
+
+  const memories: any[] = [];
+
+  const { data: globalMemories } = await supabase
+    .from("memory_items")
+    .select("*")
+    .eq("scope", "global")
+    .eq("is_deleted", false)
+    .order("importance_score", { ascending: false })
+    .order("last_used_at", { ascending: false, nullsFirst: false })
+    .limit(5);
+
+  if (globalMemories) memories.push(...globalMemories);
+
+  const { data: userMemories } = await supabase
+    .from("memory_items")
+    .select("*")
+    .eq("scope", "user")
+    .eq("user_id", userId)
+    .eq("is_deleted", false)
+    .order("pinned", { ascending: false })
+    .order("importance_score", { ascending: false })
+    .order("last_used_at", { ascending: false, nullsFirst: false })
+    .limit(10);
+
+  if (userMemories) memories.push(...userMemories);
+
+  if (!isDM) {
+    const { data: groupMemories } = await supabase
+      .from("memory_items")
+      .select("*")
+      .eq("scope", "group")
+      .eq("group_id", groupId)
+      .eq("is_deleted", false)
+      .order("pinned", { ascending: false })
+      .order("importance_score", { ascending: false })
+      .order("last_used_at", { ascending: false, nullsFirst: false })
+      .limit(10);
+
+    if (groupMemories) memories.push(...groupMemories);
+  }
+
+  const memoryIds = memories.map((m) => m.id);
+  if (memoryIds.length > 0) {
+    await supabase
+      .from("memory_items")
+      .update({ last_used_at: new Date().toISOString() })
+      .in("id", memoryIds);
+  }
+
+  if (memories.length === 0) {
+    return "N/A";
+  }
+
+  const formatted = memories
+    .map((m) => {
+      const scopeLabel =
+        m.scope === "user"
+          ? "User Memory"
+          : m.scope === "group"
+          ? "Group Memory"
+          : "Global Memory";
+      return `[${scopeLabel}] [${m.category}] ${m.title}: ${m.content}`;
+    })
+    .join("\n");
+
+  return formatted;
+}
+
+// =============================
 // LOVABLE AI INTEGRATION
 // =============================
 
@@ -579,6 +719,7 @@ async function generateAiReply(
   mode: string,
   commandType: string,
   recentMessages: string,
+  memoryContext: string,
   knowledgeSnippets: string,
   analyticsSnapshot: string
 ): Promise<string> {
@@ -586,6 +727,7 @@ async function generateAiReply(
     .replace("{USER_MESSAGE}", userMessage)
     .replace("{MODE}", mode)
     .replace("{COMMAND}", commandType)
+    .replace("{MEMORY_CONTEXT}", memoryContext)
     .replace("{RECENT_MESSAGES}", recentMessages)
     .replace("{KNOWLEDGE_SNIPPETS}", knowledgeSnippets)
     .replace("{ANALYTICS_SNAPSHOT}", analyticsSnapshot);
@@ -941,6 +1083,11 @@ async function handleMessageEvent(event: LineEvent) {
 
   // Collect context
   const recentMessages = await getRecentMessages(group.id);
+  const memoryContext = await loadRelevantMemories({
+    userId: user.id,
+    groupId: group.id,
+    isDM,
+  });
   const knowledgeSnippets = await getKnowledgeSnippets(group.id, parsed.commandType);
   const analyticsSnapshot = parsed.commandType === "report" 
     ? await getAnalyticsSnapshot(group.id)
@@ -954,6 +1101,7 @@ async function handleMessageEvent(event: LineEvent) {
       group.mode,
       parsed.commandType,
       recentMessages,
+      memoryContext,
       knowledgeSnippets,
       analyticsSnapshot
     );
@@ -975,6 +1123,22 @@ async function handleMessageEvent(event: LineEvent) {
     
     // Insert bot message
     await insertMessage(group.id, null, "bot", aiReply);
+    
+    // Trigger memory writer (async, non-blocking)
+    if (parsed.commandType !== "help") {
+      supabase.functions
+        .invoke("memory-writer", {
+          body: {
+            userId: user.id,
+            groupId: group.id,
+            messageText: event.message.text,
+            messageId: event.message.id,
+            isDM,
+            recentMessages,
+          },
+        })
+        .catch((err) => console.error("[Memory Writer] Error:", err));
+    }
   } catch (error) {
     console.error(`[handleMessageEvent] Error sending reply:`, error);
     await insertAlert(
