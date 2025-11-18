@@ -7,6 +7,25 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { z } from 'zod';
+
+const signInSchema = z.object({
+  email: z.string().email('Invalid email address').max(255, 'Email must be less than 255 characters'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+const signUpSchema = z.object({
+  email: z.string().email('Invalid email address').max(255, 'Email must be less than 255 characters'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+  displayName: z.string()
+    .trim()
+    .min(2, 'Display name must be at least 2 characters')
+    .max(50, 'Display name must be less than 50 characters'),
+});
 
 export default function Auth() {
   const { user, signIn, signUp, loading } = useAuth();
@@ -28,11 +47,25 @@ export default function Auth() {
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
 
-    const { error } = await signIn(email, password);
+    const formData = new FormData(e.currentTarget);
+    const input = {
+      email: formData.get('email') as string,
+      password: formData.get('password') as string,
+    };
+
+    const result = signInSchema.safeParse(input);
+    if (!result.success) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation failed',
+        description: result.error.errors[0].message,
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    const { error } = await signIn(result.data.email, result.data.password);
     
     setIsLoading(false);
     
@@ -48,12 +81,26 @@ export default function Auth() {
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-    const displayName = formData.get('displayName') as string;
 
-    const { error } = await signUp(email, password, displayName);
+    const formData = new FormData(e.currentTarget);
+    const input = {
+      email: formData.get('email') as string,
+      password: formData.get('password') as string,
+      displayName: formData.get('displayName') as string,
+    };
+
+    const result = signUpSchema.safeParse(input);
+    if (!result.success) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation failed',
+        description: result.error.errors[0].message,
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    const { error } = await signUp(result.data.email, result.data.password, result.data.displayName);
     
     setIsLoading(false);
     
