@@ -19,6 +19,7 @@ import Integrations from "./pages/Integrations";
 import Settings from "./pages/Settings";
 import TestBot from "./pages/TestBot";
 import Memory from "./pages/Memory";
+import Commands from "./pages/Commands";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
                     <Route path="/knowledge" element={<KnowledgeBase />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/memory" element={<Memory />} />
+                    <Route path="/commands" element={<Commands />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/integrations" element={<Integrations />} />

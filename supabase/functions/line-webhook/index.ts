@@ -409,7 +409,7 @@ async function insertAlert(
 }
 
 // =============================
-// COMMAND PARSING
+// COMMAND CONFIGURATION & DYNAMIC PARSING
 // =============================
 
 interface ParsedCommand {
@@ -418,68 +418,224 @@ interface ParsedCommand {
   shouldRespond: boolean;
 }
 
-function parseCommand(text: string, isDM: boolean): ParsedCommand {
+interface BotCommand {
+  id: string;
+  command_key: string;
+  display_name_en: string;
+  display_name_th: string;
+  is_enabled: boolean;
+  require_mention_in_group: boolean;
+  available_in_dm: boolean;
+  available_in_group: boolean;
+}
+
+interface CommandAlias {
+  id: string;
+  command_id: string;
+  alias_text: string;
+  is_primary: boolean;
+  is_prefix: boolean;
+  case_sensitive: boolean;
+  usage_count: number;
+}
+
+interface BotTrigger {
+  id: string;
+  trigger_text: string;
+  trigger_type: string;
+  is_enabled: boolean;
+  case_sensitive: boolean;
+  match_type: string;
+  available_in_dm: boolean;
+  available_in_group: boolean;
+  usage_count: number;
+}
+
+// Cache configuration for 5 minutes to reduce DB queries
+let commandCache: {
+  commands: BotCommand[];
+  aliases: CommandAlias[];
+  triggers: BotTrigger[];
+  lastFetched: number;
+} | null = null;
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Load command configuration from database with caching
+ */
+async function loadCommandConfiguration(): Promise<{
+  commands: BotCommand[];
+  aliases: CommandAlias[];
+  triggers: BotTrigger[];
+}> {
+  // Check cache
+  if (commandCache && Date.now() - commandCache.lastFetched < CACHE_TTL) {
+    return commandCache;
+  }
+
+  console.log('[loadCommandConfiguration] Fetching from database...');
+
+  // Load commands
+  const { data: commands, error: cmdError } = await supabase
+    .from('bot_commands')
+    .select('*')
+    .eq('is_enabled', true)
+    .order('display_order');
+
+  if (cmdError) {
+    console.error('[loadCommandConfiguration] Error loading commands:', cmdError);
+    throw cmdError;
+  }
+
+  // Load aliases
+  const { data: aliases, error: aliasError } = await supabase
+    .from('command_aliases')
+    .select('*');
+
+  if (aliasError) {
+    console.error('[loadCommandConfiguration] Error loading aliases:', aliasError);
+    throw aliasError;
+  }
+
+  // Load triggers
+  const { data: triggers, error: triggerError } = await supabase
+    .from('bot_triggers')
+    .select('*')
+    .eq('is_enabled', true);
+
+  if (triggerError) {
+    console.error('[loadCommandConfiguration] Error loading triggers:', triggerError);
+    throw triggerError;
+  }
+
+  // Update cache
+  commandCache = {
+    commands: commands || [],
+    aliases: aliases || [],
+    triggers: triggers || [],
+    lastFetched: Date.now(),
+  };
+
+  return commandCache;
+}
+
+/**
+ * Dynamic command parser - reads configuration from database
+ */
+async function parseCommandDynamic(text: string, isDM: boolean): Promise<ParsedCommand> {
+  const config = await loadCommandConfiguration();
   const lowerText = text.toLowerCase().trim();
 
-  // In DM, always respond
+  // Step 1: Check for bot triggers (in group only)
+  let isMentioned = false;
+  let cleanedText = text;
+
+  if (!isDM) {
+    for (const trigger of config.triggers) {
+      if (!trigger.available_in_group) continue;
+
+      const triggerText = trigger.case_sensitive
+        ? trigger.trigger_text
+        : trigger.trigger_text.toLowerCase();
+      const checkText = trigger.case_sensitive ? text : lowerText;
+
+      let matches = false;
+      if (trigger.match_type === 'exact') {
+        matches = checkText === triggerText;
+      } else if (trigger.match_type === 'starts_with') {
+        matches = checkText.startsWith(triggerText);
+      } else {
+        // contains
+        matches = checkText.includes(triggerText);
+      }
+
+      if (matches) {
+        isMentioned = true;
+        // Remove trigger from text
+        const regex = new RegExp(trigger.trigger_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), trigger.case_sensitive ? 'g' : 'gi');
+        cleanedText = text.replace(regex, '').trim();
+
+        // Update usage count (fire and forget)
+        supabase
+          .from('bot_triggers')
+          .update({
+            usage_count: trigger.usage_count + 1,
+            last_used_at: new Date().toISOString(),
+          })
+          .eq('id', trigger.id)
+          .then(({ error }) => {
+            if (error) console.error('[parseCommandDynamic] Failed to update trigger usage:', error);
+          });
+
+        break;
+      }
+    }
+
+    // If not mentioned and not a command, don't respond
+    if (!isMentioned && !lowerText.startsWith('/')) {
+      return { commandType: 'other', userMessage: text, shouldRespond: false };
+    }
+  }
+
+  // Step 2: Match aliases to commands
+  for (const alias of config.aliases) {
+    const command = config.commands.find((c) => c.id === alias.command_id);
+    if (!command) continue;
+
+    // Check if command is available in current context
+    if (isDM && !command.available_in_dm) continue;
+    if (!isDM && !command.available_in_group) continue;
+
+    // Check if mention is required in group
+    if (!isDM && command.require_mention_in_group && !isMentioned) continue;
+
+    const aliasText = alias.case_sensitive ? alias.alias_text : alias.alias_text.toLowerCase();
+    const checkText = alias.case_sensitive ? cleanedText : cleanedText.toLowerCase();
+
+    let matches = false;
+    if (alias.is_prefix) {
+      matches = checkText.startsWith(aliasText);
+    } else {
+      matches = checkText.includes(aliasText);
+    }
+
+    if (matches) {
+      // Extract user message after alias
+      const regex = new RegExp(alias.alias_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), alias.case_sensitive ? 'g' : 'gi');
+      const userMessage = cleanedText.replace(regex, '').trim();
+
+      // Update alias usage count (fire and forget)
+      supabase
+        .from('command_aliases')
+        .update({
+          usage_count: alias.usage_count + 1,
+          last_used_at: new Date().toISOString(),
+        })
+        .eq('id', alias.id)
+        .then(({ error }) => {
+          if (error) console.error('[parseCommandDynamic] Failed to update alias usage:', error);
+        });
+
+      return {
+        commandType: command.command_key,
+        userMessage,
+        shouldRespond: true,
+      };
+    }
+  }
+
+  // Step 3: Default behavior
   if (isDM) {
-    if (lowerText.startsWith("/summary")) {
-      return { commandType: "summary", userMessage: text.replace(/^\/summary/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/faq")) {
-      return { commandType: "faq", userMessage: text.replace(/^\/faq/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/todo")) {
-      return { commandType: "todo", userMessage: text.replace(/^\/todo/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/report")) {
-      return { commandType: "report", userMessage: text.replace(/^\/report/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/help")) {
-      return { commandType: "help", userMessage: "", shouldRespond: true };
-    }
-    return { commandType: "ask", userMessage: text, shouldRespond: true };
+    // In DM, always respond with 'ask' command
+    return { commandType: 'ask', userMessage: cleanedText, shouldRespond: true };
+  } else if (isMentioned) {
+    // Mentioned in group without specific command → 'ask'
+    return { commandType: 'ask', userMessage: cleanedText, shouldRespond: true };
+  } else {
+    // No match in group
+    return { commandType: 'other', userMessage: text, shouldRespond: false };
   }
-
-  // In group, only respond to @goodlime or commands
-  if (lowerText.includes("@goodlime")) {
-    const cleanedText = text.replace(/@goodlime/gi, "").trim();
-    if (lowerText.startsWith("/summary")) {
-      return { commandType: "summary", userMessage: cleanedText.replace(/^\/summary/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/faq")) {
-      return { commandType: "faq", userMessage: cleanedText.replace(/^\/faq/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/todo")) {
-      return { commandType: "todo", userMessage: cleanedText.replace(/^\/todo/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/report")) {
-      return { commandType: "report", userMessage: cleanedText.replace(/^\/report/i, "").trim(), shouldRespond: true };
-    }
-    if (lowerText.startsWith("/help")) {
-      return { commandType: "help", userMessage: "", shouldRespond: true };
-    }
-    return { commandType: "ask", userMessage: cleanedText, shouldRespond: true };
-  }
-
-  // Check for standalone commands
-  if (lowerText.startsWith("/summary")) {
-    return { commandType: "summary", userMessage: text.replace(/^\/summary/i, "").trim(), shouldRespond: true };
-  }
-  if (lowerText.startsWith("/faq")) {
-    return { commandType: "faq", userMessage: text.replace(/^\/faq/i, "").trim(), shouldRespond: true };
-  }
-  if (lowerText.startsWith("/todo")) {
-    return { commandType: "todo", userMessage: text.replace(/^\/todo/i, "").trim(), shouldRespond: true };
-  }
-  if (lowerText.startsWith("/report")) {
-    return { commandType: "report", userMessage: text.replace(/^\/report/i, "").trim(), shouldRespond: true };
-  }
-  if (lowerText.startsWith("/help")) {
-    return { commandType: "help", userMessage: "", shouldRespond: true };
-  }
-
-  return { commandType: "other", userMessage: text, shouldRespond: false };
 }
 
 // =============================
@@ -1042,8 +1198,8 @@ async function handleMessageEvent(event: LineEvent) {
   // Ensure user is a member of this group
   await ensureGroupMember(group.id, user.id);
 
-  // Parse command
-  const parsed = parseCommand(event.message.text, isDM);
+  // Parse command dynamically from database
+  const parsed = await parseCommandDynamic(event.message.text, isDM);
 
   // Insert human message
   await insertMessage(

@@ -101,6 +101,164 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_commands: {
+        Row: {
+          available_in_dm: boolean | null
+          available_in_group: boolean | null
+          command_key: string
+          created_at: string | null
+          description_en: string
+          description_th: string | null
+          display_name_en: string
+          display_name_th: string | null
+          display_order: number | null
+          icon_name: string | null
+          id: string
+          is_enabled: boolean | null
+          require_mention_in_group: boolean | null
+          updated_at: string | null
+          usage_example_en: string | null
+          usage_example_th: string | null
+        }
+        Insert: {
+          available_in_dm?: boolean | null
+          available_in_group?: boolean | null
+          command_key: string
+          created_at?: string | null
+          description_en: string
+          description_th?: string | null
+          display_name_en: string
+          display_name_th?: string | null
+          display_order?: number | null
+          icon_name?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          require_mention_in_group?: boolean | null
+          updated_at?: string | null
+          usage_example_en?: string | null
+          usage_example_th?: string | null
+        }
+        Update: {
+          available_in_dm?: boolean | null
+          available_in_group?: boolean | null
+          command_key?: string
+          created_at?: string | null
+          description_en?: string
+          description_th?: string | null
+          display_name_en?: string
+          display_name_th?: string | null
+          display_order?: number | null
+          icon_name?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          require_mention_in_group?: boolean | null
+          updated_at?: string | null
+          usage_example_en?: string | null
+          usage_example_th?: string | null
+        }
+        Relationships: []
+      }
+      bot_triggers: {
+        Row: {
+          available_in_dm: boolean | null
+          available_in_group: boolean | null
+          case_sensitive: boolean | null
+          created_at: string | null
+          id: string
+          is_enabled: boolean | null
+          is_primary: boolean | null
+          language: string | null
+          last_used_at: string | null
+          match_type: string | null
+          trigger_text: string
+          trigger_type: string
+          updated_at: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          available_in_dm?: boolean | null
+          available_in_group?: boolean | null
+          case_sensitive?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          is_primary?: boolean | null
+          language?: string | null
+          last_used_at?: string | null
+          match_type?: string | null
+          trigger_text: string
+          trigger_type: string
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          available_in_dm?: boolean | null
+          available_in_group?: boolean | null
+          case_sensitive?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          is_primary?: boolean | null
+          language?: string | null
+          last_used_at?: string | null
+          match_type?: string | null
+          trigger_text?: string
+          trigger_type?: string
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Relationships: []
+      }
+      command_aliases: {
+        Row: {
+          alias_text: string
+          case_sensitive: boolean | null
+          command_id: string
+          created_at: string | null
+          id: string
+          is_prefix: boolean | null
+          is_primary: boolean | null
+          language: string | null
+          last_used_at: string | null
+          updated_at: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          alias_text: string
+          case_sensitive?: boolean | null
+          command_id: string
+          created_at?: string | null
+          id?: string
+          is_prefix?: boolean | null
+          is_primary?: boolean | null
+          language?: string | null
+          last_used_at?: string | null
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          alias_text?: string
+          case_sensitive?: boolean | null
+          command_id?: string
+          created_at?: string | null
+          id?: string
+          is_prefix?: boolean | null
+          is_primary?: boolean | null
+          language?: string | null
+          last_used_at?: string | null
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "command_aliases_command_id_fkey"
+            columns: ["command_id"]
+            isOneToOne: false
+            referencedRelation: "bot_commands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           group_id: string
