@@ -34,8 +34,10 @@ import {
   Trash2, 
   Plus, 
   Search,
-  Brain
+  Brain,
+  Clock
 } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function Memory() {
   const { toast } = useToast();
@@ -46,6 +48,9 @@ export default function Memory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingMemory, setEditingMemory] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [timelineScope, setTimelineScope] = useState<'all' | 'group' | 'user'>('all');
+  const [timelineGroupId, setTimelineGroupId] = useState<string>('');
+  const [timelineUserId, setTimelineUserId] = useState<string>('');
   
   const { data: groups } = useQuery({
     queryKey: ['groups'],
@@ -71,6 +76,88 @@ export default function Memory() {
     },
   });
   
+  // Fetch timeline data
+  const { data: timelineData } = useQuery({
+    queryKey: ['memory-timeline', timelineScope, timelineGroupId, timelineUserId],
+    queryFn: async () => {
+      let query = supabase
+        .from('memory_items')
+        .select('id, scope, category, created_at, updated_at, last_used_at, importance_score')
+        .eq('is_deleted', false);
+      
+      if (timelineScope === 'group' && timelineGroupId) {
+        query = query.eq('group_id', timelineGroupId);
+      } else if (timelineScope === 'user' && timelineUserId) {
+        query = query.eq('user_id', timelineUserId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      // Process data for timeline charts
+      const now = new Date();
+      const last30Days = Array.from({ length: 30 }, (_, i) => {
+        const date = new Date(now);
+        date.setDate(date.getDate() - (29 - i));
+        return date.toISOString().split('T')[0];
+      });
+      
+      // Group by date
+      const createdByDate: Record<string, number> = {};
+      const updatedByDate: Record<string, number> = {};
+      const usedByDate: Record<string, number> = {};
+      
+      data?.forEach((memory) => {
+        const createdDate = memory.created_at.split('T')[0];
+        const updatedDate = memory.updated_at.split('T')[0];
+        const usedDate = memory.last_used_at?.split('T')[0];
+        
+        createdByDate[createdDate] = (createdByDate[createdDate] || 0) + 1;
+        updatedByDate[updatedDate] = (updatedByDate[updatedDate] || 0) + 1;
+        if (usedDate) {
+          usedByDate[usedDate] = (usedByDate[usedDate] || 0) + 1;
+        }
+      });
+      
+      const activityData = last30Days.map((date) => ({
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        created: createdByDate[date] || 0,
+        updated: updatedByDate[date] || 0,
+        used: usedByDate[date] || 0,
+      }));
+      
+      // Category distribution
+      const categoryCount: Record<string, number> = {};
+      data?.forEach((memory) => {
+        categoryCount[memory.category] = (categoryCount[memory.category] || 0) + 1;
+      });
+      
+      const categoryData = Object.entries(categoryCount).map(([category, count]) => ({
+        category: category.charAt(0).toUpperCase() + category.slice(1),
+        count,
+      }));
+      
+      // Recent activity (last 10 memories by activity)
+      const recentActivity = data
+        ?.map((m) => ({
+          ...m,
+          lastActivity: m.last_used_at || m.updated_at,
+        }))
+        .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime())
+        .slice(0, 10);
+      
+      return {
+        activityData,
+        categoryData,
+        recentActivity,
+        totalMemories: data?.length || 0,
+        avgImportance: data?.length 
+          ? (data.reduce((sum, m) => sum + m.importance_score, 0) / data.length).toFixed(2)
+          : '0',
+      };
+    },
+  });
+
   const { data: memories, isLoading } = useQuery({
     queryKey: ['memories', activeTab, selectedGroupId, selectedUserId, searchQuery],
     queryFn: async () => {
@@ -297,10 +384,11 @@ export default function Memory() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="by-group">By Group</TabsTrigger>
               <TabsTrigger value="by-user">By User</TabsTrigger>
               <TabsTrigger value="global">Global</TabsTrigger>
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
             </TabsList>
             
             <TabsContent value="by-group" className="space-y-4">
@@ -337,6 +425,220 @@ export default function Memory() {
             
             <TabsContent value="global" className="space-y-4">
               {renderMemoryTable()}
+            </TabsContent>
+            
+            <TabsContent value="timeline" className="space-y-6">
+              {/* Timeline Scope Selector */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Label>View Timeline For</Label>
+                  <Select value={timelineScope} onValueChange={(val: any) => setTimelineScope(val)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Memories</SelectItem>
+                      <SelectItem value="group">Specific Group</SelectItem>
+                      <SelectItem value="user">Specific User</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {timelineScope === 'group' && (
+                  <div className="flex-1">
+                    <Label>Select Group</Label>
+                    <Select value={timelineGroupId} onValueChange={setTimelineGroupId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a group..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups?.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                {timelineScope === 'user' && (
+                  <div className="flex-1">
+                    <Label>Select User</Label>
+                    <Select value={timelineUserId} onValueChange={setTimelineUserId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a user..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users?.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+              
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Total Memories</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{timelineData?.totalMemories || 0}</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Avg. Importance</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{timelineData?.avgImportance || '0'}</div>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              {/* Activity Timeline Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5" />
+                    Memory Activity (Last 30 Days)
+                  </CardTitle>
+                  <CardDescription>
+                    Track when memories are created, updated, and used
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={timelineData?.activityData || []}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="date" 
+                        className="text-xs"
+                        tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <YAxis 
+                        className="text-xs"
+                        tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '6px',
+                        }}
+                      />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="created" 
+                        stroke="hsl(var(--primary))" 
+                        name="Created"
+                        strokeWidth={2}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="updated" 
+                        stroke="hsl(var(--chart-2))" 
+                        name="Updated"
+                        strokeWidth={2}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="used" 
+                        stroke="hsl(var(--chart-3))" 
+                        name="Used"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              
+              {/* Category Distribution Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Memory Distribution by Category</CardTitle>
+                  <CardDescription>
+                    Breakdown of memory types
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={timelineData?.categoryData || []}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="category"
+                        className="text-xs"
+                        tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <YAxis 
+                        className="text-xs"
+                        tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '6px',
+                        }}
+                      />
+                      <Bar 
+                        dataKey="count" 
+                        fill="hsl(var(--primary))"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              
+              {/* Recent Activity List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Memory Activity</CardTitle>
+                  <CardDescription>
+                    Most recently created, updated, or used memories
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {timelineData?.recentActivity && timelineData.recentActivity.length > 0 ? (
+                    <div className="space-y-3">
+                      {timelineData.recentActivity.map((memory: any) => (
+                        <div 
+                          key={memory.id}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {memory.category}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                {memory.scope}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground">
+                              {formatDistanceToNow(new Date(memory.lastActivity), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">
+                      No recent activity
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </CardContent>
