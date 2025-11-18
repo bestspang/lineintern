@@ -52,6 +52,28 @@ export default function GroupDetail() {
     },
   });
 
+  const { data: members } = useQuery({
+    queryKey: ['group-members', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('group_members')
+        .select(`
+          *,
+          user:users(
+            id,
+            display_name,
+            avatar_url,
+            line_user_id,
+            last_seen_at
+          )
+        `)
+        .eq('group_id', id)
+        .order('joined_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: async (updates: any) => {
       const { error } = await supabase
@@ -112,6 +134,7 @@ export default function GroupDetail() {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
@@ -195,6 +218,148 @@ export default function GroupDetail() {
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="members" className="space-y-4">
+          {/* Current Members Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Current Members ({members?.filter(m => !m.left_at).length || 0})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {members && members.filter(m => !m.left_at).length > 0 ? (
+                <div className="space-y-3">
+                  {members
+                    .filter(m => !m.left_at)
+                    .map((member) => (
+                      <div 
+                        key={member.id} 
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Avatar */}
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            {member.user?.avatar_url ? (
+                              <img 
+                                src={member.user.avatar_url} 
+                                alt={member.user.display_name}
+                                className="w-10 h-10 rounded-full"
+                              />
+                            ) : (
+                              <span className="text-primary font-semibold">
+                                {member.user?.display_name?.[0]?.toUpperCase() || '?'}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* User Info */}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {member.user?.display_name || 'Unknown User'}
+                              </span>
+                              {member.role && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {member.role}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Joined {formatDistanceToNow(new Date(member.joined_at), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Last Seen */}
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">
+                            {member.user?.last_seen_at ? (
+                              <>
+                                Last seen{' '}
+                                {formatDistanceToNow(new Date(member.user.last_seen_at), { addSuffix: true })}
+                              </>
+                            ) : (
+                              'Never seen'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No current members</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Historical Members Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Historical Members ({members?.filter(m => m.left_at).length || 0})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {members && members.filter(m => m.left_at).length > 0 ? (
+                <div className="space-y-3">
+                  {members
+                    .filter(m => m.left_at)
+                    .map((member) => (
+                      <div 
+                        key={member.id} 
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 opacity-75"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Avatar */}
+                          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                            {member.user?.avatar_url ? (
+                              <img 
+                                src={member.user.avatar_url} 
+                                alt={member.user.display_name}
+                                className="w-10 h-10 rounded-full grayscale"
+                              />
+                            ) : (
+                              <span className="text-muted-foreground font-semibold">
+                                {member.user?.display_name?.[0]?.toUpperCase() || '?'}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* User Info */}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-muted-foreground">
+                                {member.user?.display_name || 'Unknown User'}
+                              </span>
+                              {member.role && (
+                                <Badge variant="outline" className="text-xs">
+                                  {member.role}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Member from{' '}
+                              {formatDistanceToNow(new Date(member.joined_at), { addSuffix: true })}{' '}
+                              to{' '}
+                              {formatDistanceToNow(new Date(member.left_at!), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Left Badge */}
+                        <Badge variant="secondary" className="text-xs">
+                          Left
+                        </Badge>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No historical members</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
