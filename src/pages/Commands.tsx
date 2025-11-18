@@ -1,0 +1,918 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useToast } from '@/hooks/use-toast';
+import { 
+  Edit, 
+  Trash2, 
+  Plus, 
+  Terminal,
+  MessageSquare,
+  FileText,
+  HelpCircle,
+  CheckSquare,
+  BarChart3,
+  Info,
+  AlertCircle
+} from 'lucide-react';
+
+const iconMap: Record<string, any> = {
+  FileText,
+  HelpCircle,
+  CheckSquare,
+  BarChart3,
+  Info,
+  MessageSquare,
+};
+
+export default function Commands() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('commands');
+  const [editingCommand, setEditingCommand] = useState<any>(null);
+  const [editingAlias, setEditingAlias] = useState<any>(null);
+  const [editingTrigger, setEditingTrigger] = useState<any>(null);
+  const [isCommandDialogOpen, setIsCommandDialogOpen] = useState(false);
+  const [isAliasDialogOpen, setIsAliasDialogOpen] = useState(false);
+  const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+
+  // Fetch commands
+  const { data: commands } = useQuery({
+    queryKey: ['bot-commands'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bot_commands')
+        .select('*')
+        .order('display_order');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch aliases
+  const { data: aliases } = useQuery({
+    queryKey: ['command-aliases'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('command_aliases')
+        .select(`
+          *,
+          command:bot_commands!command_aliases_command_id_fkey(id, command_key, display_name_en, display_name_th)
+        `)
+        .order('command_id')
+        .order('is_primary', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch triggers
+  const { data: triggers } = useQuery({
+    queryKey: ['bot-triggers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bot_triggers')
+        .select('*')
+        .order('is_primary', { ascending: false })
+        .order('trigger_text');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Mutations for commands
+  const deleteCommandMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('bot_commands').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bot-commands'] });
+      toast({ title: 'คำสั่งถูกลบแล้ว' });
+    },
+  });
+
+  const saveCommandMutation = useMutation({
+    mutationFn: async (command: any) => {
+      if (command.id) {
+        const { error } = await supabase
+          .from('bot_commands')
+          .update(command)
+          .eq('id', command.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('bot_commands').insert(command);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bot-commands'] });
+      setIsCommandDialogOpen(false);
+      toast({ title: editingCommand?.id ? 'อัปเดตคำสั่งแล้ว' : 'สร้างคำสั่งแล้ว' });
+    },
+  });
+
+  // Mutations for aliases
+  const deleteAliasMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('command_aliases').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['command-aliases'] });
+      toast({ title: 'Alias ถูกลบแล้ว' });
+    },
+  });
+
+  const saveAliasMutation = useMutation({
+    mutationFn: async (alias: any) => {
+      if (alias.id) {
+        const { error } = await supabase
+          .from('command_aliases')
+          .update(alias)
+          .eq('id', alias.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('command_aliases').insert(alias);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['command-aliases'] });
+      setIsAliasDialogOpen(false);
+      toast({ title: editingAlias?.id ? 'อัปเดต Alias แล้ว' : 'สร้าง Alias แล้ว' });
+    },
+  });
+
+  // Mutations for triggers
+  const deleteTriggerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('bot_triggers').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bot-triggers'] });
+      toast({ title: 'Trigger ถูกลบแล้ว' });
+    },
+  });
+
+  const saveTriggerMutation = useMutation({
+    mutationFn: async (trigger: any) => {
+      if (trigger.id) {
+        const { error } = await supabase
+          .from('bot_triggers')
+          .update(trigger)
+          .eq('id', trigger.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('bot_triggers').insert(trigger);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bot-triggers'] });
+      setIsTriggerDialogOpen(false);
+      toast({ title: editingTrigger?.id ? 'อัปเดต Trigger แล้ว' : 'สร้าง Trigger แล้ว' });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Terminal className="w-8 h-8" />
+          Command Management
+        </h1>
+        <p className="text-muted-foreground">จัดการคำสั่งและ triggers ของบอท</p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="commands">คำสั่งหลัก</TabsTrigger>
+              <TabsTrigger value="aliases">Aliases</TabsTrigger>
+              <TabsTrigger value="triggers">Bot Triggers</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="commands" className="space-y-4 mt-6">
+              <div className="flex justify-between items-center">
+                <p className="text-sm text-muted-foreground">
+                  จัดการคำสั่งหลักของบอท เปิด/ปิด และกำหนดพฤติกรรม
+                </p>
+                <Button
+                  onClick={() => {
+                    setEditingCommand({
+                      command_key: '',
+                      display_name_en: '',
+                      display_name_th: '',
+                      description_en: '',
+                      description_th: '',
+                      usage_example_en: '',
+                      usage_example_th: '',
+                      is_enabled: true,
+                      require_mention_in_group: false,
+                      available_in_dm: true,
+                      available_in_group: true,
+                      icon_name: 'MessageSquare',
+                      display_order: 999,
+                    });
+                    setIsCommandDialogOpen(true);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  เพิ่มคำสั่งใหม่
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ไอคอน</TableHead>
+                    <TableHead>คำสั่ง</TableHead>
+                    <TableHead>ชื่อ (EN / TH)</TableHead>
+                    <TableHead>คำอธิบาย</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead>ตัวเลือก</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {commands?.map((cmd) => {
+                    const Icon = iconMap[cmd.icon_name || 'MessageSquare'] || MessageSquare;
+                    return (
+                      <TableRow key={cmd.id}>
+                        <TableCell>
+                          <Icon className="w-5 h-5" />
+                        </TableCell>
+                        <TableCell>
+                          <code className="bg-muted px-2 py-1 rounded">{cmd.command_key}</code>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-medium">{cmd.display_name_en}</div>
+                            <div className="text-sm text-muted-foreground">{cmd.display_name_th}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-xs">
+                          <div className="space-y-1">
+                            <div className="text-sm">{cmd.description_en}</div>
+                            <div className="text-xs text-muted-foreground">{cmd.description_th}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={cmd.is_enabled ? 'default' : 'secondary'}>
+                            {cmd.is_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1 text-xs">
+                            {cmd.require_mention_in_group && (
+                              <Badge variant="outline" className="text-xs">
+                                ต้อง @mention
+                              </Badge>
+                            )}
+                            {cmd.available_in_dm && <span>✓ DM</span>}
+                            {cmd.available_in_group && <span>✓ Group</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingCommand(cmd);
+                                setIsCommandDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => deleteCommandMutation.mutate(cmd.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TabsContent>
+
+            <TabsContent value="aliases" className="space-y-4 mt-6">
+              <div className="flex justify-between items-center">
+                <p className="text-sm text-muted-foreground">
+                  กำหนด aliases หลายตัวสำหรับแต่ละคำสั่ง รองรับหลายภาษา
+                </p>
+                <Button
+                  onClick={() => {
+                    if (!commands || commands.length === 0) {
+                      toast({
+                        title: 'ไม่สามารถสร้าง Alias ได้',
+                        description: 'กรุณาสร้างคำสั่งก่อน',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    setEditingAlias({
+                      command_id: commands[0].id,
+                      alias_text: '',
+                      language: 'en',
+                      is_primary: false,
+                      is_prefix: true,
+                      case_sensitive: false,
+                    });
+                    setIsAliasDialogOpen(true);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  เพิ่ม Alias
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>คำสั่ง</TableHead>
+                    <TableHead>Alias</TableHead>
+                    <TableHead>ภาษา</TableHead>
+                    <TableHead>Primary</TableHead>
+                    <TableHead>ตัวเลือก</TableHead>
+                    <TableHead>การใช้งาน</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {aliases?.map((alias) => (
+                    <TableRow key={alias.id}>
+                      <TableCell>
+                        <code className="bg-muted px-2 py-1 rounded">
+                          {alias.command?.command_key}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <code className="bg-primary/10 px-2 py-1 rounded font-medium">
+                          {alias.alias_text}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{alias.language}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {alias.is_primary && <Badge>Primary</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 text-xs">
+                          {alias.is_prefix && <span>Prefix</span>}
+                          {alias.case_sensitive && <span>Case-sensitive</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        ใช้ {alias.usage_count} ครั้ง
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingAlias(alias);
+                              setIsAliasDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteAliasMutation.mutate(alias.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
+
+            <TabsContent value="triggers" className="space-y-4 mt-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    คำเรียกบอทในกลุ่ม เช่น @goodlime, Hi, เฮ้
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    <AlertCircle className="w-3 h-3 inline mr-1" />
+                    เปลี่ยน trigger อาจทำให้คำสั่งเดิมไม่ทำงาน
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setEditingTrigger({
+                      trigger_text: '',
+                      trigger_type: 'mention',
+                      language: 'en',
+                      is_enabled: true,
+                      is_primary: false,
+                      case_sensitive: false,
+                      match_type: 'contains',
+                      available_in_dm: false,
+                      available_in_group: true,
+                    });
+                    setIsTriggerDialogOpen(true);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  เพิ่ม Trigger
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Trigger</TableHead>
+                    <TableHead>ประเภท</TableHead>
+                    <TableHead>ภาษา</TableHead>
+                    <TableHead>Primary</TableHead>
+                    <TableHead>Match Type</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead>การใช้งาน</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {triggers?.map((trigger) => (
+                    <TableRow key={trigger.id}>
+                      <TableCell>
+                        <code className="bg-primary/10 px-2 py-1 rounded font-medium">
+                          {trigger.trigger_text}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{trigger.trigger_type}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{trigger.language}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {trigger.is_primary && <Badge>Primary</Badge>}
+                      </TableCell>
+                      <TableCell className="text-sm">{trigger.match_type}</TableCell>
+                      <TableCell>
+                        <Badge variant={trigger.is_enabled ? 'default' : 'secondary'}>
+                          {trigger.is_enabled ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        ใช้ {trigger.usage_count} ครั้ง
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingTrigger(trigger);
+                              setIsTriggerDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteTriggerMutation.mutate(trigger.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* Command Edit Dialog */}
+      <Dialog open={isCommandDialogOpen} onOpenChange={setIsCommandDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingCommand?.id ? 'แก้ไขคำสั่ง' : 'สร้างคำสั่งใหม่'}
+            </DialogTitle>
+          </DialogHeader>
+          {editingCommand && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Command Key *</Label>
+                  <Input
+                    value={editingCommand.command_key}
+                    onChange={(e) =>
+                      setEditingCommand({ ...editingCommand, command_key: e.target.value })
+                    }
+                    placeholder="summary, faq, todo"
+                  />
+                </div>
+                <div>
+                  <Label>Icon</Label>
+                  <Select
+                    value={editingCommand.icon_name}
+                    onValueChange={(val) =>
+                      setEditingCommand({ ...editingCommand, icon_name: val })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FileText">FileText</SelectItem>
+                      <SelectItem value="HelpCircle">HelpCircle</SelectItem>
+                      <SelectItem value="CheckSquare">CheckSquare</SelectItem>
+                      <SelectItem value="BarChart3">BarChart3</SelectItem>
+                      <SelectItem value="Info">Info</SelectItem>
+                      <SelectItem value="MessageSquare">MessageSquare</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Display Name (EN) *</Label>
+                  <Input
+                    value={editingCommand.display_name_en}
+                    onChange={(e) =>
+                      setEditingCommand({ ...editingCommand, display_name_en: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Display Name (TH)</Label>
+                  <Input
+                    value={editingCommand.display_name_th || ''}
+                    onChange={(e) =>
+                      setEditingCommand({ ...editingCommand, display_name_th: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Description (EN) *</Label>
+                <Textarea
+                  value={editingCommand.description_en}
+                  onChange={(e) =>
+                    setEditingCommand({ ...editingCommand, description_en: e.target.value })
+                  }
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label>Description (TH)</Label>
+                <Textarea
+                  value={editingCommand.description_th || ''}
+                  onChange={(e) =>
+                    setEditingCommand({ ...editingCommand, description_th: e.target.value })
+                  }
+                  rows={2}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Usage Example (EN)</Label>
+                  <Input
+                    value={editingCommand.usage_example_en || ''}
+                    onChange={(e) =>
+                      setEditingCommand({ ...editingCommand, usage_example_en: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Usage Example (TH)</Label>
+                  <Input
+                    value={editingCommand.usage_example_th || ''}
+                    onChange={(e) =>
+                      setEditingCommand({ ...editingCommand, usage_example_th: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <Label>เปิดใช้งาน</Label>
+                  <Switch
+                    checked={editingCommand.is_enabled}
+                    onCheckedChange={(checked) =>
+                      setEditingCommand({ ...editingCommand, is_enabled: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>ต้อง @mention ในกลุ่ม</Label>
+                  <Switch
+                    checked={editingCommand.require_mention_in_group}
+                    onCheckedChange={(checked) =>
+                      setEditingCommand({ ...editingCommand, require_mention_in_group: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>ใช้ได้ใน DM</Label>
+                  <Switch
+                    checked={editingCommand.available_in_dm}
+                    onCheckedChange={(checked) =>
+                      setEditingCommand({ ...editingCommand, available_in_dm: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>ใช้ได้ในกลุ่ม</Label>
+                  <Switch
+                    checked={editingCommand.available_in_group}
+                    onCheckedChange={(checked) =>
+                      setEditingCommand({ ...editingCommand, available_in_group: checked })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Display Order</Label>
+                <Input
+                  type="number"
+                  value={editingCommand.display_order}
+                  onChange={(e) =>
+                    setEditingCommand({ ...editingCommand, display_order: parseInt(e.target.value) })
+                  }
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCommandDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button onClick={() => saveCommandMutation.mutate(editingCommand)}>
+              {editingCommand?.id ? 'อัปเดต' : 'สร้าง'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alias Edit Dialog */}
+      <Dialog open={isAliasDialogOpen} onOpenChange={setIsAliasDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingAlias?.id ? 'แก้ไข Alias' : 'สร้าง Alias ใหม่'}</DialogTitle>
+          </DialogHeader>
+          {editingAlias && (
+            <div className="space-y-4">
+              <div>
+                <Label>คำสั่ง *</Label>
+                <Select
+                  value={editingAlias.command_id}
+                  onValueChange={(val) => setEditingAlias({ ...editingAlias, command_id: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {commands?.map((cmd) => (
+                      <SelectItem key={cmd.id} value={cmd.id}>
+                        {cmd.command_key} - {cmd.display_name_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Alias Text *</Label>
+                <Input
+                  value={editingAlias.alias_text}
+                  onChange={(e) => setEditingAlias({ ...editingAlias, alias_text: e.target.value })}
+                  placeholder="/สรุป, สรุปหน่อย, Hi"
+                />
+              </div>
+
+              <div>
+                <Label>ภาษา</Label>
+                <Select
+                  value={editingAlias.language}
+                  onValueChange={(val) => setEditingAlias({ ...editingAlias, language: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="th">ไทย</SelectItem>
+                    <SelectItem value="mixed">Mixed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Primary Alias</Label>
+                  <Switch
+                    checked={editingAlias.is_primary}
+                    onCheckedChange={(checked) =>
+                      setEditingAlias({ ...editingAlias, is_primary: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>เป็น Prefix (ต้องอยู่ต้นข้อความ)</Label>
+                  <Switch
+                    checked={editingAlias.is_prefix}
+                    onCheckedChange={(checked) =>
+                      setEditingAlias({ ...editingAlias, is_prefix: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Case Sensitive</Label>
+                  <Switch
+                    checked={editingAlias.case_sensitive}
+                    onCheckedChange={(checked) =>
+                      setEditingAlias({ ...editingAlias, case_sensitive: checked })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAliasDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button onClick={() => saveAliasMutation.mutate(editingAlias)}>
+              {editingAlias?.id ? 'อัปเดต' : 'สร้าง'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trigger Edit Dialog */}
+      <Dialog open={isTriggerDialogOpen} onOpenChange={setIsTriggerDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingTrigger?.id ? 'แก้ไข Trigger' : 'สร้าง Trigger ใหม่'}
+            </DialogTitle>
+          </DialogHeader>
+          {editingTrigger && (
+            <div className="space-y-4">
+              <div>
+                <Label>Trigger Text *</Label>
+                <Input
+                  value={editingTrigger.trigger_text}
+                  onChange={(e) =>
+                    setEditingTrigger({ ...editingTrigger, trigger_text: e.target.value })
+                  }
+                  placeholder="@goodlime, Hi, เฮ้"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>ประเภท</Label>
+                  <Select
+                    value={editingTrigger.trigger_type}
+                    onValueChange={(val) =>
+                      setEditingTrigger({ ...editingTrigger, trigger_type: val })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mention">Mention (@)</SelectItem>
+                      <SelectItem value="keyword">Keyword</SelectItem>
+                      <SelectItem value="emoji">Emoji</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>ภาษา</Label>
+                  <Select
+                    value={editingTrigger.language}
+                    onValueChange={(val) => setEditingTrigger({ ...editingTrigger, language: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="th">ไทย</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label>Match Type</Label>
+                <Select
+                  value={editingTrigger.match_type}
+                  onValueChange={(val) => setEditingTrigger({ ...editingTrigger, match_type: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="exact">Exact match</SelectItem>
+                    <SelectItem value="contains">Contains</SelectItem>
+                    <SelectItem value="starts_with">Starts with</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>เปิดใช้งาน</Label>
+                  <Switch
+                    checked={editingTrigger.is_enabled}
+                    onCheckedChange={(checked) =>
+                      setEditingTrigger({ ...editingTrigger, is_enabled: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Primary Trigger</Label>
+                  <Switch
+                    checked={editingTrigger.is_primary}
+                    onCheckedChange={(checked) =>
+                      setEditingTrigger({ ...editingTrigger, is_primary: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Case Sensitive</Label>
+                  <Switch
+                    checked={editingTrigger.case_sensitive}
+                    onCheckedChange={(checked) =>
+                      setEditingTrigger({ ...editingTrigger, case_sensitive: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>ใช้ได้ใน DM</Label>
+                  <Switch
+                    checked={editingTrigger.available_in_dm}
+                    onCheckedChange={(checked) =>
+                      setEditingTrigger({ ...editingTrigger, available_in_dm: checked })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>ใช้ได้ในกลุ่ม</Label>
+                  <Switch
+                    checked={editingTrigger.available_in_group}
+                    onCheckedChange={(checked) =>
+                      setEditingTrigger({ ...editingTrigger, available_in_group: checked })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTriggerDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button onClick={() => saveTriggerMutation.mutate(editingTrigger)}>
+              {editingTrigger?.id ? 'อัปเดต' : 'สร้าง'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
