@@ -15,6 +15,9 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import Tasks from "./pages/Tasks";
 import Analytics from "./pages/Analytics";
 import Alerts from "./pages/Alerts";
+import FaqLogs from "./pages/FaqLogs";
+import Training from "./pages/Training";
+import SafetyRules from "./pages/SafetyRules";
 import Integrations from "./pages/Integrations";
 import Settings from "./pages/Settings";
 import TestBot from "./pages/TestBot";
@@ -42,12 +45,18 @@ const App = () => (
                     <Route path="/groups/:id" element={<GroupDetail />} />
                     <Route path="/users" element={<Users />} />
                     <Route path="/knowledge" element={<KnowledgeBase />} />
+                    <Route path="/faq-logs" element={<FaqLogs />} />
+                    <Route path="/training" element={<Training />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/memory" element={<Memory />} />
                     <Route path="/commands" element={<Commands />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/safety-rules" element={<SafetyRules />} />
                     <Route path="/integrations" element={<Integrations />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/test-bot" element={<TestBot />} />
+                    <Route path="*" element={<NotFound />} />
                     <Route path="/test-bot" element={<TestBot />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<NotFound />} />

@@ -2,7 +2,9 @@ import { ReactNode } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
-  MessageSquare, 
+  MessageSquare,
+  GraduationCap,
+  Shield,
   BookOpen, 
   CheckSquare, 
   BarChart3, 
