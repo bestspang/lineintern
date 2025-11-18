@@ -1044,6 +1044,287 @@ async function logFaqInteraction(
 }
 
 // =============================
+// PHASE 2: SUMMARY COMMAND HANDLERS
+// =============================
+
+/**
+ * Handle /summary command - generate and store chat summary
+ */
+async function handleSummaryCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleSummaryCommand] Generating summary for group ${groupId}`);
+
+  try {
+    // Parse time range from user message (e.g., "today", "24h", "last 100", default to last 100)
+    let messageLimit = 100;
+    let timeRangeDesc = "last 100 messages";
+    
+    const lowerMsg = userMessage.toLowerCase();
+    if (lowerMsg.includes('today')) {
+      messageLimit = 1000;
+      timeRangeDesc = "today";
+    } else if (lowerMsg.includes('24h') || lowerMsg.includes('24 hour')) {
+      messageLimit = 500;
+      timeRangeDesc = "last 24 hours";
+    } else if (lowerMsg.match(/\d+/)) {
+      const match = lowerMsg.match(/\d+/);
+      if (match) {
+        messageLimit = parseInt(match[0]);
+        timeRangeDesc = `last ${messageLimit} messages`;
+      }
+    }
+
+    // Fetch messages for summary
+    const { data: messages, error: msgError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('direction', 'human')
+      .order('sent_at', { ascending: false })
+      .limit(messageLimit);
+
+    if (msgError) {
+      console.error('[handleSummaryCommand] Error fetching messages:', msgError);
+      await replyToLine(replyToken, 'Sorry, I couldn\'t fetch messages for the summary.');
+      return;
+    }
+
+    if (!messages || messages.length === 0) {
+      await replyToLine(replyToken, 'No messages found to summarize.');
+      return;
+    }
+
+    // Reverse to chronological order
+    messages.reverse();
+
+    // Build prompt for structured summary
+    const messageTexts = messages.map((m: any) => `[${new Date(m.sent_at).toLocaleString()}] ${m.text}`).join('\n');
+    
+    const summaryPrompt = `You are summarizing a chat conversation. Analyze the following messages and provide a structured summary.
+
+MESSAGES (${messages.length} total, ${timeRangeDesc}):
+${messageTexts}
+
+Please provide a structured summary in the following format:
+
+**Summary**
+[2-3 sentence overview of main topics discussed]
+
+**Main Topics**
+- Topic 1
+- Topic 2
+- Topic 3
+
+**Decisions Made**
+- Decision 1 (who decided, what was decided)
+- Decision 2
+
+**Action Items**
+- Action 1 (assigned to whom, deadline if mentioned)
+- Action 2
+
+**Open Questions**
+- Question 1
+- Question 2
+
+If any section has no content, write "None" for that section.`;
+
+    // Call AI for summary
+    const aiSummary = await generateAiReply(
+      summaryPrompt,
+      'helper',
+      'summary',
+      '',
+      '',
+      '',
+      'N/A'
+    );
+
+    // Parse AI response to extract structured data
+    const summaryText = aiSummary;
+    const mainTopics = extractListFromSection(aiSummary, 'Main Topics');
+    const decisions = extractObjectsFromSection(aiSummary, 'Decisions Made');
+    const actionItems = extractObjectsFromSection(aiSummary, 'Action Items');
+    const openQuestions = extractListFromSection(aiSummary, 'Open Questions');
+
+    // Store in chat_summaries table
+    const fromTime = messages[0].sent_at;
+    const toTime = messages[messages.length - 1].sent_at;
+    
+    const { error: insertError } = await supabase
+      .from('chat_summaries')
+      .insert({
+        group_id: groupId,
+        from_message_id: messages[0].id,
+        to_message_id: messages[messages.length - 1].id,
+        from_time: fromTime,
+        to_time: toTime,
+        summary_text: summaryText,
+        main_topics: mainTopics,
+        decisions: decisions,
+        action_items: actionItems,
+        open_questions: openQuestions,
+        message_count: messages.length,
+        created_by_user_id: userId,
+      });
+
+    if (insertError) {
+      console.error('[handleSummaryCommand] Error storing summary:', insertError);
+    }
+
+    // Reply with summary
+    await replyToLine(replyToken, `📊 **Chat Summary (${timeRangeDesc})**\n\n${aiSummary}`);
+    
+  } catch (error) {
+    console.error('[handleSummaryCommand] Error:', error);
+    await replyToLine(replyToken, 'Sorry, I encountered an error generating the summary.');
+  }
+}
+
+/**
+ * Handle /find command - search messages by keyword
+ */
+async function handleFindCommand(
+  groupId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleFindCommand] Searching messages in group ${groupId}`);
+
+  try {
+    const keyword = userMessage.trim();
+    
+    if (!keyword || keyword.length < 2) {
+      await replyToLine(replyToken, 'Please provide a search keyword (at least 2 characters).\n\nExample: /find budget');
+      return;
+    }
+
+    // Search messages using full-text search
+    const { data: messages, error: searchError } = await supabase
+      .from('messages')
+      .select('*, users!inner(display_name)')
+      .eq('group_id', groupId)
+      .ilike('text', `%${keyword}%`)
+      .order('sent_at', { ascending: false })
+      .limit(10);
+
+    if (searchError) {
+      console.error('[handleFindCommand] Search error:', searchError);
+      await replyToLine(replyToken, 'Sorry, I encountered an error searching messages.');
+      return;
+    }
+
+    if (!messages || messages.length === 0) {
+      await replyToLine(replyToken, `No messages found containing "${keyword}".`);
+      return;
+    }
+
+    // Format results
+    let resultText = `🔍 **Found ${messages.length} message(s) containing "${keyword}":**\n\n`;
+    
+    messages.forEach((msg: any, idx: number) => {
+      const timestamp = new Date(msg.sent_at).toLocaleString();
+      const sender = msg.users?.display_name || 'Unknown';
+      const preview = msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text;
+      resultText += `${idx + 1}. [${timestamp}] ${sender}:\n${preview}\n\n`;
+    });
+
+    await replyToLine(replyToken, resultText);
+    
+  } catch (error) {
+    console.error('[handleFindCommand] Error:', error);
+    await replyToLine(replyToken, 'Sorry, I encountered an error searching messages.');
+  }
+}
+
+/**
+ * Handle /mentions command - find messages where user was mentioned
+ */
+async function handleMentionsCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleMentionsCommand] Finding mentions for user ${userId} in group ${groupId}`);
+
+  try {
+    // Get user's display name to search for mentions
+    const { data: user } = await supabase
+      .from('users')
+      .select('display_name')
+      .eq('id', userId)
+      .single();
+
+    if (!user) {
+      await replyToLine(replyToken, 'Sorry, I couldn\'t find your user information.');
+      return;
+    }
+
+    // Search for messages mentioning the user
+    // LINE uses @display_name format
+    const { data: mentions, error: mentionError } = await supabase
+      .from('messages')
+      .select('*, users!inner(display_name)')
+      .eq('group_id', groupId)
+      .or(`text.ilike.%@${user.display_name}%,text.ilike.%${user.display_name}%`)
+      .order('sent_at', { ascending: false })
+      .limit(10);
+
+    if (mentionError) {
+      console.error('[handleMentionsCommand] Search error:', mentionError);
+      await replyToLine(replyToken, 'Sorry, I encountered an error searching for mentions.');
+      return;
+    }
+
+    if (!mentions || mentions.length === 0) {
+      await replyToLine(replyToken, `No recent mentions found for you.`);
+      return;
+    }
+
+    // Format results
+    let resultText = `🔔 **Found ${mentions.length} mention(s) of you:**\n\n`;
+    
+    mentions.forEach((msg: any, idx: number) => {
+      const timestamp = new Date(msg.sent_at).toLocaleString();
+      const sender = msg.users?.display_name || 'Unknown';
+      const preview = msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text;
+      resultText += `${idx + 1}. [${timestamp}] ${sender}:\n${preview}\n\n`;
+    });
+
+    await replyToLine(replyToken, resultText);
+    
+  } catch (error) {
+    console.error('[handleMentionsCommand] Error:', error);
+    await replyToLine(replyToken, 'Sorry, I encountered an error finding mentions.');
+  }
+}
+
+/**
+ * Helper: Extract list items from markdown section
+ */
+function extractListFromSection(text: string, sectionName: string): string[] {
+  const regex = new RegExp(`\\*\\*${sectionName}\\*\\*[\\s\\S]*?(?=\\n\\*\\*|$)`, 'i');
+  const match = text.match(regex);
+  if (!match) return [];
+  
+  const lines = match[0].split('\n').filter(line => line.trim().startsWith('-'));
+  return lines.map(line => line.replace(/^-\s*/, '').trim()).filter(Boolean);
+}
+
+/**
+ * Helper: Extract objects from markdown section (for decisions/action items)
+ */
+function extractObjectsFromSection(text: string, sectionName: string): any[] {
+  const items = extractListFromSection(text, sectionName);
+  return items.map(item => ({ text: item }));
+}
+
+// =============================
 // TRAINING COMMAND HANDLER (Phase 1)
 // =============================
 
@@ -1483,6 +1764,24 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 1: Handle /train command
   if (parsed.commandType === 'train') {
     await handleTrainingCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 2: Handle /summary command
+  if (parsed.commandType === 'summary') {
+    await handleSummaryCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 2: Handle /find command
+  if (parsed.commandType === 'find') {
+    await handleFindCommand(group.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 2: Handle /mentions command
+  if (parsed.commandType === 'mentions') {
+    await handleMentionsCommand(group.id, user.id, parsed.userMessage, event.replyToken);
     return;
   }
 

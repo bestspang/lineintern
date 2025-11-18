@@ -14,7 +14,8 @@ import {
   TestTube2,
   LogOut,
   Brain,
-  Terminal
+  Terminal,
+  FileText
 } from 'lucide-react';
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const navItems = [
   { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
   { title: 'FAQ Logs', url: '/faq-logs', icon: MessageSquare },
   { title: 'Training Queue', url: '/training', icon: GraduationCap },
+  { title: 'Chat Summaries', url: '/summaries', icon: FileText },
   { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
   { title: 'Memory Bot', url: '/memory', icon: Brain },
   { title: 'Commands', url: '/commands', icon: Terminal },
