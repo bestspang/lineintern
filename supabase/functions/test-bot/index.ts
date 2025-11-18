@@ -8,6 +8,7 @@ const corsHeaders = {
 
 // Environment variables
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const AI_MODEL = "google/gemini-2.5-flash";
@@ -57,7 +58,34 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Get JWT token from Authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create Supabase client with user's JWT
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    });
+
+    // Verify the user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.error("[test-bot] Authentication failed:", authError);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - invalid or expired token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[test-bot] Authenticated user: ${user.email} (${user.id})`);
 
     // Parse request
     const { message, groupId, userId } = await req.json();
@@ -69,10 +97,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[test-bot] Testing message from userId=${userId} in groupId=${groupId}`);
+    console.log(`[test-bot] Authenticated dashboard user testing message from userId=${userId} in groupId=${groupId}`);
+
+    // Use service role client for database operations that need elevated privileges
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Ensure test group exists
-    const { data: existingGroup } = await supabase
+    const { data: existingGroup } = await adminClient
       .from("groups")
       .select("id, mode")
       .eq("line_group_id", groupId)
@@ -82,7 +113,7 @@ Deno.serve(async (req) => {
     let mode = existingGroup?.mode || "helper";
 
     if (!existingGroup) {
-      const { data: newGroup, error: groupError } = await supabase
+      const { data: newGroup, error: groupError } = await adminClient
         .from("groups")
         .insert({
           line_group_id: groupId,
@@ -100,7 +131,7 @@ Deno.serve(async (req) => {
     }
 
     // Ensure test user exists
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await adminClient
       .from("users")
       .select("id")
       .eq("line_user_id", userId)
@@ -109,7 +140,7 @@ Deno.serve(async (req) => {
     let dbUserId = existingUser?.id;
 
     if (!existingUser) {
-      const { data: newUser, error: userError } = await supabase
+      const { data: newUser, error: userError } = await adminClient
         .from("users")
         .insert({
           line_user_id: userId,
@@ -148,7 +179,7 @@ Deno.serve(async (req) => {
     }
 
     // Store human message
-    const { error: msgError } = await supabase.from("messages").insert({
+    const { error: msgError } = await adminClient.from("messages").insert({
       group_id: dbGroupId,
       user_id: dbUserId,
       direction: "human",
@@ -160,7 +191,7 @@ Deno.serve(async (req) => {
     if (msgError) console.error("[test-bot] Error storing message:", msgError);
 
     // Fetch recent messages for context
-    const { data: recentMsgs } = await supabase
+    const { data: recentMsgs } = await adminClient
       .from("messages")
       .select("text, direction, sent_at")
       .eq("group_id", dbGroupId)
@@ -176,7 +207,7 @@ Deno.serve(async (req) => {
     // Fetch knowledge snippets if needed
     let knowledgeSnippets = "No knowledge base available";
     if (commandType === "faq" || mode === "faq") {
-      const { data: knowledge } = await supabase
+      const { data: knowledge } = await adminClient
         .from("knowledge_items")
         .select("title, content, category")
         .eq("is_active", true)
@@ -196,13 +227,13 @@ Deno.serve(async (req) => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { count: msgCount } = await supabase
+      const { count: msgCount } = await adminClient
         .from("messages")
         .select("*", { count: "exact", head: true })
         .eq("group_id", dbGroupId)
         .gte("sent_at", sevenDaysAgo.toISOString());
 
-      const { count: alertCount } = await supabase
+      const { count: alertCount } = await adminClient
         .from("alerts")
         .select("*", { count: "exact", head: true })
         .eq("group_id", dbGroupId)
@@ -266,7 +297,7 @@ Deno.serve(async (req) => {
     const reply = aiData.choices?.[0]?.message?.content?.trim() || "No response generated";
 
     // Store bot message
-    const { error: botMsgError } = await supabase.from("messages").insert({
+    const { error: botMsgError } = await adminClient.from("messages").insert({
       group_id: dbGroupId,
       user_id: null,
       direction: "bot",
