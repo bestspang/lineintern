@@ -372,9 +372,9 @@ function parseCommand(text: string, isDM: boolean): ParsedCommand {
     return { commandType: "ask", userMessage: text, shouldRespond: true };
   }
 
-  // In group, only respond to @intern or commands
-  if (lowerText.includes("@intern")) {
-    const cleanedText = text.replace(/@intern/gi, "").trim();
+  // In group, only respond to @goodlime or commands
+  if (lowerText.includes("@goodlime")) {
+    const cleanedText = text.replace(/@goodlime/gi, "").trim();
     if (lowerText.startsWith("/summary")) {
       return { commandType: "summary", userMessage: cleanedText.replace(/^\/summary/i, "").trim(), shouldRespond: true };
     }

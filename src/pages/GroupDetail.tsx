@@ -35,6 +35,23 @@ export default function GroupDetail() {
     },
   });
 
+  const { data: messages } = useQuery({
+    queryKey: ['messages', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          user:users(display_name, line_user_id)
+        `)
+        .eq('group_id', id)
+        .order('sent_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: async (updates: any) => {
       const { error } = await supabase
@@ -185,10 +202,40 @@ export default function GroupDetail() {
         <TabsContent value="messages">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Messages</CardTitle>
+              <CardTitle>Recent Messages ({messages?.length || 0})</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">No messages to display</p>
+              {messages && messages.length > 0 ? (
+                <div className="space-y-3">
+                  {messages.map((msg) => (
+                    <div 
+                      key={msg.id} 
+                      className={`p-3 rounded-lg ${
+                        msg.direction === 'bot' 
+                          ? 'bg-blue-50 border-l-4 border-blue-500' 
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-semibold text-sm">
+                          {msg.direction === 'bot' ? '🤖 GoodLime' : msg.user?.display_name || 'User'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(msg.sent_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      {msg.command_type && (
+                        <Badge variant="outline" className="mt-2 text-xs">
+                          {msg.command_type}
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No messages yet</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
