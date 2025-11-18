@@ -278,6 +278,72 @@ async function ensureGroup(lineGroupId: string) {
   return newGroup;
 }
 
+async function ensureGroupMember(groupId: string, userId: string) {
+  // Check if member already exists (and hasn't left)
+  const { data: existingMember } = await supabase
+    .from("group_members")
+    .select("*")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .is("left_at", null)
+    .single();
+
+  if (existingMember) {
+    console.log(`[ensureGroupMember] Member already exists: ${userId} in group ${groupId}`);
+    return existingMember;
+  }
+
+  // Check if they left before (rejoin case)
+  const { data: leftMember } = await supabase
+    .from("group_members")
+    .select("*")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .not("left_at", "is", null)
+    .single();
+
+  if (leftMember) {
+    // User is rejoining, update left_at to null
+    const { data: rejoinedMember, error } = await supabase
+      .from("group_members")
+      .update({
+        left_at: null,
+        joined_at: new Date().toISOString(),
+      })
+      .eq("id", leftMember.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[ensureGroupMember] Error updating rejoined member:`, error);
+      throw error;
+    }
+
+    console.log(`[ensureGroupMember] Member rejoined: ${userId} in group ${groupId}`);
+    return rejoinedMember;
+  }
+
+  // Create new member entry
+  const { data: newMember, error } = await supabase
+    .from("group_members")
+    .insert({
+      group_id: groupId,
+      user_id: userId,
+      role: "member",
+      joined_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`[ensureGroupMember] Error creating member:`, error);
+    throw error;
+  }
+
+  console.log(`[ensureGroupMember] Created new member: ${userId} in group ${groupId}`);
+  return newMember;
+}
+
 async function insertMessage(
   groupId: string,
   userId: string | null,
@@ -709,6 +775,9 @@ async function handleMessageEvent(event: LineEvent) {
     console.error(`[handleMessageEvent] Failed to get/create group`);
     return;
   }
+
+  // Ensure user is a member of this group
+  await ensureGroupMember(group.id, user.id);
 
   // Parse command
   const parsed = parseCommand(event.message.text, isDM);
