@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -20,14 +21,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { format, formatDistanceToNow, isPast } from 'date-fns';
-import { CalendarIcon, CheckCircle2, Plus, XCircle } from 'lucide-react';
+import { format, formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-fns';
+import { CalendarIcon, CheckCircle2, Plus, XCircle, Clock, AlertCircle, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export default function Tasks() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTask, setNewTask] = useState({
     title: '',
@@ -38,12 +40,34 @@ export default function Tasks() {
   
   const queryClient = useQueryClient();
 
+  // Real-time subscription for tasks
+  useEffect(() => {
+    const channel = supabase
+      .channel('tasks-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks', search, statusFilter],
+    queryKey: ['tasks', search, statusFilter, groupFilter],
     queryFn: async () => {
       let query = supabase
         .from('tasks')
-        .select('*, groups(display_name), users!tasks_assigned_to_user_id_fkey(display_name)')
+        .select('*, groups(display_name), users!tasks_assigned_to_user_id_fkey(display_name), created_by:users!tasks_created_by_user_id_fkey(display_name)')
         .order('due_at', { ascending: true });
       
       if (search) {
@@ -52,6 +76,10 @@ export default function Tasks() {
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter as 'pending' | 'completed' | 'cancelled');
+      }
+
+      if (groupFilter !== 'all') {
+        query = query.eq('group_id', groupFilter);
       }
 
       const { data, error } = await query;
