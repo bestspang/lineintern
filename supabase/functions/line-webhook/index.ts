@@ -2906,6 +2906,13 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
+  // Handle /help command
+  if (parsed.commandType === 'help') {
+    const language = detectLanguage(event.message.text);
+    await handleHelpCommand(group.id, user.id, language, event.replyToken);
+    return;
+  }
+
   // Check if we should respond
   if (!parsed.shouldRespond) {
     console.log(`[handleMessageEvent] Not triggered, ignoring message`);
