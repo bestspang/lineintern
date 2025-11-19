@@ -1,7 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { formatDistanceToNow } from "https://esm.sh/date-fns@3.0.0";
+
+// =============================
+// UTILITY FUNCTIONS
+// =============================
+
+function formatTimeDistance(date: Date): string {
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffSec = Math.floor(Math.abs(diffMs) / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  
+  const isPast = diffMs < 0;
+  const prefix = isPast ? "" : "in ";
+  const suffix = isPast ? " ago" : "";
+  
+  if (diffSec < 60) return `${prefix}${diffSec} second${diffSec !== 1 ? 's' : ''}${suffix}`;
+  if (diffMin < 60) return `${prefix}${diffMin} minute${diffMin !== 1 ? 's' : ''}${suffix}`;
+  if (diffHour < 24) return `${prefix}${diffHour} hour${diffHour !== 1 ? 's' : ''}${suffix}`;
+  return `${prefix}${diffDay} day${diffDay !== 1 ? 's' : ''}${suffix}`;
+}
 
 // =============================
 // TYPES & INTERFACES
@@ -1517,7 +1538,7 @@ ASSIGNED_TO: <name or "none">`;
     const assignedText = assignedToUserId ? ` (assigned to ${assignedTo})` : "";
     const descText = description && description !== "none" ? `\n📝 ${description}` : "";
     
-    const reply = `✅ Task created!${assignedText}\n\n📌 ${title}${descText}\n⏰ Due: ${formatDistanceToNow(new Date(dueAt), { addSuffix: true })}`;
+    const reply = `✅ Task created!${assignedText}\n\n📌 ${title}${descText}\n⏰ Due: ${formatTimeDistance(new Date(dueAt))}`;
     
     await replyToLine(replyToken, reply);
   } catch (error) {
@@ -1600,7 +1621,7 @@ REMIND_AT: <ISO timestamp>`;
 
     console.log(`[handleRemindCommand] Reminder created:`, reminder);
 
-    const reply = `⏰ Reminder set!\n\n📌 ${reminderMessage}\n🕐 I'll remind you ${formatDistanceToNow(new Date(remindAt), { addSuffix: true })}`;
+    const reply = `⏰ Reminder set!\n\n📌 ${reminderMessage}\n🕐 I'll remind you ${formatTimeDistance(new Date(remindAt))}`;
     
     await replyToLine(replyToken, reply);
   } catch (error) {
