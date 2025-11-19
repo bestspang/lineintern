@@ -1066,6 +1066,151 @@ async function logFaqInteraction(
 }
 
 // =============================
+// ANALYTICS HELPER FUNCTIONS
+// =============================
+
+async function calculateMessageVelocity(groupId: string, fromDate: Date, toDate: Date) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('sent_at')
+    .eq('group_id', groupId)
+    .gte('sent_at', fromDate.toISOString())
+    .lte('sent_at', toDate.toISOString())
+    .order('sent_at', { ascending: true });
+
+  if (error || !data) return [];
+
+  // Group by day
+  const messagesByDay: Record<string, number> = {};
+  data.forEach(msg => {
+    const day = new Date(msg.sent_at).toISOString().split('T')[0];
+    messagesByDay[day] = (messagesByDay[day] || 0) + 1;
+  });
+
+  return Object.entries(messagesByDay).map(([date, count]) => ({ date, count }));
+}
+
+async function getUserEngagement(groupId: string, fromDate: Date, toDate: Date) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('user_id, users(display_name)')
+    .eq('group_id', groupId)
+    .eq('direction', 'human')
+    .gte('sent_at', fromDate.toISOString())
+    .lte('sent_at', toDate.toISOString());
+
+  if (error || !data) return { topUsers: [], avgMessagesPerUser: 0, activeUsers: 0 };
+
+  const userCounts: Record<string, { name: string; count: number }> = {};
+  data.forEach((msg: any) => {
+    if (msg.user_id) {
+      if (!userCounts[msg.user_id]) {
+        userCounts[msg.user_id] = { 
+          name: msg.users?.display_name || 'Unknown', 
+          count: 0 
+        };
+      }
+      userCounts[msg.user_id].count++;
+    }
+  });
+
+  const topUsers = Object.entries(userCounts)
+    .map(([userId, data]) => ({ userId, name: data.name, count: data.count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const activeUsers = Object.keys(userCounts).length;
+  const totalMessages = data.length;
+  const avgMessagesPerUser = activeUsers > 0 ? Math.round(totalMessages / activeUsers) : 0;
+
+  return { topUsers, avgMessagesPerUser, activeUsers };
+}
+
+async function getSentimentDistribution(groupId: string, fromDate: Date, toDate: Date) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('sentiment')
+    .eq('group_id', groupId)
+    .eq('direction', 'human')
+    .gte('sent_at', fromDate.toISOString())
+    .lte('sent_at', toDate.toISOString())
+    .not('sentiment', 'is', null);
+
+  if (error || !data) return { positive: 0, neutral: 0, negative: 0, moodScore: 0.5 };
+
+  let positive = 0, neutral = 0, negative = 0;
+  data.forEach(msg => {
+    if (msg.sentiment === 'positive') positive++;
+    else if (msg.sentiment === 'negative') negative++;
+    else neutral++;
+  });
+
+  const total = positive + neutral + negative;
+  if (total === 0) return { positive: 0, neutral: 0, negative: 0, moodScore: 0.5 };
+
+  // Mood score: (positive - negative) / total, normalized to 0-1
+  const moodScore = ((positive - negative) / total + 1) / 2;
+
+  return {
+    positive: positive / total,
+    neutral: neutral / total,
+    negative: negative / total,
+    moodScore
+  };
+}
+
+async function getActivityHeatmap(groupId: string, fromDate: Date, toDate: Date) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('sent_at')
+    .eq('group_id', groupId)
+    .gte('sent_at', fromDate.toISOString())
+    .lte('sent_at', toDate.toISOString());
+
+  if (error || !data) return [];
+
+  const hourCounts: Record<number, number> = {};
+  for (let i = 0; i < 24; i++) hourCounts[i] = 0;
+
+  data.forEach(msg => {
+    const hour = new Date(msg.sent_at).getHours();
+    hourCounts[hour]++;
+  });
+
+  return Object.entries(hourCounts).map(([hour, count]) => ({ hour: parseInt(hour), count }));
+}
+
+async function getTopKeywords(groupId: string, fromDate: Date, toDate: Date, limit: number = 10) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('text')
+    .eq('group_id', groupId)
+    .eq('direction', 'human')
+    .gte('sent_at', fromDate.toISOString())
+    .lte('sent_at', toDate.toISOString());
+
+  if (error || !data) return [];
+
+  // Simple keyword extraction (filter out common words)
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'is', 'it', 'that', 'this', 'i', 'you', 'we', 'they', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should']);
+  
+  const wordCounts: Record<string, number> = {};
+  data.forEach(msg => {
+    const words = msg.text.toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
+    words.forEach((word: string) => {
+      if (!stopWords.has(word)) {
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      }
+    });
+  });
+
+  return Object.entries(wordCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([word, count]) => ({ word, count }));
+}
+
+// =============================
 // PHASE 2: SUMMARY COMMAND HANDLERS
 // =============================
 
@@ -1349,6 +1494,253 @@ function extractObjectsFromSection(text: string, sectionName: string): any[] {
 // =============================
 // TRAINING COMMAND HANDLER (Phase 1)
 // =============================
+
+/**
+ * Handle /report command - generate comprehensive analytics report
+ */
+async function handleReportCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleReportCommand] Generating report for group ${groupId}`);
+
+  try {
+    // Parse time range from user message
+    let fromDate: Date;
+    let toDate = new Date();
+    let timeRangeDesc = "last 7 days";
+    let period: "daily" | "weekly" | "custom" = "custom";
+
+    const lowerMsg = userMessage.toLowerCase();
+    
+    if (lowerMsg.includes('today')) {
+      fromDate = new Date();
+      fromDate.setHours(0, 0, 0, 0);
+      timeRangeDesc = "today";
+      period = "daily";
+    } else if (lowerMsg.includes('week')) {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 7);
+      timeRangeDesc = "last 7 days";
+      period = "weekly";
+    } else if (lowerMsg.includes('month') || lowerMsg.includes('30')) {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 30);
+      timeRangeDesc = "last 30 days";
+      period = "custom";
+    } else if (lowerMsg.match(/\d+\s*d/)) {
+      const match = lowerMsg.match(/(\d+)\s*d/);
+      if (match) {
+        const days = parseInt(match[1]);
+        fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - days);
+        timeRangeDesc = `last ${days} days`;
+        period = "custom";
+      } else {
+        fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - 7);
+      }
+    } else {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 7);
+    }
+
+    console.log(`[handleReportCommand] Time range: ${fromDate.toISOString()} to ${toDate.toISOString()}`);
+
+    // Fetch total messages
+    const { data: messages, error: msgError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('group_id', groupId)
+      .gte('sent_at', fromDate.toISOString())
+      .lte('sent_at', toDate.toISOString());
+
+    if (msgError) {
+      console.error('[handleReportCommand] Error fetching messages:', msgError);
+      await replyToLine(replyToken, 'Sorry, I couldn\'t generate the report.');
+      return;
+    }
+
+    const totalMessages = messages?.length || 0;
+    if (totalMessages === 0) {
+      await replyToLine(replyToken, `No activity found for ${timeRangeDesc}.`);
+      return;
+    }
+
+    // Calculate all metrics in parallel
+    const [velocity, engagement, sentiment, heatmap, keywords] = await Promise.all([
+      calculateMessageVelocity(groupId, fromDate, toDate),
+      getUserEngagement(groupId, fromDate, toDate),
+      getSentimentDistribution(groupId, fromDate, toDate),
+      getActivityHeatmap(groupId, fromDate, toDate),
+      getTopKeywords(groupId, fromDate, toDate, 5)
+    ]);
+
+    // Fetch alerts
+    const { data: alerts } = await supabase
+      .from('alerts')
+      .select('severity, resolved')
+      .eq('group_id', groupId)
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString());
+
+    const alertStats = {
+      total: alerts?.length || 0,
+      bySeverity: {
+        low: alerts?.filter(a => a.severity === 'low').length || 0,
+        medium: alerts?.filter(a => a.severity === 'medium').length || 0,
+        high: alerts?.filter(a => a.severity === 'high').length || 0
+      },
+      resolved: alerts?.filter(a => a.resolved).length || 0
+    };
+
+    // Get command usage
+    const { data: commandUsage } = await supabase
+      .from('messages')
+      .select('command_type')
+      .eq('group_id', groupId)
+      .eq('direction', 'human')
+      .not('command_type', 'is', null)
+      .gte('sent_at', fromDate.toISOString())
+      .lte('sent_at', toDate.toISOString());
+
+    const commandCounts: Record<string, number> = {};
+    commandUsage?.forEach(cmd => {
+      if (cmd.command_type) {
+        commandCounts[cmd.command_type] = (commandCounts[cmd.command_type] || 0) + 1;
+      }
+    });
+
+    // Count URLs
+    const urlCount = messages?.filter(m => m.has_url).length || 0;
+
+    // Peak hours (top 5)
+    const peakHours = heatmap
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(h => h.hour);
+
+    // Build report data
+    const reportData = {
+      activity: {
+        totalMessages,
+        messagesPerDay: velocity.map(v => v.count),
+        peakHours,
+        activeUsers: engagement.activeUsers
+      },
+      engagement: {
+        avgMessagesPerUser: engagement.avgMessagesPerUser,
+        topUsers: engagement.topUsers,
+        participationRate: engagement.activeUsers > 0 ? engagement.activeUsers / (engagement.activeUsers + 5) : 0 // Rough estimate
+      },
+      sentiment: {
+        positive: Math.round(sentiment.positive * 100) / 100,
+        neutral: Math.round(sentiment.neutral * 100) / 100,
+        negative: Math.round(sentiment.negative * 100) / 100,
+        moodScore: Math.round(sentiment.moodScore * 100) / 100
+      },
+      content: {
+        topKeywords: keywords.map(k => k.word),
+        urlCount,
+        commandUsage: commandCounts
+      },
+      safety: alertStats
+    };
+
+    console.log('[handleReportCommand] Report data:', reportData);
+
+    // Generate AI summary
+    const summaryPrompt = `Analyze this group activity report and provide insights.
+
+TIME RANGE: ${timeRangeDesc}
+TOTAL MESSAGES: ${totalMessages}
+ACTIVE USERS: ${engagement.activeUsers}
+
+ACTIVITY:
+- Messages per day: ${velocity.map(v => v.count).join(', ')}
+- Peak activity hours: ${peakHours.join(', ')}
+
+ENGAGEMENT:
+- Avg messages per user: ${engagement.avgMessagesPerUser}
+- Top contributors: ${engagement.topUsers.map(u => u.name).join(', ')}
+
+SENTIMENT:
+- Positive: ${Math.round(sentiment.positive * 100)}%
+- Neutral: ${Math.round(sentiment.neutral * 100)}%
+- Negative: ${Math.round(sentiment.negative * 100)}%
+- Mood score: ${sentiment.moodScore.toFixed(2)}/1.0
+
+CONTENT:
+- Top keywords: ${keywords.map(k => k.word).join(', ')}
+- URLs shared: ${urlCount}
+
+SAFETY:
+- Total alerts: ${alertStats.total}
+- High severity: ${alertStats.bySeverity.high}
+
+Provide a 3-4 sentence summary with:
+1. Key activity trends
+2. Engagement highlights
+3. Mood/sentiment observation
+4. Any concerns or recommendations`;
+
+    const aiSummary = await generateAiReply(
+      summaryPrompt,
+      'report',
+      'report',
+      '',
+      '',
+      '',
+      'N/A'
+    );
+
+    // Store report in database
+    const { error: reportError } = await supabase.from('reports').insert({
+      group_id: groupId,
+      period,
+      from_date: fromDate.toISOString(),
+      to_date: toDate.toISOString(),
+      data: reportData,
+      summary_text: aiSummary
+    });
+
+    if (reportError) {
+      console.error('[handleReportCommand] Error saving report:', reportError);
+    }
+
+    // Format reply message
+    const reply = `📊 Group Activity Report (${timeRangeDesc})
+
+**Activity**
+💬 ${totalMessages} messages | 👥 ${engagement.activeUsers} active users
+📈 Avg: ${engagement.avgMessagesPerUser} msgs/user
+⏰ Peak hours: ${peakHours.join(', ')}
+
+**Sentiment**
+😊 ${Math.round(sentiment.positive * 100)}% positive
+😐 ${Math.round(sentiment.neutral * 100)}% neutral
+😔 ${Math.round(sentiment.negative * 100)}% negative
+Mood: ${(sentiment.moodScore * 100).toFixed(0)}/100
+
+**Top Contributors**
+${engagement.topUsers.slice(0, 3).map((u, i) => `${i + 1}. ${u.name} (${u.count} msgs)`).join('\n')}
+
+**Safety**
+🚨 ${alertStats.total} alerts (${alertStats.bySeverity.high} high priority)
+
+**Insights**
+${aiSummary}`;
+
+    await replyToLine(replyToken, reply);
+    console.log('[handleReportCommand] Report sent successfully');
+
+  } catch (error) {
+    console.error('[handleReportCommand] Error:', error);
+    await replyToLine(replyToken, 'Sorry, I encountered an error generating the report.');
+  }
+}
 
 async function handleTrainingCommand(
   groupId: string,
@@ -1982,6 +2374,12 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 1: Handle /train command
   if (parsed.commandType === 'train') {
     await handleTrainingCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 5: Handle /report command
+  if (parsed.commandType === 'report') {
+    await handleReportCommand(group.id, user.id, parsed.userMessage, event.replyToken);
     return;
   }
 
