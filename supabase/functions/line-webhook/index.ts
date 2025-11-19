@@ -75,6 +75,43 @@ Core priorities:
 
 You can: answer questions, summarize conversations, propose tasks/todos, draft content, interpret analytics, suggest workflows.`;
 
+const MODE_SPECIFIC_INSTRUCTIONS = {
+  helper: `You are in HELPER mode - be a versatile assistant:
+- Answer general questions clearly and concisely
+- Help with task planning and organization
+- Provide actionable advice and suggestions
+- Be proactive in offering solutions
+- Maintain a balanced, professional yet friendly tone`,
+
+  faq: `You are in FAQ mode - be a knowledge expert:
+- ALWAYS prioritize information from KNOWLEDGE_SNIPPETS
+- If the answer isn't in the knowledge base, clearly state that
+- Suggest adding frequently asked questions to the knowledge base
+- Be precise and cite sources when available
+- Keep answers structured with clear sections`,
+
+  report: `You are in REPORT mode - be an analyst:
+- Focus heavily on ANALYTICS_SNAPSHOT data
+- Provide data-driven insights with numbers
+- Identify trends, patterns, and anomalies
+- Suggest actionable improvements based on data
+- Use clear metrics and visualizations in text form`,
+
+  fun: `You are in FUN mode - be entertaining and creative:
+- Use more emojis and casual language 😄
+- Add humor and wit to responses (appropriately)
+- Be more expressive and engaging
+- Still provide helpful information, just in a fun way
+- Feel free to use jokes, puns, or playful analogies`,
+
+  safety: `You are in SAFETY mode - be vigilant and protective:
+- Watch for potentially harmful content or links
+- Highlight security concerns when relevant
+- Provide warnings about risky behaviors
+- Suggest safer alternatives
+- Be firm but not alarmist about safety issues`
+};
+
 const COMMON_BEHAVIOR_PROMPT = `
 # Context Information
 
@@ -96,6 +133,9 @@ const COMMON_BEHAVIOR_PROMPT = `
 **ANALYTICS_SNAPSHOT**: 
 {ANALYTICS_SNAPSHOT}
 
+# Mode-Specific Behavior
+{MODE_INSTRUCTIONS}
+
 # Instructions
 
 You've been invoked with the above context. Understand the USER_MESSAGE in context of the MODE and COMMAND.
@@ -105,9 +145,11 @@ You've been invoked with the above context. Understand the USER_MESSAGE in conte
 - If COMMAND is "todo", acknowledge and structure the task request.
 - If COMMAND is "report", interpret ANALYTICS_SNAPSHOT and provide insights.
 - If COMMAND is "help", list your capabilities.
+- If COMMAND is "mode", this is handled separately - you won't receive these.
 - Otherwise, answer the USER_MESSAGE naturally using available context.
 
 Keep responses concise (2-3 short paragraphs max). Use bullets for lists. Reply in the same language as USER_MESSAGE.
+Apply the mode-specific behavior guidelines above to your response style.
 `;
 
 // =============================
@@ -1492,6 +1534,64 @@ function extractObjectsFromSection(text: string, sectionName: string): any[] {
 }
 
 // =============================
+// MODE COMMAND HANDLER (Phase 8)
+// =============================
+
+/**
+ * Handle /mode command - switch group modes
+ */
+async function handleModeCommand(
+  groupId: string,
+  userMessage: string,
+  replyToken: string
+): Promise<void> {
+  console.log(`[handleModeCommand] Processing mode change: ${userMessage}`);
+
+  // Extract mode from message
+  const modeMatch = userMessage.toLowerCase().match(/\/(mode|m|โหมด|setmode)\s+(helper|faq|report|fun|safety)/);
+  
+  if (!modeMatch) {
+    await replyToLine(
+      replyToken,
+      "Please specify a valid mode: helper, faq, report, fun, or safety\n\nExample: /mode helper"
+    );
+    return;
+  }
+
+  const newMode = modeMatch[2] as "helper" | "faq" | "report" | "fun" | "safety";
+
+  // Update group mode
+  const { error: updateError } = await supabase
+    .from("groups")
+    .update({ 
+      mode: newMode,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", groupId);
+
+  if (updateError) {
+    console.error("[handleModeCommand] Error updating group mode:", updateError);
+    await replyToLine(replyToken, "Sorry, I couldn't change the mode. Please try again.");
+    return;
+  }
+
+  // Mode descriptions
+  const modeDescriptions = {
+    helper: "🤝 Helper Mode - Versatile assistant for general questions and tasks",
+    faq: "📚 FAQ Mode - Knowledge expert using your documentation",
+    report: "📊 Report Mode - Data analyst providing insights from analytics",
+    fun: "🎉 Fun Mode - Entertaining and creative responses",
+    safety: "🛡️ Safety Mode - Vigilant protector watching for security issues"
+  };
+
+  const responseMessage = `✅ Mode changed to: ${newMode.toUpperCase()}\n\n${modeDescriptions[newMode]}\n\nI'll now respond according to this mode's behavior.`;
+  
+  await replyToLine(replyToken, responseMessage);
+  
+  console.log(`[handleModeCommand] Mode changed to ${newMode} for group ${groupId}`);
+}
+
+// =============================
 // TRAINING COMMAND HANDLER (Phase 1)
 // =============================
 
@@ -2131,10 +2231,14 @@ async function generateAiReply(
   knowledgeSnippets: string,
   analyticsSnapshot: string
 ): Promise<string> {
+  // Get mode-specific instructions
+  const modeInstructions = MODE_SPECIFIC_INSTRUCTIONS[mode as keyof typeof MODE_SPECIFIC_INSTRUCTIONS] || MODE_SPECIFIC_INSTRUCTIONS.helper;
+
   const userPrompt = COMMON_BEHAVIOR_PROMPT
     .replace("{USER_MESSAGE}", userMessage)
     .replace("{MODE}", mode)
     .replace("{COMMAND}", commandType)
+    .replace("{MODE_INSTRUCTIONS}", modeInstructions)
     .replace("{MEMORY_CONTEXT}", memoryContext)
     .replace("{RECENT_MESSAGES}", recentMessages)
     .replace("{KNOWLEDGE_SNIPPETS}", knowledgeSnippets)
@@ -2553,6 +2657,12 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 7: Handle /imagine command
   if (parsed.commandType === 'imagine') {
     await handleImagineCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 8: Handle /mode command
+  if (parsed.commandType === 'mode') {
+    await handleModeCommand(group.id, parsed.userMessage, event.replyToken);
     return;
   }
 
