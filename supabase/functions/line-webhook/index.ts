@@ -1496,6 +1496,102 @@ function extractObjectsFromSection(text: string, sectionName: string): any[] {
 // =============================
 
 /**
+ * Handle /imagine command - generate images using AI
+ */
+async function handleImagineCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleImagineCommand] Generating image for prompt: ${userMessage}`);
+
+  try {
+    // Extract the image prompt
+    const prompt = userMessage.trim();
+    
+    if (!prompt || prompt.length === 0) {
+      await replyToLine(replyToken, '❌ Please provide a description of the image you want to generate.\n\nExample: /imagine a beautiful sunset over mountains');
+      return;
+    }
+
+    // Send status message
+    await replyToLine(replyToken, '🎨 Generating your image... This may take a moment.');
+
+    // Call Lovable AI for image generation
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-image-preview',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        modalities: ['image', 'text']
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[handleImagineCommand] AI API error: ${response.status} ${errorText}`);
+      await replyToLine(replyToken, '❌ Sorry, I encountered an error generating the image. Please try again.');
+      return;
+    }
+
+    const data = await response.json();
+    const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    
+    if (!imageData) {
+      console.error('[handleImagineCommand] No image data in response');
+      await replyToLine(replyToken, '❌ Sorry, I couldn\'t generate an image. Please try a different prompt.');
+      return;
+    }
+
+    // Extract base64 data from data URL
+    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    // Upload to Supabase Storage
+    const fileName = `generated-images/${groupId}/${Date.now()}.png`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('line-bot-assets')
+      .upload(fileName, imageBuffer, {
+        contentType: 'image/png',
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('[handleImagineCommand] Upload error:', uploadError);
+      await replyToLine(replyToken, '❌ Sorry, I couldn\'t upload the generated image. Please try again.');
+      return;
+    }
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from('line-bot-assets')
+      .getPublicUrl(fileName);
+
+    const imageUrl = publicUrlData.publicUrl;
+
+    // Send the image via LINE
+    await replyToLineWithImage(replyToken, imageUrl, '✨ Here\'s your generated image!');
+
+    console.log(`[handleImagineCommand] Successfully generated and sent image`);
+    
+  } catch (error) {
+    console.error('[handleImagineCommand] Error:', error);
+    await replyToLine(replyToken, '❌ Sorry, I encountered an error generating the image. Please try again.');
+  }
+}
+
+/**
  * Handle /report command - generate comprehensive analytics report
  */
 async function handleReportCommand(
@@ -2136,6 +2232,47 @@ async function replyToLine(replyToken: string, text: string) {
   }
 }
 
+async function replyToLineWithImage(replyToken: string, imageUrl: string, text?: string) {
+  console.log(`[replyToLineWithImage] Sending image reply`);
+  
+  const messages: any[] = [];
+  
+  if (text) {
+    messages.push({ type: "text", text });
+  }
+  
+  messages.push({
+    type: "image",
+    originalContentUrl: imageUrl,
+    previewImageUrl: imageUrl,
+  });
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        replyToken,
+        messages: messages.slice(0, 5),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[replyToLineWithImage] LINE API error: ${response.status} ${errorText}`);
+      throw new Error(`LINE API error: ${response.status}`);
+    }
+
+    console.log(`[replyToLineWithImage] Successfully sent image reply`);
+  } catch (error) {
+    console.error(`[replyToLineWithImage] Error:`, error);
+    throw error;
+  }
+}
+
 // =============================
 // EVENT HANDLERS
 // =============================
@@ -2410,6 +2547,12 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 4: Handle /remind command
   if (parsed.commandType === 'remind') {
     await handleRemindCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 7: Handle /imagine command
+  if (parsed.commandType === 'imagine') {
+    await handleImagineCommand(group.id, user.id, parsed.userMessage, event.replyToken);
     return;
   }
 
