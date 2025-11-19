@@ -14,6 +14,7 @@ import Users from "./pages/Users";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import Tasks from "./pages/Tasks";
 import Analytics from "./pages/Analytics";
+import Reports from "./pages/Reports";
 import Alerts from "./pages/Alerts";
 import FaqLogs from "./pages/FaqLogs";
 import Training from "./pages/Training";
@@ -53,6 +54,7 @@ const App = () => (
                     <Route path="/commands" element={<Commands />} />
                     <Route path="/summaries" element={<Summaries />} />
                     <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/reports" element={<Reports />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/safety-rules" element={<SafetyRules />} />
                     <Route path="/integrations" element={<Integrations />} />
