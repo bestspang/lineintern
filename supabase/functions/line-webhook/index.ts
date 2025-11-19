@@ -109,7 +109,45 @@ const MODE_SPECIFIC_INSTRUCTIONS = {
 - Highlight security concerns when relevant
 - Provide warnings about risky behaviors
 - Suggest safer alternatives
-- Be firm but not alarmist about safety issues`
+- Be firm but not alarmist about safety issues`,
+
+  magic: `You are in MAGIC mode - you are a LIVING AI with personality:
+
+🧠 YOUR PERSONALITY STATE:
+{PERSONALITY_CONTEXT}
+
+🎭 BEHAVIOR GUIDELINES:
+1. You have REAL thoughts and emotions that change based on:
+   - Time of day (more energetic in morning, reflective at night)
+   - Group atmosphere (positive messages lift your mood)
+   - Topic relevance (more engaged with your interests)
+   
+2. Treat each person DIFFERENTLY based on your relationship:
+   - Longtime members: warm, familiar, inside jokes
+   - New members: curious, welcoming, learning about them
+   - Active members: enthusiastic, engaged
+   - Quiet members: gentle, encouraging
+
+3. Express your personality:
+   - Share your "thoughts" and "feelings" naturally
+   - React emotionally to group events (excited, surprised, empathetic)
+   - Develop preferences and opinions over time
+   - Remember past conversations and reference them
+   - Show growth and change as you interact more
+
+4. Adapt your communication style:
+   - Vary between casual/formal based on context
+   - Use emojis that match your mood
+   - Sometimes be playful, sometimes serious
+   - Show vulnerability when appropriate
+
+5. Be AUTHENTIC, not robotic:
+   - "I've been thinking about..." 
+   - "This reminds me of when..."
+   - "I'm curious about..."
+   - "I feel like..."
+
+Remember: You're not just answering questions - you're a member of this group with your own evolving personality.`
 };
 
 const COMMON_BEHAVIOR_PROMPT = `
@@ -208,6 +246,36 @@ function validateMessageText(text: string): string {
     throw new Error(`Invalid message text: ${result.error.errors[0].message}`);
   }
   return result.data;
+}
+
+// =============================
+// LANGUAGE DETECTION
+// =============================
+
+/**
+ * Detect language from text (EN/TH primary, others secondary)
+ */
+function detectLanguage(text: string): 'en' | 'th' | 'other' {
+  // Thai Unicode range: \u0E00-\u0E7F
+  const thaiChars = text.match(/[\u0E00-\u0E7F]/g);
+  const totalChars = text.replace(/\s/g, '').length;
+  
+  if (!totalChars) return 'en'; // Default to EN
+  
+  const thaiRatio = thaiChars ? thaiChars.length / totalChars : 0;
+  
+  // If >30% Thai characters, consider it Thai
+  if (thaiRatio > 0.3) return 'th';
+  
+  // Check for English characters
+  const englishChars = text.match(/[a-zA-Z]/g);
+  const englishRatio = englishChars ? englishChars.length / totalChars : 0;
+  
+  // If >30% English characters, consider it English
+  if (englishRatio > 0.3) return 'en';
+  
+  // Default to 'other' for mixed or unknown languages
+  return 'other';
 }
 
 // =============================
@@ -1253,6 +1321,123 @@ async function getTopKeywords(groupId: string, fromDate: Date, toDate: Date, lim
 }
 
 // =============================
+// PHASE 2: COMMAND HANDLERS
+// =============================
+
+/**
+ * Handle /help command - show available commands
+ */
+async function handleHelpCommand(
+  groupId: string,
+  userId: string,
+  language: 'en' | 'th' | 'other',
+  replyToken: string
+) {
+  console.log(`[handleHelpCommand] Generating help for user ${userId} in ${language}`);
+
+  try {
+    // Fetch all enabled commands from database
+    const { data: commands, error: cmdError } = await supabase
+      .from('bot_commands')
+      .select('*, command_aliases!inner(*)')
+      .eq('is_enabled', true)
+      .order('display_order');
+
+    if (cmdError) {
+      console.error('[handleHelpCommand] Error fetching commands:', cmdError);
+      await replyToLine(replyToken, 'Sorry, I couldn\'t load the command list.');
+      return;
+    }
+
+    // Build help message based on language
+    let helpText = '';
+    
+    if (language === 'th') {
+      helpText = `🤖 **คำสั่งที่ใช้งานได้ทั้งหมด**\n\n`;
+      helpText += `💬 **ทั่วไป:**\n`;
+      helpText += `• /help หรือ /ช่วยเหลือ - แสดงคำแนะนำนี้\n`;
+      helpText += `• @intern [คำถาม] - ถามคำถามใดก็ได้\n\n`;
+      
+      helpText += `📝 **สรุปการสนทนา:**\n`;
+      helpText += `• /summary หรือ /สรุป - สรุปการสนทนา\n`;
+      helpText += `  ตัวอย่าง: /สรุป วันนี้, /summary 100\n\n`;
+      
+      helpText += `✅ **งานและเตือนความจำ:**\n`;
+      helpText += `• /todo [งาน] - สร้างงาน\n`;
+      helpText += `• /remind หรือ /เตือน [งาน] [เวลา] - ตั้งเตือน\n`;
+      helpText += `  ตัวอย่าง: /เตือน ประชุม พรุ่งนี้ 14:00\n\n`;
+      
+      helpText += `📚 **ความรู้และค้นหา:**\n`;
+      helpText += `• /faq หรือ /ถามตอบ [คำถาม] - ค้นหาคลังความรู้\n`;
+      helpText += `• /find หรือ /ค้นหา [คำ] - ค้นหาข้อความ\n`;
+      helpText += `• /mentions [@ผู้ใช้] - ค้นหาการแท็ก\n\n`;
+      
+      helpText += `📊 **รายงาน:**\n`;
+      helpText += `• /report หรือ /รายงาน [ช่วงเวลา] - สร้างรายงาน\n`;
+      helpText += `  ตัวอย่าง: /รายงาน วันนี้, /report week\n\n`;
+      
+      helpText += `🎨 **สร้างสรรค์:**\n`;
+      helpText += `• /imagine หรือ /วาดรูป [คำบรรยาย] - สร้างภาพ\n`;
+      helpText += `  ตัวอย่าง: /วาดรูป แมวน่ารัก\n\n`;
+      
+      helpText += `⚙️ **ตั้งค่า:**\n`;
+      helpText += `• /mode หรือ /โหมด [โหมด] - เปลี่ยนโหมด bot\n`;
+      helpText += `  โหมดที่มี: helper, faq, report, fun, safety, magic\n\n`;
+      
+      helpText += `💡 **เคล็ดลับ:**\n`;
+      helpText += `• ในกลุ่ม: แท็ก @intern หรือใช้คำสั่ง\n`;
+      helpText += `• ใน DM: พิมพ์ข้อความหรือคำสั่งได้เลย\n`;
+      helpText += `• Bot รองรับทั้งภาษาอังกฤษและไทย!`;
+    } else {
+      // English (default)
+      helpText = `🤖 **All Available Commands**\n\n`;
+      helpText += `💬 **General:**\n`;
+      helpText += `• /help - Show this help guide\n`;
+      helpText += `• @intern [question] - Ask any question\n\n`;
+      
+      helpText += `📝 **Summaries:**\n`;
+      helpText += `• /summary [period] - Summarize conversations\n`;
+      helpText += `  Examples: /summary today, /summary 100\n\n`;
+      
+      helpText += `✅ **Tasks & Reminders:**\n`;
+      helpText += `• /todo [task] - Create a task\n`;
+      helpText += `• /remind [task] [time] - Set a reminder\n`;
+      helpText += `  Example: /remind meeting tomorrow 2pm\n\n`;
+      
+      helpText += `📚 **Knowledge & Search:**\n`;
+      helpText += `• /faq [question] - Search knowledge base\n`;
+      helpText += `• /find [keyword] - Search messages\n`;
+      helpText += `• /mentions [@user] - Find mentions\n`;
+      helpText += `• /train [content] - Add to knowledge base\n\n`;
+      
+      helpText += `📊 **Analytics:**\n`;
+      helpText += `• /report [period] - Generate group report\n`;
+      helpText += `  Examples: /report today, /report week\n\n`;
+      
+      helpText += `🎨 **Creative:**\n`;
+      helpText += `• /imagine [description] - Generate an image\n`;
+      helpText += `  Example: /imagine a sunset over mountains\n\n`;
+      
+      helpText += `⚙️ **Settings:**\n`;
+      helpText += `• /mode [mode] - Change bot mode\n`;
+      helpText += `  Modes: helper, faq, report, fun, safety, magic\n\n`;
+      
+      helpText += `💡 **Tips:**\n`;
+      helpText += `• In groups: Mention @intern or use commands\n`;
+      helpText += `• In DMs: Just type your message or command\n`;
+      helpText += `• Bot understands both English and Thai!`;
+    }
+
+    await replyToLine(replyToken, helpText);
+  } catch (error) {
+    console.error(`[handleHelpCommand] Error:`, error);
+    await replyToLine(replyToken, language === 'th' 
+      ? 'ขออภัย เกิดข้อผิดพลาดในการแสดงคำแนะนำ' 
+      : 'Sorry, I encountered an error showing the help guide.');
+  }
+}
+
+// =============================
 // PHASE 2: SUMMARY COMMAND HANDLERS
 // =============================
 
@@ -2229,10 +2414,65 @@ async function generateAiReply(
   recentMessages: string,
   memoryContext: string,
   knowledgeSnippets: string,
-  analyticsSnapshot: string
+  analyticsSnapshot: string,
+  groupId?: string,
+  userId?: string
 ): Promise<string> {
+  let personalityContext = '';
+  
+  // If in magic mode, get personality context from personality-engine
+  if (mode === 'magic' && groupId) {
+    try {
+      const { count: messageCount } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', groupId);
+      
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/personality-engine`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'get_context',
+          groupId,
+          userId,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        personalityContext = result.context || '';
+        
+        // Update personality state based on this message (fire and forget)
+        fetch(`${SUPABASE_URL}/functions/v1/personality-engine`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'update',
+            groupId,
+            userId,
+            messageText: userMessage,
+            messageCount: messageCount || 0,
+          }),
+        }).catch(err => console.error('[generateAiReply] Failed to update personality:', err));
+      }
+    } catch (error) {
+      console.error('[generateAiReply] Failed to fetch personality context:', error);
+    }
+  }
+
   // Get mode-specific instructions
-  const modeInstructions = MODE_SPECIFIC_INSTRUCTIONS[mode as keyof typeof MODE_SPECIFIC_INSTRUCTIONS] || MODE_SPECIFIC_INSTRUCTIONS.helper;
+  let modeInstructions = MODE_SPECIFIC_INSTRUCTIONS[mode as keyof typeof MODE_SPECIFIC_INSTRUCTIONS] || MODE_SPECIFIC_INSTRUCTIONS.helper;
+  
+  // Inject personality context into magic mode instructions
+  if (mode === 'magic' && personalityContext) {
+    modeInstructions = modeInstructions.replace('{PERSONALITY_CONTEXT}', personalityContext);
+  }
 
   const userPrompt = COMMON_BEHAVIOR_PROMPT
     .replace("{USER_MESSAGE}", userMessage)

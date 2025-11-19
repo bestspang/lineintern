@@ -52,6 +52,13 @@ const modes = [
     description: 'Vigilant protector for security',
     color: 'bg-orange-500',
   },
+  {
+    value: 'magic',
+    label: 'Magic',
+    icon: Sparkles,
+    description: 'AI with evolving personality & emotions',
+    color: 'bg-gradient-to-r from-purple-500 to-pink-500',
+  },
 ];
 
 export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelectorProps) {
