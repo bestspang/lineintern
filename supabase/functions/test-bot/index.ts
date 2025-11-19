@@ -122,6 +122,38 @@ Deno.serve(async (req) => {
     // Parse and validate request
     const body = await req.json();
     
+    // Check if this is a mode command test
+    if (body.command === "mode" || (typeof body.message === 'string' && body.message.toLowerCase().match(/^\/(mode|m|โหมด|setmode)\s/))) {
+      const message = body.message || body.prompt || "";
+      const modeMatch = message.toLowerCase().match(/\/(mode|m|โหมด|setmode)\s+(helper|faq|report|fun|safety)/);
+      
+      if (!modeMatch) {
+        return new Response(
+          JSON.stringify({ 
+            reply: "Please specify a valid mode: helper, faq, report, fun, or safety\n\nExample: /mode helper" 
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const newMode = modeMatch[2];
+      const modeDescriptions = {
+        helper: "🤝 Helper Mode - Versatile assistant for general questions and tasks",
+        faq: "📚 FAQ Mode - Knowledge expert using your documentation",
+        report: "📊 Report Mode - Data analyst providing insights from analytics",
+        fun: "🎉 Fun Mode - Entertaining and creative responses",
+        safety: "🛡️ Safety Mode - Vigilant protector watching for security issues"
+      };
+
+      return new Response(
+        JSON.stringify({ 
+          reply: `✅ Mode changed to: ${newMode.toUpperCase()}\n\n${modeDescriptions[newMode as keyof typeof modeDescriptions]}\n\nI'll now respond according to this mode's behavior.`,
+          mode: newMode
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
     // Check if this is an imagine command test
     if (body.command === "imagine") {
       const imagineValidation = testImagineRequestSchema.safeParse(body);

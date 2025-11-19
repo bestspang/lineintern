@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { ModeSelector } from '@/components/ModeSelector';
 import { 
   Edit, 
   Trash2, 
@@ -53,6 +54,7 @@ export default function Commands() {
   const [testPrompt, setTestPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState('helper');
 
   // Fetch commands
   const { data: commands } = useQuery({
@@ -520,6 +522,13 @@ export default function Commands() {
             </TabsContent>
 
             <TabsContent value="test" className="space-y-6 mt-6">
+              <div className="flex justify-end mb-4">
+                <ModeSelector 
+                  currentMode={testMode} 
+                  onModeChange={setTestMode}
+                />
+              </div>
+              
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-6 h-6 text-primary" />
