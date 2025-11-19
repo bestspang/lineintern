@@ -24,7 +24,10 @@ import {
   CheckSquare,
   BarChart3,
   Info,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon,
+  Send,
+  Sparkles
 } from 'lucide-react';
 
 const iconMap: Record<string, any> = {
@@ -34,6 +37,7 @@ const iconMap: Record<string, any> = {
   BarChart3,
   Info,
   MessageSquare,
+  ImageIcon,
 };
 
 export default function Commands() {
@@ -46,6 +50,9 @@ export default function Commands() {
   const [isCommandDialogOpen, setIsCommandDialogOpen] = useState(false);
   const [isAliasDialogOpen, setIsAliasDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+  const [testPrompt, setTestPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
   // Fetch commands
   const { data: commands } = useQuery({
@@ -200,10 +207,11 @@ export default function Commands() {
       <Card>
         <CardContent className="pt-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="commands">คำสั่งหลัก</TabsTrigger>
               <TabsTrigger value="aliases">Aliases</TabsTrigger>
               <TabsTrigger value="triggers">Bot Triggers</TabsTrigger>
+              <TabsTrigger value="test">ทดสอบคำสั่ง</TabsTrigger>
             </TabsList>
 
             <TabsContent value="commands" className="space-y-4 mt-6">
@@ -509,6 +517,182 @@ export default function Commands() {
                   ))}
                 </TableBody>
               </Table>
+            </TabsContent>
+
+            <TabsContent value="test" className="space-y-6 mt-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                  <h3 className="text-xl font-semibold">ทดสอบคำสั่ง /imagine</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  ทดสอบการสร้างภาพด้วย AI โดยใช้คำสั่ง /imagine - ระบบจะสร้างภาพตามคำอธิบายที่คุณให้มา
+                </p>
+
+                <Card className="bg-muted/50">
+                  <CardContent className="pt-6">
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="test-prompt" className="text-base">Prompt (คำอธิบายภาพ)</Label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          อธิบายภาพที่ต้องการให้ AI สร้าง เช่น "วาดภาพแมวน้อยน่ารักกำลังเล่นกับลูกบอล"
+                        </p>
+                        <Textarea
+                          id="test-prompt"
+                          placeholder="เช่น: A beautiful sunset over mountains with a lake in the foreground"
+                          value={testPrompt}
+                          onChange={(e) => setTestPrompt(e.target.value)}
+                          rows={3}
+                          disabled={isGenerating}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">ตัวอย่าง Prompts</Label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {[
+                            'A cute cat playing with a ball of yarn',
+                            'Beautiful cherry blossoms in full bloom with Mount Fuji in the background',
+                            'A cozy coffee shop interior with warm lighting',
+                            'Futuristic city skyline at night with neon lights',
+                            'Peaceful zen garden with koi pond',
+                            'Delicious Thai food platter with pad thai and tom yum'
+                          ].map((example, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              className="justify-start text-left h-auto py-2"
+                              onClick={() => setTestPrompt(example)}
+                              disabled={isGenerating}
+                            >
+                              <span className="text-xs line-clamp-2">{example}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={async () => {
+                          if (!testPrompt.trim()) {
+                            toast({
+                              title: 'กรุณาใส่ prompt',
+                              description: 'โปรดระบุคำอธิบายภาพที่ต้องการสร้าง',
+                              variant: 'destructive'
+                            });
+                            return;
+                          }
+
+                          setIsGenerating(true);
+                          setGeneratedImage(null);
+
+                          try {
+                            const { data, error } = await supabase.functions.invoke('test-bot', {
+                              body: {
+                                command: 'imagine',
+                                prompt: testPrompt
+                              }
+                            });
+
+                            if (error) throw error;
+
+                            if (data?.imageUrl) {
+                              setGeneratedImage(data.imageUrl);
+                              toast({
+                                title: 'สร้างภาพสำเร็จ!',
+                                description: 'ภาพถูกสร้างและบันทึกแล้ว'
+                              });
+                            }
+                          } catch (error: any) {
+                            console.error('Error generating image:', error);
+                            toast({
+                              title: 'เกิดข้อผิดพลาด',
+                              description: error.message || 'ไม่สามารถสร้างภาพได้',
+                              variant: 'destructive'
+                            });
+                          } finally {
+                            setIsGenerating(false);
+                          }
+                        }}
+                        disabled={isGenerating || !testPrompt.trim()}
+                        className="w-full"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                            กำลังสร้างภาพ...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            สร้างภาพ
+                          </>
+                        )}
+                      </Button>
+
+                      {generatedImage && (
+                        <Card className="overflow-hidden">
+                          <CardContent className="p-0">
+                            <div className="relative">
+                              <img
+                                src={generatedImage}
+                                alt="Generated"
+                                className="w-full h-auto"
+                              />
+                              <div className="absolute top-2 right-2">
+                                <Badge className="bg-background/90 backdrop-blur">
+                                  <ImageIcon className="w-3 h-3 mr-1" />
+                                  Generated
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="p-4 space-y-2">
+                              <p className="text-sm font-medium">Prompt:</p>
+                              <p className="text-sm text-muted-foreground">{testPrompt}</p>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(generatedImage, '_blank')}
+                                >
+                                  เปิดในหน้าต่างใหม่
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(generatedImage);
+                                    toast({ title: 'คัดลอก URL แล้ว' });
+                                  }}
+                                >
+                                  คัดลอก URL
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      <div className="mt-4 p-4 bg-muted rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <Info className="w-5 h-5 text-muted-foreground mt-0.5" />
+                          <div className="text-sm text-muted-foreground space-y-1">
+                            <p className="font-medium">วิธีใช้ใน LINE:</p>
+                            <ul className="list-disc list-inside space-y-1 ml-2">
+                              <li>พิมพ์ <code className="bg-background px-1.5 py-0.5 rounded">/imagine</code> ตามด้วยคำอธิบายภาพ</li>
+                              <li>รอสักครู่เพื่อให้ AI สร้างภาพ</li>
+                              <li>บอทจะส่งภาพที่สร้างกลับมาให้ในแชท</li>
+                            </ul>
+                            <p className="mt-2">
+                              ตัวอย่าง: <code className="bg-background px-1.5 py-0.5 rounded">/imagine A beautiful sunset over the ocean</code>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </CardContent>

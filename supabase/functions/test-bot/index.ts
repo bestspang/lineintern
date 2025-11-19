@@ -65,6 +65,13 @@ const testBotRequestSchema = z.object({
     .min(1, "User ID is required"),
 });
 
+const testImagineRequestSchema = z.object({
+  command: z.literal("imagine"),
+  prompt: z.string()
+    .min(1, "Prompt cannot be empty")
+    .max(1000, "Prompt exceeds maximum length of 1000 characters"),
+});
+
 // Sanitize message text
 function sanitizeMessageText(text: string): string {
   if (!text || typeof text !== 'string') return '';
@@ -114,6 +121,109 @@ Deno.serve(async (req) => {
 
     // Parse and validate request
     const body = await req.json();
+    
+    // Check if this is an imagine command test
+    if (body.command === "imagine") {
+      const imagineValidation = testImagineRequestSchema.safeParse(body);
+      
+      if (!imagineValidation.success) {
+        console.error("[test-bot] Imagine validation failed:", imagineValidation.error.errors);
+        return new Response(
+          JSON.stringify({ error: "Invalid request", details: imagineValidation.error.errors }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { prompt } = imagineValidation.data;
+      console.log("[test-bot] Processing /imagine command with prompt:", prompt);
+
+      // Create service role client for storage operations
+      const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+      try {
+        // Call Lovable AI to generate image
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-image-preview',
+            messages: [
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            modalities: ['image', 'text']
+          })
+        });
+
+        if (!aiResponse.ok) {
+          const errorText = await aiResponse.text();
+          console.error("[test-bot] AI API error:", errorText);
+          throw new Error(`AI API error: ${aiResponse.statusText}`);
+        }
+
+        const aiData = await aiResponse.json();
+        const generatedImageBase64 = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+
+        if (!generatedImageBase64) {
+          throw new Error('No image generated from AI');
+        }
+
+        console.log("[test-bot] Image generated, uploading to storage...");
+
+        // Extract base64 data
+        const base64Data = generatedImageBase64.replace(/^data:image\/\w+;base64,/, '');
+        const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+        // Upload to Supabase Storage
+        const filename = `test-${Date.now()}.png`;
+        const { data: uploadData, error: uploadError } = await serviceSupabase.storage
+          .from('line-bot-assets')
+          .upload(filename, imageBuffer, {
+            contentType: 'image/png',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('[test-bot] Upload error:', uploadError);
+          throw new Error(`Failed to upload image: ${uploadError.message}`);
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = serviceSupabase.storage
+          .from('line-bot-assets')
+          .getPublicUrl(filename);
+
+        console.log("[test-bot] Image uploaded successfully:", publicUrl);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            imageUrl: publicUrl,
+            prompt: prompt
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
+      } catch (error: any) {
+        console.error('[test-bot] Error generating image:', error);
+        return new Response(
+          JSON.stringify({ error: error.message || 'Failed to generate image' }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        );
+      }
+    }
+    
+    // Regular chatbot test validation
     const validationResult = testBotRequestSchema.safeParse(body);
     
     if (!validationResult.success) {
