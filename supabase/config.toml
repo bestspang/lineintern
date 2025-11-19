@@ -3,5 +3,8 @@ project_id = "bjzzqfzgnslefqhnsmla"
 [functions.line-webhook]
 verify_jwt = false
 
+[functions.personality-engine]
+verify_jwt = false
+
 [functions.health]
 verify_jwt = false

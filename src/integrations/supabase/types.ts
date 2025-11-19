@@ -747,6 +747,56 @@ export type Database = {
           },
         ]
       }
+      personality_state: {
+        Row: {
+          created_at: string
+          current_interests: Json | null
+          energy_level: number
+          group_id: string
+          id: string
+          last_mood_change: string | null
+          mood: string
+          personality_traits: Json | null
+          recent_topics: Json | null
+          relationship_map: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_interests?: Json | null
+          energy_level?: number
+          group_id: string
+          id?: string
+          last_mood_change?: string | null
+          mood?: string
+          personality_traits?: Json | null
+          recent_topics?: Json | null
+          relationship_map?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_interests?: Json | null
+          energy_level?: number
+          group_id?: string
+          id?: string
+          last_mood_change?: string | null
+          mood?: string
+          personality_traits?: Json | null
+          recent_topics?: Json | null
+          relationship_map?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personality_state_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: true
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1087,7 +1137,7 @@ export type Database = {
         | "rate_limit"
         | "failed_reply"
       app_role: "admin" | "moderator" | "user"
-      group_mode: "helper" | "faq" | "report" | "fun" | "safety"
+      group_mode: "helper" | "faq" | "report" | "fun" | "safety" | "magic"
       group_status: "active" | "left" | "error" | "pending"
       knowledge_scope: "global" | "group"
       member_role: "member" | "admin" | "owner"
@@ -1230,7 +1280,7 @@ export const Constants = {
         "failed_reply",
       ],
       app_role: ["admin", "moderator", "user"],
-      group_mode: ["helper", "faq", "report", "fun", "safety"],
+      group_mode: ["helper", "faq", "report", "fun", "safety", "magic"],
       group_status: ["active", "left", "error", "pending"],
       knowledge_scope: ["global", "group"],
       member_role: ["member", "admin", "owner"],
