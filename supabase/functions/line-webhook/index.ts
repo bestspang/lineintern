@@ -3597,6 +3597,154 @@ Content: ${messageText}`;
 // PHASE 4: Task Scheduler & Reminders with /todo, /remind
 // =============================
 
+// Handler for /tasks @user command
+async function handleTasksCommand(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleTasksCommand] Listing tasks from: ${userMessage}`);
+
+  try {
+    // Extract @mention from message
+    const mentionMatch = userMessage.match(/@(\w+)/);
+    
+    if (!mentionMatch) {
+      await replyToLine(
+        replyToken,
+        'กรุณาระบุชื่อผู้ใช้ เช่น: /tasks @Alice\nPlease specify a user, e.g.: /tasks @Alice'
+      );
+      return;
+    }
+
+    const mentionedName = mentionMatch[1].toLowerCase();
+
+    // Find user by display name
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('id, line_user_id, display_name')
+      .ilike('display_name', mentionedName);
+
+    if (userError || !users || users.length === 0) {
+      await replyToLine(
+        replyToken,
+        `❌ ไม่พบผู้ใช้ @${mentionedName}\n❌ User @${mentionedName} not found`
+      );
+      return;
+    }
+
+    const targetUser = users[0];
+
+    // Get all pending work assignments for this user
+    const { data: tasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('status', 'pending')
+      .eq('task_type', 'work_assignment')
+      .contains('work_metadata', { assignee_user_id: targetUser.id })
+      .order('due_at', { ascending: true });
+
+    if (tasksError) {
+      console.error('[handleTasksCommand] Error fetching tasks:', tasksError);
+      await replyToLine(
+        replyToken,
+        '❌ เกิดข้อผิดพลาดในการดึงข้อมูลงาน\n❌ Error fetching tasks'
+      );
+      return;
+    }
+
+    if (!tasks || tasks.length === 0) {
+      await replyToLine(
+        replyToken,
+        `ℹ️ @${targetUser.display_name} ไม่มีงานที่ค้างอยู่\nℹ️ @${targetUser.display_name} has no pending tasks`
+      );
+      return;
+    }
+
+    // Get group language preference
+    const { data: group } = await supabase
+      .from('groups')
+      .select('language')
+      .eq('id', groupId)
+      .single();
+
+    const locale = group?.language === 'th' || group?.language === 'auto' ? 'th' : 'en';
+
+    // Categorize tasks
+    const now = new Date();
+    const overdueTasks = tasks.filter(t => new Date(t.due_at) < now);
+    const urgentTasks = tasks.filter(t => {
+      const hours = (new Date(t.due_at).getTime() - now.getTime()) / (1000 * 60 * 60);
+      return hours > 0 && hours <= 24;
+    });
+    const normalTasks = tasks.filter(t => {
+      const hours = (new Date(t.due_at).getTime() - now.getTime()) / (1000 * 60 * 60);
+      return hours > 24;
+    });
+
+    // Build message
+    const header = locale === 'th'
+      ? `📋 งานของ @${targetUser.display_name} (${tasks.length} งานที่ค้างอยู่):`
+      : `📋 Tasks for @${targetUser.display_name} (${tasks.length} pending tasks):`;
+
+    const sections: string[] = [header, ''];
+
+    // Overdue section
+    if (overdueTasks.length > 0) {
+      const sectionTitle = locale === 'th' ? '⚠️ เลยกำหนด:' : '⚠️ OVERDUE:';
+      sections.push(sectionTitle);
+      for (const task of overdueTasks) {
+        const timeInfo = formatTimeUntilDue(task.due_at, locale);
+        const assignerName = task.work_metadata?.assigner_name || 'Unknown';
+        sections.push(`   • ${task.title} (${timeInfo}) - assigned by @${assignerName}`);
+      }
+      sections.push('');
+    }
+
+    // Urgent section
+    if (urgentTasks.length > 0) {
+      const sectionTitle = locale === 'th' ? '🔥 ด่วน (ภายใน 24 ชม.):' : '🔥 URGENT (within 24h):';
+      sections.push(sectionTitle);
+      for (const task of urgentTasks) {
+        const timeInfo = formatTimeUntilDue(task.due_at, locale);
+        const assignerName = task.work_metadata?.assigner_name || 'Unknown';
+        sections.push(`   • ${task.title} (${timeInfo}) - assigned by @${assignerName}`);
+      }
+      sections.push('');
+    }
+
+    // Normal section
+    if (normalTasks.length > 0) {
+      const sectionTitle = locale === 'th' ? '📅 ปกติ:' : '📅 NORMAL:';
+      sections.push(sectionTitle);
+      for (const task of normalTasks) {
+        const timeInfo = formatTimeUntilDue(task.due_at, locale);
+        const assignerName = task.work_metadata?.assigner_name || 'Unknown';
+        sections.push(`   • ${task.title} (${timeInfo}) - assigned by @${assignerName}`);
+      }
+      sections.push('');
+    }
+
+    // Footer
+    const footer = locale === 'th'
+      ? `พิมพ์ /confirm @${targetUser.display_name} <งาน> เพื่ออนุมัติ`
+      : `Type /confirm @${targetUser.display_name} <task> to approve`;
+    sections.push(footer);
+
+    await replyToLine(replyToken, sections.join('\n'));
+    console.log(`[handleTasksCommand] Listed ${tasks.length} tasks for ${targetUser.display_name}`);
+
+  } catch (error) {
+    console.error('[handleTasksCommand] Error:', error);
+    await replyToLine(
+      replyToken,
+      '❌ เกิดข้อผิดพลาด\n❌ An error occurred'
+    );
+  }
+}
+
 async function handleTodoCommand(
   groupId: string,
   userId: string,
@@ -3604,6 +3752,7 @@ async function handleTodoCommand(
   replyToken: string
 ) {
   console.log(`[handleTodoCommand] Creating task from: ${userMessage}`);
+
 
   try {
     // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
@@ -5092,6 +5241,12 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 2: Handle /mentions command
   if (parsed.commandType === 'mentions') {
     await handleMentionsCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 4: Handle /tasks command - list work assignments for a user
+  if (parsed.commandType === 'tasks') {
+    await handleTasksCommand(group.id, user.id, parsed.userMessage, event.replyToken);
     return;
   }
 
