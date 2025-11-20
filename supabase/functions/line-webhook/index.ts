@@ -115,6 +115,86 @@ interface ApprovalResult {
   message: string;
 }
 
+// Helper function to approve a task
+async function approveTask(
+  task: any,
+  user: any,
+  groupId: string,
+  approvedTasks: Array<{ taskTitle: string; assigneeName: string; wasOverdue: boolean }>
+) {
+  const dueAt = new Date(task.due_at);
+  const now = new Date();
+  const wasOverdue = now > dueAt;
+  const daysLate = wasOverdue ? Math.ceil((now.getTime() - dueAt.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+  // Update task status
+  const { error: updateError } = await supabase
+    .from('tasks')
+    .update({
+      status: 'completed',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', task.id);
+
+  if (updateError) {
+    console.error(`[approveTask] Error updating task ${task.id}:`, updateError);
+    return;
+  }
+
+  console.log(`[approveTask] Approved task ${task.id} for ${user.display_name}, wasOverdue: ${wasOverdue}`);
+  approvedTasks.push({ taskTitle: task.title, assigneeName: user.display_name, wasOverdue });
+
+  // Update personality based on completion timeliness
+  await updatePersonalityOnWorkCompletion(groupId, user.id, wasOverdue, daysLate);
+}
+
+// Helper function to get task urgency emoji
+function getTaskUrgencyEmoji(task: any): string {
+  const hoursLeft = (new Date(task.due_at).getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursLeft < 0) return '⚠️'; // Overdue
+  if (hoursLeft <= 6) return '🔥'; // Urgent
+  if (hoursLeft <= 24) return '⏰'; // Soon
+  return '📅'; // Normal
+}
+
+// Helper function to get task status label
+function getTaskStatusLabel(task: any, locale: 'th' | 'en'): string {
+  const hoursLeft = (new Date(task.due_at).getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursLeft < 0) {
+    return locale === 'th' ? '[เลยกำหนด]' : '[OVERDUE]';
+  }
+  if (hoursLeft <= 6) {
+    return locale === 'th' ? '[ด่วนมาก]' : '[URGENT]';
+  }
+  if (hoursLeft <= 24) {
+    return locale === 'th' ? '[เร่งด่วน]' : '[SOON]';
+  }
+  return '';
+}
+
+// Helper function to format time until due
+function formatTimeUntilDue(dueAt: string, locale: 'th' | 'en'): string {
+  const hours = (new Date(dueAt).getTime() - Date.now()) / (1000 * 60 * 60);
+  
+  if (hours < 0) {
+    const daysOverdue = Math.ceil(Math.abs(hours) / 24);
+    return locale === 'th' 
+      ? `เลยมา ${daysOverdue} วัน`
+      : `${daysOverdue}d overdue`;
+  }
+  
+  if (hours <= 24) {
+    return locale === 'th'
+      ? `เหลือ ${Math.ceil(hours)} ชม.`
+      : `${Math.ceil(hours)}h left`;
+  }
+  
+  const days = Math.ceil(hours / 24);
+  return locale === 'th'
+    ? `เหลือ ${days} วัน`
+    : `${days}d left`;
+}
+
 async function detectAndHandleWorkApproval(
   text: string,
   approverId: string,
@@ -123,22 +203,40 @@ async function detectAndHandleWorkApproval(
 ): Promise<ApprovalResult> {
   const lowerText = text.toLowerCase().trim();
   
-  // Pattern matching for approval commands
+  // Pattern matching for approval commands - enhanced to capture keywords
   const approvalPatterns = [
-    /(?:\/confirm|\/อนุมัติ)\s+(?:งาน|task|work)\s+@(\w+)/gi,
-    /(?:\/งาน|\/task)\s+@(\w+)\s+(?:ผ่าน|approved?|complete?d?|done|เสร็จ)/gi,
-    /(?:\/approve)\s+@(\w+)/gi,
-    /@(\w+)\s+(?:งาน)?(?:เสร็จ|ผ่าน|done|complete?d?)/gi,
+    /(?:\/confirm|\/อนุมัติ)\s+(?:งาน|task|work)?\s*@(\w+)(?:\s+(.+))?/gi,
+    /(?:\/งาน|\/task)\s+@(\w+)\s+(?:ผ่าน|approved?|complete?d?|done|เสร็จ)(?:\s+(.+))?/gi,
+    /(?:\/approve)\s+@(\w+)(?:\s+(.+))?/gi,
+    /@(\w+)\s+(?:งาน)?(?:เสร็จ|ผ่าน|done|complete?d?)(?:\s+(.+))?/gi,
   ];
 
   const mentions: string[] = [];
+  const keywords: string[] = [];
+  let commandType = '';
   
   for (const pattern of approvalPatterns) {
     let match;
-    while ((match = pattern.exec(lowerText)) !== null) {
+    while ((match = pattern.exec(text)) !== null) {
       const mentionedName = match[1];
+      const keywordsPart = match[2] || match[3];
+      
       if (mentionedName && !mentions.includes(mentionedName.toLowerCase())) {
         mentions.push(mentionedName.toLowerCase());
+      }
+      
+      // Extract keywords if provided
+      if (keywordsPart && keywordsPart.trim()) {
+        const extractedKeywords = keywordsPart
+          .trim()
+          .split(/\s+/)
+          .filter(k => k && !['list', 'all', 'overdue', 'urgent', 'ด่วน', 'เลยกำหนด', 'ทั้งหมด'].includes(k.toLowerCase()));
+        keywords.push(...extractedKeywords);
+        
+        // Check for special commands
+        if (/\b(list|all|overdue|urgent|ด่วน|เลยกำหนด|ทั้งหมด)\b/i.test(keywordsPart)) {
+          commandType = keywordsPart.toLowerCase().trim();
+        }
       }
     }
   }
@@ -147,13 +245,12 @@ async function detectAndHandleWorkApproval(
     return { detected: false, approvedCount: 0, message: '' };
   }
 
-  console.log(`[detectAndHandleWorkApproval] Detected approval request for: ${mentions.join(', ')}`);
+  console.log(`[detectAndHandleWorkApproval] Detected approval for: ${mentions.join(', ')}, keywords: [${keywords.join(', ')}], command: ${commandType}`);
 
   // Find pending work tasks for mentioned users
   const { data: users, error: userError } = await supabase
     .from('users')
     .select('id, line_user_id, display_name')
-    .eq('group_id', groupId)
     .in('display_name', mentions.map(m => m.toLowerCase()));
 
   if (userError || !users || users.length === 0) {
@@ -168,7 +265,7 @@ async function detectAndHandleWorkApproval(
 
   for (const user of users) {
     // Find pending work tasks assigned to this user in this group
-    const { data: tasks, error: tasksError } = await supabase
+    const { data: allTasks, error: tasksError } = await supabase
       .from('tasks')
       .select('*')
       .eq('group_id', groupId)
@@ -177,37 +274,100 @@ async function detectAndHandleWorkApproval(
       .contains('work_metadata', { assignee_user_id: user.id })
       .order('due_at', { ascending: true });
 
-    if (tasksError || !tasks || tasks.length === 0) {
+    if (tasksError || !allTasks || allTasks.length === 0) {
       console.log(`[detectAndHandleWorkApproval] No pending work tasks for ${user.display_name}`);
       continue;
     }
 
-    // If multiple tasks, take the oldest one
-    const task = tasks[0];
-    const dueAt = new Date(task.due_at);
-    const now = new Date();
-    const wasOverdue = now > dueAt;
-    const daysLate = wasOverdue ? Math.ceil((now.getTime() - dueAt.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    // Filter tasks based on keywords
+    let tasks = allTasks;
+    if (keywords.length > 0) {
+      tasks = allTasks.filter(task => {
+        const searchText = `${task.title} ${task.description || ''}`.toLowerCase();
+        return keywords.some(kw => searchText.includes(kw.toLowerCase()));
+      });
+      
+      if (tasks.length === 0) {
+        const msg = locale === 'th'
+          ? `ℹ️ ไม่พบงานของ @${user.display_name} ที่มีคำว่า "${keywords.join(', ')}"`
+          : `ℹ️ No tasks found for @${user.display_name} matching "${keywords.join(', ')}"`;
+        return { detected: true, approvedCount: 0, message: msg };
+      }
+    }
 
-    // Update task status
-    const { error: updateError } = await supabase
-      .from('tasks')
-      .update({
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', task.id);
-
-    if (updateError) {
-      console.error(`[detectAndHandleWorkApproval] Error updating task ${task.id}:`, updateError);
+    // Handle special commands
+    if (commandType === 'all' || commandType === 'ทั้งหมด') {
+      // Approve all tasks
+      for (const task of tasks) {
+        await approveTask(task, user, groupId, approvedTasks);
+      }
+      continue;
+    } else if (commandType === 'overdue' || commandType === 'เลยกำหนด') {
+      const overdueTasks = tasks.filter(t => new Date(t.due_at) < new Date());
+      if (overdueTasks.length === 0) {
+        const msg = locale === 'th'
+          ? `ℹ️ @${user.display_name} ไม่มีงานที่เลยกำหนด`
+          : `ℹ️ @${user.display_name} has no overdue tasks`;
+        return { detected: true, approvedCount: 0, message: msg };
+      }
+      for (const task of overdueTasks) {
+        await approveTask(task, user, groupId, approvedTasks);
+      }
+      continue;
+    } else if (commandType === 'urgent' || commandType === 'ด่วน') {
+      const urgentTasks = tasks.filter(t => {
+        const hours = (new Date(t.due_at).getTime() - Date.now()) / (1000 * 60 * 60);
+        return hours > 0 && hours <= 24;
+      });
+      if (urgentTasks.length === 0) {
+        const msg = locale === 'th'
+          ? `ℹ️ @${user.display_name} ไม่มีงานด่วน (ภายใน 24 ชม.)`
+          : `ℹ️ @${user.display_name} has no urgent tasks (within 24h)`;
+        return { detected: true, approvedCount: 0, message: msg };
+      }
+      for (const task of urgentTasks) {
+        await approveTask(task, user, groupId, approvedTasks);
+      }
       continue;
     }
 
-    console.log(`[detectAndHandleWorkApproval] Approved task ${task.id} for ${user.display_name}, wasOverdue: ${wasOverdue}`);
-    approvedTasks.push({ taskTitle: task.title, assigneeName: user.display_name, wasOverdue });
+    // If multiple tasks found, show interactive selection
+    if (tasks.length > 1) {
+      const taskList = tasks.map((task, index) => {
+        const emoji = getTaskUrgencyEmoji(task);
+        const status = getTaskStatusLabel(task, locale);
+        const timeInfo = formatTimeUntilDue(task.due_at, locale);
+        return `${index + 1}️⃣ ${emoji} ${task.title} (${timeInfo}) ${status}`;
+      }).join('\n');
 
-    // Update personality based on completion timeliness
-    await updatePersonalityOnWorkCompletion(groupId, user.id, wasOverdue, daysLate);
+      // Store pending approval in memory
+      await supabase
+        .from('memory_items')
+        .insert({
+          scope: 'group',
+          group_id: groupId,
+          category: 'pending_approval',
+          title: `Approval for @${user.display_name}`,
+          content: JSON.stringify({
+            assignee_user_id: user.id,
+            assignee_name: user.display_name,
+            task_ids: tasks.map(t => t.id),
+            expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min expiry
+          }),
+          source_type: 'system',
+          importance_score: 1.0
+        });
+
+      const msg = locale === 'th'
+        ? `@${user.display_name} มีงานที่รออนุมัติ ${tasks.length} งาน:\n\n${taskList}\n\nตอบด้วยตัวเลข (เช่น 1, 2) หรือ "all" เพื่ออนุมัติ`
+        : `@${user.display_name} has ${tasks.length} pending tasks:\n\n${taskList}\n\nReply with number (e.g., 1, 2) or "all" to approve`;
+      
+      return { detected: true, approvedCount: 0, message: msg };
+    }
+
+    // Single task - approve it
+    const task = tasks[0];
+    await approveTask(task, user, groupId, approvedTasks);
   }
 
   if (approvedTasks.length === 0) {
@@ -238,6 +398,128 @@ async function detectAndHandleWorkApproval(
     approvedCount: approvedTasks.length,
     message: confirmationParts.join('\n'),
   };
+}
+
+// Function to check and handle pending approval responses
+async function checkPendingApprovalResponse(
+  userId: string,
+  groupId: string,
+  messageText: string,
+  locale: 'th' | 'en'
+): Promise<{ isPending: boolean; message?: string; approvedCount?: number }> {
+  // Check for pending approval in memory
+  const { data: pendingMemories, error } = await supabase
+    .from('memory_items')
+    .select('*')
+    .eq('scope', 'group')
+    .eq('group_id', groupId)
+    .eq('category', 'pending_approval')
+    .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Within last 5 minutes
+    .order('created_at', { ascending: false });
+
+  if (error || !pendingMemories || pendingMemories.length === 0) {
+    return { isPending: false };
+  }
+
+  // Parse user's response
+  const response = messageText.toLowerCase().trim();
+  
+  // Check if it's a selection response (number, "all", etc.)
+  const isNumber = /^\d+$/.test(response);
+  const isAll = /^(all|ทั้งหมด)$/i.test(response);
+  const isCommaSeparated = /^\d+(?:,\s*\d+)*$/.test(response);
+  
+  if (!isNumber && !isAll && !isCommaSeparated) {
+    return { isPending: false };
+  }
+
+  // Find the relevant pending approval
+  for (const memory of pendingMemories) {
+    const content = JSON.parse(memory.content);
+    
+    // Check if expired
+    if (new Date(content.expires_at) < new Date()) {
+      // Clean up expired memory
+      await supabase.from('memory_items').delete().eq('id', memory.id);
+      continue;
+    }
+
+    // Get tasks
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('*')
+      .in('id', content.task_ids)
+      .eq('status', 'pending');
+
+    if (!tasks || tasks.length === 0) {
+      // Clean up - no pending tasks
+      await supabase.from('memory_items').delete().eq('id', memory.id);
+      continue;
+    }
+
+    // Handle selection
+    let selectedTasks: any[] = [];
+    
+    if (isAll) {
+      selectedTasks = tasks;
+    } else if (isNumber) {
+      const index = parseInt(response) - 1;
+      if (index >= 0 && index < tasks.length) {
+        selectedTasks = [tasks[index]];
+      }
+    } else if (isCommaSeparated) {
+      const indices = response.split(',').map(n => parseInt(n.trim()) - 1);
+      selectedTasks = tasks.filter((_, i) => indices.includes(i));
+    }
+
+    if (selectedTasks.length === 0) {
+      const msg = locale === 'th'
+        ? '❌ เลขที่เลือกไม่ถูกต้อง กรุณาเลือกใหม่'
+        : '❌ Invalid selection, please try again';
+      return { isPending: true, message: msg, approvedCount: 0 };
+    }
+
+    // Approve selected tasks
+    const approvedTasks: Array<{ taskTitle: string; assigneeName: string; wasOverdue: boolean }> = [];
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', content.assignee_user_id)
+      .single();
+
+    if (user) {
+      for (const task of selectedTasks) {
+        await approveTask(task, user, groupId, approvedTasks);
+      }
+    }
+
+    // Clean up pending approval
+    await supabase.from('memory_items').delete().eq('id', memory.id);
+
+    // Build confirmation message
+    const confirmationParts: string[] = [];
+    for (const approved of approvedTasks) {
+      if (approved.wasOverdue) {
+        const msg = locale === 'th'
+          ? `✅ งาน "${approved.taskTitle}" ของ @${approved.assigneeName} ถูกอนุมัติแล้ว แต่ส่งช้ากว่ากำหนดนะคะ 😅`
+          : `✅ Task "${approved.taskTitle}" by @${approved.assigneeName} approved (late submission) 😅`;
+        confirmationParts.push(msg);
+      } else {
+        const msg = locale === 'th'
+          ? `✅ เยี่ยมมาก! งาน "${approved.taskTitle}" ของ @${approved.assigneeName} เสร็จแล้ว 🎉`
+          : `✅ Excellent! Task "${approved.taskTitle}" by @${approved.assigneeName} completed! 🎉`;
+        confirmationParts.push(msg);
+      }
+    }
+
+    return {
+      isPending: true,
+      message: confirmationParts.join('\n\n'),
+      approvedCount: approvedTasks.length
+    };
+  }
+
+  return { isPending: false };
 }
 
 async function updatePersonalityOnWorkCompletion(
@@ -4713,6 +4995,23 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending work approval confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.65: Check for Pending Approval Response (interactive selection)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const pendingResult = await checkPendingApprovalResponse(user.id, group.id, event.message.text, locale);
+    
+    if (pendingResult.isPending && pendingResult.message) {
+      console.log(`[handleMessageEvent] Handled pending approval selection: ${pendingResult.approvedCount} task(s)`);
+      try {
+        await replyToLine(event.replyToken, pendingResult.message);
+        console.log('[handleMessageEvent] Sent pending approval result');
+        return; // Don't continue to AI response since we already replied
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending pending approval result:', error);
       }
     }
   }
