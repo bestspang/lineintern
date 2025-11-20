@@ -105,6 +105,252 @@ interface WorkAssignment {
   rawDeadlineText: string;
 }
 
+// =============================
+// WORK APPROVAL DETECTION
+// =============================
+
+interface ApprovalResult {
+  detected: boolean;
+  approvedCount: number;
+  message: string;
+}
+
+async function detectAndHandleWorkApproval(
+  text: string,
+  approverId: string,
+  groupId: string,
+  locale: 'th' | 'en'
+): Promise<ApprovalResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for approval commands
+  const approvalPatterns = [
+    /(?:\/confirm|\/อนุมัติ)\s+(?:งาน|task|work)\s+@(\w+)/gi,
+    /(?:\/งาน|\/task)\s+@(\w+)\s+(?:ผ่าน|approved?|complete?d?|done|เสร็จ)/gi,
+    /(?:\/approve)\s+@(\w+)/gi,
+    /@(\w+)\s+(?:งาน)?(?:เสร็จ|ผ่าน|done|complete?d?)/gi,
+  ];
+
+  const mentions: string[] = [];
+  
+  for (const pattern of approvalPatterns) {
+    let match;
+    while ((match = pattern.exec(lowerText)) !== null) {
+      const mentionedName = match[1];
+      if (mentionedName && !mentions.includes(mentionedName.toLowerCase())) {
+        mentions.push(mentionedName.toLowerCase());
+      }
+    }
+  }
+
+  if (mentions.length === 0) {
+    return { detected: false, approvedCount: 0, message: '' };
+  }
+
+  console.log(`[detectAndHandleWorkApproval] Detected approval request for: ${mentions.join(', ')}`);
+
+  // Find pending work tasks for mentioned users
+  const { data: users, error: userError } = await supabase
+    .from('users')
+    .select('id, line_user_id, display_name')
+    .eq('group_id', groupId)
+    .in('display_name', mentions.map(m => m.toLowerCase()));
+
+  if (userError || !users || users.length === 0) {
+    console.error('[detectAndHandleWorkApproval] Error finding users:', userError);
+    const msg = locale === 'th' 
+      ? `❌ ไม่พบผู้ใช้ ${mentions.join(', ')}` 
+      : `❌ User(s) not found: ${mentions.join(', ')}`;
+    return { detected: true, approvedCount: 0, message: msg };
+  }
+
+  const approvedTasks: Array<{ taskTitle: string; assigneeName: string; wasOverdue: boolean }> = [];
+
+  for (const user of users) {
+    // Find pending work tasks assigned to this user in this group
+    const { data: tasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('status', 'pending')
+      .eq('task_type', 'work_assignment')
+      .contains('work_metadata', { assignee_user_id: user.id })
+      .order('due_at', { ascending: true });
+
+    if (tasksError || !tasks || tasks.length === 0) {
+      console.log(`[detectAndHandleWorkApproval] No pending work tasks for ${user.display_name}`);
+      continue;
+    }
+
+    // If multiple tasks, take the oldest one
+    const task = tasks[0];
+    const dueAt = new Date(task.due_at);
+    const now = new Date();
+    const wasOverdue = now > dueAt;
+    const daysLate = wasOverdue ? Math.ceil((now.getTime() - dueAt.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    // Update task status
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', task.id);
+
+    if (updateError) {
+      console.error(`[detectAndHandleWorkApproval] Error updating task ${task.id}:`, updateError);
+      continue;
+    }
+
+    console.log(`[detectAndHandleWorkApproval] Approved task ${task.id} for ${user.display_name}, wasOverdue: ${wasOverdue}`);
+    approvedTasks.push({ taskTitle: task.title, assigneeName: user.display_name, wasOverdue });
+
+    // Update personality based on completion timeliness
+    await updatePersonalityOnWorkCompletion(groupId, user.id, wasOverdue, daysLate);
+  }
+
+  if (approvedTasks.length === 0) {
+    const msg = locale === 'th' 
+      ? `ℹ️ ไม่พบงานที่รอการอนุมัติสำหรับ ${mentions.join(', ')}` 
+      : `ℹ️ No pending work tasks found for ${mentions.join(', ')}`;
+    return { detected: true, approvedCount: 0, message: msg };
+  }
+
+  // Build confirmation message
+  const confirmationParts: string[] = [];
+  if (locale === 'th') {
+    confirmationParts.push('✅ อนุมัติงานเรียบร้อยแล้ว:');
+    for (const task of approvedTasks) {
+      const status = task.wasOverdue ? '⚠️ (ส่งช้า)' : '🎉 (ทันเวลา)';
+      confirmationParts.push(`   • ${task.taskTitle} - @${task.assigneeName} ${status}`);
+    }
+  } else {
+    confirmationParts.push('✅ Work approved:');
+    for (const task of approvedTasks) {
+      const status = task.wasOverdue ? '⚠️ (Late)' : '🎉 (On time)';
+      confirmationParts.push(`   • ${task.taskTitle} - @${task.assigneeName} ${status}`);
+    }
+  }
+
+  return {
+    detected: true,
+    approvedCount: approvedTasks.length,
+    message: confirmationParts.join('\n'),
+  };
+}
+
+async function updatePersonalityOnWorkCompletion(
+  groupId: string,
+  assigneeUserId: string,
+  wasOverdue: boolean,
+  daysLate: number
+): Promise<void> {
+  try {
+    // Get current personality state
+    const { data: personalityState, error: fetchError } = await supabase
+      .from('personality_state')
+      .select('*')
+      .eq('group_id', groupId)
+      .single();
+
+    if (fetchError || !personalityState) {
+      console.error('[updatePersonalityOnWorkCompletion] Error fetching personality:', fetchError);
+      return;
+    }
+
+    const relationshipMap = personalityState.relationship_map as Record<string, any> || {};
+    const userRelationship = relationshipMap[assigneeUserId] || {
+      familiarity: 0.5,
+      tone: 'neutral',
+      work_reliability: 0.5,
+      response_quality: 0.5,
+      completed_count: 0,
+      overdue_count: 0,
+    };
+
+    // Update work-related metrics
+    userRelationship.completed_count = (userRelationship.completed_count || 0) + 1;
+    
+    if (wasOverdue) {
+      userRelationship.overdue_count = (userRelationship.overdue_count || 0) + 1;
+      
+      // Decrease work reliability based on lateness
+      const reliabilityPenalty = Math.min(0.15, daysLate * 0.03);
+      userRelationship.work_reliability = Math.max(0, (userRelationship.work_reliability || 0.5) - reliabilityPenalty);
+      
+      // Update tone to be more disappointed
+      if (daysLate > 3) {
+        userRelationship.tone = 'disappointed';
+      } else if (daysLate > 1) {
+        userRelationship.tone = 'concerned';
+      }
+    } else {
+      // Increase work reliability for on-time completion
+      userRelationship.work_reliability = Math.min(1, (userRelationship.work_reliability || 0.5) + 0.05);
+      
+      // Update tone to be more positive
+      if (userRelationship.completed_count >= 3 && userRelationship.overdue_count === 0) {
+        userRelationship.tone = 'admiring';
+      } else {
+        userRelationship.tone = 'pleased';
+      }
+    }
+
+    relationshipMap[assigneeUserId] = userRelationship;
+
+    // Update mood and energy based on completion
+    let moodChange = 'neutral';
+    let energyChange = 0;
+
+    if (wasOverdue) {
+      if (daysLate > 3) {
+        moodChange = 'frustrated';
+        energyChange = -10;
+      } else {
+        moodChange = 'relieved';
+        energyChange = -5;
+      }
+    } else {
+      moodChange = 'happy';
+      energyChange = +10;
+    }
+
+    const newEnergy = Math.max(0, Math.min(100, personalityState.energy_level + energyChange));
+
+    // Update personality state
+    const { error: updateError } = await supabase
+      .from('personality_state')
+      .update({
+        mood: moodChange,
+        energy_level: newEnergy,
+        relationship_map: relationshipMap,
+        last_mood_change: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('group_id', groupId);
+
+    if (updateError) {
+      console.error('[updatePersonalityOnWorkCompletion] Error updating personality:', updateError);
+      return;
+    }
+
+    // Log mood history
+    await supabase
+      .from('mood_history')
+      .insert({
+        group_id: groupId,
+        mood: moodChange,
+        energy_level: newEnergy,
+        recorded_at: new Date().toISOString(),
+      });
+
+    console.log(`[updatePersonalityOnWorkCompletion] Updated personality for user ${assigneeUserId}: reliability=${userRelationship.work_reliability.toFixed(2)}, overdue=${wasOverdue}, mood=${moodChange}`);
+  } catch (error) {
+    console.error('[updatePersonalityOnWorkCompletion] Unexpected error:', error);
+  }
+}
+
 function extractMentions(text: string): Array<{ lineUserId: string; displayName: string }> {
   // Match @username or @U1234567890abcdef (LINE user ID format)
   const mentionPattern = /@([^\s]+)/g;
@@ -4013,6 +4259,23 @@ async function handleMessageEvent(event: LineEvent) {
         } catch (error) {
           console.error('[handleMessageEvent] Error sending work assignment confirmation:', error);
         }
+      }
+    }
+  }
+
+  // PHASE 2.6: Work Approval Detection (runs for EVERY message)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const approvalResult = await detectAndHandleWorkApproval(event.message.text, user.id, group.id, locale);
+    
+    if (approvalResult.detected) {
+      console.log(`[handleMessageEvent] Detected work approval for ${approvalResult.approvedCount} task(s)`);
+      try {
+        await replyToLine(event.replyToken, approvalResult.message);
+        console.log('[handleMessageEvent] Sent work approval confirmation');
+        return; // Don't continue to AI response since we already replied
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending work approval confirmation:', error);
       }
     }
   }
