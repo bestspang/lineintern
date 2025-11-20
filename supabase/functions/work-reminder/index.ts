@@ -1,104 +1,294 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const lineAccessToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function pushToLine(to: string, text: string) {
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lineAccessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to,
-      messages: [{ type: "text", text }],
-    }),
-  });
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
 
-  if (!response.ok) {
-    throw new Error(`LINE API error: ${response.status}`);
-  }
-}
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Reminder intervals in hours before deadline
+const DEFAULT_REMINDER_INTERVALS = [24, 6, 1];
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
+  if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("[work-reminder] Starting reminder check...");
+    console.log('[work-reminder] Starting hourly work reminder check...');
     
     const now = new Date();
-    
-    // Find tasks that need reminders (1 day, 6 hours, 1 hour before due)
-    const { data: tasks, error } = await supabase
-      .from("tasks")
-      .select("*, users!tasks_assigned_to_user_id_fkey(line_user_id, display_name), groups!tasks_group_id_fkey(language)")
-      .eq("task_type", "work_assignment")
-      .eq("status", "pending")
-      .gte("due_at", now.toISOString())
-      .order("due_at", { ascending: true });
+    const results: Array<{ taskId: string; status: string; remindersSent: number }> = [];
 
-    if (error) throw error;
-    if (!tasks || tasks.length === 0) {
-      console.log("[work-reminder] No tasks to remind");
-      return new Response(JSON.stringify({ success: true, reminded: 0 }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Fetch all pending work assignments
+    const { data: workTasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        groups!inner(line_group_id, display_name, language)
+      `)
+      .eq('status', 'pending')
+      .eq('task_type', 'work_assignment')
+      .gte('due_at', now.toISOString())
+      .order('due_at', { ascending: true });
+
+    if (tasksError) {
+      console.error('[work-reminder] Error fetching tasks:', tasksError);
+      return new Response(JSON.stringify({ error: 'Failed to fetch tasks' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    let remindedCount = 0;
+    if (!workTasks || workTasks.length === 0) {
+      console.log('[work-reminder] No pending work tasks found');
+      return new Response(JSON.stringify({ message: 'No pending work tasks' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    for (const task of tasks) {
-      const dueAt = new Date(task.due_at);
-      const hoursUntilDue = (dueAt.getTime() - now.getTime()) / (1000 * 60 * 60);
-      
-      const metadata = task.work_metadata || {};
-      const reminderCount = metadata.reminder_count || 0;
-      const customHours = metadata.custom_reminder_hours || [24, 6, 1];
-      
-      // Check if we should send a reminder
-      let shouldRemind = false;
-      let reminderType = "";
-      
-      if (reminderCount === 0 && hoursUntilDue <= 24 && hoursUntilDue > 6) {
-        shouldRemind = true;
-        reminderType = "24h";
-      } else if (reminderCount === 1 && hoursUntilDue <= 6 && hoursUntilDue > 1) {
-        shouldRemind = true;
-        reminderType = "6h";
-      } else if (reminderCount === 2 && hoursUntilDue <= 1) {
-        shouldRemind = true;
-        reminderType = "1h";
-      }
-      
-      if (shouldRemind && reminderCount < 3) {
-        const user = task.users as any;
-        const group = task.groups as any;
-        const locale = group?.language === 'en' ? 'en' : 'th';
+    console.log(`[work-reminder] Processing ${workTasks.length} pending work tasks`);
+
+    for (const task of workTasks) {
+      try {
+        const dueAt = new Date(task.due_at);
+        const hoursUntilDue = (dueAt.getTime() - now.getTime()) / (1000 * 60 * 60);
         
-        let message = "";
-        if (locale === 'th') {
-          if (reminderType === "24h") {
-            message = `⏰ *เตือนงาน* ⏰\n\nงาน: "${task.title}"\nเหลือเวลาอีก 1 วัน\n\nเตรียมตัวให้พร้อมนะ! 💪`;
-          } else if (reminderType === "6h") {
-            message = `⏰ *เตือนงานด่วน!* ⏰\n\nงาน: "${task.title}"\nเหลือเวลาอีก 6 ชั่วโมง\n\nรีบทำให้เสร็จนะ! ⚡`;
-          } else {
-            message = `🔥 *เตือนงานเร่งด่วน!* 🔥\n\nงาน: "${task.title}"\nเหลือเวลาอีก 1 ชั่วโมง!\n\nรีบส่งเดี๋ยวนี้! 🚨`;
+        // Get custom reminder preferences or use defaults
+        const reminderIntervals = task.work_metadata?.reminder_intervals || DEFAULT_REMINDER_INTERVALS;
+        const sentReminders = task.work_metadata?.sent_reminders || [];
+        
+        // Check which reminder to send based on time remaining
+        let reminderToSend: { interval: number; urgency: 'low' | 'medium' | 'high' } | null = null;
+        
+        for (const interval of reminderIntervals.sort((a: number, b: number) => b - a)) {
+          // Check if we should send this reminder
+          if (hoursUntilDue <= interval && hoursUntilDue > (interval - 1) && !sentReminders.includes(interval)) {
+            // Determine urgency based on interval
+            let urgency: 'low' | 'medium' | 'high' = 'low';
+            if (interval <= 1) urgency = 'high';
+            else if (interval <= 6) urgency = 'medium';
+            
+            reminderToSend = { interval, urgency };
+            break;
           }
-        } else {
-          if (reminderType === "24h") {
-            message = `⏰ *Task Reminder* ⏰\n\nTask: "${task.title}"\n1 day remaining\n\nGet ready! 💪`;
+        }
+
+        if (!reminderToSend) {
+          continue; // No reminder needed at this time
+        }
+
+        // Fetch assignee details
+        const assigneeId = task.work_metadata?.assignee_user_id;
+        if (!assigneeId) {
+          console.log(`[work-reminder] No assignee for task ${task.id}, skipping`);
+          continue;
+        }
+
+        const { data: assignee } = await supabase
+          .from('users')
+          .select('display_name, line_user_id')
+          .eq('id', assigneeId)
+          .single();
+
+        if (!assignee) {
+          console.log(`[work-reminder] Assignee not found for task ${task.id}, skipping`);
+          continue;
+        }
+
+        // Generate reminder message
+        const locale = task.groups.language === 'th' || task.groups.language === 'auto' ? 'th' : 'en';
+        const reminderMessage = generateReminderMessage(
+          task.title,
+          assignee.display_name,
+          reminderToSend.interval,
+          reminderToSend.urgency,
+          hoursUntilDue,
+          locale
+        );
+
+        // Send reminder to LINE group
+        await sendLineMessage(task.groups.line_group_id, reminderMessage);
+
+        // Update task metadata to mark reminder as sent
+        const updatedSentReminders = [...sentReminders, reminderToSend.interval];
+        const updatedMetadata = {
+          ...task.work_metadata,
+          sent_reminders: updatedSentReminders,
+          last_reminder_at: now.toISOString(),
+        };
+
+        await supabase
+          .from('tasks')
+          .update({ work_metadata: updatedMetadata })
+          .eq('id', task.id);
+
+        console.log(`[work-reminder] Sent ${reminderToSend.urgency} urgency reminder for task ${task.id} (${reminderToSend.interval}h before)`);
+        results.push({ taskId: task.id, status: 'sent', remindersSent: updatedSentReminders.length });
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[work-reminder] Error processing task ${task.id}:`, error);
+        results.push({ taskId: task.id, status: 'error', remindersSent: 0 });
+      }
+    }
+
+    const sentCount = results.filter(r => r.status === 'sent').length;
+    console.log(`[work-reminder] Completed: ${sentCount} reminders sent`);
+
+    return new Response(JSON.stringify({
+      message: 'Work reminders processed',
+      total: workTasks.length,
+      sent: sentCount,
+      results,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[work-reminder] Fatal error:', error);
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+function generateReminderMessage(
+  taskTitle: string,
+  assigneeName: string,
+  interval: number,
+  urgency: 'low' | 'medium' | 'high',
+  exactHoursRemaining: number,
+  locale: 'th' | 'en'
+): string {
+  const hoursDisplay = Math.floor(exactHoursRemaining);
+  const minutesDisplay = Math.floor((exactHoursRemaining - hoursDisplay) * 60);
+
+  if (locale === 'th') {
+    // Urgency-based emojis and tone
+    let emoji = '⏰';
+    let tone = '';
+    
+    if (urgency === 'high') {
+      emoji = '🚨';
+      tone = 'เร่งด่วน! ';
+    } else if (urgency === 'medium') {
+      emoji = '⚠️';
+      tone = 'ใกล้ถึงเวลาแล้ว ';
+    } else {
+      emoji = '📅';
+      tone = '';
+    }
+
+    let timeMessage = '';
+    if (hoursDisplay >= 24) {
+      const days = Math.floor(hoursDisplay / 24);
+      timeMessage = `อีก ${days} วัน`;
+    } else if (hoursDisplay >= 1) {
+      if (minutesDisplay > 0) {
+        timeMessage = `อีก ${hoursDisplay} ชั่วโมง ${minutesDisplay} นาที`;
+      } else {
+        timeMessage = `อีก ${hoursDisplay} ชั่วโมง`;
+      }
+    } else {
+      timeMessage = `อีก ${minutesDisplay} นาที`;
+    }
+
+    let encouragement = '';
+    if (urgency === 'high') {
+      encouragement = '\n\n⚡ เร็ว! ต้องส่งเร็วๆ นี้แล้ว!';
+    } else if (urgency === 'medium') {
+      encouragement = '\n\n💪 อย่าลืมส่งตรงเวลานะ!';
+    } else {
+      encouragement = '\n\n✨ วางแผนงานให้ดีนะ!';
+    }
+
+    return `${emoji} ${tone}แจ้งเตือนงาน\n\n📝 งาน: "${taskTitle}"\n👤 ผู้รับผิดชอบ: @${assigneeName}\n⏱️ เหลือเวลา: ${timeMessage}${encouragement}`;
+  } else {
+    // English version
+    let emoji = '⏰';
+    let tone = '';
+    
+    if (urgency === 'high') {
+      emoji = '🚨';
+      tone = 'URGENT! ';
+    } else if (urgency === 'medium') {
+      emoji = '⚠️';
+      tone = 'Deadline approaching ';
+    } else {
+      emoji = '📅';
+      tone = '';
+    }
+
+    let timeMessage = '';
+    if (hoursDisplay >= 24) {
+      const days = Math.floor(hoursDisplay / 24);
+      timeMessage = `${days} day${days > 1 ? 's' : ''}`;
+    } else if (hoursDisplay >= 1) {
+      if (minutesDisplay > 0) {
+        timeMessage = `${hoursDisplay} hour${hoursDisplay > 1 ? 's' : ''} ${minutesDisplay} min`;
+      } else {
+        timeMessage = `${hoursDisplay} hour${hoursDisplay > 1 ? 's' : ''}`;
+      }
+    } else {
+      timeMessage = `${minutesDisplay} minutes`;
+    }
+
+    let encouragement = '';
+    if (urgency === 'high') {
+      encouragement = '\n\n⚡ Hurry! Due very soon!';
+    } else if (urgency === 'medium') {
+      encouragement = '\n\n💪 Don\'t forget to submit on time!';
+    } else {
+      encouragement = '\n\n✨ Plan ahead!';
+    }
+
+    return `${emoji} ${tone}Work Reminder\n\n📝 Task: "${taskTitle}"\n👤 Assignee: @${assigneeName}\n⏱️ Time remaining: ${timeMessage}${encouragement}`;
+  }
+}
+
+async function sendLineMessage(lineGroupId: string, message: string): Promise<void> {
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: lineGroupId,
+        messages: [
+          {
+            type: 'text',
+            text: message,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[sendLineMessage] LINE API error:', response.status, errorText);
+      throw new Error(`LINE API error: ${response.status}`);
+    }
+
+    console.log('[sendLineMessage] Message sent successfully');
+  } catch (error) {
+    console.error('[sendLineMessage] Error:', error);
+    throw error;
+  }
+}
+
           } else if (reminderType === "6h") {
             message = `⏰ *Urgent Reminder!* ⏰\n\nTask: "${task.title}"\n6 hours remaining\n\nFinish it up! ⚡`;
           } else {
