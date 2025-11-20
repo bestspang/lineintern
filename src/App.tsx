@@ -23,6 +23,7 @@ import Integrations from "./pages/Integrations";
 import Settings from "./pages/Settings";
 import TestBot from "./pages/TestBot";
 import Memory from "./pages/Memory";
+import CronJobs from "./pages/CronJobs";
 import Commands from "./pages/Commands";
 import Summaries from "./pages/Summaries";
 import Personality from "./pages/Personality";
@@ -50,8 +51,9 @@ const App = () => (
                     <Route path="/knowledge" element={<KnowledgeBase />} />
                     <Route path="/faq-logs" element={<FaqLogs />} />
                     <Route path="/training" element={<Training />} />
-                    <Route path="/tasks" element={<Tasks />} />
-                    <Route path="/memory" element={<Memory />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/cron-jobs" element={<CronJobs />} />
+              <Route path="/memory" element={<Memory />} />
                     <Route path="/commands" element={<Commands />} />
                     <Route path="/summaries" element={<Summaries />} />
                     <Route path="/personality" element={<Personality />} />
