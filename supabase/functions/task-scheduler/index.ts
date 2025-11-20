@@ -20,17 +20,12 @@ serve(async (req) => {
   console.log("[task-scheduler] Running scheduled task check...");
 
   try {
-    // Find all pending tasks due within the next 5 minutes
-    // Use Bangkok time (UTC+7) for accurate comparison
+    // Find all pending tasks that are due now or overdue
+    // Use UTC for all time comparisons
     const now = new Date();
-    const bangkokOffset = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
-    const localOffset = now.getTimezoneOffset() * 60 * 1000;
-    const bangkokNow = new Date(now.getTime() + bangkokOffset + localOffset);
     
-    const fiveMinutesFromNow = new Date(bangkokNow.getTime() + 5 * 60 * 1000);
-    
-    console.log(`[task-scheduler] 🕐 Current Bangkok time: ${bangkokNow.toISOString()}`);
-    console.log(`[task-scheduler] 🔍 Checking tasks due before: ${fiveMinutesFromNow.toISOString()}`);
+    console.log(`[task-scheduler] 🕐 Current time (UTC): ${now.toISOString()}`);
+    console.log(`[task-scheduler] 🔍 Checking tasks due before: ${now.toISOString()}`);
 
     const { data: dueTasks, error: fetchError } = await supabase
       .from("tasks")
@@ -41,8 +36,7 @@ serve(async (req) => {
         assigned:users!tasks_assigned_to_user_id_fkey(display_name)
       `)
       .eq("status", "pending")
-      .lte("due_at", fiveMinutesFromNow.toISOString())
-      .gte("due_at", now.toISOString());
+      .lte("due_at", now.toISOString());
 
     if (fetchError) {
       console.error("[task-scheduler] Error fetching due tasks:", fetchError);
@@ -53,6 +47,15 @@ serve(async (req) => {
     }
 
     console.log(`[task-scheduler] Found ${dueTasks?.length || 0} due tasks`);
+
+    // Log details about each task
+    if (dueTasks && dueTasks.length > 0) {
+      dueTasks.forEach(task => {
+        const dueDate = new Date(task.due_at);
+        const minsSinceDue = (now.getTime() - dueDate.getTime()) / (1000 * 60);
+        console.log(`  - Task ${task.id}: "${task.title}" (due ${minsSinceDue.toFixed(1)} mins ago)`);
+      });
+    }
 
     if (!dueTasks || dueTasks.length === 0) {
       return new Response(
@@ -65,6 +68,25 @@ serve(async (req) => {
     const results = [];
     for (const task of dueTasks) {
       try {
+        // Check if task is overdue by more than 1 hour
+        const hoursSinceDue = (now.getTime() - new Date(task.due_at).getTime()) / (1000 * 60 * 60);
+
+        if (hoursSinceDue > 1) {
+          console.log(`[task-scheduler] ⚠️ Task ${task.id} is overdue by ${hoursSinceDue.toFixed(1)} hours, marking as cancelled`);
+          
+          // Mark as cancelled instead of sending notification
+          await supabase
+            .from("tasks")
+            .update({ 
+              status: "cancelled",
+              updated_at: now.toISOString()
+            })
+            .eq("id", task.id);
+          
+          results.push({ taskId: task.id, status: "cancelled_overdue" });
+          continue;
+        }
+
         const lineGroupId = (task.groups as any)?.line_group_id;
         
         if (!lineGroupId) {
@@ -180,7 +202,7 @@ serve(async (req) => {
       .select("*")
       .eq("is_recurring", true)
       .eq("status", "pending")
-      .lte("next_occurrence_at", fiveMinutesFromNow.toISOString());
+      .lte("next_occurrence_at", now.toISOString());
 
     let recurringCount = 0;
 
