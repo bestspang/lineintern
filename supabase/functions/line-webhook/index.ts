@@ -2136,9 +2136,6 @@ async function handleImagineCommand(
       return;
     }
 
-    // Send status message
-    await replyToLine(replyToken, '🎨 Generating your image... This may take a moment.');
-
     // Call Lovable AI for image generation
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -2215,8 +2212,8 @@ async function handleImagineCommand(
 
     const imageUrl = publicUrlData.publicUrl;
 
-    // Send the image via LINE
-    await replyToLineWithImage(replyToken, imageUrl, '✨ Here\'s your generated image!');
+    // Send the image via LINE with prompt in message
+    await replyToLineWithImage(replyToken, imageUrl, `✨ Here's your generated image!\n\nPrompt: ${prompt}`);
 
     console.log(`[handleImagineCommand] Successfully generated and sent image`);
     
