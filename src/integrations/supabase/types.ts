@@ -968,7 +968,16 @@ export type Database = {
           due_at: string
           group_id: string
           id: string
+          is_recurring: boolean | null
           mention_all: boolean | null
+          next_occurrence_at: string | null
+          parent_task_id: string | null
+          recurrence_day_of_month: number | null
+          recurrence_day_of_week: number | null
+          recurrence_end_date: string | null
+          recurrence_interval: number | null
+          recurrence_pattern: string | null
+          recurrence_time: string | null
           status: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at: string
@@ -981,7 +990,16 @@ export type Database = {
           due_at: string
           group_id: string
           id?: string
+          is_recurring?: boolean | null
           mention_all?: boolean | null
+          next_occurrence_at?: string | null
+          parent_task_id?: string | null
+          recurrence_day_of_month?: number | null
+          recurrence_day_of_week?: number | null
+          recurrence_end_date?: string | null
+          recurrence_interval?: number | null
+          recurrence_pattern?: string | null
+          recurrence_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at?: string
@@ -994,7 +1012,16 @@ export type Database = {
           due_at?: string
           group_id?: string
           id?: string
+          is_recurring?: boolean | null
           mention_all?: boolean | null
+          next_occurrence_at?: string | null
+          parent_task_id?: string | null
+          recurrence_day_of_month?: number | null
+          recurrence_day_of_week?: number | null
+          recurrence_end_date?: string | null
+          recurrence_interval?: number | null
+          recurrence_pattern?: string | null
+          recurrence_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
           updated_at?: string
@@ -1019,6 +1046,13 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]

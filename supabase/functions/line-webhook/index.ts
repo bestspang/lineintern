@@ -1442,7 +1442,12 @@ async function handleHelpCommand(
       helpText += `✅ **งานและเตือนความจำ:**\n`;
       helpText += `• /todo [งาน] - สร้างงาน\n`;
       helpText += `• /remind หรือ /เตือน [งาน] [เวลา] - ตั้งเตือน\n`;
-      helpText += `  ตัวอย่าง: /เตือน ประชุม พรุ่งนี้ 14:00\n\n`;
+      helpText += `  ตัวอย่าง: /เตือน ประชุม พรุ่งนี้ 14:00\n`;
+      helpText += `• /remind ทุก[ช่วง] เวลา [เวลา] [ข้อความ] - เตือนซ้ำ\n`;
+      helpText += `  ตัวอย่าง:\n`;
+      helpText += `  - /remind ทุกวัน เวลา 9 โมง standup\n`;
+      helpText += `  - /remind ทุกสัปดาห์ วันจันทร์ เวลา 14:00 ประชุม\n`;
+      helpText += `  - /remind ทุกเดือน วันที่ 1 เวลา 10:00 จ่ายค่าเช่า\n\n`;
       
       helpText += `📚 **ความรู้และค้นหา:**\n`;
       helpText += `• /faq หรือ /ถามตอบ [คำถาม] - ค้นหาคลังความรู้\n`;
@@ -1480,7 +1485,12 @@ async function handleHelpCommand(
       helpText += `✅ **Tasks & Reminders:**\n`;
       helpText += `• /todo [task] - Create a task\n`;
       helpText += `• /remind [task] [time] - Set a reminder\n`;
-      helpText += `  Example: /remind meeting tomorrow 2pm\n\n`;
+      helpText += `  Example: /remind meeting tomorrow 2pm\n`;
+      helpText += `• /remind every [period] at [time] [task] - Recurring\n`;
+      helpText += `  Examples:\n`;
+      helpText += `  - /remind every day at 9am standup\n`;
+      helpText += `  - /remind every Monday at 2pm team sync\n`;
+      helpText += `  - /remind every month on 1st at 10am rent\n\n`;
       
       helpText += `📚 **Knowledge & Search:**\n`;
       helpText += `• /faq [question] - Search knowledge base\n`;
@@ -2619,6 +2629,222 @@ Example conversions:
   }
 }
 
+// =============================
+// RECURRING REMINDER HELPERS
+// =============================
+
+function getDayName(dayOfWeek: number | null): string {
+  if (dayOfWeek === null) return '';
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const daysThai = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  return `${days[dayOfWeek]} / ${daysThai[dayOfWeek]}`;
+}
+
+function calculateNextOccurrence(
+  pattern: string,
+  time: string, // HH:MM
+  dayOfWeek: number | null,
+  dayOfMonth: number | null
+): Date {
+  const now = new Date();
+  const bangkokOffset = 7 * 60 * 60 * 1000; // UTC+7 in milliseconds
+  const bangkokNow = new Date(now.getTime() + bangkokOffset - now.getTimezoneOffset() * 60 * 1000);
+  
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  let next = new Date(bangkokNow);
+  next.setHours(hours, minutes, 0, 0);
+  
+  switch (pattern) {
+    case 'daily':
+      // If time already passed today, move to tomorrow
+      if (next <= bangkokNow) {
+        next.setDate(next.getDate() + 1);
+      }
+      break;
+      
+    case 'weekly':
+      // Find next occurrence of specified day of week
+      const currentDay = next.getDay();
+      const targetDay = dayOfWeek!;
+      let daysToAdd = (targetDay - currentDay + 7) % 7;
+      
+      if (daysToAdd === 0 && next <= bangkokNow) {
+        daysToAdd = 7; // Move to next week
+      }
+      
+      next.setDate(next.getDate() + daysToAdd);
+      break;
+      
+    case 'monthly':
+      // Set to specified day of month
+      next.setDate(dayOfMonth!);
+      
+      // If already passed this month, move to next month
+      if (next <= bangkokNow) {
+        next.setMonth(next.getMonth() + 1);
+      }
+      
+      // Handle months with fewer days (e.g., Feb 31 → Feb 28)
+      while (next.getDate() !== dayOfMonth!) {
+        next.setDate(0); // Go to last day of previous month
+      }
+      break;
+  }
+  
+  // Convert back to UTC
+  return new Date(next.getTime() - bangkokOffset + now.getTimezoneOffset() * 60 * 1000);
+}
+
+async function createRecurringInstance(parentTask: any): Promise<void> {
+  console.log(`[createRecurringInstance] Creating instance for recurring task ${parentTask.id}`);
+  
+  // Create a new pending task instance
+  const { error } = await supabase
+    .from('tasks')
+    .insert({
+      group_id: parentTask.group_id,
+      created_by_user_id: parentTask.created_by_user_id,
+      title: parentTask.title,
+      description: parentTask.description,
+      due_at: parentTask.next_occurrence_at,
+      assigned_to_user_id: parentTask.assigned_to_user_id,
+      mention_all: parentTask.mention_all,
+      status: 'pending',
+      is_recurring: false,
+      parent_task_id: parentTask.id
+    });
+    
+  if (error) {
+    console.error('[createRecurringInstance] Error creating instance:', error);
+    return;
+  }
+  
+  console.log(`[createRecurringInstance] ✅ Created instance for ${parentTask.next_occurrence_at}`);
+}
+
+async function handleRecurringRemind(
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  replyToken: string,
+  recurrencePattern: string
+) {
+  console.log(`[handleRecurringRemind] Creating recurring ${recurrencePattern} reminder`);
+
+  try {
+    const now = new Date();
+    
+    // Use AI to parse recurring reminder details
+    const parsePrompt = `Parse this recurring reminder request:
+"${userMessage}"
+
+Recurrence type: ${recurrencePattern}
+
+Extract:
+1. Task title/message
+2. Time (in 24-hour format HH:MM)
+3. Day of week (for weekly: 0=Sunday, 1=Monday, ..., 6=Saturday)
+4. Day of month (for monthly: 1-31)
+5. End date (optional)
+
+Respond ONLY in this format:
+TITLE: <title>
+TIME: <HH:MM in Bangkok time>
+DAY_OF_WEEK: <0-6 or "none">
+DAY_OF_MONTH: <1-31 or "none">
+END_DATE: <ISO date or "none">
+
+Examples:
+- "every day at 9am standup" → TIME: 09:00, DAY_OF_WEEK: none, DAY_OF_MONTH: none
+- "every Monday at 2pm sync" → TIME: 14:00, DAY_OF_WEEK: 1, DAY_OF_MONTH: none
+- "every month on 1st at 10am rent" → TIME: 10:00, DAY_OF_WEEK: none, DAY_OF_MONTH: 1
+- "ทุกวัน เวลา 9 โมง standup" → TIME: 09:00, DAY_OF_WEEK: none, DAY_OF_MONTH: none`;
+
+    const aiResponse = await generateAiReply(
+      parsePrompt,
+      "helper",
+      "ask",
+      "N/A",
+      "N/A",
+      "N/A",
+      "N/A"
+    );
+    
+    console.log(`[handleRecurringRemind] AI response: ${aiResponse}`);
+    
+    // Parse AI response
+    const titleMatch = aiResponse.match(/TITLE:\s*(.+)/);
+    const timeMatch = aiResponse.match(/TIME:\s*(\d{2}:\d{2})/);
+    const dowMatch = aiResponse.match(/DAY_OF_WEEK:\s*(\d+|none)/);
+    const domMatch = aiResponse.match(/DAY_OF_MONTH:\s*(\d+|none)/);
+    const endMatch = aiResponse.match(/END_DATE:\s*(.+)/);
+    
+    const title = titleMatch?.[1]?.trim() || userMessage.substring(0, 50);
+    const time = timeMatch?.[1]?.trim() || "09:00";
+    const dayOfWeek = dowMatch?.[1] !== "none" ? parseInt(dowMatch?.[1] || "0") : null;
+    const dayOfMonth = domMatch?.[1] !== "none" ? parseInt(domMatch?.[1] || "1") : null;
+    const endDate = endMatch?.[1]?.trim() !== "none" && endMatch?.[1]?.trim() !== undefined ? endMatch?.[1] : null;
+    
+    console.log(`[handleRecurringRemind] Parsed: pattern=${recurrencePattern}, time=${time}, dow=${dayOfWeek}, dom=${dayOfMonth}`);
+    
+    // Calculate next occurrence
+    const nextOccurrence = calculateNextOccurrence(recurrencePattern, time, dayOfWeek, dayOfMonth);
+    
+    console.log(`[handleRecurringRemind] Next occurrence: ${nextOccurrence.toISOString()}`);
+    
+    // Insert recurring task template
+    const { data: recurringTask, error: insertError } = await supabase
+      .from('tasks')
+      .insert({
+        group_id: groupId,
+        created_by_user_id: userId,
+        title: title,
+        status: 'pending',
+        is_recurring: true,
+        recurrence_pattern: recurrencePattern,
+        recurrence_interval: 1,
+        recurrence_day_of_week: dayOfWeek,
+        recurrence_day_of_month: dayOfMonth,
+        recurrence_time: time,
+        recurrence_end_date: endDate,
+        next_occurrence_at: nextOccurrence.toISOString(),
+        due_at: nextOccurrence.toISOString(), // first occurrence
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[handleRecurringRemind] Insert error:', insertError);
+      await replyToLine(replyToken, "Sorry, I couldn't create the recurring reminder. / ขออภัย ไม่สามารถสร้างการเตือนซ้ำได้");
+      return;
+    }
+
+    console.log(`[handleRecurringRemind] Created recurring task:`, recurringTask);
+    
+    // Reply with confirmation
+    const patternText: { [key: string]: string } = {
+      daily: 'ทุกวัน / every day',
+      weekly: `ทุกสัปดาห์ / every week${dayOfWeek !== null ? ` (${getDayName(dayOfWeek)})` : ''}`,
+      monthly: `ทุกเดือน / every month${dayOfMonth !== null ? ` (day ${dayOfMonth})` : ''}`
+    };
+    
+    const reply = `🔄 **Recurring Reminder Created!**
+
+📌 ${title}
+⏰ ${patternText[recurrencePattern]} at ${time}
+🎯 Next reminder: ${formatTimeDistance(nextOccurrence, 'en')}
+${endDate ? `🏁 Until: ${new Date(endDate).toLocaleDateString('th-TH')}` : ''}
+
+💡 Tip: Task scheduler will create reminders automatically`;
+
+    await replyToLine(replyToken, reply);
+  } catch (error) {
+    console.error(`[handleRecurringRemind] Error:`, error);
+    await replyToLine(replyToken, "Sorry, I encountered an error creating the recurring reminder. / ขออภัย เกิดข้อผิดพลาดในการสร้างการเตือนซ้ำ");
+  }
+}
+
 async function handleRemindCommand(
   groupId: string,
   userId: string,
@@ -2626,6 +2852,30 @@ async function handleRemindCommand(
   replyToken: string
 ) {
   console.log(`[handleRemindCommand] Creating reminder from: ${userMessage}`);
+
+  // Detect recurring patterns
+  const recurringPatterns = {
+    daily: /every\s+day|ทุกวัน|daily/i,
+    weekly: /every\s+week|ทุกสัปดาห์|weekly/i,
+    monthly: /every\s+month|ทุกเดือน|monthly/i
+  };
+  
+  let isRecurring = false;
+  let recurrencePattern = 'none';
+  
+  for (const [pattern, regex] of Object.entries(recurringPatterns)) {
+    if (regex.test(userMessage)) {
+      isRecurring = true;
+      recurrencePattern = pattern;
+      break;
+    }
+  }
+  
+  if (isRecurring) {
+    console.log(`[handleRemindCommand] Detected recurring pattern: ${recurrencePattern}`);
+    await handleRecurringRemind(groupId, userId, userMessage, replyToken, recurrencePattern);
+    return;
+  }
 
   try {
     // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
