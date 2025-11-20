@@ -739,6 +739,9 @@ const COMMON_BEHAVIOR_PROMPT = `
 **ANALYTICS_SNAPSHOT**: 
 {ANALYTICS_SNAPSHOT}
 
+**WORK_CONTEXT**:
+{WORK_CONTEXT}
+
 # Mode-Specific Behavior
 {MODE_INSTRUCTIONS}
 
@@ -753,6 +756,13 @@ You've been invoked with the above context. Understand the USER_MESSAGE in conte
 - If COMMAND is "help", list your capabilities.
 - If COMMAND is "mode", this is handled separately - you won't receive these.
 - Otherwise, answer the USER_MESSAGE naturally using available context.
+
+**IMPORTANT - Work Context Awareness**:
+- If WORK_CONTEXT shows the user has pending work assignments, acknowledge them naturally in your response
+- Adjust your tone based on work_reliability scores (praise reliable users, encourage struggling ones)
+- Reference overdue tasks diplomatically when relevant to the conversation
+- Celebrate completed work assignments and acknowledge consistent performers
+- Use work history to build rapport and show you remember their contributions
 
 Keep responses concise (2-3 short paragraphs max). Use bullets for lists. Reply in the same language as USER_MESSAGE.
 Apply the mode-specific behavior guidelines above to your response style.
@@ -2215,6 +2225,7 @@ If any section has no content, write "None" for that section.`;
       '',
       '',
       '',
+      'N/A',
       'N/A'
     );
 
@@ -2920,6 +2931,7 @@ Provide a 3-4 sentence summary with:
       '',
       '',
       '',
+      'N/A',
       'N/A'
     );
 
@@ -3123,6 +3135,7 @@ Example conversions:
       parsePrompt,
       "helper",
       "ask",
+      "N/A",
       "N/A",
       "N/A",
       "N/A",
@@ -3371,6 +3384,7 @@ Examples:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
       "N/A"
     );
     
@@ -3538,6 +3552,7 @@ Example conversions:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
       "N/A"
     );
 
@@ -3623,6 +3638,180 @@ Example conversions:
 }
 
 // =============================
+// WORK CONTEXT GENERATION
+// =============================
+
+async function getWorkContext(groupId: string, userId?: string, locale: 'th' | 'en' = 'en'): Promise<string> {
+  try {
+    const parts: string[] = [];
+
+    // Fetch personality state to get work relationships
+    const { data: personalityState } = await supabase
+      .from('personality_state')
+      .select('relationship_map')
+      .eq('group_id', groupId)
+      .single();
+
+    const relationshipMap = (personalityState?.relationship_map as Record<string, any>) || {};
+
+    // Fetch pending work tasks for this group
+    const { data: pendingTasks } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        assignee:work_metadata->assignee_user_id,
+        assigner:work_metadata->assigner_user_id
+      `)
+      .eq('group_id', groupId)
+      .eq('status', 'pending')
+      .eq('task_type', 'work_assignment')
+      .order('due_at', { ascending: true })
+      .limit(10);
+
+    // Fetch recently completed work tasks (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const { data: completedTasks } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        assignee:work_metadata->assignee_user_id,
+        assigner:work_metadata->assigner_user_id
+      `)
+      .eq('group_id', groupId)
+      .eq('status', 'completed')
+      .eq('task_type', 'work_assignment')
+      .gte('updated_at', sevenDaysAgo.toISOString())
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    // Build context string
+    if (locale === 'th') {
+      parts.push('## สถานะงานในกลุ่ม');
+    } else {
+      parts.push('## Group Work Status');
+    }
+
+    // Pending tasks section
+    if (pendingTasks && pendingTasks.length > 0) {
+      const now = new Date();
+      const overdueTasks = pendingTasks.filter(t => new Date(t.due_at) < now);
+      const upcomingTasks = pendingTasks.filter(t => new Date(t.due_at) >= now);
+
+      if (locale === 'th') {
+        if (overdueTasks.length > 0) {
+          parts.push(`\n**งานที่เลยกำหนด (${overdueTasks.length}):**`);
+          for (const task of overdueTasks.slice(0, 3)) {
+            const assigneeId = task.work_metadata?.assignee_user_id;
+            const relationship = relationshipMap[assigneeId] || {};
+            const reliability = relationship.work_reliability || 0.5;
+            const daysOverdue = Math.ceil((now.getTime() - new Date(task.due_at).getTime()) / (1000 * 60 * 60 * 24));
+            parts.push(`  • "${task.title}" - เลยมา ${daysOverdue} วัน (ความเชื่อถือ: ${(reliability * 100).toFixed(0)}%)`);
+          }
+        }
+
+        if (upcomingTasks.length > 0) {
+          parts.push(`\n**งานที่กำลังทำ (${upcomingTasks.length}):**`);
+          for (const task of upcomingTasks.slice(0, 3)) {
+            const assigneeId = task.work_metadata?.assignee_user_id;
+            const relationship = relationshipMap[assigneeId] || {};
+            const reliability = relationship.work_reliability || 0.5;
+            const hoursRemaining = Math.ceil((new Date(task.due_at).getTime() - now.getTime()) / (1000 * 60 * 60));
+            parts.push(`  • "${task.title}" - เหลือ ${hoursRemaining} ชั่วโมง (ความเชื่อถือ: ${(reliability * 100).toFixed(0)}%)`);
+          }
+        }
+      } else {
+        if (overdueTasks.length > 0) {
+          parts.push(`\n**Overdue Tasks (${overdueTasks.length}):**`);
+          for (const task of overdueTasks.slice(0, 3)) {
+            const assigneeId = task.work_metadata?.assignee_user_id;
+            const relationship = relationshipMap[assigneeId] || {};
+            const reliability = relationship.work_reliability || 0.5;
+            const daysOverdue = Math.ceil((now.getTime() - new Date(task.due_at).getTime()) / (1000 * 60 * 60 * 24));
+            parts.push(`  • "${task.title}" - ${daysOverdue} days overdue (reliability: ${(reliability * 100).toFixed(0)}%)`);
+          }
+        }
+
+        if (upcomingTasks.length > 0) {
+          parts.push(`\n**Active Tasks (${upcomingTasks.length}):**`);
+          for (const task of upcomingTasks.slice(0, 3)) {
+            const assigneeId = task.work_metadata?.assignee_user_id;
+            const relationship = relationshipMap[assigneeId] || {};
+            const reliability = relationship.work_reliability || 0.5;
+            const hoursRemaining = Math.ceil((new Date(task.due_at).getTime() - now.getTime()) / (1000 * 60 * 60));
+            parts.push(`  • "${task.title}" - ${hoursRemaining} hours remaining (reliability: ${(reliability * 100).toFixed(0)}%)`);
+          }
+        }
+      }
+    } else {
+      parts.push(locale === 'th' ? '\nไม่มีงานที่กำลังดำเนินการ' : '\nNo active work assignments');
+    }
+
+    // Recently completed tasks section
+    if (completedTasks && completedTasks.length > 0) {
+      if (locale === 'th') {
+        parts.push(`\n**งานที่เสร็จแล้วเมื่อเร็วๆ นี้ (${completedTasks.length}):**`);
+        for (const task of completedTasks.slice(0, 3)) {
+          const assigneeId = task.work_metadata?.assignee_user_id;
+          const relationship = relationshipMap[assigneeId] || {};
+          const wasOverdue = new Date(task.updated_at) > new Date(task.due_at);
+          const status = wasOverdue ? '⚠️ ส่งช้า' : '✅ ทันเวลา';
+          parts.push(`  • "${task.title}" - ${status}`);
+        }
+      } else {
+        parts.push(`\n**Recently Completed (${completedTasks.length}):**`);
+        for (const task of completedTasks.slice(0, 3)) {
+          const assigneeId = task.work_metadata?.assignee_user_id;
+          const relationship = relationshipMap[assigneeId] || {};
+          const wasOverdue = new Date(task.updated_at) > new Date(task.due_at);
+          const status = wasOverdue ? '⚠️ Late' : '✅ On time';
+          parts.push(`  • "${task.title}" - ${status}`);
+        }
+      }
+    }
+
+    // User-specific work relationship context
+    if (userId && relationshipMap[userId]) {
+      const userRelationship = relationshipMap[userId];
+      const reliability = userRelationship.work_reliability || 0.5;
+      const completedCount = userRelationship.completed_count || 0;
+      const overdueCount = userRelationship.overdue_count || 0;
+      const responseQuality = userRelationship.response_quality || 0.5;
+
+      if (locale === 'th') {
+        parts.push(`\n**ประวัติการทำงานของผู้ใช้คนนี้:**`);
+        parts.push(`  • ความเชื่อถือ: ${(reliability * 100).toFixed(0)}%`);
+        parts.push(`  • งานที่เสร็จแล้ว: ${completedCount} งาน (เลยกำหนด ${overdueCount} งาน)`);
+        parts.push(`  • คุณภาพการรายงาน: ${(responseQuality * 100).toFixed(0)}%`);
+        
+        if (reliability >= 0.8) {
+          parts.push(`  • บันทึก: ผู้ใช้นี้มีความเชื่อถือสูง ทำงานได้ดีมาก`);
+        } else if (reliability < 0.4) {
+          parts.push(`  • บันทึก: ผู้ใช้นี้มีปัญหาในการส่งงานตรงเวลา ควรติดตามอย่างใกล้ชิด`);
+        }
+      } else {
+        parts.push(`\n**User's Work History:**`);
+        parts.push(`  • Reliability: ${(reliability * 100).toFixed(0)}%`);
+        parts.push(`  • Completed: ${completedCount} tasks (${overdueCount} overdue)`);
+        parts.push(`  • Response Quality: ${(responseQuality * 100).toFixed(0)}%`);
+        
+        if (reliability >= 0.8) {
+          parts.push(`  • Note: Highly reliable user with excellent work completion rate`);
+        } else if (reliability < 0.4) {
+          parts.push(`  • Note: User struggles with timely completion, needs close monitoring`);
+        }
+      }
+    }
+
+    return parts.length > 1 ? parts.join('\n') : (locale === 'th' ? 'ไม่มีข้อมูลงาน' : 'No work data available');
+  } catch (error) {
+    console.error('[getWorkContext] Error:', error);
+    return locale === 'th' ? 'ไม่สามารถโหลดข้อมูลงานได้' : 'Unable to load work context';
+  }
+}
+
+// =============================
 // LOVABLE AI INTEGRATION
 // =============================
 
@@ -3634,6 +3823,7 @@ async function generateAiReply(
   memoryContext: string,
   knowledgeSnippets: string,
   analyticsSnapshot: string,
+  workContext: string,
   groupId?: string,
   userId?: string
 ): Promise<string> {
@@ -3713,7 +3903,8 @@ async function generateAiReply(
     .replace("{MEMORY_CONTEXT}", memoryContext)
     .replace("{RECENT_MESSAGES}", recentMessages)
     .replace("{KNOWLEDGE_SNIPPETS}", knowledgeSnippets)
-    .replace("{ANALYTICS_SNAPSHOT}", analyticsSnapshot);
+    .replace("{ANALYTICS_SNAPSHOT}", analyticsSnapshot)
+    .replace("{WORK_CONTEXT}", workContext);
 
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -4396,6 +4587,8 @@ async function handleMessageEvent(event: LineEvent) {
   const analyticsSnapshot = parsed.commandType === "report" 
     ? await getAnalyticsSnapshot(group.id)
     : "N/A";
+  const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+  const workContext = await getWorkContext(group.id, user.id, locale);
 
   // Generate AI reply
   const startTime = Date.now();
@@ -4410,7 +4603,10 @@ async function handleMessageEvent(event: LineEvent) {
       recentMessages,
       memoryContext,
       knowledgeSnippets,
-      analyticsSnapshot
+      analyticsSnapshot,
+      workContext,
+      group.id,
+      user.id
     );
 
     // PHASE 1: Extract knowledge item IDs from snippets if FAQ command
