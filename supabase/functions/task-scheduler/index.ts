@@ -29,7 +29,7 @@ serve(async (req) => {
       .select(`
         *,
         groups!tasks_group_id_fkey(line_group_id, display_name),
-        users!tasks_created_by_user_id_fkey(display_name),
+        users!tasks_created_by_user_id_fkey(display_name, line_user_id),
         assigned:users!tasks_assigned_to_user_id_fkey(display_name)
       `)
       .eq("status", "pending")
@@ -72,10 +72,55 @@ serve(async (req) => {
         }
 
         const createdBy = (task.users as any)?.display_name || "Someone";
+        const createdByLineUserId = (task.users as any)?.line_user_id;
         const assignedTo = (task.assigned as any)?.display_name;
         const assignedText = assignedTo ? ` (assigned to ${assignedTo})` : "";
 
-        const message = `⏰ REMINDER!\n\n📌 ${task.title}${assignedText}\n\nCreated by: ${createdBy}${task.description ? `\n\n📝 ${task.description}` : ""}`;
+        // Build mention message
+        let messageText = "";
+        let mentionObject = null;
+
+        if (task.mention_all) {
+          // Mention everyone in group
+          messageText = `@All ⏰ REMINDER!\n\n📌 ${task.title}${assignedText}\n\nCreated by: ${createdBy}${task.description ? `\n\n📝 ${task.description}` : ""}`;
+          mentionObject = {
+            mentionees: [
+              {
+                index: 0,
+                length: 4,
+              },
+            ],
+          };
+          console.log(`[task-scheduler] Sending @All mention for task ${task.id}`);
+        } else if (createdByLineUserId) {
+          // Mention creator only
+          const mentionText = `@${createdBy}`;
+          messageText = `${mentionText} ⏰ REMINDER!\n\n📌 ${task.title}${assignedText}\n\nCreated by: ${createdBy}${task.description ? `\n\n📝 ${task.description}` : ""}`;
+          mentionObject = {
+            mentionees: [
+              {
+                index: 0,
+                length: mentionText.length,
+                userId: createdByLineUserId,
+              },
+            ],
+          };
+          console.log(`[task-scheduler] Sending mention to ${createdBy} (${createdByLineUserId}) for task ${task.id}`);
+        } else {
+          // No mention (fallback)
+          messageText = `⏰ REMINDER!\n\n📌 ${task.title}${assignedText}\n\nCreated by: ${createdBy}${task.description ? `\n\n📝 ${task.description}` : ""}`;
+          console.log(`[task-scheduler] No mention (no line_user_id found) for task ${task.id}`);
+        }
+
+        // Build message object with optional mention
+        const messageObject: any = {
+          type: "text",
+          text: messageText,
+        };
+        
+        if (mentionObject) {
+          messageObject.mention = mentionObject;
+        }
 
         // Send push notification
         const response = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -86,12 +131,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             to: recipientId,
-            messages: [
-              {
-                type: "text",
-                text: message,
-              },
-            ],
+            messages: [messageObject],
           }),
         });
 
