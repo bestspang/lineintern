@@ -338,7 +338,7 @@ export default function Tasks() {
                       <TableCell>
                         <div className={isOverdue ? 'text-destructive' : ''}>
                           <p className="font-medium">
-                            {format(new Date(task.due_at), 'MMM d, yyyy')}
+                            {format(new Date(task.due_at), 'MMM d, yyyy HH:mm')}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {formatDistanceToNow(new Date(task.due_at), { addSuffix: true })}
