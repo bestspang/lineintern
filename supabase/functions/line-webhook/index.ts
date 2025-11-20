@@ -115,17 +115,48 @@ interface ApprovalResult {
   message: string;
 }
 
-// Helper function to approve a task
+// Helper function to approve a task with optional AI feedback
 async function approveTask(
   task: any,
   user: any,
   groupId: string,
-  approvedTasks: Array<{ taskTitle: string; assigneeName: string; wasOverdue: boolean }>
+  approvedTasks: Array<{ taskTitle: string; assigneeName: string; wasOverdue: boolean }>,
+  generateFeedback = false
 ) {
   const dueAt = new Date(task.due_at);
   const now = new Date();
   const wasOverdue = now > dueAt;
   const daysLate = wasOverdue ? Math.ceil((now.getTime() - dueAt.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+  // Fetch latest progress update for AI feedback (if enabled)
+  let aiFeedback = null;
+  if (generateFeedback) {
+    const { data: progressData } = await supabase
+      .from('work_progress')
+      .select('*')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (progressData && progressData.progress_text) {
+      aiFeedback = await generateWorkFeedback(
+        task.title,
+        progressData.progress_text,
+        wasOverdue,
+        daysLate,
+        user.display_name
+      );
+
+      // Update progress with AI feedback
+      if (aiFeedback) {
+        await supabase
+          .from('work_progress')
+          .update({ ai_feedback: aiFeedback })
+          .eq('id', progressData.id);
+      }
+    }
+  }
 
   // Update task status
   const { error: updateError } = await supabase
@@ -141,11 +172,73 @@ async function approveTask(
     return;
   }
 
-  console.log(`[approveTask] Approved task ${task.id} for ${user.display_name}, wasOverdue: ${wasOverdue}`);
+  console.log(`[approveTask] Approved task ${task.id} for ${user.display_name}, wasOverdue: ${wasOverdue}, feedback: ${aiFeedback ? 'yes' : 'no'}`);
   approvedTasks.push({ taskTitle: task.title, assigneeName: user.display_name, wasOverdue });
 
   // Update personality based on completion timeliness
   await updatePersonalityOnWorkCompletion(groupId, user.id, wasOverdue, daysLate);
+}
+
+// Generate AI-powered feedback for work completion
+async function generateWorkFeedback(
+  taskTitle: string,
+  progressText: string,
+  wasOverdue: boolean,
+  daysLate: number,
+  userName: string
+): Promise<string | null> {
+  try {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      console.log('[generateWorkFeedback] LOVABLE_API_KEY not set, skipping feedback');
+      return null;
+    }
+
+    const prompt = `You are a supportive work manager providing brief, constructive feedback on completed work.
+
+Task: "${taskTitle}"
+Completed by: ${userName}
+Delivery status: ${wasOverdue ? `Late by ${daysLate} day(s)` : 'On time'}
+
+Progress update from team member:
+"${progressText}"
+
+Provide a short (2-3 sentences), encouraging feedback that:
+1. Acknowledges the completion
+2. ${wasOverdue ? 'Gently mentions the delay but stays positive' : 'Celebrates the timely delivery'}
+3. Offers one specific, actionable tip for improvement (if applicable)
+
+Keep it friendly, brief, and motivating. Write in Thai if the progress text is in Thai, otherwise in English.`;
+
+    const response = await fetch('https://lovable.app/api/ai/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 200,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[generateWorkFeedback] API error:', response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    const feedback = data.choices?.[0]?.message?.content?.trim();
+    
+    console.log(`[generateWorkFeedback] Generated feedback for task "${taskTitle}"`);
+    return feedback || null;
+  } catch (error) {
+    console.error('[generateWorkFeedback] Error:', error);
+    return null;
+  }
 }
 
 // Helper function to get task urgency emoji
@@ -272,6 +365,7 @@ async function detectAndHandleWorkApproval(
   const mentions: string[] = [];
   const keywords: string[] = [];
   let commandType = '';
+  let enableFeedback = false; // Flag for AI-powered feedback
   
   for (const pattern of approvalPatterns) {
     let match;
@@ -285,10 +379,15 @@ async function detectAndHandleWorkApproval(
       
       // Extract keywords if provided
       if (keywordsPart && keywordsPart.trim()) {
+        // Check for AI feedback flag
+        if (/\b(feedback|withAI|with-ai|ติชม|คำติชม)\b/i.test(keywordsPart)) {
+          enableFeedback = true;
+        }
+        
         const extractedKeywords = keywordsPart
           .trim()
           .split(/\s+/)
-          .filter(k => k && !['list', 'all', 'overdue', 'urgent', 'ด่วน', 'เลยกำหนด', 'ทั้งหมด'].includes(k.toLowerCase()));
+          .filter(k => k && !['list', 'all', 'overdue', 'urgent', 'ด่วน', 'เลยกำหนด', 'ทั้งหมด', 'feedback', 'withai', 'with-ai', 'ติชม', 'คำติชม'].includes(k.toLowerCase()));
         keywords.push(...extractedKeywords);
         
         // Check for special commands
@@ -303,7 +402,7 @@ async function detectAndHandleWorkApproval(
     return { detected: false, approvedCount: 0, message: '' };
   }
 
-  console.log(`[detectAndHandleWorkApproval] Detected approval for: ${mentions.join(', ')}, keywords: [${keywords.join(', ')}], command: ${commandType}`);
+  console.log(`[detectAndHandleWorkApproval] Detected approval for: ${mentions.join(', ')}, keywords: [${keywords.join(', ')}], command: ${commandType}, feedback: ${enableFeedback}`);
 
   // Find pending work tasks for mentioned users
   const { data: users, error: userError } = await supabase
@@ -357,7 +456,7 @@ async function detectAndHandleWorkApproval(
     if (commandType === 'all' || commandType === 'ทั้งหมด') {
       // Approve all tasks
       for (const task of tasks) {
-        await approveTask(task, user, groupId, approvedTasks);
+        await approveTask(task, user, groupId, approvedTasks, enableFeedback);
       }
       continue;
     } else if (commandType === 'overdue' || commandType === 'เลยกำหนด') {
@@ -369,7 +468,7 @@ async function detectAndHandleWorkApproval(
         return { detected: true, approvedCount: 0, message: msg };
       }
       for (const task of overdueTasks) {
-        await approveTask(task, user, groupId, approvedTasks);
+        await approveTask(task, user, groupId, approvedTasks, enableFeedback);
       }
       continue;
     } else if (commandType === 'urgent' || commandType === 'ด่วน') {
@@ -384,7 +483,7 @@ async function detectAndHandleWorkApproval(
         return { detected: true, approvedCount: 0, message: msg };
       }
       for (const task of urgentTasks) {
-        await approveTask(task, user, groupId, approvedTasks);
+        await approveTask(task, user, groupId, approvedTasks, enableFeedback);
       }
       continue;
     }
@@ -397,7 +496,7 @@ async function detectAndHandleWorkApproval(
       if (autoPriorityTask) {
         // Auto-approve with explanation
         const reason = getAutoPriorityReason(autoPriorityTask, tasks, locale);
-        await approveTask(autoPriorityTask, user, groupId, approvedTasks);
+        await approveTask(autoPriorityTask, user, groupId, approvedTasks, enableFeedback);
         
         const msg = locale === 'th'
           ? `✅ อนุมัติงาน "${autoPriorityTask.title}" ของ @${user.display_name} อัตโนมัติ\n\n${reason}`
@@ -414,7 +513,7 @@ async function detectAndHandleWorkApproval(
         return `${index + 1}️⃣ ${emoji} ${task.title} (${timeInfo}) ${status}`;
       }).join('\n');
 
-      // Store pending approval in memory
+      // Store pending approval in memory (with feedback flag)
       await supabase
         .from('memory_items')
         .insert({
@@ -426,6 +525,7 @@ async function detectAndHandleWorkApproval(
             assignee_user_id: user.id,
             assignee_name: user.display_name,
             task_ids: tasks.map(t => t.id),
+            enable_feedback: enableFeedback,
             expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min expiry
           }),
           source_type: 'system',
@@ -441,7 +541,7 @@ async function detectAndHandleWorkApproval(
 
     // Single task - approve it
     const task = tasks[0];
-    await approveTask(task, user, groupId, approvedTasks);
+    await approveTask(task, user, groupId, approvedTasks, enableFeedback);
   }
 
   if (approvedTasks.length === 0) {
@@ -562,8 +662,9 @@ async function checkPendingApprovalResponse(
       .single();
 
     if (user) {
+      const enableFeedback = content.enable_feedback || false;
       for (const task of selectedTasks) {
-        await approveTask(task, user, groupId, approvedTasks);
+        await approveTask(task, user, groupId, approvedTasks, enableFeedback);
       }
     }
 
