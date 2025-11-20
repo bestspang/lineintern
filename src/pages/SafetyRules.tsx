@@ -102,13 +102,6 @@ export default function SafetyRules() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Shield className="w-8 h-8" />
-          Safety Rules
-        </h1>
-        <p className="text-muted-foreground">Configure content moderation and safety detection patterns</p>
-      </div>
 
       <Card>
         <CardHeader>

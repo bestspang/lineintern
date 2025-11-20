@@ -49,10 +49,6 @@ const navItems = [
   { title: 'Personality AI', url: '/personality', icon: Sparkles },
   { title: 'Commands', url: '/commands', icon: Terminal },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-  { title: 'Reports', url: '/reports', icon: FileText },
-  { title: 'Alerts & Logs', url: '/alerts', icon: AlertTriangle },
-  { title: 'Safety Rules', url: '/safety-rules', icon: Shield },
-  { title: 'Integrations', url: '/integrations', icon: Webhook },
   { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
