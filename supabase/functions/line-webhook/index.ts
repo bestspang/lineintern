@@ -927,6 +927,243 @@ async function detectAndHandleReminderPreference(
 }
 
 // =============================
+// WORK PROGRESS REPORTING
+// =============================
+
+interface ProgressReportResult {
+  detected: boolean;
+  message: string;
+}
+
+async function detectAndHandleProgressReport(
+  text: string,
+  userId: string,
+  groupId: string,
+  locale: 'th' | 'en'
+): Promise<ProgressReportResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for progress report commands
+  // Thai: "/progress", "/อัพเดท", "/รายงาน", "ความคืบหน้า"
+  // English: "/progress", "/update", "/report"
+  
+  const progressPatterns = [
+    /^\/(?:progress|update|report|อัพเดท|รายงาน|ความคืบหน้า)(?:\s+(.+))?$/i,
+    /^(?:progress|update|รายงานความคืบหน้า):\s*(.+)$/i,
+  ];
+
+  let progressText = '';
+  let percentage: number | null = null;
+
+  for (const pattern of progressPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      progressText = (match[1] || '').trim();
+      
+      // Extract percentage if present (e.g., "50%", "75 percent")
+      const percentMatch = progressText.match(/(\d+)\s*(?:%|percent|เปอร์เซ็นต์)/i);
+      if (percentMatch) {
+        percentage = Math.min(100, Math.max(0, parseInt(percentMatch[1])));
+        // Remove percentage from progress text
+        progressText = progressText.replace(/(\d+)\s*(?:%|percent|เปอร์เซ็นต์)/gi, '').trim();
+      }
+      
+      break;
+    }
+  }
+
+  if (!progressText && percentage === null) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[detectAndHandleProgressReport] Detected progress report from user ${userId}: "${progressText}", percentage: ${percentage}`);
+
+  // Find the user's active work task
+  const { data: userTasks, error: tasksError } = await supabase
+    .from('tasks')
+    .select('*, groups!inner(line_group_id, display_name, language)')
+    .eq('group_id', groupId)
+    .eq('status', 'pending')
+    .eq('task_type', 'work_assignment')
+    .contains('work_metadata', { assignee_user_id: userId })
+    .order('due_at', { ascending: true })
+    .limit(1);
+
+  if (tasksError || !userTasks || userTasks.length === 0) {
+    const msg = locale === 'th'
+      ? '❌ ไม่พบงานที่กำลังดำเนินการของคุณ\n\n💡 ใช้คำสั่ง /tasks @ชื่อของคุณ เพื่อดูงานทั้งหมด'
+      : '❌ No active work tasks found for you\n\n💡 Use /tasks @yourname to see all your tasks';
+    return { detected: true, message: msg };
+  }
+
+  const task = userTasks[0];
+  const taskGroup = task.groups as any;
+
+  // Insert progress report
+  const { error: insertError } = await supabase
+    .from('work_progress')
+    .insert({
+      task_id: task.id,
+      user_id: userId,
+      group_id: groupId,
+      progress_text: progressText || `Progress update: ${percentage}% complete`,
+      progress_percentage: percentage,
+      check_in_date: new Date().toISOString().split('T')[0],
+    });
+
+  if (insertError) {
+    console.error('[detectAndHandleProgressReport] Error inserting progress:', insertError);
+    const msg = locale === 'th'
+      ? '❌ ไม่สามารถบันทึกความคืบหน้าได้'
+      : '❌ Failed to record progress';
+    return { detected: true, message: msg };
+  }
+
+  // Optional: Generate AI feedback/suggestions on the progress
+  let aiFeedback = '';
+  const dueAt = new Date(task.due_at);
+  const now = new Date();
+  const hoursLeft = (dueAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+  
+  if (progressText.length > 20) { // Only for substantial progress reports
+    aiFeedback = await generateProgressFeedback(
+      task.title,
+      progressText,
+      percentage,
+      hoursLeft,
+      locale
+    );
+  }
+
+  // Notify assigner (if exists)
+  const assignerUserId = task.work_metadata?.assigner_user_id;
+  if (assignerUserId) {
+    const { data: assignerUser } = await supabase
+      .from('users')
+      .select('display_name, line_user_id')
+      .eq('id', assignerUserId)
+      .maybeSingle();
+
+    if (assignerUser) {
+      const notificationMsg = locale === 'th'
+        ? `📊 มีการอัพเดทความคืบหน้างาน!\n\n📝 งาน: "${task.title}"\n👤 โดย: @${(await supabase.from('users').select('display_name').eq('id', userId).single()).data?.display_name}\n${percentage !== null ? `📈 ความคืบหน้า: ${percentage}%\n` : ''}💬 รายละเอียด: ${progressText}\n\nดูรายละเอียดเพิ่มเติมในระบบ`
+        : `📊 Work Progress Update!\n\n📝 Task: "${task.title}"\n👤 By: @${(await supabase.from('users').select('display_name').eq('id', userId).single()).data?.display_name}\n${percentage !== null ? `📈 Progress: ${percentage}%\n` : ''}💬 Details: ${progressText}\n\nView more details in the system`;
+      
+      // Send to assigner via LINE push API (if implemented)
+      try {
+        await pushToLine(assignerUser.line_user_id, notificationMsg);
+      } catch (error) {
+        console.error('[detectAndHandleProgressReport] Failed to notify assigner:', error);
+      }
+    }
+  }
+
+  // Build response message
+  let msg = '';
+  if (locale === 'th') {
+    msg = `✅ บันทึกความคืบหน้าเรียบร้อยแล้ว!\n\n📝 งาน: "${task.title}"`;
+    if (percentage !== null) {
+      msg += `\n📈 ความคืบหน้า: ${percentage}%`;
+    }
+    if (progressText) {
+      msg += `\n💬 รายละเอียด: ${progressText}`;
+    }
+    if (aiFeedback) {
+      msg += `\n\n🤖 ข้อเสนอแนะจาก AI:\n${aiFeedback}`;
+    }
+    msg += `\n\n💡 ผู้มอบหมายงานจะได้รับการแจ้งเตือนแล้ว`;
+  } else {
+    msg = `✅ Progress recorded successfully!\n\n📝 Task: "${task.title}"`;
+    if (percentage !== null) {
+      msg += `\n📈 Progress: ${percentage}%`;
+    }
+    if (progressText) {
+      msg += `\n💬 Details: ${progressText}`;
+    }
+    if (aiFeedback) {
+      msg += `\n\n🤖 AI Suggestions:\n${aiFeedback}`;
+    }
+    msg += `\n\n💡 Task assigner has been notified`;
+  }
+
+  console.log(`[detectAndHandleProgressReport] Recorded progress for task ${task.id}`);
+
+  return {
+    detected: true,
+    message: msg,
+  };
+}
+
+// Generate AI suggestions/feedback on work progress
+async function generateProgressFeedback(
+  taskTitle: string,
+  progressText: string,
+  percentage: number | null,
+  hoursLeft: number,
+  locale: 'th' | 'en'
+): Promise<string> {
+  try {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      console.log('[generateProgressFeedback] LOVABLE_API_KEY not set, skipping feedback');
+      return '';
+    }
+
+    const urgencyContext = hoursLeft < 0 
+      ? 'overdue' 
+      : hoursLeft <= 6 
+        ? 'critical (less than 6 hours left)' 
+        : hoursLeft <= 24 
+          ? 'urgent (due within 24 hours)' 
+          : 'normal';
+
+    const prompt = `You are a supportive project manager providing brief, actionable feedback on work progress.
+
+Task: "${taskTitle}"
+Progress: ${percentage !== null ? `${percentage}% complete` : 'Percentage not specified'}
+Time status: ${urgencyContext}
+
+Progress update:
+"${progressText}"
+
+Provide a very brief (1-2 sentences) response that:
+1. Acknowledges the progress positively
+2. ${hoursLeft < 6 && (percentage || 0) < 80 ? 'Gives urgent, specific advice to finish on time' : 'Offers one helpful tip to maintain momentum'}
+
+Keep it encouraging, concise, and actionable. Write in ${locale === 'th' ? 'Thai' : 'English'}.`;
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 150,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[generateProgressFeedback] API error:', response.status);
+      return '';
+    }
+
+    const data = await response.json();
+    const feedback = data.choices?.[0]?.message?.content?.trim();
+    
+    console.log(`[generateProgressFeedback] Generated feedback for task "${taskTitle}"`);
+    return feedback || '';
+  } catch (error) {
+    console.error('[generateProgressFeedback] Error:', error);
+    return '';
+  }
+}
+
+// =============================
 
 function extractMentions(text: string): Array<{ lineUserId: string; displayName: string }> {
   // Match @username or @U1234567890abcdef (LINE user ID format)
@@ -5353,6 +5590,23 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending reminder preference confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.8: Work Progress Reporting (runs for EVERY message)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const progressResult = await detectAndHandleProgressReport(event.message.text, user.id, group.id, locale);
+    
+    if (progressResult.detected) {
+      console.log(`[handleMessageEvent] Detected work progress report from user ${user.id}`);
+      try {
+        await replyToLine(event.replyToken, progressResult.message);
+        console.log('[handleMessageEvent] Sent progress report confirmation');
+        return; // Don't continue to AI response since we already replied
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending progress report confirmation:', error);
       }
     }
   }
