@@ -168,10 +168,105 @@ serve(async (req) => {
 
     console.log(`[task-scheduler] Processed ${results.length} tasks`);
 
+    // =============================
+    // PROCESS RECURRING TASKS
+    // =============================
+    
+    console.log(`[task-scheduler] 🔄 Checking for recurring tasks...`);
+    
+    // Find recurring tasks that need new instances
+    const { data: recurringTasks, error: recurringError } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("is_recurring", true)
+      .eq("status", "pending")
+      .lte("next_occurrence_at", fiveMinutesFromNow.toISOString());
+
+    let recurringCount = 0;
+
+    if (recurringError) {
+      console.error(`[task-scheduler] Error fetching recurring tasks:`, recurringError);
+    } else if (recurringTasks && recurringTasks.length > 0) {
+      console.log(`[task-scheduler] Found ${recurringTasks.length} recurring tasks to process`);
+      
+      for (const task of recurringTasks) {
+        try {
+          console.log(`[task-scheduler] Processing recurring task ${task.id}: ${task.title}`);
+          
+          // Calculate next occurrence
+          const nextOccurrence = calculateNextOccurrence(
+            task.recurrence_pattern,
+            task.recurrence_time,
+            task.recurrence_day_of_week,
+            task.recurrence_day_of_month
+          );
+          
+          console.log(`[task-scheduler] Next occurrence for ${task.id}: ${nextOccurrence.toISOString()}`);
+          
+          // Check if recurring should end
+          if (task.recurrence_end_date && nextOccurrence > new Date(task.recurrence_end_date)) {
+            const { error: completeError } = await supabase
+              .from("tasks")
+              .update({ status: "completed" })
+              .eq("id", task.id);
+            
+            if (completeError) {
+              console.error(`[task-scheduler] Error completing recurring task ${task.id}:`, completeError);
+            } else {
+              console.log(`[task-scheduler] ✅ Recurring task ${task.id} reached end date`);
+              recurringCount++;
+            }
+          } else {
+            // Create next instance
+            const { error: instanceError } = await supabase
+              .from('tasks')
+              .insert({
+                group_id: task.group_id,
+                created_by_user_id: task.created_by_user_id,
+                title: task.title,
+                description: task.description,
+                due_at: nextOccurrence.toISOString(),
+                assigned_to_user_id: task.assigned_to_user_id,
+                mention_all: task.mention_all,
+                status: 'pending',
+                is_recurring: false,
+                parent_task_id: task.id
+              });
+            
+            if (instanceError) {
+              console.error(`[task-scheduler] Error creating instance:`, instanceError);
+            } else {
+              console.log(`[task-scheduler] ✅ Created instance for ${task.id}`);
+            }
+            
+            // Update next occurrence
+            const { error: updateError } = await supabase
+              .from("tasks")
+              .update({ 
+                next_occurrence_at: nextOccurrence.toISOString(),
+                updated_at: now.toISOString()
+              })
+              .eq("id", task.id);
+            
+            if (updateError) {
+              console.error(`[task-scheduler] Error updating next occurrence:`, updateError);
+            } else {
+              recurringCount++;
+            }
+          }
+        } catch (error) {
+          console.error(`[task-scheduler] Error processing recurring task:`, error);
+        }
+      }
+    } else {
+      console.log(`[task-scheduler] No recurring tasks due`);
+    }
+
     return new Response(
       JSON.stringify({
         message: "Task scheduler completed",
-        processedCount: results.length,
+        processedTasks: results.length,
+        processedRecurring: recurringCount,
         results,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -185,3 +280,55 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper for calculating next occurrence
+function calculateNextOccurrence(
+  pattern: string,
+  time: string,
+  dayOfWeek: number | null,
+  dayOfMonth: number | null
+): Date {
+  const now = new Date();
+  const bangkokOffset = 7 * 60 * 60 * 1000;
+  const localOffset = now.getTimezoneOffset() * 60 * 1000;
+  const bangkokNow = new Date(now.getTime() + bangkokOffset + localOffset);
+  
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  let next = new Date(bangkokNow);
+  next.setHours(hours, minutes, 0, 0);
+  
+  switch (pattern) {
+    case 'daily':
+      if (next <= bangkokNow) {
+        next.setDate(next.getDate() + 1);
+      }
+      break;
+      
+    case 'weekly':
+      const currentDay = next.getDay();
+      const targetDay = dayOfWeek!;
+      let daysToAdd = (targetDay - currentDay + 7) % 7;
+      
+      if (daysToAdd === 0 && next <= bangkokNow) {
+        daysToAdd = 7;
+      }
+      
+      next.setDate(next.getDate() + daysToAdd);
+      break;
+      
+    case 'monthly':
+      next.setDate(dayOfMonth!);
+      
+      if (next <= bangkokNow) {
+        next.setMonth(next.getMonth() + 1);
+      }
+      
+      while (next.getDate() !== dayOfMonth!) {
+        next.setDate(0);
+      }
+      break;
+  }
+  
+  return new Date(next.getTime() - bangkokOffset - localOffset);
+}

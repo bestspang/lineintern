@@ -285,6 +285,7 @@ export default function Tasks() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Task</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Group</TableHead>
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Due Date</TableHead>
@@ -306,6 +307,29 @@ export default function Tasks() {
                             </p>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {task.is_recurring ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">🔄</span>
+                            <div className="text-xs">
+                              <div className="font-medium capitalize">{task.recurrence_pattern}</div>
+                              {task.recurrence_pattern === 'weekly' && task.recurrence_day_of_week !== null && (
+                                <div className="text-muted-foreground">
+                                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][task.recurrence_day_of_week]}
+                                </div>
+                              )}
+                              {task.recurrence_pattern === 'monthly' && task.recurrence_day_of_month !== null && (
+                                <div className="text-muted-foreground">Day {task.recurrence_day_of_month}</div>
+                              )}
+                              {task.recurrence_time && (
+                                <div className="text-muted-foreground">{task.recurrence_time}</div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">One-time</span>
+                        )}
                       </TableCell>
                       <TableCell>{(task.groups as any)?.display_name || 'N/A'}</TableCell>
                       <TableCell>
