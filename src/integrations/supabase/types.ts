@@ -979,8 +979,10 @@ export type Database = {
           recurrence_pattern: string | null
           recurrence_time: string | null
           status: Database["public"]["Enums"]["task_status"]
+          task_type: Database["public"]["Enums"]["task_type"] | null
           title: string
           updated_at: string
+          work_metadata: Json | null
         }
         Insert: {
           assigned_to_user_id?: string | null
@@ -1001,8 +1003,10 @@ export type Database = {
           recurrence_pattern?: string | null
           recurrence_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          task_type?: Database["public"]["Enums"]["task_type"] | null
           title: string
           updated_at?: string
+          work_metadata?: Json | null
         }
         Update: {
           assigned_to_user_id?: string | null
@@ -1023,8 +1027,10 @@ export type Database = {
           recurrence_pattern?: string | null
           recurrence_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          task_type?: Database["public"]["Enums"]["task_type"] | null
           title?: string
           updated_at?: string
+          work_metadata?: Json | null
         }
         Relationships: [
           {
@@ -1187,6 +1193,70 @@ export type Database = {
         }
         Relationships: []
       }
+      work_progress: {
+        Row: {
+          ai_feedback: string | null
+          check_in_date: string
+          created_at: string
+          group_id: string
+          id: string
+          progress_percentage: number | null
+          progress_text: string
+          quality_score: string | null
+          task_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_feedback?: string | null
+          check_in_date?: string
+          created_at?: string
+          group_id: string
+          id?: string
+          progress_percentage?: number | null
+          progress_text: string
+          quality_score?: string | null
+          task_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_feedback?: string | null
+          check_in_date?: string
+          created_at?: string
+          group_id?: string
+          id?: string
+          progress_percentage?: number | null
+          progress_text?: string
+          quality_score?: string | null
+          task_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_progress_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_progress_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1214,6 +1284,40 @@ export type Database = {
           schedule: string
         }[]
       }
+      get_overdue_work_tasks: {
+        Args: never
+        Returns: {
+          assignee_display_name: string
+          assignee_line_user_id: string
+          assignee_user_id: string
+          assigner_display_name: string
+          check_in_count: number
+          days_overdue: number
+          group_id: string
+          group_line_id: string
+          last_progress_text: string
+          task_due_at: string
+          task_id: string
+          task_title: string
+        }[]
+      }
+      get_pending_work_tasks: {
+        Args: never
+        Returns: {
+          assignee_display_name: string
+          assignee_line_user_id: string
+          assignee_user_id: string
+          assigner_display_name: string
+          check_in_count: number
+          days_remaining: number
+          group_id: string
+          group_line_id: string
+          last_check_in_date: string
+          task_due_at: string
+          task_id: string
+          task_title: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1239,6 +1343,7 @@ export type Database = {
       message_direction: "human" | "bot"
       report_period: "daily" | "weekly" | "custom"
       task_status: "pending" | "completed" | "cancelled"
+      task_type: "todo" | "work_assignment" | "recurring"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1382,6 +1487,7 @@ export const Constants = {
       message_direction: ["human", "bot"],
       report_period: ["daily", "weekly", "custom"],
       task_status: ["pending", "completed", "cancelled"],
+      task_type: ["todo", "work_assignment", "recurring"],
     },
   },
 } as const

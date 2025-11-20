@@ -94,6 +94,259 @@ function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): string {
 }
 
 // =============================
+// WORK ASSIGNMENT DETECTION
+// =============================
+
+interface WorkAssignment {
+  assigneeLineUserId: string;
+  assigneeDisplayName: string;
+  taskDescription: string;
+  deadline: Date | null;
+  rawDeadlineText: string;
+}
+
+function extractMentions(text: string): Array<{ lineUserId: string; displayName: string }> {
+  // Match @username or @U1234567890abcdef (LINE user ID format)
+  const mentionPattern = /@([^\s]+)/g;
+  const mentions: Array<{ lineUserId: string; displayName: string }> = [];
+  let match;
+  
+  while ((match = mentionPattern.exec(text)) !== null) {
+    const mention = match[1];
+    // Check if it looks like a LINE user ID (starts with U followed by 32 hex chars)
+    // Or just treat as display name for now
+    mentions.push({
+      lineUserId: mention.startsWith('U') ? mention : '',
+      displayName: mention,
+    });
+  }
+  
+  return mentions;
+}
+
+function parseDeadlineFromText(text: string, locale: 'th' | 'en' = 'th'): { deadline: Date | null; rawText: string } {
+  const now = new Date();
+  const textLower = text.toLowerCase();
+  
+  // Thai patterns
+  const thaiPatterns = [
+    { regex: /ก่อน.*?วัน(จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์)/i, days: ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'] },
+    { regex: /ภายใน\s*(\d+)\s*วัน/, type: 'days' },
+    { regex: /พรุ่งนี้/, type: 'tomorrow' },
+    { regex: /มะรืนนี้/, type: 'dayAfterTomorrow' },
+    { regex: /วันนี้/, type: 'today' },
+    { regex: /สัปดาห์หน้า/, type: 'nextWeek' },
+    { regex: /เดือนหน้า/, type: 'nextMonth' },
+    { regex: /(\d+)\/(\d+)/, type: 'date' }, // DD/MM format
+  ];
+  
+  // English patterns
+  const englishPatterns = [
+    { regex: /by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i, days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] },
+    { regex: /within\s+(\d+)\s+days?/i, type: 'days' },
+    { regex: /tomorrow/i, type: 'tomorrow' },
+    { regex: /today/i, type: 'today' },
+    { regex: /next\s+week/i, type: 'nextWeek' },
+    { regex: /next\s+month/i, type: 'nextMonth' },
+    { regex: /(\d{1,2})\/(\d{1,2})/, type: 'date' }, // MM/DD format
+  ];
+  
+  const patterns = locale === 'th' ? thaiPatterns : englishPatterns;
+  
+  for (const pattern of patterns) {
+    const match = textLower.match(pattern.regex);
+    if (match) {
+      let deadline: Date;
+      const rawText = match[0];
+      
+      if (pattern.days) {
+        // Day of week
+        const dayName = match[1].toLowerCase();
+        const dayIndex = pattern.days.findIndex(d => d.toLowerCase() === dayName);
+        if (dayIndex >= 0) {
+          const currentDay = now.getDay();
+          let daysUntil = dayIndex - currentDay;
+          if (daysUntil <= 0) daysUntil += 7; // Next occurrence
+          deadline = new Date(now.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+          deadline.setHours(23, 59, 59, 999); // End of that day
+          return { deadline, rawText };
+        }
+      } else if (pattern.type === 'days') {
+        const days = parseInt(match[1]);
+        deadline = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'tomorrow') {
+        deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'dayAfterTomorrow') {
+        deadline = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'today') {
+        deadline = new Date(now);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'nextWeek') {
+        deadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'nextMonth') {
+        deadline = new Date(now);
+        deadline.setMonth(deadline.getMonth() + 1);
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      } else if (pattern.type === 'date') {
+        const day = parseInt(match[1]);
+        const month = parseInt(match[2]);
+        deadline = new Date(now.getFullYear(), locale === 'th' ? month - 1 : month - 1, locale === 'th' ? day : month);
+        // If date is in the past, assume next year
+        if (deadline < now) {
+          deadline.setFullYear(deadline.getFullYear() + 1);
+        }
+        deadline.setHours(23, 59, 59, 999);
+        return { deadline, rawText };
+      }
+    }
+  }
+  
+  return { deadline: null, rawText: '' };
+}
+
+function extractTaskDescription(text: string, mentions: Array<{ lineUserId: string; displayName: string }>): string {
+  let taskText = text;
+  
+  // Remove mentions
+  for (const mention of mentions) {
+    taskText = taskText.replace(new RegExp(`@${mention.displayName}\\s*`, 'g'), '');
+  }
+  
+  // Remove common task assignment phrases
+  const phrasesToRemove = [
+    /ไป|ช่วย|หน่อย|นะ|ครับ|ค่ะ|please|pls/gi,
+    /ก่อน.*?(วัน|เวลา)/gi,
+    /by\s+/gi,
+  ];
+  
+  for (const phrase of phrasesToRemove) {
+    taskText = taskText.replace(phrase, ' ');
+  }
+  
+  return taskText.trim();
+}
+
+async function detectWorkAssignment(
+  text: string,
+  senderUserId: string,
+  groupId: string,
+  locale: 'th' | 'en' = 'th'
+): Promise<WorkAssignment[]> {
+  // Check if message contains work assignment indicators
+  const workIndicators = locale === 'th' 
+    ? ['ทำ', 'จัดการ', 'ช่วย', 'ไป', 'ดู', 'ตรวจ', 'เช็ค', 'ส่ง', 'รายงาน', 'เตรียม']
+    : ['do', 'make', 'finish', 'complete', 'submit', 'prepare', 'check', 'review', 'send', 'create'];
+  
+  const hasWorkIndicator = workIndicators.some(indicator => text.toLowerCase().includes(indicator));
+  if (!hasWorkIndicator) {
+    return [];
+  }
+  
+  // Extract mentions
+  const mentions = extractMentions(text);
+  if (mentions.length === 0) {
+    return [];
+  }
+  
+  // Parse deadline
+  const { deadline, rawText } = parseDeadlineFromText(text, locale);
+  if (!deadline) {
+    // No deadline found, skip for now (could prompt user in future)
+    return [];
+  }
+  
+  // Extract task description
+  const taskDescription = extractTaskDescription(text, mentions);
+  if (!taskDescription || taskDescription.length < 3) {
+    return [];
+  }
+  
+  // Get user records for assignees
+  const assignments: WorkAssignment[] = [];
+  
+  for (const mention of mentions) {
+    // Try to find user by display name
+    const { data: users } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('display_name', mention.displayName)
+      .limit(1);
+    
+    if (users && users.length > 0) {
+      const user = users[0];
+      assignments.push({
+        assigneeLineUserId: user.line_user_id,
+        assigneeDisplayName: user.display_name,
+        taskDescription,
+        deadline,
+        rawDeadlineText: rawText,
+      });
+    }
+  }
+  
+  return assignments;
+}
+
+async function createWorkTask(
+  assignment: WorkAssignment,
+  assignerUserId: string,
+  groupId: string,
+  locale: 'th' | 'en' = 'th'
+): Promise<{ success: boolean; taskId?: string; error?: string }> {
+  // Get assignee user ID
+  const { data: assigneeUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('line_user_id', assignment.assigneeLineUserId)
+    .single();
+  
+  if (!assigneeUser) {
+    return { success: false, error: 'Assignee user not found' };
+  }
+  
+  // Create task
+  const { data: task, error } = await supabase
+    .from('tasks')
+    .insert({
+      group_id: groupId,
+      title: assignment.taskDescription,
+      description: `งานที่มอบหมายโดย @assigner ให้ @${assignment.assigneeDisplayName}`,
+      due_at: assignment.deadline!.toISOString(),
+      status: 'pending',
+      task_type: 'work_assignment',
+      work_metadata: {
+        assigner_user_id: assignerUserId,
+        assignee_user_id: assigneeUser.id,
+        check_in_count: 0,
+        reminder_count: 0,
+        custom_reminder_hours: [24, 6, 1], // 1 day, 6 hours, 1 hour before
+      },
+      created_by_user_id: assignerUserId,
+      assigned_to_user_id: assigneeUser.id,
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('[createWorkTask] Error creating task:', error);
+    return { success: false, error: error.message };
+  }
+  
+  console.log(`[createWorkTask] Created work task: ${task.id}`);
+  return { success: true, taskId: task.id };
+}
+
+// =============================
 // TYPES & INTERFACES
 // =============================
 
@@ -3308,6 +3561,43 @@ async function replyToLine(replyToken: string, text: string) {
   }
 }
 
+async function pushToLine(to: string, text: string) {
+  console.log(`[pushToLine] Sending push message to ${to} (${text.length} chars)`);
+  
+  // LINE has a 5000 character limit per message
+  const chunks = [];
+  for (let i = 0; i < text.length; i += 5000) {
+    chunks.push(text.substring(i, i + 5000));
+  }
+
+  const messages = chunks.map(chunk => ({ type: "text", text: chunk }));
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to,
+        messages: messages.slice(0, 5), // LINE allows max 5 messages per push
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[pushToLine] LINE API error: ${response.status} ${errorText}`);
+      throw new Error(`LINE API error: ${response.status}`);
+    }
+
+    console.log(`[pushToLine] Successfully sent push message`);
+  } catch (error) {
+    console.error(`[pushToLine] Error:`, error);
+    throw error;
+  }
+}
+
 async function replyToLineWithImage(replyToken: string, imageUrl: string, text?: string) {
   console.log(`[replyToLineWithImage] Sending image reply`);
   
@@ -3689,6 +3979,42 @@ async function handleMessageEvent(event: LineEvent) {
     checkAndCreateAutoSummary(group.id).catch(err => {
       console.error('[handleMessageEvent] Auto-summary check failed:', err);
     });
+  }
+
+  // PHASE 2.5: Work Assignment Detection (runs for EVERY message)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const assignments = await detectWorkAssignment(event.message.text, user.id, group.id, locale);
+    
+    if (assignments.length > 0) {
+      console.log(`[handleMessageEvent] Detected ${assignments.length} work assignment(s)`);
+      
+      const confirmationParts: string[] = [];
+      for (const assignment of assignments) {
+        const result = await createWorkTask(assignment, user.id, group.id, locale);
+        
+        if (result.success) {
+          const deadlineStr = formatTimeDistance(assignment.deadline!, locale);
+          if (locale === 'th') {
+            confirmationParts.push(`✅ สร้างงาน "${assignment.taskDescription}" สำหรับ @${assignment.assigneeDisplayName} กำหนดส่ง${deadlineStr}`);
+          } else {
+            confirmationParts.push(`✅ Created task "${assignment.taskDescription}" for @${assignment.assigneeDisplayName} due ${deadlineStr}`);
+          }
+        }
+      }
+      
+      // Send confirmation using reply token if we have work assignments
+      if (confirmationParts.length > 0) {
+        const confirmationMessage = confirmationParts.join('\n');
+        try {
+          await replyToLine(event.replyToken, confirmationMessage);
+          console.log('[handleMessageEvent] Sent work assignment confirmation');
+          return; // Don't continue to AI response since we already replied
+        } catch (error) {
+          console.error('[handleMessageEvent] Error sending work assignment confirmation:', error);
+        }
+      }
+    }
   }
 
   // PHASE 3: Passive Safety Monitoring (runs for EVERY message)
