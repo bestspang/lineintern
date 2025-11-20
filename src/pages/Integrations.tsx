@@ -6,10 +6,6 @@ import { Webhook, CheckCircle } from 'lucide-react';
 export default function Integrations() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Integrations & Webhook</h1>
-        <p className="text-muted-foreground">External integrations and webhook status</p>
-      </div>
 
       <Card>
         <CardHeader>

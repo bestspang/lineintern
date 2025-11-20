@@ -27,6 +27,7 @@ import CronJobs from "./pages/CronJobs";
 import Commands from "./pages/Commands";
 import Summaries from "./pages/Summaries";
 import Personality from "./pages/Personality";
+import SettingsLayout from "./pages/SettingsLayout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,11 +59,13 @@ const App = () => (
                     <Route path="/summaries" element={<Summaries />} />
                     <Route path="/personality" element={<Personality />} />
                     <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/alerts" element={<Alerts />} />
-                    <Route path="/safety-rules" element={<SafetyRules />} />
-                    <Route path="/integrations" element={<Integrations />} />
-                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/settings" element={<SettingsLayout />}>
+                      <Route index element={<Settings />} />
+                      <Route path="safety" element={<SafetyRules />} />
+                      <Route path="integrations" element={<Integrations />} />
+                      <Route path="alerts" element={<Alerts />} />
+                      <Route path="reports" element={<Reports />} />
+                    </Route>
                     <Route path="/test-bot" element={<TestBot />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
