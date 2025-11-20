@@ -927,6 +927,249 @@ async function detectAndHandleReminderPreference(
 }
 
 // =============================
+// LIST PENDING REMINDERS
+// =============================
+
+interface RemindersListResult {
+  detected: boolean;
+  message: string;
+}
+
+async function detectAndHandleRemindersList(
+  text: string,
+  groupId: string,
+  locale: 'th' | 'en'
+): Promise<RemindersListResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for reminders list commands
+  // Thai: "/เตือน", "/งาน", "เตือน"
+  // English: "/reminders", "/reminder", "reminders"
+  
+  const remindersPatterns = [
+    /^\/(?:reminders?|เตือน|งาน)$/i,
+    /^(?:reminders?|เตือน)$/i,
+  ];
+
+  let isRemindersCommand = false;
+  for (const pattern of remindersPatterns) {
+    if (pattern.test(lowerText)) {
+      isRemindersCommand = true;
+      break;
+    }
+  }
+
+  if (!isRemindersCommand) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[detectAndHandleRemindersList] Reminders list command detected for group ${groupId}`);
+
+  try {
+    // Fetch all pending work tasks for this group
+    const { data: tasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        id,
+        title,
+        due_at,
+        work_metadata,
+        assigned_to_user_id,
+        users!tasks_assigned_to_user_id_fkey(display_name, line_user_id)
+      `)
+      .eq('group_id', groupId)
+      .eq('task_type', 'work_assignment')
+      .eq('status', 'pending')
+      .order('due_at', { ascending: true });
+
+    if (error) {
+      console.error('[detectAndHandleRemindersList] Error fetching tasks:', error);
+      const msg = locale === 'th'
+        ? '❌ เกิดข้อผิดพลาดในการดึงข้อมูลงาน'
+        : '❌ Failed to fetch tasks';
+      return { detected: true, message: msg };
+    }
+
+    if (!tasks || tasks.length === 0) {
+      const msg = locale === 'th'
+        ? '🎉 ไม่มีงานที่รอดำเนินการในขณะนี้'
+        : '🎉 No pending tasks at the moment';
+      return { detected: true, message: msg };
+    }
+
+    // Format the reminders list
+    const message = formatRemindersList(tasks, locale);
+    
+    console.log(`[detectAndHandleRemindersList] Successfully formatted reminders list with ${tasks.length} tasks`);
+    return { detected: true, message };
+
+  } catch (error) {
+    console.error('[detectAndHandleRemindersList] Error:', error);
+    const msg = locale === 'th'
+      ? '❌ เกิดข้อผิดพลาดในการแสดงรายการเตือน'
+      : '❌ Failed to display reminders list';
+    return { detected: true, message: msg };
+  }
+}
+
+function formatRemindersList(tasks: any[], locale: 'th' | 'en'): string {
+  const now = new Date();
+  const header = locale === 'th'
+    ? `📋 รายการงานที่รอดำเนินการ (${tasks.length} งาน)\n\n`
+    : `📋 Pending Work Tasks (${tasks.length} tasks)\n\n`;
+  
+  let message = header;
+
+  const categorized = {
+    overdue: [] as any[],
+    urgent: [] as any[],
+    today: [] as any[],
+    thisWeek: [] as any[],
+    later: [] as any[]
+  };
+
+  // Categorize tasks by urgency
+  tasks.forEach(task => {
+    const dueDate = new Date(task.due_at);
+    const hoursUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const daysUntilDue = hoursUntilDue / 24;
+
+    if (hoursUntilDue < 0) {
+      categorized.overdue.push(task);
+    } else if (hoursUntilDue <= 6) {
+      categorized.urgent.push(task);
+    } else if (daysUntilDue <= 1) {
+      categorized.today.push(task);
+    } else if (daysUntilDue <= 7) {
+      categorized.thisWeek.push(task);
+    } else {
+      categorized.later.push(task);
+    }
+  });
+
+  // Format overdue tasks
+  if (categorized.overdue.length > 0) {
+    const sectionHeader = locale === 'th'
+      ? `🚨 เกินกำหนด (${categorized.overdue.length})\n`
+      : `🚨 Overdue (${categorized.overdue.length})\n`;
+    message += sectionHeader;
+    categorized.overdue.forEach(task => {
+      message += formatTaskLine(task, now, 'overdue', locale);
+    });
+    message += '\n';
+  }
+
+  // Format urgent tasks (within 6 hours)
+  if (categorized.urgent.length > 0) {
+    const sectionHeader = locale === 'th'
+      ? `⚠️ เร่งด่วน - ใน 6 ชม. (${categorized.urgent.length})\n`
+      : `⚠️ Urgent - Within 6 hrs (${categorized.urgent.length})\n`;
+    message += sectionHeader;
+    categorized.urgent.forEach(task => {
+      message += formatTaskLine(task, now, 'urgent', locale);
+    });
+    message += '\n';
+  }
+
+  // Format today tasks
+  if (categorized.today.length > 0) {
+    const sectionHeader = locale === 'th'
+      ? `📅 วันนี้ (${categorized.today.length})\n`
+      : `📅 Today (${categorized.today.length})\n`;
+    message += sectionHeader;
+    categorized.today.forEach(task => {
+      message += formatTaskLine(task, now, 'today', locale);
+    });
+    message += '\n';
+  }
+
+  // Format this week tasks
+  if (categorized.thisWeek.length > 0) {
+    const sectionHeader = locale === 'th'
+      ? `📆 สัปดาห์นี้ (${categorized.thisWeek.length})\n`
+      : `📆 This Week (${categorized.thisWeek.length})\n`;
+    message += sectionHeader;
+    categorized.thisWeek.forEach(task => {
+      message += formatTaskLine(task, now, 'thisWeek', locale);
+    });
+    message += '\n';
+  }
+
+  // Format later tasks
+  if (categorized.later.length > 0) {
+    const sectionHeader = locale === 'th'
+      ? `🗓️ ภายหลัง (${categorized.later.length})\n`
+      : `🗓️ Later (${categorized.later.length})\n`;
+    message += sectionHeader;
+    categorized.later.forEach(task => {
+      message += formatTaskLine(task, now, 'later', locale);
+    });
+  }
+
+  // Add helpful commands footer
+  const footer = locale === 'th'
+    ? '\n💡 ใช้ /progress [รายละเอียด] เพื่อรายงานความคืบหน้า\n✅ ใช้ /confirm เพื่อส่งงานเสร็จ'
+    : '\n💡 Use /progress [details] to report progress\n✅ Use /confirm to submit completed work';
+  message += footer;
+
+  return message;
+}
+
+function formatTaskLine(task: any, now: Date, urgency: string, locale: 'th' | 'en'): string {
+  const dueDate = new Date(task.due_at);
+  const assigneeName = task.users?.display_name || (locale === 'th' ? 'ไม่ระบุ' : 'Unassigned');
+  
+  let timeLine = '';
+  if (urgency === 'overdue') {
+    const daysLate = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    timeLine = locale === 'th' ? `เกิน ${daysLate} วัน` : `${daysLate} days late`;
+  } else {
+    const hoursUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (hoursUntilDue <= 24) {
+      const hours = Math.floor(hoursUntilDue);
+      timeLine = locale === 'th' ? `อีก ${hours} ชม.` : `${hours} hrs left`;
+    } else {
+      const daysUntilDue = Math.floor(hoursUntilDue / 24);
+      timeLine = locale === 'th' ? `อีก ${daysUntilDue} วัน` : `${daysUntilDue} days left`;
+    }
+  }
+
+  // Get reminder intervals from metadata
+  const metadata = task.work_metadata || {};
+  const reminderIntervals = metadata.reminderIntervals || [24, 6, 1];
+  const nextReminder = getNextReminderTime(dueDate, now, reminderIntervals, locale);
+
+  let reminderText = '';
+  if (nextReminder) {
+    reminderText = ` 🔔 ${nextReminder}`;
+  }
+
+  return `  • ${task.title}\n    👤 ${assigneeName} | ⏰ ${timeLine}${reminderText}\n`;
+}
+
+function getNextReminderTime(dueDate: Date, now: Date, intervals: number[], locale: 'th' | 'en'): string | null {
+  const hoursUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+  
+  // If already overdue, no more reminders
+  if (hoursUntilDue <= 0) {
+    return null;
+  }
+  
+  // Find the next reminder interval that hasn't passed yet
+  const sortedIntervals = [...intervals].sort((a, b) => b - a);
+  
+  for (const interval of sortedIntervals) {
+    if (hoursUntilDue > interval) {
+      return locale === 'th'
+        ? `${interval} ชม.ก่อนถึงกำหนด`
+        : `${interval} hrs before due`;
+    }
+  }
+  
+  return null;
+}
+
+// =============================
 // WORK PROGRESS REPORTING
 // =============================
 
@@ -5607,6 +5850,23 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending progress report confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.9: List Pending Reminders (runs for EVERY message)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const remindersResult = await detectAndHandleRemindersList(event.message.text, group.id, locale);
+    
+    if (remindersResult.detected) {
+      console.log(`[handleMessageEvent] Detected reminders list command for group ${group.id}`);
+      try {
+        await replyToLine(event.replyToken, remindersResult.message);
+        console.log('[handleMessageEvent] Sent reminders list');
+        return; // Don't continue to AI response since we already replied
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending reminders list:', error);
       }
     }
   }
