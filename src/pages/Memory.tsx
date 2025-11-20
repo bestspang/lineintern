@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -51,6 +51,7 @@ export default function Memory() {
   const [timelineScope, setTimelineScope] = useState<'all' | 'group' | 'user'>('all');
   const [timelineGroupId, setTimelineGroupId] = useState<string>('');
   const [timelineUserId, setTimelineUserId] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   
   const { data: groups } = useQuery({
     queryKey: ['groups'],
@@ -63,6 +64,18 @@ export default function Memory() {
       return data;
     },
   });
+  
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['memory-by-group'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-by-user'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-global'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-timeline'] });
+      setLastUpdated(new Date());
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [queryClient]);
   
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -267,9 +280,15 @@ export default function Memory() {
   const renderMemoryTable = () => {
     if (!memories || memories.length === 0) {
       return (
-        <div className="text-center py-12 text-muted-foreground">
-          <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>No memories found</p>
+        <div className="text-center py-12">
+          <Brain className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+          <p className="text-lg text-muted-foreground mb-2">No memories yet</p>
+          <p className="text-sm text-muted-foreground">
+            Keep chatting in LINE and memories will appear automatically.
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Memories are extracted from meaningful conversations (preferences, facts, events).
+          </p>
         </div>
       );
     }
@@ -354,20 +373,25 @@ export default function Memory() {
           </h1>
           <p className="text-muted-foreground">Manage what the bot remembers about users and groups</p>
         </div>
-        <Button onClick={() => {
-          setEditingMemory({
-            scope: activeTab === 'global' ? 'global' : activeTab === 'by-group' ? 'group' : 'user',
-            group_id: selectedGroupId,
-            user_id: selectedUserId,
-            category: 'meta',
-            importance_score: 0.5,
-            pinned: false
-          });
-          setIsDialogOpen(true);
-        }}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Memory
-        </Button>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-muted-foreground">
+            Last updated: {lastUpdated.toLocaleTimeString()}
+          </div>
+          <Button onClick={() => {
+            setEditingMemory({
+              scope: activeTab === 'global' ? 'global' : activeTab === 'by-group' ? 'group' : 'user',
+              group_id: selectedGroupId,
+              user_id: selectedUserId,
+              category: 'meta',
+              importance_score: 0.5,
+              pinned: false
+            });
+            setIsDialogOpen(true);
+          }}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Memory
+          </Button>
+        </div>
       </div>
       
       <Card>

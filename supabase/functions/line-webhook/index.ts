@@ -3288,7 +3288,7 @@ async function initializePersonalityState(groupId: string) {
 
 async function checkAndCreateAutoSummary(groupId: string) {
   try {
-    const SUMMARY_THRESHOLD = 100;
+    const SUMMARY_THRESHOLD = 20; // Reduced from 100 for easier testing
     
     // Get last summary
     const { data: lastSummary } = await supabase
@@ -3598,6 +3598,21 @@ async function handleMessageEvent(event: LineEvent) {
       },
     })
     .catch((err) => console.error("[Memory Writer] Passive learning error:", err));
+
+  // PASSIVE PERSONALITY TRACKING: Update personality for ALL messages
+  if (group.id && user.id) {
+    supabase.functions
+      .invoke("personality-engine", {
+        body: {
+          action: 'update',
+          groupId: group.id,
+          userId: user.id,
+          messageText: event.message.text,
+          messageCount: 0,
+        },
+      })
+      .catch((err) => console.error("[Personality Engine] Passive tracking error:", err));
+  }
 
   // PHASE 1: Handle /train command
   if (parsed.commandType === 'train') {

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -41,6 +41,7 @@ export default function Personality() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
@@ -163,12 +164,27 @@ export default function Personality() {
     }
   };
 
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["personality-states"] });
+      queryClient.invalidateQueries({ queryKey: ["mood-history"] });
+      setLastUpdated(new Date());
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [queryClient]);
+
   if (loadingGroups) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Personality Dashboard</h1>
-          <p className="text-muted-foreground">Loading magic mode groups...</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Personality Dashboard</h1>
+            <p className="text-muted-foreground">Loading magic mode groups...</p>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Last updated: {lastUpdated.toLocaleTimeString()}
+          </div>
         </div>
         <Skeleton className="h-[200px] w-full" />
       </div>
