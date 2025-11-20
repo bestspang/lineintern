@@ -2054,7 +2054,7 @@ async function handleImagineCommand(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image-preview',
+        model: 'google/gemini-2.5-flash-image',
         messages: [
           {
             role: 'user',
@@ -2068,14 +2068,28 @@ async function handleImagineCommand(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[handleImagineCommand] AI API error: ${response.status} ${errorText}`);
+      
+      if (response.status === 429) {
+        await replyToLine(replyToken, '⏱️ Too many requests. Please wait a moment and try again.');
+        return;
+      }
+      
+      if (response.status === 402) {
+        await replyToLine(replyToken, '💳 Image generation credits depleted. Please contact the admin to add more credits.');
+        return;
+      }
+      
       await replyToLine(replyToken, '❌ Sorry, I encountered an error generating the image. Please try again.');
       return;
     }
 
     const data = await response.json();
+    console.log('[handleImagineCommand] AI Response:', JSON.stringify(data, null, 2));
+    
     const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     
     if (!imageData) {
+      console.error('[handleImagineCommand] Full response:', JSON.stringify(data, null, 2));
       console.error('[handleImagineCommand] No image data in response');
       await replyToLine(replyToken, '❌ Sorry, I couldn\'t generate an image. Please try a different prompt.');
       return;
