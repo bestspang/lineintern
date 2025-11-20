@@ -2502,8 +2502,8 @@ async function generateAiReply(
 ): Promise<string> {
   let personalityContext = '';
   
-  // If in magic mode, get personality context from personality-engine
-  if (mode === 'magic' && groupId) {
+  // === PERSONALITY ENGINE: Track personality in all groups ===
+  if (groupId) {
     try {
       const { count: messageCount } = await supabase
         .from('messages')
@@ -2551,9 +2551,21 @@ async function generateAiReply(
   // Get mode-specific instructions
   let modeInstructions = MODE_SPECIFIC_INSTRUCTIONS[mode as keyof typeof MODE_SPECIFIC_INSTRUCTIONS] || MODE_SPECIFIC_INSTRUCTIONS.helper;
   
-  // Inject personality context into magic mode instructions
-  if (mode === 'magic' && personalityContext) {
-    modeInstructions = modeInstructions.replace('{PERSONALITY_CONTEXT}', personalityContext);
+  // Adjust personality context influence based on mode
+  if (personalityContext) {
+    if (mode === 'magic') {
+      // Full personality context for magic mode
+      modeInstructions = modeInstructions.replace('{PERSONALITY_CONTEXT}', personalityContext);
+    } else if (mode === 'fun') {
+      // Light personality touch for fun mode (just mood + energy)
+      const moodMatch = personalityContext.match(/Current Mood: ([^\n]+)/);
+      const energyMatch = personalityContext.match(/Energy Level: (\d+)/);
+      if (moodMatch && energyMatch) {
+        const lightContext = `Mood: ${moodMatch[1]}, Energy: ${energyMatch[1]}/100`;
+        modeInstructions = `${modeInstructions}\n\n[AI Personality State: ${lightContext}]`;
+      }
+    }
+    // For helper, faq, report, safety: personality tracked but not shown to AI
   }
 
   const userPrompt = COMMON_BEHAVIOR_PROMPT
@@ -2700,6 +2712,102 @@ async function replyToLineWithImage(replyToken: string, imageUrl: string, text?:
 }
 
 // =============================
+// AUTO-SUMMARY & PERSONALITY HELPERS
+// =============================
+
+async function initializePersonalityState(groupId: string) {
+  try {
+    // Check if personality state already exists
+    const { data: existing } = await supabase
+      .from('personality_state')
+      .select('id')
+      .eq('group_id', groupId)
+      .single();
+    
+    if (existing) {
+      console.log(`[initializePersonalityState] Already exists for group ${groupId}`);
+      return;
+    }
+    
+    // Create default personality state
+    const { error } = await supabase
+      .from('personality_state')
+      .insert({
+        group_id: groupId,
+        mood: 'friendly',
+        energy_level: 70,
+        current_interests: ['conversations', 'helping'],
+        relationship_map: {},
+        recent_topics: [],
+        personality_traits: { humor: 60, helpfulness: 85, curiosity: 75 },
+      });
+    
+    if (error) {
+      console.error(`[initializePersonalityState] Error:`, error);
+    } else {
+      console.log(`[initializePersonalityState] Created for group ${groupId}`);
+    }
+  } catch (err) {
+    console.error(`[initializePersonalityState] Exception:`, err);
+  }
+}
+
+async function checkAndCreateAutoSummary(groupId: string) {
+  try {
+    const SUMMARY_THRESHOLD = 100;
+    
+    // Get last summary
+    const { data: lastSummary } = await supabase
+      .from('chat_summaries')
+      .select('created_at, to_message_id')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    let messageCount = 0;
+    
+    if (lastSummary) {
+      // Count messages after last summary
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', groupId)
+        .gt('sent_at', lastSummary.created_at);
+      
+      messageCount = count || 0;
+    } else {
+      // No summary yet, count all messages
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', groupId);
+      
+      messageCount = count || 0;
+    }
+    
+    if (messageCount >= SUMMARY_THRESHOLD) {
+      console.log(`[checkAndCreateAutoSummary] Triggering auto-summary for group ${groupId} (${messageCount} messages)`);
+      
+      // Call report-generator async (fire-and-forget)
+      supabase.functions
+        .invoke('report-generator', {
+          body: {
+            groupId,
+            type: 'auto_summary',
+            messageLimit: SUMMARY_THRESHOLD,
+          },
+        })
+        .catch((err: any) => {
+          console.error('[checkAndCreateAutoSummary] Error invoking report-generator:', err);
+        });
+    }
+  } catch (err) {
+    console.error('[checkAndCreateAutoSummary] Exception:', err);
+  }
+}
+
+// =============================
 // EVENT HANDLERS
 // =============================
 
@@ -2707,7 +2815,11 @@ async function handleJoinEvent(event: LineEvent) {
   console.log(`[handleJoinEvent] Bot joined group/room`);
   
   if (event.source.type === "group" && event.source.groupId) {
-    await ensureGroup(event.source.groupId);
+    const group = await ensureGroup(event.source.groupId);
+    
+    // Initialize personality state immediately for new group
+    await initializePersonalityState(group.id);
+    console.log(`[handleJoinEvent] Initialized personality state for group ${group.id}`);
   }
 }
 
@@ -2929,6 +3041,13 @@ async function handleMessageEvent(event: LineEvent) {
     event.message.id,
     parsed.commandType
   );
+
+  // Check for auto-summary trigger (every 100 messages)
+  if (group.features?.summary && !isDM) {
+    checkAndCreateAutoSummary(group.id).catch(err => {
+      console.error('[handleMessageEvent] Auto-summary check failed:', err);
+    });
+  }
 
   // PHASE 3: Passive Safety Monitoring (runs for EVERY message)
   const messageIdForAlert = (insertedMessage as any)?.id || event.message.id || '';

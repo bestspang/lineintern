@@ -84,6 +84,18 @@ serve(async (req) => {
           );
         }
 
+        // Save mood history
+        try {
+          await supabase.from('mood_history').insert({
+            group_id: groupId,
+            mood: updatedState.mood,
+            energy_level: updatedState.energy_level,
+            recorded_at: new Date().toISOString(),
+          });
+        } catch (historyError) {
+          console.error('[personality-engine] Failed to save mood history:', historyError);
+        }
+
         const { error: updateError } = await supabase
           .from("personality_state")
           .update({
