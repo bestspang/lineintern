@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -15,9 +16,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { RefreshCw, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export default function Users() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
   const { data: users, isLoading } = useQuery({
@@ -35,6 +40,21 @@ export default function Users() {
     },
   });
 
+  const fixNamesMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('fix-user-names');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(`Fixed ${data.success} user names!`);
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to fix names: ${error.message}`);
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -46,12 +66,29 @@ export default function Users() {
         <CardHeader>
           <CardTitle>All Users</CardTitle>
           <CardDescription>
-            <Input
-              placeholder="Search by name or LINE ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
+            <div className="flex justify-between items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search by name or LINE User ID..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <Button
+                onClick={() => fixNamesMutation.mutate()}
+                disabled={fixNamesMutation.isPending}
+                variant="outline"
+              >
+                <RefreshCw className={cn(
+                  "h-4 w-4 mr-2",
+                  fixNamesMutation.isPending && "animate-spin"
+                )} />
+                Fix Display Names
+              </Button>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent>

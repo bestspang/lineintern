@@ -371,6 +371,34 @@ async function verifySignature(body: string, signature: string): Promise<boolean
 // DATABASE HELPERS
 // =============================
 
+async function getLineProfile(userId: string) {
+  console.log(`[getLineProfile] Fetching profile for: ${userId}`);
+  
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`[getLineProfile] LINE API error: ${response.status}`);
+      return null;
+    }
+
+    const profile = await response.json();
+    console.log(`[getLineProfile] Got profile:`, profile);
+    
+    return {
+      displayName: profile.displayName || userId,
+      avatarUrl: profile.pictureUrl || null,
+    };
+  } catch (error) {
+    console.error(`[getLineProfile] Error fetching profile:`, error);
+    return null;
+  }
+}
+
 async function ensureUser(lineUserId: string, displayName?: string) {
   console.log(`[ensureUser] Checking user: ${lineUserId}`);
   
@@ -391,12 +419,26 @@ async function ensureUser(lineUserId: string, displayName?: string) {
     return existing;
   }
 
+  // Fetch real display name from LINE API if not provided
+  let finalDisplayName = displayName;
+  let avatarUrl = null;
+  
+  if (!finalDisplayName) {
+    console.log(`[ensureUser] No displayName provided, fetching from LINE API...`);
+    const profile = await getLineProfile(lineUserId);
+    if (profile) {
+      finalDisplayName = profile.displayName;
+      avatarUrl = profile.avatarUrl;
+    }
+  }
+
   // Create new user
   const { data: newUser, error } = await supabase
     .from("users")
     .insert({
       line_user_id: lineUserId,
-      display_name: displayName || lineUserId,
+      display_name: finalDisplayName || lineUserId,
+      avatar_url: avatarUrl,
       last_seen_at: new Date().toISOString(),
     })
     .select()
@@ -407,7 +449,7 @@ async function ensureUser(lineUserId: string, displayName?: string) {
     throw error;
   }
 
-  console.log(`[ensureUser] Created new user: ${newUser.id}`);
+  console.log(`[ensureUser] Created new user: ${newUser.id} (${finalDisplayName})`);
   return newUser;
 }
 
