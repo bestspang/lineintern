@@ -409,6 +409,25 @@ async function ensureUser(lineUserId: string, displayName?: string) {
     .single();
 
   if (existing) {
+    // ✅ Auto-fix: If display_name is the LINE ID, fetch real name
+    if (existing.display_name === lineUserId) {
+      console.log(`[ensureUser] ⚠️ User ${lineUserId} has ID as name, auto-fixing...`);
+      const profile = await getLineProfile(lineUserId);
+      if (profile && profile.displayName !== lineUserId) {
+        await supabase
+          .from("users")
+          .update({
+            display_name: profile.displayName,
+            avatar_url: profile.avatarUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existing.id);
+        console.log(`[ensureUser] ✅ Auto-fixed: ${lineUserId} → ${profile.displayName}`);
+        existing.display_name = profile.displayName;
+        existing.avatar_url = profile.avatarUrl;
+      }
+    }
+    
     // Update last_seen_at
     await supabase
       .from("users")
@@ -437,7 +456,7 @@ async function ensureUser(lineUserId: string, displayName?: string) {
     .from("users")
     .insert({
       line_user_id: lineUserId,
-      display_name: finalDisplayName || lineUserId,
+      display_name: finalDisplayName || `User ${lineUserId.slice(-6)}`,
       avatar_url: avatarUrl,
       last_seen_at: new Date().toISOString(),
     })
