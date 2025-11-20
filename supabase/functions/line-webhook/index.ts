@@ -195,6 +195,64 @@ function formatTimeUntilDue(dueAt: string, locale: 'th' | 'en'): string {
     : `${days}d left`;
 }
 
+// Smart Auto-Priority Logic - determines if a single task should be auto-approved
+function determineAutoPriorityTask(tasks: any[]): any | null {
+  // Rule 1: If only 1 overdue task exists → auto-select it
+  const overdue = tasks.filter(t => new Date(t.due_at) < new Date());
+  if (overdue.length === 1 && tasks.length > 1) {
+    return overdue[0];
+  }
+
+  // Rule 2: If only 1 task due within 24h (and not overdue) → auto-select it
+  const urgent = tasks.filter(t => {
+    const hours = (new Date(t.due_at).getTime() - Date.now()) / (1000 * 60 * 60);
+    return hours > 0 && hours <= 24;
+  });
+  if (urgent.length === 1 && overdue.length === 0) {
+    return urgent[0];
+  }
+
+  // Rule 3: If only 1 task due within 6h (critical) → auto-select it
+  const critical = tasks.filter(t => {
+    const hours = (new Date(t.due_at).getTime() - Date.now()) / (1000 * 60 * 60);
+    return hours > 0 && hours <= 6;
+  });
+  if (critical.length === 1) {
+    return critical[0];
+  }
+
+  // Otherwise, require user selection
+  return null;
+}
+
+// Get explanation for why a task was auto-approved
+function getAutoPriorityReason(task: any, allTasks: any[], locale: 'th' | 'en'): string {
+  const now = new Date();
+  const dueDate = new Date(task.due_at);
+  const isOverdue = dueDate < now;
+  const hoursUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (isOverdue) {
+    return locale === 'th'
+      ? `📌 เหตุผล: เป็นงานเดียวที่เลยกำหนดแล้ว (จากทั้งหมด ${allTasks.length} งาน)`
+      : `📌 Reason: Only overdue task (out of ${allTasks.length} total)`;
+  }
+
+  if (hoursUntilDue <= 6) {
+    return locale === 'th'
+      ? `📌 เหตุผล: เป็นงานเดียวที่ใกล้ถึงกำหนดมาก (เหลือไม่ถึง 6 ชั่วโมง)`
+      : `📌 Reason: Only critical task (due in less than 6 hours)`;
+  }
+
+  if (hoursUntilDue <= 24) {
+    return locale === 'th'
+      ? `📌 เหตุผล: เป็นงานเดียวที่ต้องทำภายในวันนี้`
+      : `📌 Reason: Only urgent task (due within 24 hours)`;
+  }
+
+  return '';
+}
+
 async function detectAndHandleWorkApproval(
   text: string,
   approverId: string,
@@ -331,8 +389,24 @@ async function detectAndHandleWorkApproval(
       continue;
     }
 
-    // If multiple tasks found, show interactive selection
+    // If multiple tasks found, check for auto-priority first
     if (tasks.length > 1) {
+      // Smart Auto-Priority Logic
+      const autoPriorityTask = determineAutoPriorityTask(tasks);
+      
+      if (autoPriorityTask) {
+        // Auto-approve with explanation
+        const reason = getAutoPriorityReason(autoPriorityTask, tasks, locale);
+        await approveTask(autoPriorityTask, user, groupId, approvedTasks);
+        
+        const msg = locale === 'th'
+          ? `✅ อนุมัติงาน "${autoPriorityTask.title}" ของ @${user.display_name} อัตโนมัติ\n\n${reason}`
+          : `✅ Auto-approved task "${autoPriorityTask.title}" for @${user.display_name}\n\n${reason}`;
+        
+        return { detected: true, approvedCount: 1, message: msg };
+      }
+      
+      // No clear priority - show interactive selection
       const taskList = tasks.map((task, index) => {
         const emoji = getTaskUrgencyEmoji(task);
         const status = getTaskStatusLabel(task, locale);
