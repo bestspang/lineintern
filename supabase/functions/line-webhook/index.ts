@@ -1382,7 +1382,8 @@ async function handleHelpCommand(
       
       helpText += `⚙️ **ตั้งค่า:**\n`;
       helpText += `• /mode หรือ /โหมด [โหมด] - เปลี่ยนโหมด bot\n`;
-      helpText += `  โหมดที่มี: helper, faq, report, fun, safety, magic\n\n`;
+      helpText += `  โหมดที่มี: helper, faq, report, fun, safety, magic\n`;
+      helpText += `• /status หรือ /สถานะ - ดูสถานะ AI และหน่วยความจำ\n\n`;
       
       helpText += `💡 **เคล็ดลับ:**\n`;
       helpText += `• ในกลุ่ม: แท็ก @intern หรือใช้คำสั่ง\n`;
@@ -1420,7 +1421,8 @@ async function handleHelpCommand(
       
       helpText += `⚙️ **Settings:**\n`;
       helpText += `• /mode [mode] - Change bot mode\n`;
-      helpText += `  Modes: helper, faq, report, fun, safety, magic\n\n`;
+      helpText += `  Modes: helper, faq, report, fun, safety, magic\n`;
+      helpText += `• /status - View AI personality and memory stats\n\n`;
       
       helpText += `💡 **Tips:**\n`;
       helpText += `• In groups: Mention @intern or use commands\n`;
@@ -1695,6 +1697,160 @@ async function handleMentionsCommand(
   } catch (error) {
     console.error('[handleMentionsCommand] Error:', error);
     await replyToLine(replyToken, 'Sorry, I encountered an error finding mentions.');
+  }
+}
+
+/**
+ * Handle /status command - show AI personality and memory stats
+ */
+async function handleStatusCommand(
+  groupId: string,
+  userId: string,
+  replyToken: string
+) {
+  console.log(`[handleStatusCommand] Getting status for group ${groupId}`);
+
+  try {
+    // Fetch personality state (use maybeSingle to avoid errors)
+    const { data: personalityState, error: personalityError } = await supabase
+      .from('personality_state')
+      .select('*')
+      .eq('group_id', groupId)
+      .maybeSingle();
+
+    if (personalityError) {
+      console.error('[handleStatusCommand] Personality error:', personalityError);
+    }
+
+    // Fetch memory statistics
+    const { data: memoryItems, error: memoryError } = await supabase
+      .from('memory_items')
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('is_deleted', false)
+      .order('updated_at', { ascending: false });
+
+    if (memoryError) {
+      console.error('[handleStatusCommand] Memory error:', memoryError);
+    }
+
+    // Fetch group mode
+    const { data: group } = await supabase
+      .from('groups')
+      .select('mode')
+      .eq('id', groupId)
+      .single();
+
+    const mode = group?.mode || 'helper';
+
+    // Build status message
+    let statusText = '📊 **สถานะระบบ AI**\n\n';
+
+    // === PERSONALITY STATE ===
+    statusText += '🤖 **บุคลิกภาพ AI**\n';
+    if (personalityState) {
+      // Get mood emoji
+      const moodEmojis: Record<string, string> = {
+        happy: '😊',
+        curious: '🤔',
+        thoughtful: '💭',
+        playful: '😄',
+        serious: '🧐',
+        energetic: '⚡',
+        calm: '😌',
+        reflective: '🌙',
+        enthusiastic: '🎉',
+        friendly: '👋',
+      };
+      const moodEmoji = moodEmojis[personalityState.mood] || '😐';
+
+      statusText += `• อารมณ์: ${moodEmoji} ${personalityState.mood}\n`;
+      statusText += `• พลังงาน: ${'⚡'.repeat(Math.ceil(personalityState.energy_level / 20))} ${personalityState.energy_level}/100\n`;
+      
+      // Personality traits
+      const traits = personalityState.personality_traits as any;
+      statusText += `• ลักษณะนิสัย:\n`;
+      statusText += `  - ตลก: ${traits.humor || 0}/100\n`;
+      statusText += `  - ช่วยเหลือ: ${traits.helpfulness || 0}/100\n`;
+      statusText += `  - อยากรู้อยากเห็น: ${traits.curiosity || 0}/100\n`;
+
+      // Current interests
+      const interests = (personalityState.current_interests as string[]) || [];
+      if (interests.length > 0) {
+        statusText += `• สนใจ: ${interests.slice(0, 3).join(', ')}\n`;
+      }
+
+      // Recent topics
+      const topics = (personalityState.recent_topics as string[]) || [];
+      if (topics.length > 0) {
+        statusText += `• หัวข้อล่าสุด: ${topics.slice(0, 3).join(', ')}\n`;
+      }
+
+      const lastChange = new Date(personalityState.last_mood_change);
+      const timeSince = Math.floor((Date.now() - lastChange.getTime()) / (1000 * 60));
+      statusText += `• เปลี่ยนอารมณ์ล่าสุด: ${timeSince} นาทีที่แล้ว\n`;
+    } else {
+      statusText += `• ยังไม่มีข้อมูลบุคลิกภาพ\n`;
+      statusText += `• AI จะเริ่มเรียนรู้เมื่อมีการสนทนามากขึ้น\n`;
+    }
+
+    statusText += '\n';
+
+    // === MEMORY STATISTICS ===
+    statusText += '🧠 **หน่วยความจำ**\n';
+    if (memoryItems && memoryItems.length > 0) {
+      statusText += `• จำนวนข้อมูล: ${memoryItems.length} รายการ\n`;
+
+      // Count by category
+      const categories: Record<string, number> = {};
+      memoryItems.forEach((item: any) => {
+        categories[item.category] = (categories[item.category] || 0) + 1;
+      });
+
+      statusText += `• หมวดหมู่:\n`;
+      Object.entries(categories).forEach(([cat, count]) => {
+        statusText += `  - ${cat}: ${count} รายการ\n`;
+      });
+
+      // Latest memory
+      const latest = memoryItems[0];
+      const latestTime = new Date(latest.updated_at);
+      const latestMinutes = Math.floor((Date.now() - latestTime.getTime()) / (1000 * 60));
+      statusText += `• อัปเดตล่าสุด: ${latestMinutes} นาทีที่แล้ว\n`;
+
+      // Pinned items
+      const pinnedCount = memoryItems.filter((m: any) => m.pinned).length;
+      if (pinnedCount > 0) {
+        statusText += `• ข้อมูลที่ปักหมุด: ${pinnedCount} รายการ\n`;
+      }
+    } else {
+      statusText += `• ยังไม่มีข้อมูลในหน่วยความจำ\n`;
+      statusText += `• AI จะเริ่มจำข้อมูลสำคัญเมื่อพูดคุยมากขึ้น\n`;
+    }
+
+    statusText += '\n';
+
+    // === MODE INFO ===
+    statusText += '⚙️ **โหมดปัจจุบัน**\n';
+    const modeNames: Record<string, string> = {
+      helper: '🤝 ผู้ช่วย (Helper)',
+      faq: '📚 คลังความรู้ (FAQ)',
+      report: '📊 วิเคราะห์รายงาน (Report)',
+      fun: '🎉 สนุกสนาน (Fun)',
+      safety: '🛡️ ความปลอดภัย (Safety)',
+      magic: '✨ เวทมนตร์ (Magic)',
+    };
+    statusText += `• ${modeNames[mode] || mode}\n`;
+
+    statusText += '\n💡 **เคล็ดลับ:**\n';
+    statusText += '• ใช้ /mode เพื่อเปลี่ยนโหมดทำงาน\n';
+    statusText += '• AI จะเรียนรู้และปรับตัวตามการสนทนาในกลุ่ม\n';
+    statusText += '• หน่วยความจำช่วยให้ AI จำข้อมูลสำคัญได้นานขึ้น';
+
+    await replyToLine(replyToken, statusText);
+  } catch (error) {
+    console.error('[handleStatusCommand] Error:', error);
+    await replyToLine(replyToken, 'ขออภัย เกิดข้อผิดพลาดในการดึงข้อมูลสถานะ');
   }
 }
 
@@ -3111,6 +3267,12 @@ async function handleMessageEvent(event: LineEvent) {
   if (parsed.commandType === 'help') {
     const language = detectLanguage(event.message.text);
     await handleHelpCommand(group.id, user.id, language, event.replyToken);
+    return;
+  }
+
+  // Handle /status command
+  if (parsed.commandType === 'status') {
+    await handleStatusCommand(group.id, user.id, event.replyToken);
     return;
   }
 
