@@ -3184,7 +3184,7 @@ async function handleRemindersCommand(groupId: string, replyToken: string) {
 }
 
 /**
- * Handle /help command - show available commands
+ * Handle /help command - show available commands (Dynamic from database)
  */
 async function handleHelpCommand(
   groupId: string,
@@ -3192,118 +3192,97 @@ async function handleHelpCommand(
   language: 'en' | 'th' | 'other',
   replyToken: string
 ) {
-  console.log(`[handleHelpCommand] Generating help for user ${userId} in ${language}`);
+  console.log(`[handleHelpCommand] Generating dynamic help for user ${userId} in ${language}`);
 
   try {
-    // Fetch all enabled commands from database
+    // Fetch all enabled commands from database with their aliases
     const { data: commands, error: cmdError } = await supabase
       .from('bot_commands')
-      .select('*, command_aliases!inner(*)')
+      .select(`
+        *,
+        command_aliases (
+          alias_text,
+          language,
+          is_primary
+        )
+      `)
       .eq('is_enabled', true)
       .order('display_order');
 
-    if (cmdError) {
+    if (cmdError || !commands) {
       console.error('[handleHelpCommand] Error fetching commands:', cmdError);
       await replyToLine(replyToken, 'Sorry, I couldn\'t load the command list.');
       return;
     }
 
-    // Build help message based on language
-    let helpText = '';
+    // Category icons and names
+    const categoryInfo: Record<string, { icon: string; name_en: string; name_th: string }> = {
+      general: { icon: '💬', name_en: 'General', name_th: 'ทั่วไป' },
+      conversation: { icon: '📝', name_en: 'Conversations', name_th: 'สรุปการสนทนา' },
+      work: { icon: '✅', name_en: 'Tasks & Work', name_th: 'งานและการจัดการงาน' },
+      knowledge: { icon: '📚', name_en: 'Knowledge', name_th: 'ความรู้' },
+      analytics: { icon: '📊', name_en: 'Analytics', name_th: 'รายงาน' },
+      creative: { icon: '🎨', name_en: 'Creative', name_th: 'สร้างสรรค์' },
+      settings: { icon: '⚙️', name_en: 'Settings', name_th: 'ตั้งค่า' },
+    };
+
+    // Group commands by category
+    const grouped = commands.reduce((acc, cmd) => {
+      const cat = cmd.category || 'general';
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(cmd);
+      return acc;
+    }, {} as Record<string, typeof commands>);
+
+    // Build help message
+    const isThai = language === 'th';
+    let helpText = isThai 
+      ? `🤖 **คำสั่งที่ใช้งานได้ทั้งหมด**\n\n`
+      : `🤖 **All Available Commands**\n\n`;
+
+    // Iterate through categories in order
+    const categoryOrder = ['general', 'conversation', 'work', 'knowledge', 'analytics', 'creative', 'settings'];
     
-    if (language === 'th') {
-      helpText = `🤖 **คำสั่งที่ใช้งานได้ทั้งหมด**\n\n`;
-      helpText += `💬 **ทั่วไป:**\n`;
-      helpText += `• /help หรือ /ช่วยเหลือ - แสดงคำแนะนำนี้\n`;
-      helpText += `• @intern [คำถาม] - ถามคำถามใดก็ได้\n\n`;
+    for (const category of categoryOrder) {
+      const cmds = grouped[category];
+      if (!cmds || cmds.length === 0) continue;
+
+      const catInfo = categoryInfo[category] || { icon: '📌', name_en: category, name_th: category };
+      helpText += `${catInfo.icon} **${isThai ? catInfo.name_th : catInfo.name_en}:**\n`;
+
+      for (const cmd of cmds) {
+        // Get primary aliases for the user's language
+        const aliases = (cmd.command_aliases || [])
+          .filter((a: any) => a.language === language || (a.is_primary && a.language === 'en'))
+          .map((a: any) => a.alias_text)
+          .slice(0, 3); // Show max 3 aliases
+
+        // Get description
+        const description = isThai ? (cmd.description_th || cmd.description_en) : cmd.description_en;
+        
+        // Format command line
+        let cmdLine = `• ${aliases.length > 0 ? aliases.join(' / ') : `/${cmd.command_key}`}`;
+        if (description) cmdLine += ` - ${description}`;
+        helpText += `${cmdLine}\n`;
+
+        // Add usage example if available
+        const example = isThai ? cmd.usage_example_th : cmd.usage_example_en;
+        if (example) {
+          helpText += `  ${isThai ? 'ตัวอย่าง' : 'Example'}: ${example}\n`;
+        }
+      }
       
-      helpText += `📝 **สรุปการสนทนา:**\n`;
-      helpText += `• /summary หรือ /สรุป - สรุปการสนทนา\n`;
-      helpText += `  ตัวอย่าง: /สรุป วันนี้, /summary 100\n\n`;
-      
-      helpText += `✅ **งานและเตือนความจำ:**\n`;
-      helpText += `• /todo [งาน] - สร้างงาน\n`;
-      helpText += `• /remind หรือ /เตือน [งาน] [เวลา] - ตั้งเตือน\n`;
-      helpText += `  ตัวอย่าง: /เตือน ประชุม พรุ่งนี้ 14:00\n`;
-      helpText += `• /เตือน - แสดงรายการเตือนความจำงาน\n`;
-      helpText += `• /remind ทุก[ช่วง] เวลา [เวลา] [ข้อความ] - เตือนซ้ำ\n`;
-      helpText += `  ตัวอย่าง:\n`;
-      helpText += `  - /remind ทุกวัน เวลา 9 โมง standup\n`;
-      helpText += `  - /remind ทุกสัปดาห์ วันจันทร์ เวลา 14:00 ประชุม\n`;
-      helpText += `  - /remind ทุกเดือน วันที่ 1 เวลา 10:00 จ่ายค่าเช่า\n\n`;
-      
-      helpText += `📚 **ความรู้และค้นหา:**\n`;
-      helpText += `• /faq หรือ /ถามตอบ [คำถาม] - ค้นหาคลังความรู้\n`;
-      helpText += `• /find หรือ /ค้นหา [คำ] - ค้นหาข้อความ\n`;
-      helpText += `• /mentions [@ผู้ใช้] - ค้นหาการแท็ก\n\n`;
-      
-      helpText += `📊 **รายงาน:**\n`;
-      helpText += `• /report หรือ /รายงาน [ช่วงเวลา] - สร้างรายงาน\n`;
-      helpText += `  ตัวอย่าง: /รายงาน วันนี้, /report week\n\n`;
-      
-      helpText += `🎨 **สร้างสรรค์:**\n`;
-      helpText += `• /imagine หรือ /วาดรูป [คำบรรยาย] - สร้างภาพ\n`;
-      helpText += `  ตัวอย่าง: /วาดรูป แมวน่ารัก\n\n`;
-      
-      helpText += `⚙️ **ตั้งค่า:**\n`;
-      helpText += `• /mode หรือ /โหมด [โหมด] - เปลี่ยนโหมด bot\n`;
-      helpText += `  โหมดที่มี: helper, faq, report, fun, safety, magic\n`;
-      helpText += `• /status หรือ /สถานะ - ดูสถานะ AI และหน่วยความจำ\n\n`;
-      
-      helpText += `💡 **เคล็ดลับ:**\n`;
-      helpText += `• ในกลุ่ม: แท็ก @intern หรือใช้คำสั่ง\n`;
-      helpText += `• ใน DM: พิมพ์ข้อความหรือคำสั่งได้เลย\n`;
-      helpText += `• Bot รองรับทั้งภาษาอังกฤษและไทย!`;
-    } else {
-      // English (default)
-      helpText = `🤖 **All Available Commands**\n\n`;
-      helpText += `💬 **General:**\n`;
-      helpText += `• /help - Show this help guide\n`;
-      helpText += `• @intern [question] - Ask any question\n\n`;
-      
-      helpText += `📝 **Summaries:**\n`;
-      helpText += `• /summary [period] - Summarize conversations\n`;
-      helpText += `  Examples: /summary today, /summary 100\n\n`;
-      
-      helpText += `✅ **Tasks & Reminders:**\n`;
-      helpText += `• /todo [task] - Create a task\n`;
-      helpText += `• /remind [task] [time] - Set a reminder\n`;
-      helpText += `  Example: /remind meeting tomorrow 2pm\n`;
-      helpText += `• /reminders - Show pending work reminders\n`;
-      helpText += `• /remind every [period] at [time] [task] - Recurring\n`;
-      helpText += `  Examples:\n`;
-      helpText += `  - /remind every day at 9am standup\n`;
-      helpText += `  - /remind every Monday at 2pm team sync\n`;
-      helpText += `  - /remind every month on 1st at 10am rent\n\n`;
-      
-      helpText += `📚 **Knowledge & Search:**\n`;
-      helpText += `• /faq [question] - Search knowledge base\n`;
-      helpText += `• /find [keyword] - Search messages\n`;
-      helpText += `• /mentions [@user] - Find mentions\n`;
-      helpText += `• /train [content] - Add to knowledge base\n\n`;
-      
-      helpText += `📊 **Analytics:**\n`;
-      helpText += `• /report [period] - Generate group report\n`;
-      helpText += `  Examples: /report today, /report week\n\n`;
-      
-      helpText += `🎨 **Creative:**\n`;
-      helpText += `• /imagine [description] - Generate an image\n`;
-      helpText += `  Example: /imagine a sunset over mountains\n\n`;
-      
-      helpText += `⚙️ **Settings:**\n`;
-      helpText += `• /mode [mode] - Change bot mode\n`;
-      helpText += `  Modes: helper, faq, report, fun, safety, magic\n`;
-      helpText += `• /status - View AI personality and memory stats\n\n`;
-      
-      helpText += `💡 **Tips:**\n`;
-      helpText += `• In groups: Mention @intern or use commands\n`;
-      helpText += `• In DMs: Just type your message or command\n`;
-      helpText += `• Bot understands both English and Thai!`;
+      helpText += '\n';
     }
+
+    // Add tips
+    helpText += isThai 
+      ? `💡 **เคล็ดลับ:**\n• ในกลุ่ม: แท็ก @intern หรือใช้คำสั่ง\n• ใน DM: พิมพ์ข้อความหรือคำสั่งได้เลย\n• Bot รองรับทั้งภาษาอังกฤษและไทย!`
+      : `💡 **Tips:**\n• In groups: Mention @intern or use commands\n• In DMs: Just type your message or command\n• Bot understands both English and Thai!`;
 
     await replyToLine(replyToken, helpText);
   } catch (error) {
-    console.error(`[handleHelpCommand] Error:`, error);
+    console.error('[handleHelpCommand] Error:', error);
     await replyToLine(replyToken, language === 'th' 
       ? 'ขออภัย เกิดข้อผิดพลาดในการแสดงคำแนะนำ' 
       : 'Sorry, I encountered an error showing the help guide.');
