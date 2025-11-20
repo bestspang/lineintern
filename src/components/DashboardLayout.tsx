@@ -16,7 +16,8 @@ import {
   Brain,
   Terminal,
   FileText,
-  Sparkles
+  Sparkles,
+  Clock
 } from 'lucide-react';
 import {
   Sidebar,
@@ -43,6 +44,7 @@ const navItems = [
   { title: 'Training Queue', url: '/training', icon: GraduationCap },
   { title: 'Chat Summaries', url: '/summaries', icon: FileText },
   { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
+  { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
   { title: 'Memory Bot', url: '/memory', icon: Brain },
   { title: 'Personality AI', url: '/personality', icon: Sparkles },
   { title: 'Commands', url: '/commands', icon: Terminal },
