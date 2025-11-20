@@ -124,6 +124,7 @@ export type Database = {
         Row: {
           available_in_dm: boolean | null
           available_in_group: boolean | null
+          category: string | null
           command_key: string
           created_at: string | null
           description_en: string
@@ -142,6 +143,7 @@ export type Database = {
         Insert: {
           available_in_dm?: boolean | null
           available_in_group?: boolean | null
+          category?: string | null
           command_key: string
           created_at?: string | null
           description_en: string
@@ -160,6 +162,7 @@ export type Database = {
         Update: {
           available_in_dm?: boolean | null
           available_in_group?: boolean | null
+          category?: string | null
           command_key?: string
           created_at?: string | null
           description_en?: string

@@ -421,13 +421,32 @@ Track these KPIs to measure system effectiveness:
 
 ## 🚀 Commands Reference
 
+Quick reference for all user-facing commands related to work management:
+
+### Work Assignment & Approval
 | Command | Description | Example |
 |---------|-------------|---------|
 | `@user [task] [deadline]` | Create work assignment | `@Alice ทำรายงานก่อนวันศุกร์` |
-| `/confirm งาน @user` | Approve completed work | `/confirm งาน @Alice` |
-| `/approve @user` | Approve work (English) | `/approve @Bob` |
-| `/reminders` or `/เตือน` | List pending reminders | `/เตือน` |
-| `เตือนฉันก่อน [time]` | Set custom reminder | `เตือนฉันก่อน 3 ชั่วโมง` |
+| `/tasks @user` | List all pending work for user | `/tasks @Alice` |
+| `/confirm @user` | Approve specific user's work | `/confirm @Alice` |
+| `/confirm @user overdue` | Approve overdue work only | `/confirm @Bob overdue` |
+| `/confirm @user urgent` | Approve urgent work (due <24h) | `/confirm @Alice urgent` |
+| `/confirm @user all` | Approve all pending work for user | `/confirm @Bob all` |
+| `/confirm @user feedback` | Approve with AI-generated feedback | `/confirm @Alice feedback` |
+
+### Progress Reporting
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/progress [text]` | Report work progress | `/progress ทำไปแล้ว 50%` |
+| `/update [text]` | Report progress (alias) | `/update เกือบเสร็จแล้ว` |
+| `/report [text] [%]` | Report with percentage | `/report ทำ document แล้ว 75%` |
+| `/รายงาน [text]` | Thai progress report | `/รายงาน ทำเสร็จแล้ว 80%` |
+
+### Reminders
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/reminders` or `/เตือน` | List all pending work reminders with urgency | `/เตือน` |
+| `เตือนฉันก่อน [time]` | Set custom reminder interval for your work | `เตือนฉันก่อน 3 ชั่วโมง` |
 
 ---
 

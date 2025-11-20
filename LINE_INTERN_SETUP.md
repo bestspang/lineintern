@@ -57,15 +57,43 @@ https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/health
 
 ### Supported Commands
 
-The bot responds to the following triggers:
+**💬 General:**
+- `@intern [question]` - Ask any question
+- `/help` or `/ช่วยเหลือ` - Show help guide with all available commands
 
-**In Groups:**
-- `@intern [question]` - Ask a general question
-- `/summary` - Generate a summary of recent messages
+**📝 Conversations:**
+- `/summary [period]` - Summarize chat (e.g., /summary today, /summary 100)
+- `/find [keyword]` - Search messages
+- `/mentions [@user]` - Find mentions of a user
+
+**✅ Tasks & Work Management:**
+- `/todo [task]` - Create a task/todo
+- `/remind [task] [time]` - Set a reminder
+- `/tasks @user` - List pending work for a specific user
+- `/confirm @user [keywords]` - Approve work (supports: all, overdue, urgent, feedback)
+  - Examples: `/confirm @Alice overdue`, `/confirm @Bob feedback`
+- `/progress [text]` or `/update [text]` - Report work progress
+  - Example: `/progress ทำไปแล้ว 50%`
+- `/reminders` or `/เตือน` - List all pending work reminders with urgency indicators
+
+**📚 Knowledge:**
 - `/faq [question]` - Search knowledge base
-- `/todo [task description]` - Create a task/reminder
-- `/report` - Generate activity report
-- `/help` - Show available commands
+- `/train [content]` - Add knowledge to database
+
+**📊 Analytics:**
+- `/report [period]` - Generate group activity report
+
+**🎨 Creative:**
+- `/imagine [description]` - Generate AI image
+
+**⚙️ Settings:**
+- `/mode [mode]` - Change bot mode (helper, faq, report, fun, safety, magic)
+- `/status` - View AI personality and memory stats
+
+### Group Chat Support
+- Responds to `@intern` mentions or direct commands
+- Detects and answers questions naturally
+- Maintains conversation context
 
 **In DMs:**
 - Any message triggers a response (no need for @intern)
