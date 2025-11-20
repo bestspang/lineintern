@@ -60,19 +60,37 @@ export default function Personality() {
     enabled: !!user?.id,
   });
 
-  // Fetch magic mode groups
+  // Fetch all groups that have personality state
   const { data: magicGroups, isLoading: loadingGroups } = useQuery({
     queryKey: ["magic-groups"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("groups")
-        .select("id, display_name, line_group_id")
-        .eq("mode", "magic")
-        .eq("status", "active")
-        .order("display_name");
+      // Query personality_state and join with groups
+      const { data: personalityData, error } = await supabase
+        .from("personality_state")
+        .select(`
+          group_id,
+          groups (
+            id,
+            display_name,
+            line_group_id,
+            mode,
+            status
+          )
+        `)
+        .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return data;
+
+      // Extract unique groups and filter active ones
+      const uniqueGroups = Array.from(
+        new Map(
+          personalityData
+            ?.filter((p: any) => p.groups?.status === "active")
+            .map((p: any) => [p.group_id, p.groups])
+        ).values()
+      );
+
+      return uniqueGroups;
     },
   });
 

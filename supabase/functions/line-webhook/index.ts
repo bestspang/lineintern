@@ -2018,17 +2018,17 @@ async function handleModeCommand(
   console.log(`[handleModeCommand] Processing mode change: ${userMessage}`);
 
   // Extract mode from message
-  const modeMatch = userMessage.toLowerCase().match(/\/(mode|m|โหมด|setmode)\s+(helper|faq|report|fun|safety)/);
+  const modeMatch = userMessage.toLowerCase().match(/\/(mode|m|โหมด|setmode)\s+(helper|faq|report|fun|safety|magic)/);
   
   if (!modeMatch) {
     await replyToLine(
       replyToken,
-      "Please specify a valid mode: helper, faq, report, fun, or safety\n\nExample: /mode helper"
+      "Please specify a valid mode: helper, faq, report, fun, safety, or magic\n\nExample: /mode helper"
     );
     return;
   }
 
-  const newMode = modeMatch[2] as "helper" | "faq" | "report" | "fun" | "safety";
+  const newMode = modeMatch[2] as "helper" | "faq" | "report" | "fun" | "safety" | "magic";
 
   // Update group mode
   const { error: updateError } = await supabase
@@ -2051,7 +2051,8 @@ async function handleModeCommand(
     faq: "📚 FAQ Mode - Knowledge expert using your documentation",
     report: "📊 Report Mode - Data analyst providing insights from analytics",
     fun: "🎉 Fun Mode - Entertaining and creative responses",
-    safety: "🛡️ Safety Mode - Vigilant protector watching for security issues"
+    safety: "🛡️ Safety Mode - Vigilant protector watching for security issues",
+    magic: "✨ Magic Mode - AI with evolving personality & emotions"
   };
 
   const responseMessage = `✅ Mode changed to: ${newMode.toUpperCase()}\n\n${modeDescriptions[newMode]}\n\nI'll now respond according to this mode's behavior.`;
