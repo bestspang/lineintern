@@ -3586,6 +3586,19 @@ async function handleMessageEvent(event: LineEvent) {
   const messageIdForAlert = (insertedMessage as any)?.id || event.message.id || '';
   await passiveSafetyMonitoring(group.id, user.id, event.message.text, messageIdForAlert);
 
+  // PASSIVE LEARNING: Trigger memory writer for ALL messages (even without @ or /)
+  supabase.functions
+    .invoke("memory-writer", {
+      body: {
+        userId: user.id,
+        groupId: group.id,
+        messageText: event.message.text,
+        messageId: event.message.id,
+        isDM,
+      },
+    })
+    .catch((err) => console.error("[Memory Writer] Passive learning error:", err));
+
   // PHASE 1: Handle /train command
   if (parsed.commandType === 'train') {
     await handleTrainingCommand(group.id, user.id, parsed.userMessage, event.replyToken);
@@ -3728,22 +3741,6 @@ async function handleMessageEvent(event: LineEvent) {
         language,
         responseTime
       );
-    }
-    
-    // Trigger memory writer (async, non-blocking)
-    if (parsed.commandType !== "help") {
-      supabase.functions
-        .invoke("memory-writer", {
-          body: {
-            userId: user.id,
-            groupId: group.id,
-            messageText: event.message.text,
-            messageId: event.message.id,
-            isDM,
-            recentMessages,
-          },
-        })
-        .catch((err) => console.error("[Memory Writer] Error:", err));
     }
   } catch (error) {
     console.error(`[handleMessageEvent] Error sending reply:`, error);
