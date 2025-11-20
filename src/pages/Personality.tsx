@@ -25,6 +25,18 @@ const getMoodEmoji = (mood: string) => {
   return moodMap[mood] || moodMap.neutral;
 };
 
+const getMoodScore = (mood: string): number => {
+  const moodScoreMap: Record<string, number> = {
+    excited: 95,
+    happy: 85,
+    thoughtful: 65,
+    neutral: 50,
+    tired: 35,
+    sad: 20,
+  };
+  return moodScoreMap[mood] || 50;
+};
+
 export default function Personality() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -231,7 +243,8 @@ export default function Personality() {
                 <LineChart data={moodHistory.map(h => ({
                   time: new Date(h.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit' }),
                   energy: h.energy_level,
-                  mood: h.mood,
+                  moodScore: getMoodScore(h.mood),
+                  moodLabel: h.mood,
                 }))}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
@@ -240,6 +253,7 @@ export default function Personality() {
                     tick={{ fill: 'hsl(var(--muted-foreground))' }}
                   />
                   <YAxis 
+                    domain={[0, 100]}
                     className="text-xs"
                     tick={{ fill: 'hsl(var(--muted-foreground))' }}
                   />
@@ -250,6 +264,26 @@ export default function Personality() {
                       borderRadius: '8px',
                     }}
                     labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
+                            <p className="text-sm font-medium mb-2">{payload[0].payload.time}</p>
+                            <div className="space-y-1">
+                              <p className="text-sm flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: 'hsl(var(--primary))' }}></span>
+                                <span>Energy: {payload[0].payload.energy}%</span>
+                              </p>
+                              <p className="text-sm flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: 'hsl(var(--chart-2))' }}></span>
+                                <span>Mood: {payload[0].payload.moodLabel} ({payload[0].payload.moodScore})</span>
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
                   <Legend />
                   <Line 
@@ -259,6 +293,14 @@ export default function Personality() {
                     strokeWidth={2}
                     name="Energy Level"
                     dot={{ fill: 'hsl(var(--primary))' }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="moodScore" 
+                    stroke="hsl(var(--chart-2))" 
+                    strokeWidth={2}
+                    name="Mood Sentiment"
+                    dot={{ fill: 'hsl(var(--chart-2))' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
