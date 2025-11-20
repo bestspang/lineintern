@@ -15,7 +15,8 @@ import {
   LogOut,
   Brain,
   Terminal,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
 import {
   Sidebar,
@@ -43,6 +44,7 @@ const navItems = [
   { title: 'Chat Summaries', url: '/summaries', icon: FileText },
   { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
   { title: 'Memory Bot', url: '/memory', icon: Brain },
+  { title: 'Personality AI', url: '/personality', icon: Sparkles },
   { title: 'Commands', url: '/commands', icon: Terminal },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
   { title: 'Reports', url: '/reports', icon: FileText },

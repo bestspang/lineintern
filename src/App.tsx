@@ -25,6 +25,7 @@ import TestBot from "./pages/TestBot";
 import Memory from "./pages/Memory";
 import Commands from "./pages/Commands";
 import Summaries from "./pages/Summaries";
+import Personality from "./pages/Personality";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,7 @@ const App = () => (
                     <Route path="/memory" element={<Memory />} />
                     <Route path="/commands" element={<Commands />} />
                     <Route path="/summaries" element={<Summaries />} />
+                    <Route path="/personality" element={<Personality />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/alerts" element={<Alerts />} />
