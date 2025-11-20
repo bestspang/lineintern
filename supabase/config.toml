@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.fix-user-names]
 verify_jwt = false
+
+[functions.work-check-in]
+verify_jwt = false
+
+[functions.work-reminder]
+verify_jwt = false
