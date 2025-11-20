@@ -6,7 +6,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 // UTILITY FUNCTIONS
 // =============================
 
-function formatTimeDistance(date: Date): string {
+function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): string {
   const now = new Date();
   const diffMs = date.getTime() - now.getTime();
   const diffSec = Math.floor(Math.abs(diffMs) / 1000);
@@ -15,13 +15,82 @@ function formatTimeDistance(date: Date): string {
   const diffDay = Math.floor(diffHour / 24);
   
   const isPast = diffMs < 0;
-  const prefix = isPast ? "" : "in ";
-  const suffix = isPast ? " ago" : "";
   
-  if (diffSec < 60) return `${prefix}${diffSec} second${diffSec !== 1 ? 's' : ''}${suffix}`;
-  if (diffMin < 60) return `${prefix}${diffMin} minute${diffMin !== 1 ? 's' : ''}${suffix}`;
-  if (diffHour < 24) return `${prefix}${diffHour} hour${diffHour !== 1 ? 's' : ''}${suffix}`;
-  return `${prefix}${diffDay} day${diffDay !== 1 ? 's' : ''}${suffix}`;
+  // Thai translations
+  const t = locale === 'th' ? {
+    prefix: isPast ? '' : 'ใน ',
+    suffix: isPast ? ' ที่แล้ว' : '',
+    second: 'วินาที',
+    minute: 'นาที',
+    hour: 'ชั่วโมง',
+    day: 'วัน',
+    at: 'เวลา'
+  } : {
+    prefix: isPast ? '' : 'in ',
+    suffix: isPast ? ' ago' : '',
+    second: 'second',
+    minute: 'minute',
+    hour: 'hour',
+    day: 'day',
+    at: 'at'
+  };
+  
+  // For future dates, show more detail
+  if (!isPast) {
+    // Less than 1 minute
+    if (diffMin < 1) {
+      return locale === 'th' 
+        ? `ใน ${diffSec} วินาที` 
+        : `in ${diffSec} second${diffSec !== 1 ? 's' : ''}`;
+    }
+    
+    // Less than 1 hour - show minutes
+    if (diffMin < 60) {
+      return locale === 'th'
+        ? `ใน ${diffMin} นาที`
+        : `in ${diffMin} minute${diffMin !== 1 ? 's' : ''}`;
+    }
+    
+    // Less than 24 hours - show hours and minutes
+    if (diffHour < 24) {
+      const remainingMin = diffMin % 60;
+      if (remainingMin > 0) {
+        return locale === 'th'
+          ? `ใน ${diffHour} ชั่วโมง ${remainingMin} นาที`
+          : `in ${diffHour} hour${diffHour !== 1 ? 's' : ''} ${remainingMin} minute${remainingMin !== 1 ? 's' : ''}`;
+      }
+      return locale === 'th'
+        ? `ใน ${diffHour} ชั่วโมง`
+        : `in ${diffHour} hour${diffHour !== 1 ? 's' : ''}`;
+    }
+    
+    // More than 1 day - show date and time
+    const formattedDate = date.toLocaleString(locale === 'th' ? 'th-TH' : 'en-US', {
+      timeZone: 'Asia/Bangkok',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    if (diffDay < 2) {
+      // Tomorrow
+      return locale === 'th'
+        ? `พรุ่งนี้ ${formattedDate.split(' ').slice(-1)[0]}`
+        : `tomorrow at ${formattedDate.split(', ')[1]}`;
+    }
+    
+    return locale === 'th'
+      ? `วันที่ ${formattedDate}`
+      : `on ${formattedDate}`;
+  }
+  
+  // Past dates (simple format)
+  if (diffSec < 60) return `${diffSec} ${t.second}${locale === 'en' && diffSec !== 1 ? 's' : ''} ${t.suffix}`;
+  if (diffMin < 60) return `${diffMin} ${t.minute}${locale === 'en' && diffMin !== 1 ? 's' : ''} ${t.suffix}`;
+  if (diffHour < 24) return `${diffHour} ${t.hour}${locale === 'en' && diffHour !== 1 ? 's' : ''} ${t.suffix}`;
+  return `${diffDay} ${t.day}${locale === 'en' && diffDay !== 1 ? 's' : ''} ${t.suffix}`;
 }
 
 // =============================
@@ -2384,12 +2453,13 @@ async function handleTodoCommand(
   console.log(`[handleTodoCommand] Creating task from: ${userMessage}`);
 
   try {
-    // Get current date/time in Bangkok timezone for context
+    // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
     const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-    const currentDateTime = bangkokTime.toISOString();
+    const bangkokOffset = 7 * 60; // Bangkok is UTC+7 (in minutes)
+    const localOffset = now.getTimezoneOffset(); // local offset from UTC
+    const bangkokTime = new Date(now.getTime() + (bangkokOffset + localOffset) * 60 * 1000);
+    
     const readableTime = bangkokTime.toLocaleString("en-US", { 
-      timeZone: "Asia/Bangkok",
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -2397,31 +2467,44 @@ async function handleTodoCommand(
       minute: '2-digit',
       hour12: false
     });
+    
+    const todayDate = bangkokTime.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentHourMin = `${bangkokTime.getHours()}:${String(bangkokTime.getMinutes()).padStart(2, '0')}`;
 
-    const parsePrompt = `Current date and time in Bangkok: ${readableTime} (${currentDateTime})
+    console.log(`[handleTodoCommand] 🕐 Current Bangkok time: ${readableTime} (${currentHourMin})`);
+    console.log(`[handleTodoCommand] 📝 User message: ${userMessage}`);
 
-Extract task information from this message:
+    const parsePrompt = `Current date and time in Bangkok (UTC+7): ${readableTime}
+
+Parse this user message into a specific date/time:
 "${userMessage}"
+
+Rules:
+- "today" or "วันนี้" means ${todayDate}
+- "tomorrow" or "พรุ่งนี้" means the next day after ${todayDate}
+- Parse time in 24-hour format (e.g., "14:00" = 2:00 PM, "10:49" = 10:49 AM)
+- Current Bangkok time is ${currentHourMin}
+- If user says "today 14:00" and current time is ${currentHourMin}, check if 14:00 is in the future:
+  * If YES (14:00 is later than ${currentHourMin}): the task is due at 14:00 TODAY
+  * If NO (14:00 is earlier than ${currentHourMin}): assume they mean 14:00 TOMORROW
+- If no specific time is given and they say "today", default to 1 hour from now
+- Return ONLY the ISO timestamp in UTC (convert Bangkok time to UTC by subtracting 7 hours)
 
 Extract:
 1. Task title (brief, under 50 chars)
 2. Task description (optional, details)
-3. Due date/time - parse relative times like "today 10:49am", "tomorrow 3pm", "in 2 hours", etc.
-   - For "today HH:MM", use today's date with the specified time
-   - For "tomorrow HH:MM", use tomorrow's date with the specified time
-   - Convert to ISO timestamp in UTC (I'll handle the timezone conversion)
+3. Due date/time - return as ISO timestamp in UTC
 4. Assigned person (if mentioned)
 
-IMPORTANT: 
-- "today" means ${bangkokTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-- Use 24-hour format for times
-- If time is in the past today, assume tomorrow
-
-Respond in this exact format:
+Respond ONLY in this exact format:
 TITLE: <title>
 DESCRIPTION: <description or "none">
-DUE_AT: <ISO timestamp or "none">
-ASSIGNED_TO: <name or "none">`;
+DUE_AT: <ISO timestamp in format YYYY-MM-DDTHH:MM:SS.000Z or "none">
+ASSIGNED_TO: <name or "none">
+
+Example conversions:
+- "today 14:00" Bangkok = subtract 7 hours = YYYY-MM-DDT07:00:00.000Z
+- "tomorrow 09:00" Bangkok = subtract 7 hours = YYYY-MM-DDT02:00:00.000Z`;
 
     const aiResponse = await generateAiReply(
       parsePrompt,
@@ -2433,7 +2516,7 @@ ASSIGNED_TO: <name or "none">`;
       "N/A"
     );
 
-    console.log(`[handleTodoCommand] AI parsed response: ${aiResponse}`);
+    console.log(`[handleTodoCommand] 🤖 AI response: ${aiResponse}`);
 
     const titleMatch = aiResponse.match(/TITLE:\s*(.+)/);
     const descMatch = aiResponse.match(/DESCRIPTION:\s*(.+)/);
@@ -2445,27 +2528,38 @@ ASSIGNED_TO: <name or "none">`;
     const dueAtStr = dueMatch?.[1]?.trim();
     const assignedTo = assignedMatch?.[1]?.trim();
 
-    console.log(`[handleTodoCommand] Parsed task title: ${title}`);
-    console.log(`[handleTodoCommand] Parsed DUE_AT string: ${dueAtStr}`);
+    console.log(`[handleTodoCommand] ⏰ Parsed DUE_AT: ${dueAtStr}`);
 
     let dueAt: string;
     if (dueAtStr && dueAtStr !== "none" && !dueAtStr.includes("none")) {
       try {
         const parsedDate = new Date(dueAtStr);
+        
+        // Validate: must not be Invalid Date
+        if (isNaN(parsedDate.getTime())) {
+          throw new Error("Invalid date parsed");
+        }
+        
+        // Validate: must not be in the past (allow 1 min tolerance)
+        const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+        if (parsedDate < oneMinuteAgo) {
+          console.warn(`[handleTodoCommand] ⚠️ Parsed date is in the past, using 1 hour from now`);
+          parsedDate.setTime(now.getTime() + 60 * 60 * 1000);
+        }
+        
         dueAt = parsedDate.toISOString();
-        console.log(`[handleTodoCommand] Successfully parsed date: ${dueAt}`);
+        console.log(`[handleTodoCommand] ✅ Final due_at (ISO): ${dueAt}`);
+        console.log(`[handleTodoCommand] 📊 Time difference: ${formatTimeDistance(parsedDate, 'en')}`);
       } catch (error) {
-        console.error(`[handleTodoCommand] Error parsing date '${dueAtStr}':`, error);
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        dueAt = tomorrow.toISOString();
-        console.log(`[handleTodoCommand] Using fallback time (tomorrow): ${dueAt}`);
+        console.error(`[handleTodoCommand] ❌ Error parsing date '${dueAtStr}':`, error);
+        const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+        dueAt = oneHourFromNow.toISOString();
+        console.log(`[handleTodoCommand] Using fallback time (1 hour from now): ${dueAt}`);
       }
     } else {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      dueAt = tomorrow.toISOString();
-      console.log(`[handleTodoCommand] No valid time found, using fallback (tomorrow): ${dueAt}`);
+      const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+      dueAt = oneHourFromNow.toISOString();
+      console.log(`[handleTodoCommand] No valid time found, using fallback (1 hour from now): ${dueAt}`);
     }
 
     let assignedToUserId = null;
@@ -2534,12 +2628,13 @@ async function handleRemindCommand(
   console.log(`[handleRemindCommand] Creating reminder from: ${userMessage}`);
 
   try {
-    // Get current date/time in Bangkok timezone for context
+    // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
     const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-    const currentDateTime = bangkokTime.toISOString();
+    const bangkokOffset = 7 * 60; // Bangkok is UTC+7 (in minutes)
+    const localOffset = now.getTimezoneOffset(); // local offset from UTC
+    const bangkokTime = new Date(now.getTime() + (bangkokOffset + localOffset) * 60 * 1000);
+    
     const readableTime = bangkokTime.toLocaleString("en-US", { 
-      timeZone: "Asia/Bangkok",
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -2547,27 +2642,41 @@ async function handleRemindCommand(
       minute: '2-digit',
       hour12: false
     });
+    
+    const todayDate = bangkokTime.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentHourMin = `${bangkokTime.getHours()}:${String(bangkokTime.getMinutes()).padStart(2, '0')}`;
 
-    const parsePrompt = `Current date and time in Bangkok: ${readableTime} (${currentDateTime})
+    console.log(`[handleRemindCommand] 🕐 Current Bangkok time: ${readableTime} (${currentHourMin})`);
+    console.log(`[handleRemindCommand] 📝 User message: ${userMessage}`);
 
-Extract reminder information from this message:
+    const parsePrompt = `Current date and time in Bangkok (UTC+7): ${readableTime}
+
+Parse this user message into a specific date/time:
 "${userMessage}"
 
+Rules:
+- "today" or "วันนี้" means ${todayDate}
+- "tomorrow" or "พรุ่งนี้" means the next day after ${todayDate}
+- Parse time in 24-hour format (e.g., "14:00" = 2:00 PM, "10:49" = 10:49 AM)
+- Current Bangkok time is ${currentHourMin}
+- If user says "today 14:00" and current time is ${currentHourMin}, check if 14:00 is in the future:
+  * If YES (14:00 is later than ${currentHourMin}): the reminder is due at 14:00 TODAY
+  * If NO (14:00 is earlier than ${currentHourMin}): assume they mean 14:00 TOMORROW
+- For "in X minutes/hours", calculate from current time
+- If no specific time is given and they say "today", default to 1 hour from now
+- Return ONLY the ISO timestamp in UTC (convert Bangkok time to UTC by subtracting 7 hours)
+
 Extract:
-1. What to remind about (brief message)
-2. When to remind - parse relative times like "today 10:49am", "tomorrow 3pm", "in 2 hours", etc.
-   - For "today HH:MM", use today's date with the specified time
-   - For "tomorrow HH:MM", use tomorrow's date with the specified time
-   - Convert to ISO timestamp in UTC (I'll handle the timezone conversion)
+1. Reminder message/text (what to remind about)
+2. Remind time - return as ISO timestamp in UTC
 
-IMPORTANT: 
-- "today" means ${bangkokTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-- Use 24-hour format for times
-- If time is in the past today, assume tomorrow
+Respond ONLY in this exact format:
+MESSAGE: <reminder message>
+REMIND_AT: <ISO timestamp in format YYYY-MM-DDTHH:MM:SS.000Z or "none">
 
-Respond in this exact format:
-MESSAGE: <what to remind>
-REMIND_AT: <ISO timestamp>`;
+Example conversions:
+- "today 14:00" Bangkok = subtract 7 hours = YYYY-MM-DDT07:00:00.000Z
+- "in 30 minutes" = current time + 30 minutes converted to UTC`;
 
     const aiResponse = await generateAiReply(
       parsePrompt,
@@ -2579,7 +2688,7 @@ REMIND_AT: <ISO timestamp>`;
       "N/A"
     );
 
-    console.log(`[handleRemindCommand] AI parsed response: ${aiResponse}`);
+    console.log(`[handleRemindCommand] 🤖 AI response: ${aiResponse}`);
 
     const messageMatch = aiResponse.match(/MESSAGE:\s*(.+)/);
     const remindMatch = aiResponse.match(/REMIND_AT:\s*(.+)/);
@@ -2587,26 +2696,37 @@ REMIND_AT: <ISO timestamp>`;
     const reminderMessage = messageMatch?.[1]?.trim() || userMessage;
     const remindAtStr = remindMatch?.[1]?.trim();
 
-    console.log(`[handleRemindCommand] Parsed reminder message: ${reminderMessage}`);
-    console.log(`[handleRemindCommand] Parsed REMIND_AT string: ${remindAtStr}`);
+    console.log(`[handleRemindCommand] ⏰ Parsed REMIND_AT: ${remindAtStr}`);
 
     let remindAt: string;
-    if (remindAtStr && !remindAtStr.includes("none")) {
+    if (remindAtStr && remindAtStr !== "none" && !remindAtStr.includes("none")) {
       try {
         const parsedDate = new Date(remindAtStr);
+        
+        // Validate: must not be Invalid Date
+        if (isNaN(parsedDate.getTime())) {
+          throw new Error("Invalid date parsed");
+        }
+        
+        // Validate: must not be in the past (allow 1 min tolerance)
+        const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+        if (parsedDate < oneMinuteAgo) {
+          console.warn(`[handleRemindCommand] ⚠️ Parsed date is in the past, using 1 hour from now`);
+          parsedDate.setTime(now.getTime() + 60 * 60 * 1000);
+        }
+        
         remindAt = parsedDate.toISOString();
-        console.log(`[handleRemindCommand] Successfully parsed date: ${remindAt}`);
+        console.log(`[handleRemindCommand] ✅ Final remind_at (ISO): ${remindAt}`);
+        console.log(`[handleRemindCommand] 📊 Time difference: ${formatTimeDistance(parsedDate, 'en')}`);
       } catch (error) {
-        console.error(`[handleRemindCommand] Error parsing date '${remindAtStr}':`, error);
-        const oneHour = new Date();
-        oneHour.setHours(oneHour.getHours() + 1);
-        remindAt = oneHour.toISOString();
+        console.error(`[handleRemindCommand] ❌ Error parsing date '${remindAtStr}':`, error);
+        const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+        remindAt = oneHourFromNow.toISOString();
         console.log(`[handleRemindCommand] Using fallback time (1 hour from now): ${remindAt}`);
       }
     } else {
-      const oneHour = new Date();
-      oneHour.setHours(oneHour.getHours() + 1);
-      remindAt = oneHour.toISOString();
+      const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+      remindAt = oneHourFromNow.toISOString();
       console.log(`[handleRemindCommand] No valid time found, using fallback (1 hour from now): ${remindAt}`);
     }
 

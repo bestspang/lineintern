@@ -21,8 +21,16 @@ serve(async (req) => {
 
   try {
     // Find all pending tasks due within the next 5 minutes
+    // Use Bangkok time (UTC+7) for accurate comparison
     const now = new Date();
-    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+    const bangkokOffset = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
+    const localOffset = now.getTimezoneOffset() * 60 * 1000;
+    const bangkokNow = new Date(now.getTime() + bangkokOffset + localOffset);
+    
+    const fiveMinutesFromNow = new Date(bangkokNow.getTime() + 5 * 60 * 1000);
+    
+    console.log(`[task-scheduler] 🕐 Current Bangkok time: ${bangkokNow.toISOString()}`);
+    console.log(`[task-scheduler] 🔍 Checking tasks due before: ${fiveMinutesFromNow.toISOString()}`);
 
     const { data: dueTasks, error: fetchError } = await supabase
       .from("tasks")
