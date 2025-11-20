@@ -2220,14 +2220,38 @@ async function handleTodoCommand(
   console.log(`[handleTodoCommand] Creating task from: ${userMessage}`);
 
   try {
-    const parsePrompt = `Extract task information from this message:
+    // Get current date/time in Bangkok timezone for context
+    const now = new Date();
+    const bangkokTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+    const currentDateTime = bangkokTime.toISOString();
+    const readableTime = bangkokTime.toLocaleString("en-US", { 
+      timeZone: "Asia/Bangkok",
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    const parsePrompt = `Current date and time in Bangkok: ${readableTime} (${currentDateTime})
+
+Extract task information from this message:
 "${userMessage}"
 
 Extract:
 1. Task title (brief, under 50 chars)
 2. Task description (optional, details)
-3. Due date/time (if mentioned, convert to ISO timestamp, assume current timezone is UTC+7 Bangkok)
+3. Due date/time - parse relative times like "today 10:49am", "tomorrow 3pm", "in 2 hours", etc.
+   - For "today HH:MM", use today's date with the specified time
+   - For "tomorrow HH:MM", use tomorrow's date with the specified time
+   - Convert to ISO timestamp in UTC (I'll handle the timezone conversion)
 4. Assigned person (if mentioned)
+
+IMPORTANT: 
+- "today" means ${bangkokTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+- Use 24-hour format for times
+- If time is in the past today, assume tomorrow
 
 Respond in this exact format:
 TITLE: <title>
@@ -2257,19 +2281,27 @@ ASSIGNED_TO: <name or "none">`;
     const dueAtStr = dueMatch?.[1]?.trim();
     const assignedTo = assignedMatch?.[1]?.trim();
 
+    console.log(`[handleTodoCommand] Parsed task title: ${title}`);
+    console.log(`[handleTodoCommand] Parsed DUE_AT string: ${dueAtStr}`);
+
     let dueAt: string;
     if (dueAtStr && dueAtStr !== "none" && !dueAtStr.includes("none")) {
       try {
-        dueAt = new Date(dueAtStr).toISOString();
-      } catch {
+        const parsedDate = new Date(dueAtStr);
+        dueAt = parsedDate.toISOString();
+        console.log(`[handleTodoCommand] Successfully parsed date: ${dueAt}`);
+      } catch (error) {
+        console.error(`[handleTodoCommand] Error parsing date '${dueAtStr}':`, error);
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         dueAt = tomorrow.toISOString();
+        console.log(`[handleTodoCommand] Using fallback time (tomorrow): ${dueAt}`);
       }
     } else {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       dueAt = tomorrow.toISOString();
+      console.log(`[handleTodoCommand] No valid time found, using fallback (tomorrow): ${dueAt}`);
     }
 
     let assignedToUserId = null;
@@ -2329,12 +2361,36 @@ async function handleRemindCommand(
   console.log(`[handleRemindCommand] Creating reminder from: ${userMessage}`);
 
   try {
-    const parsePrompt = `Extract reminder information from this message:
+    // Get current date/time in Bangkok timezone for context
+    const now = new Date();
+    const bangkokTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+    const currentDateTime = bangkokTime.toISOString();
+    const readableTime = bangkokTime.toLocaleString("en-US", { 
+      timeZone: "Asia/Bangkok",
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    const parsePrompt = `Current date and time in Bangkok: ${readableTime} (${currentDateTime})
+
+Extract reminder information from this message:
 "${userMessage}"
 
 Extract:
 1. What to remind about (brief message)
-2. When to remind (convert to ISO timestamp, assume current timezone is UTC+7 Bangkok)
+2. When to remind - parse relative times like "today 10:49am", "tomorrow 3pm", "in 2 hours", etc.
+   - For "today HH:MM", use today's date with the specified time
+   - For "tomorrow HH:MM", use tomorrow's date with the specified time
+   - Convert to ISO timestamp in UTC (I'll handle the timezone conversion)
+
+IMPORTANT: 
+- "today" means ${bangkokTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+- Use 24-hour format for times
+- If time is in the past today, assume tomorrow
 
 Respond in this exact format:
 MESSAGE: <what to remind>
@@ -2358,19 +2414,27 @@ REMIND_AT: <ISO timestamp>`;
     const reminderMessage = messageMatch?.[1]?.trim() || userMessage;
     const remindAtStr = remindMatch?.[1]?.trim();
 
+    console.log(`[handleRemindCommand] Parsed reminder message: ${reminderMessage}`);
+    console.log(`[handleRemindCommand] Parsed REMIND_AT string: ${remindAtStr}`);
+
     let remindAt: string;
     if (remindAtStr && !remindAtStr.includes("none")) {
       try {
-        remindAt = new Date(remindAtStr).toISOString();
-      } catch {
+        const parsedDate = new Date(remindAtStr);
+        remindAt = parsedDate.toISOString();
+        console.log(`[handleRemindCommand] Successfully parsed date: ${remindAt}`);
+      } catch (error) {
+        console.error(`[handleRemindCommand] Error parsing date '${remindAtStr}':`, error);
         const oneHour = new Date();
         oneHour.setHours(oneHour.getHours() + 1);
         remindAt = oneHour.toISOString();
+        console.log(`[handleRemindCommand] Using fallback time (1 hour from now): ${remindAt}`);
       }
     } else {
       const oneHour = new Date();
       oneHour.setHours(oneHour.getHours() + 1);
       remindAt = oneHour.toISOString();
+      console.log(`[handleRemindCommand] No valid time found, using fallback (1 hour from now): ${remindAt}`);
     }
 
     const { data: reminder, error } = await supabase
