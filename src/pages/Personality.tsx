@@ -1,12 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle } from "lucide-react";
+import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const getMoodEmoji = (mood: string) => {
   const moodMap: Record<string, { icon: typeof Smile; color: string }> = {
@@ -22,6 +26,25 @@ const getMoodEmoji = (mood: string) => {
 
 export default function Personality() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  // Check if user is admin
+  const { data: isAdmin } = useQuery({
+    queryKey: ["is-admin", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data, error } = await supabase.rpc("has_role", {
+        _user_id: user.id,
+        _role: "admin",
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
 
   // Fetch magic mode groups
   const { data: magicGroups, isLoading: loadingGroups } = useQuery({
@@ -65,6 +88,48 @@ export default function Personality() {
     },
     enabled: !!magicGroups,
   });
+
+  // Reset personality mutation
+  const resetPersonalityMutation = useMutation({
+    mutationFn: async (personalityId: string) => {
+      const { error } = await supabase
+        .from("personality_state")
+        .update({
+          mood: "neutral",
+          energy_level: 50,
+          personality_traits: { humor: 50, curiosity: 70, helpfulness: 80 },
+          current_interests: [],
+          recent_topics: [],
+          relationship_map: {},
+          last_mood_change: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", personalityId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["personality-states"] });
+      toast.success("Personality state reset to default values");
+      setResetDialogOpen(false);
+      setResetTargetId(null);
+    },
+    onError: (error) => {
+      console.error("Reset personality error:", error);
+      toast.error("Failed to reset personality state");
+    },
+  });
+
+  const handleResetClick = (personalityId: string) => {
+    setResetTargetId(personalityId);
+    setResetDialogOpen(true);
+  };
+
+  const handleResetConfirm = () => {
+    if (resetTargetId) {
+      resetPersonalityMutation.mutate(resetTargetId);
+    }
+  };
 
   if (loadingGroups) {
     return (
@@ -150,13 +215,28 @@ export default function Personality() {
             return (
               <Card key={state.id}>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-purple-500" />
-                    {state.groups?.display_name || "Unknown Group"}
-                  </CardTitle>
-                  <CardDescription>
-                    Last updated: {new Date(state.updated_at).toLocaleString()}
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-purple-500" />
+                        {state.groups?.display_name || "Unknown Group"}
+                      </CardTitle>
+                      <CardDescription>
+                        Last updated: {new Date(state.updated_at).toLocaleString()}
+                      </CardDescription>
+                    </div>
+                    {isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleResetClick(state.id)}
+                        disabled={resetPersonalityMutation.isPending}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Reset
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Mood & Energy Row */}
@@ -294,6 +374,34 @@ export default function Personality() {
           })}
         </div>
       )}
+
+      {/* Reset Confirmation Dialog */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Personality State?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reset the AI's personality back to default values:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Mood: Neutral</li>
+                <li>Energy Level: 50%</li>
+                <li>Personality Traits: Default values</li>
+                <li>Clear all interests and recent topics</li>
+                <li>Clear all relationship data</li>
+              </ul>
+              <p className="mt-3 font-medium">
+                The group will remain in Magic Mode and will start learning again from new messages.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetConfirm}>
+              Reset Personality
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
