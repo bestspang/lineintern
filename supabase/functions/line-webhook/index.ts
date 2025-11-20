@@ -351,6 +351,126 @@ async function updatePersonalityOnWorkCompletion(
   }
 }
 
+// =============================
+// CUSTOM REMINDER PREFERENCE DETECTION
+// =============================
+
+interface ReminderPreferenceResult {
+  detected: boolean;
+  intervals?: number[];
+  message: string;
+}
+
+async function detectAndHandleReminderPreference(
+  text: string,
+  userId: string,
+  groupId: string,
+  locale: 'th' | 'en'
+): Promise<ReminderPreferenceResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for custom reminder commands
+  // Thai: "เตือนฉันก่อน 3 ชั่วโมง", "เตือน 2 ชั่วโมงก่อน", "เตือนงานก่อน 12 ชม"
+  // English: "remind me 3 hours before", "set reminder 2 hours early", "reminder 12h before"
+  
+  const thaiPatterns = [
+    /เตือน(?:ฉัน|ผม|ดิฉัน)?(?:ก่อน|ล่วงหน้า)?\s*(\d+)\s*(?:ชั่วโมง|ชม|hour)/gi,
+    /เตือน(?:งาน)?(?:\s*งาน)?\s*(\d+)\s*(?:ชั่วโมง|ชม|hour)(?:ก่อน|ล่วงหน้า)/gi,
+  ];
+  
+  const englishPatterns = [
+    /remind(?:\s+me)?\s+(\d+)\s*(?:hours?|hrs?)(?:\s+before)?/gi,
+    /(?:set|add|create)\s+reminder\s+(\d+)\s*(?:hours?|hrs?)(?:\s+before)?/gi,
+    /reminder\s+(\d+)\s*(?:hours?|hrs?)(?:\s+before)?/gi,
+  ];
+  
+  const patterns = locale === 'th' ? thaiPatterns : englishPatterns;
+  const extractedHours: number[] = [];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(lowerText)) !== null) {
+      const hours = parseInt(match[1], 10);
+      if (hours > 0 && hours <= 72 && !extractedHours.includes(hours)) { // Max 3 days
+        extractedHours.push(hours);
+      }
+    }
+  }
+
+  if (extractedHours.length === 0) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[detectAndHandleReminderPreference] Extracted custom reminder hours: ${extractedHours.join(', ')}`);
+
+  // Find the user's most recent pending work task in this group
+  const { data: userTasks, error: tasksError } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('group_id', groupId)
+    .eq('status', 'pending')
+    .eq('task_type', 'work_assignment')
+    .contains('work_metadata', { assignee_user_id: userId })
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (tasksError || !userTasks || userTasks.length === 0) {
+    const msg = locale === 'th'
+      ? '❌ ไม่พบงานที่กำลังดำเนินการของคุณ'
+      : '❌ No active work tasks found for you';
+    return { detected: true, message: msg };
+  }
+
+  const task = userTasks[0];
+  
+  // Sort hours in descending order for proper reminder schedule
+  const sortedIntervals = extractedHours.sort((a, b) => b - a);
+  
+  // Update task with custom reminder preferences
+  const updatedMetadata = {
+    ...task.work_metadata,
+    reminder_intervals: sortedIntervals,
+    custom_reminder_preferences: {
+      set_by_user_id: userId,
+      set_at: new Date().toISOString(),
+      intervals: sortedIntervals,
+    },
+  };
+
+  const { error: updateError } = await supabase
+    .from('tasks')
+    .update({ work_metadata: updatedMetadata })
+    .eq('id', task.id);
+
+  if (updateError) {
+    console.error('[detectAndHandleReminderPreference] Error updating task:', updateError);
+    const msg = locale === 'th'
+      ? '❌ ไม่สามารถตั้งค่าการเตือนได้'
+      : '❌ Failed to set reminder preferences';
+    return { detected: true, message: msg };
+  }
+
+  // Build confirmation message
+  let msg = '';
+  if (locale === 'th') {
+    const intervalText = sortedIntervals.map(h => `${h} ชั่วโมง`).join(', ');
+    msg = `✅ ตั้งค่าการเตือนสำเร็จ!\n\n📝 งาน: "${task.title}"\n⏰ จะเตือนก่อนส่ง: ${intervalText}\n\n💡 เราจะเตือนคุณตามเวลาที่กำหนดนะ!`;
+  } else {
+    const intervalText = sortedIntervals.map(h => `${h} ${h === 1 ? 'hour' : 'hours'}`).join(', ');
+    msg = `✅ Reminder preference set!\n\n📝 Task: "${task.title}"\n⏰ Will remind before: ${intervalText}\n\n💡 We'll send reminders at the specified times!`;
+  }
+
+  console.log(`[detectAndHandleReminderPreference] Updated task ${task.id} with custom intervals: ${sortedIntervals.join(', ')}`);
+
+  return {
+    detected: true,
+    intervals: sortedIntervals,
+    message: msg,
+  };
+}
+
+// =============================
+
 function extractMentions(text: string): Array<{ lineUserId: string; displayName: string }> {
   // Match @username or @U1234567890abcdef (LINE user ID format)
   const mentionPattern = /@([^\s]+)/g;
@@ -4467,6 +4587,23 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending work approval confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.7: Custom Reminder Preference Detection (runs for EVERY message)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const reminderPrefResult = await detectAndHandleReminderPreference(event.message.text, user.id, group.id, locale);
+    
+    if (reminderPrefResult.detected) {
+      console.log(`[handleMessageEvent] Detected custom reminder preference: ${reminderPrefResult.intervals}`);
+      try {
+        await replyToLine(event.replyToken, reminderPrefResult.message);
+        console.log('[handleMessageEvent] Sent reminder preference confirmation');
+        return; // Don't continue to AI response since we already replied
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending reminder preference confirmation:', error);
       }
     }
   }
