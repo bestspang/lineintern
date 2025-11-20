@@ -4,12 +4,9 @@ import {
   Users, 
   MessageSquare,
   GraduationCap,
-  Shield,
   BookOpen, 
   CheckSquare, 
   BarChart3, 
-  AlertTriangle, 
-  Webhook, 
   Settings,
   TestTube2,
   LogOut,
@@ -17,7 +14,10 @@ import {
   Terminal,
   FileText,
   Sparkles,
-  Clock
+  Clock,
+  Layers,
+  Bot,
+  Gauge
 } from 'lucide-react';
 import {
   Sidebar,
@@ -31,30 +31,83 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { useLocation } from 'react-router-dom';
 
-const navItems = [
-  { title: 'Overview', url: '/', icon: LayoutDashboard },
-  { title: 'Groups', url: '/groups', icon: MessageSquare },
-  { title: 'Users', url: '/users', icon: Users },
-  { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
-  { title: 'FAQ Logs', url: '/faq-logs', icon: MessageSquare },
-  { title: 'Training Queue', url: '/training', icon: GraduationCap },
-  { title: 'Chat Summaries', url: '/summaries', icon: FileText },
-  { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
-  { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
-  { title: 'Memory Bot', url: '/memory', icon: Brain },
-  { title: 'Personality AI', url: '/personality', icon: Sparkles },
-  { title: 'Commands', url: '/commands', icon: Terminal },
-  { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-  { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
-  { title: 'Settings', url: '/settings', icon: Settings },
+const navigationGroups = [
+  {
+    title: 'Dashboard',
+    icon: Gauge,
+    items: [
+      { title: 'Overview', url: '/', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'Content & Knowledge',
+    icon: BookOpen,
+    items: [
+      { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
+      { title: 'FAQ Logs', url: '/faq-logs', icon: MessageSquare },
+      { title: 'Training Queue', url: '/training', icon: GraduationCap },
+      { title: 'Chat Summaries', url: '/summaries', icon: FileText },
+    ],
+  },
+  {
+    title: 'Management',
+    icon: Layers,
+    items: [
+      { title: 'Groups', url: '/groups', icon: MessageSquare },
+      { title: 'Users', url: '/users', icon: Users },
+      { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
+      { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
+    ],
+  },
+  {
+    title: 'AI Features',
+    icon: Bot,
+    items: [
+      { title: 'Memory Bot', url: '/memory', icon: Brain },
+      { title: 'Personality AI', url: '/personality', icon: Sparkles },
+      { title: 'Commands', url: '/commands', icon: Terminal },
+    ],
+  },
+  {
+    title: 'Monitoring & Tools',
+    icon: BarChart3,
+    items: [
+      { title: 'Analytics', url: '/analytics', icon: BarChart3 },
+      { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
+    ],
+  },
+  {
+    title: 'Configuration',
+    icon: Settings,
+    items: [
+      { title: 'Settings', url: '/settings', icon: Settings },
+    ],
+  },
 ];
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
+  const location = useLocation();
+
+  // Check if any item in a group is active
+  const isGroupActive = (items: typeof navigationGroups[0]['items']) => {
+    return items.some(item => {
+      if (item.url === '/') {
+        return location.pathname === '/';
+      }
+      return location.pathname.startsWith(item.url);
+    });
+  };
 
   return (
     <SidebarProvider>
@@ -66,28 +119,52 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           
           <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <NavLink 
-                          to={item.url} 
-                          end={item.url === '/'}
-                          className="hover:bg-muted/50"
-                          activeClassName="bg-muted text-primary font-medium"
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {navigationGroups.map((group) => (
+              <Collapsible
+                key={group.title}
+                defaultOpen={isGroupActive(group.items)}
+                className="group/collapsible"
+              >
+                <SidebarGroup>
+                  <SidebarGroupLabel asChild>
+                    <CollapsibleTrigger className="flex w-full items-center gap-2 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
+                      <group.icon className="h-4 w-4 text-muted-foreground" />
+                      <span className="flex-1 text-left">{group.title}</span>
+                      <svg
+                        className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-90"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </CollapsibleTrigger>
+                  </SidebarGroupLabel>
+                  <CollapsibleContent>
+                    <SidebarGroupContent>
+                      <SidebarMenu>
+                        {group.items.map((item) => (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild>
+                              <NavLink 
+                                to={item.url} 
+                                end={item.url === '/'}
+                                className="hover:bg-muted/50 pl-6"
+                                activeClassName="bg-muted text-primary font-medium"
+                              >
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.title}</span>
+                              </NavLink>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
+            ))}
           </SidebarContent>
 
           <div className="p-4 border-t mt-auto">
