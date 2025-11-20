@@ -747,6 +747,41 @@ export type Database = {
           },
         ]
       }
+      mood_history: {
+        Row: {
+          created_at: string
+          energy_level: number
+          group_id: string
+          id: string
+          mood: string
+          recorded_at: string
+        }
+        Insert: {
+          created_at?: string
+          energy_level: number
+          group_id: string
+          id?: string
+          mood: string
+          recorded_at?: string
+        }
+        Update: {
+          created_at?: string
+          energy_level?: number
+          group_id?: string
+          id?: string
+          mood?: string
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mood_history_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       personality_state: {
         Row: {
           created_at: string
