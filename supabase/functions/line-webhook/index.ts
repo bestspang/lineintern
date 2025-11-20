@@ -371,7 +371,7 @@ async function verifySignature(body: string, signature: string): Promise<boolean
 // DATABASE HELPERS
 // =============================
 
-async function getLineProfile(userId: string) {
+async function getLineProfile(userId: string, groupId?: string) {
   console.log(`[getLineProfile] Fetching profile for: ${userId}`);
   
   try {
@@ -383,6 +383,22 @@ async function getLineProfile(userId: string) {
 
     if (!response.ok) {
       console.error(`[getLineProfile] LINE API error: ${response.status}`);
+      
+      // Log to alerts table for monitoring
+      if (groupId) {
+        await supabase.from('alerts').insert({
+          type: 'error',
+          severity: 'low',
+          summary: `Failed to fetch LINE profile for user ${userId.slice(-6)}`,
+          details: { 
+            user_id: userId,
+            status: response.status,
+            error: 'LINE API returned non-OK status'
+          },
+          group_id: groupId
+        });
+      }
+      
       return null;
     }
 
@@ -395,11 +411,26 @@ async function getLineProfile(userId: string) {
     };
   } catch (error) {
     console.error(`[getLineProfile] Error fetching profile:`, error);
+    
+    // Log to alerts table for monitoring
+    if (groupId) {
+      await supabase.from('alerts').insert({
+        type: 'error',
+        severity: 'low',
+        summary: `Failed to fetch LINE profile for user ${userId.slice(-6)}`,
+        details: { 
+          user_id: userId,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        group_id: groupId
+      });
+    }
+    
     return null;
   }
 }
 
-async function ensureUser(lineUserId: string, displayName?: string) {
+async function ensureUser(lineUserId: string, displayName?: string, groupId?: string) {
   console.log(`[ensureUser] Checking user: ${lineUserId}`);
   
   const { data: existing } = await supabase
@@ -412,7 +443,7 @@ async function ensureUser(lineUserId: string, displayName?: string) {
     // ✅ Auto-fix: If display_name is the LINE ID, fetch real name
     if (existing.display_name === lineUserId) {
       console.log(`[ensureUser] ⚠️ User ${lineUserId} has ID as name, auto-fixing...`);
-      const profile = await getLineProfile(lineUserId);
+      const profile = await getLineProfile(lineUserId, groupId);
       if (profile && profile.displayName !== lineUserId) {
         await supabase
           .from("users")
@@ -444,7 +475,7 @@ async function ensureUser(lineUserId: string, displayName?: string) {
   
   if (!finalDisplayName) {
     console.log(`[ensureUser] No displayName provided, fetching from LINE API...`);
-    const profile = await getLineProfile(lineUserId);
+    const profile = await getLineProfile(lineUserId, groupId);
     if (profile) {
       finalDisplayName = profile.displayName;
       avatarUrl = profile.avatarUrl;
@@ -3471,8 +3502,8 @@ async function handleMemberJoinedEvent(event: LineEvent) {
       console.log(`[handleMemberJoinedEvent] Processing user: ${member.userId}`);
       
       try {
-        // Ensure user exists in users table
-        const user = await ensureUser(member.userId);
+        // Ensure user exists in users table (pass group.id for monitoring)
+        const user = await ensureUser(member.userId, undefined, group.id);
         
         // Add to group_members table
         await ensureGroupMember(group.id, user.id);
@@ -3595,15 +3626,20 @@ async function handleMessageEvent(event: LineEvent) {
     return; // Skip processing if IDs are invalid
   }
 
-  // Ensure user exists
-  const user = await ensureUser(lineUserId);
-
-  // Ensure group exists (or use DM context)
+  // Ensure group exists first (if it's a group message)
   let group;
+  let groupIdForUser; // For monitoring in ensureUser
+  
   if (event.source.type === "group") {
     group = await ensureGroup(lineGroupId);
-  } else {
-    // For DMs, create a pseudo-group or use a special identifier
+    groupIdForUser = group.id;
+  }
+
+  // Ensure user exists (with groupId for monitoring if available)
+  const user = await ensureUser(lineUserId, undefined, groupIdForUser);
+
+  // For DMs, create group after user (since we need user.display_name)
+  if (event.source.type !== "group") {
     const { data: dmGroup } = await supabase
       .from("groups")
       .select("*")
