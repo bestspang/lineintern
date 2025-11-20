@@ -2123,6 +2123,130 @@ async function getTopKeywords(groupId: string, fromDate: Date, toDate: Date, lim
 // =============================
 
 /**
+ * Handle /reminders command - list all pending work reminders
+ */
+async function handleRemindersCommand(groupId: string, replyToken: string) {
+  try {
+    console.log(`[handleRemindersCommand] Listing reminders for group ${groupId}`);
+
+    // Get group language
+    const { data: group } = await supabase
+      .from('groups')
+      .select('language')
+      .eq('id', groupId)
+      .single();
+
+    const locale = (group?.language === 'th' || group?.language === 'auto') ? 'th' : 'en';
+
+    // Get all pending work tasks
+    const { data: tasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        id,
+        title,
+        due_at,
+        work_metadata,
+        users!tasks_assigned_to_user_id_fkey(display_name)
+      `)
+      .eq('group_id', groupId)
+      .eq('task_type', 'work_assignment')
+      .eq('status', 'pending')
+      .gt('due_at', new Date().toISOString())
+      .order('due_at', { ascending: true });
+
+    if (error) {
+      console.error('[handleRemindersCommand] Error fetching tasks:', error);
+      throw error;
+    }
+
+    if (!tasks || tasks.length === 0) {
+      const message = locale === 'th'
+        ? '✅ ไม่มีเตือนความจำที่รอดำเนินการ'
+        : '✅ No pending reminders';
+      await replyToLine(replyToken, message);
+      return;
+    }
+
+    // Build reminder list
+    const now = new Date();
+    let message = locale === 'th'
+      ? '⏰ *รายการเตือนความจำงาน*\n\n'
+      : '⏰ *Work Reminders List*\n\n';
+
+    for (const task of tasks) {
+      const dueDate = new Date(task.due_at);
+      const metadata = task.work_metadata as any || {};
+      const intervals = metadata.reminder_intervals || [24, 6, 1];
+      const sentReminders = metadata.sent_reminders || [];
+      const assigneeName = (task.users as any)?.display_name || (locale === 'th' ? 'ไม่ระบุ' : 'Unassigned');
+
+      // Calculate pending reminders
+      const pendingReminders = [];
+      for (const interval of intervals) {
+        const reminderKey = `${interval}h`;
+        if (!sentReminders.includes(reminderKey)) {
+          const reminderTime = new Date(dueDate.getTime() - interval * 60 * 60 * 1000);
+          if (reminderTime > now) {
+            pendingReminders.push({ interval, time: reminderTime });
+          }
+        }
+      }
+
+      if (pendingReminders.length > 0) {
+        message += locale === 'th'
+          ? `📋 *${task.title}*\n`
+          : `📋 *${task.title}*\n`;
+        
+        message += locale === 'th'
+          ? `   👤 ${assigneeName}\n`
+          : `   👤 ${assigneeName}\n`;
+        
+        message += locale === 'th'
+          ? `   📅 กำหนดส่ง: ${formatTimeDistance(dueDate, locale)}\n`
+          : `   📅 Due: ${formatTimeDistance(dueDate, locale)}\n`;
+
+        message += locale === 'th'
+          ? `   ⏰ การเตือน:\n`
+          : `   ⏰ Reminders:\n`;
+
+        for (const reminder of pendingReminders) {
+          const urgency = reminder.interval === 1 ? '🔥' : reminder.interval === 6 ? '⚡' : '🔔';
+          const timeStr = formatTimeDistance(reminder.time, locale);
+          message += locale === 'th'
+            ? `      ${urgency} ${reminder.interval} ชม. ก่อน (${timeStr})\n`
+            : `      ${urgency} ${reminder.interval}h before (${timeStr})\n`;
+        }
+        message += '\n';
+      }
+    }
+
+    // Add summary
+    const totalReminders = tasks.reduce((sum, task) => {
+      const metadata = task.work_metadata as any || {};
+      const intervals = metadata.reminder_intervals || [24, 6, 1];
+      const sentReminders = metadata.sent_reminders || [];
+      const dueDate = new Date(task.due_at);
+      
+      return sum + intervals.filter((interval: number) => {
+        const reminderKey = `${interval}h`;
+        const reminderTime = new Date(dueDate.getTime() - interval * 60 * 60 * 1000);
+        return !sentReminders.includes(reminderKey) && reminderTime > now;
+      }).length;
+    }, 0);
+
+    message += locale === 'th'
+      ? `\n📊 รวม ${totalReminders} เตือนความจำสำหรับ ${tasks.length} งาน`
+      : `\n📊 Total: ${totalReminders} reminders for ${tasks.length} tasks`;
+
+    await replyToLine(replyToken, message);
+    console.log('[handleRemindersCommand] Successfully sent reminders list');
+  } catch (error) {
+    console.error('[handleRemindersCommand] Error:', error);
+    await replyToLine(replyToken, 'เกิดข้อผิดพลาดในการแสดงรายการเตือนความจำ / Error listing reminders');
+  }
+}
+
+/**
  * Handle /help command - show available commands
  */
 async function handleHelpCommand(
@@ -2164,6 +2288,7 @@ async function handleHelpCommand(
       helpText += `• /todo [งาน] - สร้างงาน\n`;
       helpText += `• /remind หรือ /เตือน [งาน] [เวลา] - ตั้งเตือน\n`;
       helpText += `  ตัวอย่าง: /เตือน ประชุม พรุ่งนี้ 14:00\n`;
+      helpText += `• /เตือน - แสดงรายการเตือนความจำงาน\n`;
       helpText += `• /remind ทุก[ช่วง] เวลา [เวลา] [ข้อความ] - เตือนซ้ำ\n`;
       helpText += `  ตัวอย่าง:\n`;
       helpText += `  - /remind ทุกวัน เวลา 9 โมง standup\n`;
@@ -2207,6 +2332,7 @@ async function handleHelpCommand(
       helpText += `• /todo [task] - Create a task\n`;
       helpText += `• /remind [task] [time] - Set a reminder\n`;
       helpText += `  Example: /remind meeting tomorrow 2pm\n`;
+      helpText += `• /reminders - Show pending work reminders\n`;
       helpText += `• /remind every [period] at [time] [task] - Recurring\n`;
       helpText += `  Examples:\n`;
       helpText += `  - /remind every day at 9am standup\n`;
@@ -4679,6 +4805,12 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 4: Handle /remind command
   if (parsed.commandType === 'remind') {
     await handleRemindCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    return;
+  }
+
+  // PHASE 7: Handle /reminders command
+  if (parsed.commandType === 'reminders') {
+    await handleRemindersCommand(group.id, event.replyToken);
     return;
   }
 
