@@ -484,9 +484,8 @@ async function insertMessage(
   userId: string | null,
   direction: "human" | "bot" | "system",
   text: string,
-  lineMessageId?: string,
   commandType?: string
-) {
+): Promise<{ id: string } | null> {
   // Sanitize and validate message text
   const sanitizedText = sanitizeMessageText(text);
   
@@ -494,27 +493,36 @@ async function insertMessage(
     validateMessageText(sanitizedText);
   } catch (error) {
     console.error(`[insertMessage] Text validation failed:`, error);
-    return; // Skip storing invalid messages
+    return null; // Skip storing invalid messages
   }
   
   const hasUrl = /https?:\/\/[^\s]+/.test(sanitizedText);
   
-  const { error } = await supabase.from("messages").insert({
+  const { data, error } = await supabase.from("messages").insert({
     group_id: groupId,
     user_id: userId,
-    line_message_id: lineMessageId,
     direction,
     text: sanitizedText,
     has_url: hasUrl,
     command_type: commandType,
     sent_at: new Date().toISOString(),
-  });
+  }).select("id").single();
 
   if (error) {
     console.error(`[insertMessage] Error:`, error);
-  } else {
-    console.log(`[insertMessage] Inserted ${direction} message for group ${groupId}`);
+    console.error(`[insertMessage] Attempted to insert:`, {
+      group_id: groupId,
+      user_id: userId,
+      direction,
+      text_length: sanitizedText.length,
+      has_url: hasUrl,
+      command_type: commandType,
+    });
+    return null;
   }
+
+  console.log(`[insertMessage] ✅ Inserted ${direction} message for group ${groupId}`, data?.id);
+  return data;
 }
 
 async function insertAlert(
@@ -3189,14 +3197,13 @@ async function handleMessageEvent(event: LineEvent) {
   const parsed = await parseCommandDynamic(event.message.text, isDM);
 
   // Insert human message and get the inserted record
-  const insertedMessage = await insertMessage(
-    group.id,
-    user.id,
-    "human",
-    event.message.text,
-    event.message.id,
-    parsed.commandType
-  );
+    const insertedMessage = await insertMessage(
+      group.id,
+      user.id,
+      "human",
+      event.message.text,
+      parsed.commandType
+    );
 
   // Check for auto-summary trigger (every 100 messages)
   if (group.features?.summary && !isDM) {
