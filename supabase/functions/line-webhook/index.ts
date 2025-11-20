@@ -2318,6 +2318,14 @@ ASSIGNED_TO: <name or "none">`;
       }
     }
 
+    // Check if message contains @all mention keywords
+    const mentionAllKeywords = ["@all", "@All", "@ALL", "ทุกคน", "ทั้งหมด", "everyone", "everybody"];
+    const mentionAll = mentionAllKeywords.some(keyword => userMessage.includes(keyword));
+    
+    if (mentionAll) {
+      console.log(`[handleTodoCommand] Detected @all mention in message`);
+    }
+
     const { data: task, error } = await supabase
       .from("tasks")
       .insert({
@@ -2328,6 +2336,7 @@ ASSIGNED_TO: <name or "none">`;
         description: description && description !== "none" ? description : null,
         due_at: dueAt,
         status: "pending",
+        mention_all: mentionAll,
       })
       .select()
       .single();
@@ -2437,6 +2446,14 @@ REMIND_AT: <ISO timestamp>`;
       console.log(`[handleRemindCommand] No valid time found, using fallback (1 hour from now): ${remindAt}`);
     }
 
+    // Check if message contains @all mention keywords
+    const mentionAllKeywords = ["@all", "@All", "@ALL", "ทุกคน", "ทั้งหมด", "everyone", "everybody"];
+    const mentionAll = mentionAllKeywords.some(keyword => userMessage.includes(keyword));
+    
+    if (mentionAll) {
+      console.log(`[handleRemindCommand] Detected @all mention in message`);
+    }
+
     const { data: reminder, error } = await supabase
       .from("tasks")
       .insert({
@@ -2446,6 +2463,7 @@ REMIND_AT: <ISO timestamp>`;
         description: reminderMessage.length > 80 ? reminderMessage : null,
         due_at: remindAt,
         status: "pending",
+        mention_all: mentionAll,
       })
       .select()
       .single();

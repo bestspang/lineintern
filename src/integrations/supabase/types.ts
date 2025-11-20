@@ -968,6 +968,7 @@ export type Database = {
           due_at: string
           group_id: string
           id: string
+          mention_all: boolean | null
           status: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at: string
@@ -980,6 +981,7 @@ export type Database = {
           due_at: string
           group_id: string
           id?: string
+          mention_all?: boolean | null
           status?: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at?: string
@@ -992,6 +994,7 @@ export type Database = {
           due_at?: string
           group_id?: string
           id?: string
+          mention_all?: boolean | null
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
           updated_at?: string
