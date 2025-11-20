@@ -33,7 +33,19 @@ export default function Summaries() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSummary, setSelectedSummary] = useState<ChatSummary | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [messageCount, setMessageCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const { toast } = useToast();
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSummaries();
+      setLastUpdated(new Date());
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchSummaries();
@@ -66,6 +78,12 @@ export default function Summaries() {
 
       setSummaries(data || []);
       setFilteredSummaries(data || []);
+
+      // Fetch total message count for all groups
+      const { count } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true });
+      setMessageCount(count || 0);
     } catch (error: any) {
       console.error("Error fetching summaries:", error);
       toast({
@@ -75,6 +93,33 @@ export default function Summaries() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const generateSummaryNow = async () => {
+    try {
+      setIsGenerating(true);
+      const { error } = await supabase.functions.invoke("report-generator", {
+        body: { type: "auto_summary" },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Summary generated successfully",
+      });
+
+      await fetchSummaries();
+    } catch (error: any) {
+      console.error("Error generating summary:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate summary",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -90,11 +135,19 @@ export default function Summaries() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Chat Summaries</h1>
-        <p className="text-muted-foreground">
-          Browse and search past conversation summaries from all groups
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Chat Summaries</h1>
+          <p className="text-muted-foreground">
+            Browse and search past conversation summaries from all groups
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Total messages: {messageCount} • Auto-summary at 20 messages • Last updated: {lastUpdated.toLocaleTimeString()}
+          </p>
+        </div>
+        <Button onClick={generateSummaryNow} disabled={isGenerating}>
+          {isGenerating ? "Generating..." : "Generate Summary Now"}
+        </Button>
       </div>
 
       {/* Search Bar */}
@@ -134,11 +187,20 @@ export default function Summaries() {
                   ))}
                 </div>
               ) : filteredSummaries.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
+                <div className="text-center py-12">
                   <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No summaries found</p>
-                  {searchQuery && (
-                    <p className="text-sm mt-2">Try a different search term</p>
+                  <p className="text-lg text-muted-foreground mb-2">No summaries found</p>
+                  {searchQuery ? (
+                    <p className="text-sm text-muted-foreground mt-2">Try a different search term</p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Chat summaries are automatically generated after 20 messages in a group
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Current message count: {messageCount}
+                      </p>
+                    </>
                   )}
                 </div>
               ) : (

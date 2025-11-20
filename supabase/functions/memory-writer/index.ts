@@ -7,48 +7,41 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const MEMORY_EXTRACTION_PROMPT = `You are a Memory Extraction Assistant. Your job is to analyze conversations and identify facts worth remembering about users and groups.
+const MEMORY_EXTRACTION_PROMPT = `You are a Memory Extraction Assistant. Your job is to analyze conversations and identify TRULY MEMORABLE information.
 
-Guidelines:
-1. Extract 0-5 memory items per conversation
-2. Focus on:
-   - User personality traits and communication style
-   - User preferences (answer format, topics, tone)
-   - Recurring topics and ongoing projects
-   - Group atmosphere and dynamics
-   - Relationships and roles in the group
-   - Inside jokes or repeated references
-3. Avoid:
-   - Trivial one-time facts
-   - Highly sensitive personal data (health, finances, passwords)
-   - Temporary states or emotions
-   - Overly specific details
+Extract ONLY information worth remembering long-term:
+✅ DO EXTRACT:
+- Personal preferences: "ชอบกินข้าวผัด", "ไม่ชอบของหวาน", "ชอบดูหนัง"
+- Important facts: "ทำงานที่ BKK", "เรียนที่จุฬา", "อาศัยอยู่สีลม"
+- Recurring patterns: "ตื่นสายทุกวัน", "ชอบดื่มกาแฟตอนเช้า", "ไปทำงานสาย"
+- Significant events: "วันเกิด 15 ธันวา", "เพิ่งไปเที่ยวญี่ปุ่น", "กำลังหางานใหม่"
+- Relationships: "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y", "แฟนทำงานที่ Z"
 
-For each memory, provide:
+❌ DON'T EXTRACT:
+- Greetings: "สวัสดี", "ว่าไง", "ดีจ้า"
+- Reactions: "อร่อย", "5555", "ขำ", "เศร้า"
+- Short responses: "ok", "ครับ", "ได้", "จ้า"
+- Temporary states: "หิวข้าว", "เหนื่อย", "ง่วง" (unless recurring)
+- Generic chitchat: "อากาศร้อน", "ฝนตก", "คนเยอะ"
+
+For each memory:
 - scope: "user" or "group"
-- category: "trait" | "preference" | "topic" | "project" | "context" | "relationship" | "meta"
+- category: "preference" | "fact" | "event" | "pattern" | "relationship"
 - title: Short summary (10-120 chars)
-- content: 1-3 sentences describing the memory (20-500 chars)
-- importance_score: 0.0-1.0 (how important is this to remember?)
+- content: 1-2 sentences (20-300 chars)
+- importance_score: 0.0-1.0
 
-Return a JSON object with a "memories" array containing 0-5 memory objects.
+Return JSON with "memories" array (0-3 items, or empty if nothing memorable).
 
-Example output:
+Example:
 {
   "memories": [
     {
       "scope": "user",
       "category": "preference",
-      "title": "Prefers concise bullet-point answers",
-      "content": "User consistently asks for summaries and shorter responses. Appreciates bullet points over paragraphs.",
-      "importance_score": 0.8
-    },
-    {
-      "scope": "group",
-      "category": "project",
-      "title": "Planning team trip to Osaka",
-      "content": "Group is actively planning a team trip to Osaka next month. Multiple discussions about dates, hotels, and activities.",
-      "importance_score": 0.9
+      "title": "ชอบกินข้าวผัด",
+      "content": "User mentioned they love fried rice and eat it often.",
+      "importance_score": 0.7
     }
   ]
 }`;
@@ -182,6 +175,8 @@ Extract 0-5 memories worth storing.
 `;
 
   try {
+    console.log(`[extractMemoriesWithAI] Processing conversation (${contextPrompt.length} chars)...`);
+    
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
       {
@@ -208,7 +203,16 @@ Extract 0-5 memories worth storing.
 
     const data = await response.json();
     const parsed = JSON.parse(data.choices[0].message.content);
-    return parsed.memories || [];
+    const memories = parsed.memories || [];
+
+    console.log(`[extractMemoriesWithAI] Extracted ${memories.length} memories from conversation`);
+    if (memories.length === 0) {
+      console.log(`[extractMemoriesWithAI] No memorable content found`);
+    } else {
+      console.log(`[extractMemoriesWithAI] Found memories:`, memories.map((m: any) => m.title));
+    }
+
+    return memories;
   } catch (error) {
     console.error("[extractMemoriesWithAI] Error:", error);
     return [];
