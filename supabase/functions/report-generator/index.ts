@@ -338,13 +338,138 @@ async function generateReportForGroup(groupId: string, period: "daily" | "weekly
   return { groupId, period, success: true };
 }
 
+// =============================
+// AI SUMMARY GENERATION
+// =============================
+
+async function generateSummaryWithAI(messages: any[], groupId: string) {
+  const messagesText = messages
+    .reverse() // Oldest first for context
+    .map((m: any) => `${m.users?.display_name || 'Unknown'}: ${m.text}`)
+    .join('\n');
+
+  const summaryPrompt = `สรุปการสนทนาในกลุ่มแชทนี้เป็นภาษาไทย แยกเป็น:
+1. หัวข้อหลักที่พูดคุยกัน (3-5 หัวข้อ)
+2. การตัดสินใจที่สำคัญ (ระบุแต่ละรายการ)
+3. งานที่ต้องทำพร้อมผู้รับผิดชอบ (ระบุแต่ละรายการในรูปแบบ: "งาน - ผู้รับผิดชอบ")
+4. คำถามที่ยังรอคำตอบ
+
+ข้อความแชท (${messages.length} ข้อความ):
+${messagesText}
+
+ให้สรุปอย่างชัดเจนและกระชับในภาษาไทย`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'คุณเป็นผู้ช่วยที่สรุปการสนทนาในกลุ่มแชทได้อย่างชัดเจนและกระชับเป็นภาษาไทย' },
+          { role: 'user', content: summaryPrompt }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[generateSummaryWithAI] AI API error:', response.status, await response.text());
+      return 'ไม่สามารถสร้างสรุปได้เนื่องจากเกิดข้อผิดพลาดจากบริการ AI';
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (err) {
+    console.error('[generateSummaryWithAI] Exception:', err);
+    return 'ไม่สามารถสร้างสรุปได้เนื่องจากเกิดข้อผิดพลาด';
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('[report-generator] Starting automated report generation...');
+    console.log('[report-generator] Starting...');
+    
+    // Parse request body
+    const body = await req.json().catch(() => ({}));
+    const { groupId: requestedGroupId, type, messageLimit } = body;
+
+    // === HANDLE AUTO-SUMMARY REQUEST ===
+    if (type === 'auto_summary' && requestedGroupId) {
+      console.log(`[report-generator] Auto-summary for group ${requestedGroupId}`);
+      
+      // Fetch recent messages
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('*, users(display_name)')
+        .eq('group_id', requestedGroupId)
+        .eq('direction', 'human')
+        .order('sent_at', { ascending: false })
+        .limit(messageLimit || 100);
+
+      if (messagesError || !messages || messages.length === 0) {
+        console.error('[report-generator] Error fetching messages:', messagesError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'No messages to summarize' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      // Generate AI summary
+      const summaryText = await generateSummaryWithAI(messages, requestedGroupId);
+
+      // Extract structured data from messages
+      const mainTopics: string[] = [];
+      const decisions: any[] = [];
+      const actionItems: any[] = [];
+      const openQuestions: string[] = [];
+
+      // Simple extraction logic
+      messages.forEach((msg: any) => {
+        if (msg.text.includes('?') && msg.text.length < 200) {
+          openQuestions.push(msg.text);
+        }
+        if (msg.text.includes('ตกลง') || msg.text.includes('เห็นด้วย') || msg.text.includes('decide')) {
+          decisions.push({ text: msg.text.substring(0, 100) });
+        }
+      });
+
+      // Save summary to database
+      const { error: insertError } = await supabase
+        .from('chat_summaries')
+        .insert({
+          group_id: requestedGroupId,
+          summary_text: summaryText,
+          from_time: messages[messages.length - 1].sent_at,
+          to_time: messages[0].sent_at,
+          message_count: messages.length,
+          main_topics: mainTopics.slice(0, 5),
+          decisions,
+          action_items: actionItems,
+          open_questions: openQuestions.slice(0, 5),
+        });
+
+      if (insertError) {
+        console.error('[report-generator] Error saving summary:', insertError);
+        throw insertError;
+      }
+
+      console.log(`[report-generator] Auto-summary created for group ${requestedGroupId}`);
+      
+      return new Response(
+        JSON.stringify({ success: true, message: 'Auto-summary created' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // === ORIGINAL SCHEDULED REPORT GENERATION ===
+    console.log('[report-generator] Scheduled report generation...');
 
     // Fetch all active groups with reports feature enabled
     const { data: groups, error: groupsError } = await supabase
