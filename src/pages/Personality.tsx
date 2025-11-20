@@ -4,13 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw } from "lucide-react";
+import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const getMoodEmoji = (mood: string) => {
   const moodMap: Record<string, { icon: typeof Smile; color: string }> = {
@@ -87,6 +88,25 @@ export default function Personality() {
       return data;
     },
     enabled: !!magicGroups,
+  });
+
+  // Fetch mood history for the selected group
+  const { data: moodHistory, isLoading: loadingHistory } = useQuery({
+    queryKey: ["mood-history", selectedGroupId],
+    queryFn: async () => {
+      if (selectedGroupId === "all") return [];
+
+      const { data, error } = await supabase
+        .from("mood_history")
+        .select("*")
+        .eq("group_id", selectedGroupId)
+        .order("recorded_at", { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: selectedGroupId !== "all" && !!magicGroups,
   });
 
   // Reset personality mutation
@@ -186,6 +206,66 @@ export default function Personality() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Mood History Chart (only for single group selection) */}
+      {selectedGroupId !== "all" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-purple-500" />
+              Mood & Energy History
+            </CardTitle>
+            <CardDescription>
+              Track how the AI's mood and energy have evolved over time
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingHistory ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : !moodHistory || moodHistory.length === 0 ? (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                No mood history recorded yet. The AI will start tracking mood changes after messages in magic mode.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={moodHistory.map(h => ({
+                  time: new Date(h.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit' }),
+                  energy: h.energy_level,
+                  mood: h.mood,
+                }))}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="time" 
+                    className="text-xs"
+                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                  />
+                  <YAxis 
+                    className="text-xs"
+                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--popover))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                    labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="energy" 
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2}
+                    name="Energy Level"
+                    dot={{ fill: 'hsl(var(--primary))' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Personality States */}
       {loadingPersonality ? (
