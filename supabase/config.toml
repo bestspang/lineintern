@@ -41,3 +41,12 @@ verify_jwt = false
 
 [functions.memory-decay]
 verify_jwt = false
+
+[functions.attendance-validate-token]
+verify_jwt = false
+
+[functions.attendance-submit]
+verify_jwt = false
+
+[functions.attendance-daily-summary]
+verify_jwt = false

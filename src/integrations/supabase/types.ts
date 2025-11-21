@@ -120,6 +120,182 @@ export type Database = {
         }
         Relationships: []
       }
+      attendance_logs: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          device_info: Json | null
+          device_time: string | null
+          employee_id: string
+          event_type: string
+          flag_reason: string | null
+          id: string
+          is_flagged: boolean | null
+          latitude: number | null
+          line_message_id: string | null
+          longitude: number | null
+          photo_url: string | null
+          server_time: string
+          source: string | null
+          timezone: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          device_info?: Json | null
+          device_time?: string | null
+          employee_id: string
+          event_type: string
+          flag_reason?: string | null
+          id?: string
+          is_flagged?: boolean | null
+          latitude?: number | null
+          line_message_id?: string | null
+          longitude?: number | null
+          photo_url?: string | null
+          server_time?: string
+          source?: string | null
+          timezone?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          device_info?: Json | null
+          device_time?: string | null
+          employee_id?: string
+          event_type?: string
+          flag_reason?: string | null
+          id?: string
+          is_flagged?: boolean | null
+          latitude?: number | null
+          line_message_id?: string | null
+          longitude?: number | null
+          photo_url?: string | null
+          server_time?: string
+          source?: string | null
+          timezone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_settings: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          daily_summary_enabled: boolean | null
+          daily_summary_time: string | null
+          employee_id: string | null
+          enable_attendance: boolean | null
+          id: string
+          require_location: boolean | null
+          require_photo: boolean | null
+          scope: string
+          standard_start_time: string | null
+          time_zone: string | null
+          token_validity_minutes: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          daily_summary_enabled?: boolean | null
+          daily_summary_time?: string | null
+          employee_id?: string | null
+          enable_attendance?: boolean | null
+          id?: string
+          require_location?: boolean | null
+          require_photo?: boolean | null
+          scope: string
+          standard_start_time?: string | null
+          time_zone?: string | null
+          token_validity_minutes?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          daily_summary_enabled?: boolean | null
+          daily_summary_time?: string | null
+          employee_id?: string | null
+          enable_attendance?: boolean | null
+          id?: string
+          require_location?: boolean | null
+          require_photo?: boolean | null
+          scope?: string
+          standard_start_time?: string | null
+          time_zone?: string | null
+          token_validity_minutes?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_settings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_tokens: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          expires_at: string
+          id: string
+          status: string | null
+          type: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          expires_at: string
+          id?: string
+          status?: string | null
+          type: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          expires_at?: string
+          id?: string
+          status?: string | null
+          type?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_tokens_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_commands: {
         Row: {
           available_in_dm: boolean | null
@@ -228,6 +404,51 @@ export type Database = {
           trigger_type?: string
           updated_at?: string | null
           usage_count?: number | null
+        }
+        Relationships: []
+      }
+      branches: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          id: string
+          latitude: number | null
+          line_group_id: string | null
+          longitude: number | null
+          name: string
+          photo_required: boolean | null
+          radius_meters: number | null
+          standard_start_time: string | null
+          type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          line_group_id?: string | null
+          longitude?: number | null
+          name: string
+          photo_required?: boolean | null
+          radius_meters?: number | null
+          standard_start_time?: string | null
+          type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          line_group_id?: string | null
+          longitude?: number | null
+          name?: string
+          photo_required?: boolean | null
+          radius_meters?: number | null
+          standard_start_time?: string | null
+          type?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -420,6 +641,109 @@ export type Database = {
             columns: ["started_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_attendance_summaries: {
+        Row: {
+          absent_count: number | null
+          branch_id: string
+          checked_in: number | null
+          checked_out: number | null
+          created_at: string | null
+          flagged_count: number | null
+          id: string
+          late_count: number | null
+          line_message_id: string | null
+          sent_at: string | null
+          summary_date: string
+          summary_text: string
+          total_employees: number | null
+        }
+        Insert: {
+          absent_count?: number | null
+          branch_id: string
+          checked_in?: number | null
+          checked_out?: number | null
+          created_at?: string | null
+          flagged_count?: number | null
+          id?: string
+          late_count?: number | null
+          line_message_id?: string | null
+          sent_at?: string | null
+          summary_date: string
+          summary_text: string
+          total_employees?: number | null
+        }
+        Update: {
+          absent_count?: number | null
+          branch_id?: string
+          checked_in?: number | null
+          checked_out?: number | null
+          created_at?: string | null
+          flagged_count?: number | null
+          id?: string
+          late_count?: number | null
+          line_message_id?: string | null
+          sent_at?: string | null
+          summary_date?: string
+          summary_text?: string
+          total_employees?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_attendance_summaries_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          announcement_group_line_id: string | null
+          branch_id: string | null
+          code: string
+          created_at: string | null
+          full_name: string
+          id: string
+          is_active: boolean | null
+          line_user_id: string | null
+          role: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          announcement_group_line_id?: string | null
+          branch_id?: string | null
+          code: string
+          created_at?: string | null
+          full_name: string
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          announcement_group_line_id?: string | null
+          branch_id?: string | null
+          code?: string
+          created_at?: string | null
+          full_name?: string
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -1585,6 +1909,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_distance_meters: {
+        Args: { lat1: number; lat2: number; lon1: number; lon2: number }
+        Returns: number
+      }
       find_or_create_thread: {
         Args: {
           p_group_id: string
@@ -1614,6 +1942,15 @@ export type Database = {
           jobid: number
           jobname: string
           schedule: string
+        }[]
+      }
+      get_effective_attendance_settings: {
+        Args: { p_employee_id: string }
+        Returns: {
+          enable_attendance: boolean
+          require_location: boolean
+          require_photo: boolean
+          token_validity_minutes: number
         }[]
       }
       get_overdue_work_tasks: {
