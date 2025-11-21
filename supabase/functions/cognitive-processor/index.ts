@@ -67,6 +67,11 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[cognitive-processor] Error:", error);
+    console.error("[cognitive-processor] Error type:", error?.constructor?.name);
+    console.error("[cognitive-processor] Error message:", error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error("[cognitive-processor] Stack trace:", error.stack);
+    }
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -81,6 +86,8 @@ async function analyzeInteraction(
   conversationContext: any[]
 ) {
   console.log("[cognitive-processor] Analyzing interaction for group:", groupId);
+  console.log("[cognitive-processor] Context messages:", conversationContext.length);
+  console.log("[cognitive-processor] Message data:", messageData ? "present" : "missing");
 
   // Get recent messages for context
   const recentMessages = conversationContext.slice(-10);
@@ -88,9 +95,12 @@ async function analyzeInteraction(
   // Identify users involved in the conversation
   const involvedUsers = new Set(recentMessages.map(m => m.user_id).filter(Boolean));
   
+  console.log(`[cognitive-processor] Recent messages: ${recentMessages.length}, Involved users: ${involvedUsers.size}`);
+  
   // If we have at least 2 users, analyze relationships
   if (involvedUsers.size >= 2) {
     const users = Array.from(involvedUsers);
+    console.log(`[cognitive-processor] Analyzing ${users.length} users for relationships...`);
     
     // Analyze each pair of users
     for (let i = 0; i < users.length; i++) {
@@ -104,7 +114,10 @@ async function analyzeInteraction(
         );
         
         if (theirMessages.length >= 2) {
+          console.log(`[cognitive-processor] Found ${theirMessages.length} messages between user ${userA} and ${userB}, analyzing...`);
           await analyzeRelationship(supabase, groupId, userA, userB, theirMessages);
+        } else {
+          console.log(`[cognitive-processor] Not enough messages (${theirMessages.length}) between users ${userA} and ${userB}`);
         }
       }
     }
@@ -112,7 +125,11 @@ async function analyzeInteraction(
 
   // Update individual profiles
   if (messageData.user_id) {
+    console.log(`[cognitive-processor] Updating profile for user ${messageData.user_id}...`);
     await updateProfileFromMessage(supabase, groupId, messageData.user_id, messageData, recentMessages);
+    console.log(`[cognitive-processor] ✓ Profile updated for user ${messageData.user_id}`);
+  } else {
+    console.log(`[cognitive-processor] No user_id in messageData, skipping profile update`);
   }
 
   return { success: true, analyzed: true };
@@ -125,7 +142,11 @@ async function analyzeRelationship(
   userBId: string,
   messages: any[]
 ) {
-  console.log(`[cognitive-processor] Analyzing relationship between users in group ${groupId}`);
+  console.log(`[cognitive-processor] ===== Analyzing relationship =====`);
+  console.log(`[cognitive-processor] Group ID: ${groupId}`);
+  console.log(`[cognitive-processor] User A ID: ${userAId}`);
+  console.log(`[cognitive-processor] User B ID: ${userBId}`);
+  console.log(`[cognitive-processor] Messages: ${messages.length}`);
 
   // Get user display names
   const { data: users } = await supabase
@@ -133,8 +154,12 @@ async function analyzeRelationship(
     .select("id, display_name")
     .in("id", [userAId, userBId]);
 
+  console.log(`[cognitive-processor] Fetched ${users?.length || 0} user records`);
+  
   const userAName = users?.find((u: any) => u.id === userAId)?.display_name || "User A";
   const userBName = users?.find((u: any) => u.id === userBId)?.display_name || "User B";
+  
+  console.log(`[cognitive-processor] User A: ${userAName}, User B: ${userBName}`);
 
   // Build conversation context
   const conversationText = messages
@@ -142,7 +167,9 @@ async function analyzeRelationship(
     .join("\n");
 
   // Call AI to infer relationship
+  console.log(`[cognitive-processor] Calling AI to infer relationship...`);
   const inference = await inferRelationshipWithAI(conversationText, userAName, userBName);
+  console.log(`[cognitive-processor] AI inference result:`, inference);
 
   // Get or create relationship record
   const { data: existingRel } = await supabase
@@ -181,18 +208,28 @@ async function analyzeRelationship(
   };
 
   if (existingRel) {
+    console.log(`[cognitive-processor] Updating existing relationship: ${existingRel.id}`);
     await supabase
       .from("user_relationships")
       .update(relationshipData)
       .eq("id", existingRel.id);
   } else {
+    console.log(`[cognitive-processor] Creating new relationship record`);
     relationshipData.first_interaction_at = new Date().toISOString();
-    await supabase
+    const { data: newRel, error: insertError } = await supabase
       .from("user_relationships")
-      .insert(relationshipData);
+      .insert(relationshipData)
+      .select()
+      .single();
+    
+    if (insertError) {
+      console.error(`[cognitive-processor] Error inserting relationship:`, insertError);
+      throw insertError;
+    }
+    console.log(`[cognitive-processor] ✓ Created relationship: ${newRel.id}`);
   }
 
-  console.log(`[cognitive-processor] Relationship updated: ${inference.relationship_type} (confidence: ${newConfidence.toFixed(2)})`);
+  console.log(`[cognitive-processor] ✓ Relationship updated: ${inference.relationship_type} (confidence: ${newConfidence.toFixed(2)})`);
 }
 
 async function inferRelationshipWithAI(
@@ -337,7 +374,8 @@ async function updateProfileFromMessage(
   messageData: any,
   recentMessages: any[]
 ) {
-  console.log(`[cognitive-processor] Updating profile for user ${userId} in group ${groupId}`);
+  console.log(`[cognitive-processor] ===== Updating profile =====`);
+  console.log(`[cognitive-processor] User ID: ${userId}, Group ID: ${groupId}`);
 
   // Get or create profile
   const { data: existingProfile } = await supabase
@@ -371,14 +409,30 @@ async function updateProfileFromMessage(
   };
 
   if (existingProfile) {
-    await supabase
+    console.log(`[cognitive-processor] Updating existing profile: ${existingProfile.id}`);
+    const { error: updateError } = await supabase
       .from("user_profiles")
       .update(profileData)
       .eq("id", existingProfile.id);
+    
+    if (updateError) {
+      console.error(`[cognitive-processor] Error updating profile:`, updateError);
+      throw updateError;
+    }
+    console.log(`[cognitive-processor] ✓ Profile updated`);
   } else {
-    await supabase
+    console.log(`[cognitive-processor] Creating new profile`);
+    const { data: newProfile, error: insertError } = await supabase
       .from("user_profiles")
-      .insert(profileData);
+      .insert(profileData)
+      .select()
+      .single();
+    
+    if (insertError) {
+      console.error(`[cognitive-processor] Error inserting profile:`, insertError);
+      throw insertError;
+    }
+    console.log(`[cognitive-processor] ✓ Created profile: ${newProfile.id}`);
   }
 }
 
