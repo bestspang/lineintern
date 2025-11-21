@@ -9,9 +9,7 @@ import {
   Building, 
   HelpCircle 
 } from 'lucide-react';
-
-// @ts-ignore - react-force-graph doesn't have types
-import ForceGraph2D from 'react-force-graph/dist/react-force-graph-2d';
+import ForceGraph2D from 'react-force-graph-2d';
 
 interface RelationshipGraphProps {
   relationships: any[];
