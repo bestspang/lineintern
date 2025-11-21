@@ -20,11 +20,11 @@ serve(async (req) => {
   console.log("[fix-user-names] Starting user name fix...");
 
   try {
-    // Find all users where display_name looks like a LINE User ID (starts with U)
+    // Find all users where display_name looks generic (LINE ID starting with U or "User " pattern) or missing avatar
     const { data: usersToFix, error: fetchError } = await supabase
       .from("users")
-      .select("id, line_user_id, display_name")
-      .like("display_name", "U%")
+      .select("id, line_user_id, display_name, avatar_url")
+      .or("display_name.like.U%,display_name.like.User %,avatar_url.is.null")
       .limit(100);
 
     if (fetchError) {

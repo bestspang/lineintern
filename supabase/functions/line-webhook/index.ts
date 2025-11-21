@@ -2020,9 +2020,14 @@ async function ensureUser(lineUserId: string, displayName?: string, groupId?: st
     .single();
 
   if (existing) {
-    // ✅ Auto-fix: If display_name is the LINE ID, fetch real name
-    if (existing.display_name === lineUserId) {
-      console.log(`[ensureUser] ⚠️ User ${lineUserId} has ID as name, auto-fixing...`);
+    // ✅ Auto-fix: Detect generic names (LINE ID or "User 123abc" format) or missing avatar
+    const isGenericName = 
+      existing.display_name === lineUserId || 
+      existing.display_name.startsWith('User ') ||
+      !existing.avatar_url;
+      
+    if (isGenericName) {
+      console.log(`[ensureUser] ⚠️ User ${lineUserId} has generic name or missing avatar, auto-fixing...`);
       const profile = await getLineProfile(lineUserId, groupId);
       if (profile && profile.displayName !== lineUserId) {
         await supabase
@@ -2033,7 +2038,7 @@ async function ensureUser(lineUserId: string, displayName?: string, groupId?: st
             updated_at: new Date().toISOString()
           })
           .eq("id", existing.id);
-        console.log(`[ensureUser] ✅ Auto-fixed: ${lineUserId} → ${profile.displayName}`);
+        console.log(`[ensureUser] ✅ Auto-fixed: "${existing.display_name}" → "${profile.displayName}"`);
         existing.display_name = profile.displayName;
         existing.avatar_url = profile.avatarUrl;
       }
@@ -6084,6 +6089,15 @@ async function handleMessageEvent(event: LineEvent) {
   if (!isDM) {
     processCognitiveInsights(group.id, user.id, event.message.text, insertedMessage).catch(err => {
       console.error('[handleMessageEvent] Cognitive processing failed:', err);
+      console.error('[handleMessageEvent] Cognitive error details:', err instanceof Error ? err.message : String(err));
+      // Log to alerts table for monitoring
+      insertAlert(
+        group.id,
+        'error',
+        'low',
+        'Cognitive processing failed',
+        { error: String(err), user_id: user.id, message_preview: event.message?.text?.substring(0, 100) || '' }
+      ).catch(alertErr => console.error('[handleMessageEvent] Failed to log alert:', alertErr));
     });
   }
 

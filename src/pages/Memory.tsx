@@ -1,4 +1,165 @@
+import { MemorySettings } from '@/components/MemorySettings';
 import { useState, useEffect } from 'react';
+
+// Working Memory Table Component
+function WorkingMemoryTable() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const { data: workingMemories, isLoading } = useQuery({
+    queryKey: ['working-memory'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('working_memory')
+        .select(`
+          *,
+          user:users(id, display_name),
+          group:groups(id, display_name)
+        `)
+        .gt('expires_at', new Date().toISOString())
+        .order('importance_score', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  
+  const promoteToLongTermMutation = useMutation({
+    mutationFn: async (workingMemory: any) => {
+      // Create long-term memory
+      const { error: insertError } = await supabase
+        .from('memory_items')
+        .insert({
+          scope: workingMemory.group_id ? 'group' : 'global',
+          group_id: workingMemory.group_id,
+          user_id: workingMemory.user_id,
+          category: 'context',
+          title: `Promoted: ${workingMemory.content.substring(0, 50)}`,
+          content: workingMemory.content,
+          importance_score: workingMemory.importance_score || 0.5,
+          source_type: 'promoted',
+          memory_strength: 1.0,
+        });
+      if (insertError) throw insertError;
+      
+      // Delete from working memory
+      const { error: deleteError } = await supabase
+        .from('working_memory')
+        .delete()
+        .eq('id', workingMemory.id);
+      if (deleteError) throw deleteError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
+      toast({ title: 'Memory promoted to long-term' });
+    },
+  });
+  
+  const discardMemoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('working_memory')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      toast({ title: 'Memory discarded' });
+    },
+  });
+  
+  if (isLoading) {
+    return <div className="text-center py-8">Loading...</div>;
+  }
+  
+  if (!workingMemories || workingMemories.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Clock className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+        <p className="text-lg text-muted-foreground mb-2">No working memories</p>
+        <p className="text-sm text-muted-foreground">
+          Short-term memories will appear here as the bot learns from conversations
+        </p>
+      </div>
+    );
+  }
+  
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Type</TableHead>
+          <TableHead>Content</TableHead>
+          <TableHead>Importance</TableHead>
+          <TableHead>Expires</TableHead>
+          <TableHead>Source</TableHead>
+          <TableHead>Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {workingMemories.map((memory) => {
+          const timeRemaining = new Date(memory.expires_at).getTime() - Date.now();
+          const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60));
+          const minutesRemaining = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+          
+          return (
+            <TableRow key={memory.id}>
+              <TableCell>
+                <Badge variant="outline">{memory.memory_type}</Badge>
+              </TableCell>
+              <TableCell className="max-w-md">
+                <div className="truncate">{memory.content}</div>
+                {memory.user && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    User: {memory.user.display_name}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell>
+                <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'}>
+                  {((memory.importance_score || 0) * 100).toFixed(0)}%
+                </Badge>
+              </TableCell>
+              <TableCell className="text-sm">
+                {timeRemaining > 0 ? (
+                  <div className="text-muted-foreground">
+                    {hoursRemaining > 0 && `${hoursRemaining}h `}
+                    {minutesRemaining}m
+                  </div>
+                ) : (
+                  <Badge variant="destructive">Expired</Badge>
+                )}
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {memory.group?.display_name || 'Global'}
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => promoteToLongTermMutation.mutate(memory)}
+                  >
+                    Promote
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => discardMemoryMutation.mutate(memory.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -470,12 +631,14 @@ export default function Memory() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="by-group">By Group</TabsTrigger>
-              <TabsTrigger value="by-user">By User</TabsTrigger>
-              <TabsTrigger value="global">Global</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-7">
+              <TabsTrigger value="by-group">Long-Term: Groups</TabsTrigger>
+              <TabsTrigger value="by-user">Long-Term: Users</TabsTrigger>
+              <TabsTrigger value="global">Long-Term: Global</TabsTrigger>
+              <TabsTrigger value="working">Working Memory</TabsTrigger>
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="social">Social Intelligence</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
             
             <TabsContent value="by-group" className="space-y-4">
@@ -512,6 +675,27 @@ export default function Memory() {
             
             <TabsContent value="global" className="space-y-4">
               {renderMemoryTable()}
+            </TabsContent>
+            
+            <TabsContent value="working" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5" />
+                    Working Memory (Short-Term)
+                  </CardTitle>
+                  <CardDescription>
+                    Temporary memories that will be consolidated into long-term memory within 24 hours
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WorkingMemoryTable />
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="settings" className="space-y-4">
+              <MemorySettings />
             </TabsContent>
             
             <TabsContent value="timeline" className="space-y-6">
