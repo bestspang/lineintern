@@ -35,8 +35,12 @@ import {
   Plus, 
   Search,
   Brain,
-  Clock
+  Clock,
+  Users,
+  User
 } from 'lucide-react';
+import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
+import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function Memory() {
@@ -52,6 +56,7 @@ export default function Memory() {
   const [timelineGroupId, setTimelineGroupId] = useState<string>('');
   const [timelineUserId, setTimelineUserId] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [selectedSocialGroupId, setSelectedSocialGroupId] = useState<string>('');
   
   const { data: groups } = useQuery({
     queryKey: ['groups'],
@@ -88,6 +93,59 @@ export default function Memory() {
       return data;
     },
   });
+  
+  // Fetch relationships for social intelligence tab
+  const { data: relationships } = useQuery({
+    queryKey: ['relationships', selectedSocialGroupId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_relationships')
+        .select(`
+          *,
+          user_a:users!user_relationships_user_a_id_fkey(id, display_name, avatar_url),
+          user_b:users!user_relationships_user_b_id_fkey(id, display_name, avatar_url),
+          group:groups(id, display_name)
+        `)
+        .eq('group_id', selectedSocialGroupId)
+        .order('confidence_score', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedSocialGroupId
+  });
+
+  // Fetch user profiles for social intelligence tab
+  const { data: userProfiles } = useQuery({
+    queryKey: ['user-profiles', selectedSocialGroupId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select(`
+          *,
+          user:users(id, display_name, avatar_url),
+          group:groups(id, display_name)
+        `)
+        .eq('group_id', selectedSocialGroupId)
+        .order('observation_count', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedSocialGroupId
+  });
+  
+  // Process relationship type distribution data
+  const relationshipTypeData = relationships ? 
+    Object.entries(
+      relationships.reduce((acc: Record<string, number>, rel) => {
+        const type = rel.relationship_type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {})
+    ).map(([type, count]) => ({
+      type: type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' '),
+      count
+    }))
+    : [];
   
   // Fetch timeline data
   const { data: timelineData } = useQuery({
@@ -408,11 +466,12 @@ export default function Memory() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="by-group">By Group</TabsTrigger>
               <TabsTrigger value="by-user">By User</TabsTrigger>
               <TabsTrigger value="global">Global</TabsTrigger>
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
+              <TabsTrigger value="social">Social Intelligence</TabsTrigger>
             </TabsList>
             
             <TabsContent value="by-group" className="space-y-4">
@@ -663,6 +722,183 @@ export default function Memory() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+            
+            <TabsContent value="social" className="space-y-6">
+              {/* Group Selector */}
+              <Select value={selectedSocialGroupId} onValueChange={setSelectedSocialGroupId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a group to view social dynamics..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups?.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {selectedSocialGroupId ? (
+                <>
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">Relationships</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{relationships?.length || 0}</div>
+                        <p className="text-xs text-muted-foreground">Detected connections</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">
+                          {relationships?.length 
+                            ? ((relationships.reduce((sum, r) => sum + (r.confidence_score || 0), 0) / relationships.length) * 100).toFixed(0) + '%'
+                            : '0%'
+                          }
+                        </div>
+                        <p className="text-xs text-muted-foreground">Learning certainty</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">User Profiles</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{userProfiles?.length || 0}</div>
+                        <p className="text-xs text-muted-foreground">Observed users</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">Total Observations</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">
+                          {userProfiles?.reduce((sum, p) => sum + (p.observation_count || 0), 0) || 0}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Data points</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  
+                  {/* Main Content: 2 columns */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Column: Relationships */}
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Relationship Network</CardTitle>
+                          <CardDescription>
+                            Detected connections between users in this group
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {relationships && relationships.length > 0 ? (
+                            <div className="space-y-4">
+                              {relationships.map(rel => (
+                                <RelationshipCard key={rel.id} relationship={rel} />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                              <p>No relationships detected yet</p>
+                              <p className="text-xs mt-1">
+                                The bot needs more conversations to learn relationships
+                              </p>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                    
+                    {/* Right Column: User Profiles */}
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>User Profiles</CardTitle>
+                          <CardDescription>
+                            AI-learned personality and preferences
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {userProfiles && userProfiles.length > 0 ? (
+                            <div className="space-y-4">
+                              {userProfiles.map(profile => (
+                                <UserProfileCard key={profile.id} profile={profile} />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                              <p>No user profiles yet</p>
+                              <p className="text-xs mt-1">
+                                The bot will learn about users as they interact
+                              </p>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+                  
+                  {/* Relationship Type Distribution Chart */}
+                  {relationshipTypeData.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Relationship Type Distribution</CardTitle>
+                        <CardDescription>
+                          Breakdown of relationship types in this group
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={relationshipTypeData}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis 
+                              dataKey="type"
+                              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                            />
+                            <YAxis 
+                              tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                            />
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '6px',
+                              }}
+                            />
+                            <Bar 
+                              dataKey="count" 
+                              fill="hsl(var(--primary))"
+                              radius={[8, 8, 0, 0]}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="w-16 h-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
+                  <h3 className="text-lg font-medium mb-2">Select a Group</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a group above to see the social dynamics and relationships
+                  </p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>
