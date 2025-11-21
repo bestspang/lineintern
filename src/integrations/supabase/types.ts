@@ -361,6 +361,69 @@ export type Database = {
           },
         ]
       }
+      conversation_threads: {
+        Row: {
+          created_at: string | null
+          group_id: string
+          id: string
+          last_message_at: string
+          message_count: number | null
+          participants: Json | null
+          started_at: string
+          started_by_user_id: string | null
+          status: string | null
+          summary: string | null
+          tags: string[] | null
+          thread_title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          group_id: string
+          id?: string
+          last_message_at: string
+          message_count?: number | null
+          participants?: Json | null
+          started_at: string
+          started_by_user_id?: string | null
+          status?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          thread_title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          group_id?: string
+          id?: string
+          last_message_at?: string
+          message_count?: number | null
+          participants?: Json | null
+          started_at?: string
+          started_by_user_id?: string | null
+          status?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          thread_title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_threads_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_threads_started_by_user_id_fkey"
+            columns: ["started_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       faq_logs: {
         Row: {
           answer: string
@@ -566,6 +629,7 @@ export type Database = {
       }
       memory_items: {
         Row: {
+          access_count: number | null
           category: string
           content: string
           created_at: string | null
@@ -573,8 +637,12 @@ export type Database = {
           id: string
           importance_score: number
           is_deleted: boolean | null
+          keywords: string[] | null
+          last_reinforced_at: string | null
           last_used_at: string | null
+          memory_strength: number | null
           pinned: boolean | null
+          related_thread_ids: string[] | null
           scope: string
           source_message_ids: string[] | null
           source_type: string
@@ -583,6 +651,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          access_count?: number | null
           category: string
           content: string
           created_at?: string | null
@@ -590,8 +659,12 @@ export type Database = {
           id?: string
           importance_score?: number
           is_deleted?: boolean | null
+          keywords?: string[] | null
+          last_reinforced_at?: string | null
           last_used_at?: string | null
+          memory_strength?: number | null
           pinned?: boolean | null
+          related_thread_ids?: string[] | null
           scope: string
           source_message_ids?: string[] | null
           source_type: string
@@ -600,6 +673,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          access_count?: number | null
           category?: string
           content?: string
           created_at?: string | null
@@ -607,8 +681,12 @@ export type Database = {
           id?: string
           importance_score?: number
           is_deleted?: boolean | null
+          keywords?: string[] | null
+          last_reinforced_at?: string | null
           last_used_at?: string | null
+          memory_strength?: number | null
           pinned?: boolean | null
+          related_thread_ids?: string[] | null
           scope?: string
           source_message_ids?: string[] | null
           source_type?: string
@@ -692,6 +770,48 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_threads: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_thread_starter: boolean | null
+          message_id: string
+          position_in_thread: number | null
+          thread_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_thread_starter?: boolean | null
+          message_id: string
+          position_in_thread?: number | null
+          thread_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_thread_starter?: boolean | null
+          message_id?: string
+          position_in_thread?: number | null
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_threads_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_threads_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_threads"
             referencedColumns: ["id"]
           },
         ]
@@ -1169,6 +1289,7 @@ export type Database = {
           last_seen_at: string | null
           line_user_id: string
           memory_opt_out: boolean | null
+          memory_preferences: Json | null
           primary_language: string | null
           updated_at: string
         }
@@ -1180,6 +1301,7 @@ export type Database = {
           last_seen_at?: string | null
           line_user_id: string
           memory_opt_out?: boolean | null
+          memory_preferences?: Json | null
           primary_language?: string | null
           updated_at?: string
         }
@@ -1191,6 +1313,7 @@ export type Database = {
           last_seen_at?: string | null
           line_user_id?: string
           memory_opt_out?: boolean | null
+          memory_preferences?: Json | null
           primary_language?: string | null
           updated_at?: string
         }
@@ -1260,11 +1383,81 @@ export type Database = {
           },
         ]
       }
+      working_memory: {
+        Row: {
+          content: string
+          conversation_thread_id: string | null
+          created_at: string | null
+          expires_at: string
+          group_id: string
+          id: string
+          importance_score: number | null
+          memory_type: string
+          metadata: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          conversation_thread_id?: string | null
+          created_at?: string | null
+          expires_at: string
+          group_id: string
+          id?: string
+          importance_score?: number | null
+          memory_type: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          conversation_thread_id?: string | null
+          created_at?: string | null
+          expires_at?: string
+          group_id?: string
+          id?: string
+          importance_score?: number | null
+          memory_type?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "working_memory_conversation_thread_id_fkey"
+            columns: ["conversation_thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "working_memory_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "working_memory_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      find_or_create_thread: {
+        Args: {
+          p_group_id: string
+          p_message_text: string
+          p_message_timestamp: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       get_cron_history: {
         Args: { limit_count?: number }
         Returns: {
@@ -1321,6 +1514,27 @@ export type Database = {
           task_title: string
         }[]
       }
+      get_thread_context: {
+        Args: { p_limit?: number; p_thread_id: string }
+        Returns: {
+          direction: Database["public"]["Enums"]["message_direction"]
+          message_id: string
+          position_in_thread: number
+          sent_at: string
+          text: string
+          user_display_name: string
+          user_id: string
+        }[]
+      }
+      get_working_memory_context: {
+        Args: { p_group_id: string; p_limit?: number; p_thread_id?: string }
+        Returns: {
+          content: string
+          created_at: string
+          importance_score: number
+          memory_type: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1329,6 +1543,23 @@ export type Database = {
         Returns: boolean
       }
       retry_cron_job: { Args: { job_id: number }; Returns: Json }
+      search_memories_by_keywords: {
+        Args: {
+          p_group_id?: string
+          p_keywords: string[]
+          p_limit?: number
+          p_user_id?: string
+        }
+        Returns: {
+          category: string
+          content: string
+          id: string
+          importance_score: number
+          memory_strength: number
+          relevance_score: number
+          title: string
+        }[]
+      }
     }
     Enums: {
       alert_severity: "low" | "medium" | "high"

@@ -2212,7 +2212,7 @@ async function insertMessage(
   direction: "human" | "bot" | "system",
   text: string,
   commandType?: string
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; threadId: string } | null> {
   // Sanitize and validate message text
   const sanitizedText = sanitizeMessageText(text);
   
@@ -2249,7 +2249,58 @@ async function insertMessage(
   }
 
   console.log(`[insertMessage] ✅ Inserted ${direction} message for group ${groupId}`, data?.id);
-  return data;
+
+  // CONVERSATION THREADING: Find or create thread for this message
+  let threadId: string | null = null;
+  if (userId && direction === "human") {
+    try {
+      const { data: threadData, error: threadError } = await supabase.rpc(
+        'find_or_create_thread',
+        {
+          p_group_id: groupId,
+          p_user_id: userId,
+          p_message_text: sanitizedText,
+          p_message_timestamp: new Date().toISOString(),
+        }
+      );
+
+      if (threadError) {
+        console.error(`[insertMessage] Thread creation error:`, threadError);
+      } else {
+        threadId = threadData;
+        console.log(`[insertMessage] Thread ID: ${threadId}`);
+
+        // Link message to thread
+        const { data: existingLink } = await supabase
+          .from('message_threads')
+          .select('id')
+          .eq('message_id', data.id)
+          .eq('thread_id', threadId)
+          .maybeSingle();
+
+        if (!existingLink) {
+          // Get position in thread
+          const { count } = await supabase
+            .from('message_threads')
+            .select('*', { count: 'exact', head: true })
+            .eq('thread_id', threadId);
+
+          await supabase.from('message_threads').insert({
+            message_id: data.id,
+            thread_id: threadId,
+            position_in_thread: (count || 0) + 1,
+            is_thread_starter: (count || 0) === 0,
+          });
+
+          console.log(`[insertMessage] Linked message to thread at position ${(count || 0) + 1}`);
+        }
+      }
+    } catch (threadErr) {
+      console.error(`[insertMessage] Exception during threading:`, threadErr);
+    }
+  }
+
+  return { id: data.id, threadId: threadId || '' };
 }
 
 async function insertAlert(
@@ -5856,13 +5907,14 @@ async function handleMessageEvent(event: LineEvent) {
 
   // PASSIVE LEARNING: Trigger memory writer for ALL messages (even without @ or /)
   try {
-    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, message="${event.message.text.substring(0, 50)}..."`);
+    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, thread=${insertedMessage?.threadId}, message="${event.message.text.substring(0, 50)}..."`);
     const memoryResult = await supabase.functions.invoke("memory-writer", {
       body: {
         userId: user.id,
         groupId: group.id,
         messageText: event.message.text,
         messageId: event.message.id,
+        threadId: insertedMessage?.threadId || null,
         isDM,
       },
     });

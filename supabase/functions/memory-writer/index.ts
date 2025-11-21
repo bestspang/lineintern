@@ -352,10 +352,10 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, groupId, messageText, messageId, isDM, recentMessages } =
+    const { userId, groupId, messageText, messageId, isDM, recentMessages, threadId } =
       await req.json();
 
-    console.log(`[memory-writer] Processing for user=${userId}, group=${groupId}`);
+    console.log(`[memory-writer] Processing for user=${userId}, group=${groupId}, thread=${threadId}`);
 
     const memoryEnabled = await checkMemorySettings(userId, groupId);
     if (!memoryEnabled) {
@@ -386,14 +386,29 @@ serve(async (req) => {
 
     console.log(`[memory-writer] Extracted ${extractedMemories.length} memories`);
 
+    // Save to working memory (short-term) instead of long-term
     for (const memory of extractedMemories) {
-      await upsertMemory(
+      await saveToWorkingMemory(
         memory,
         userId,
         groupId,
-        messageId,
-        isDM ? "dm" : "mention"
+        threadId,
+        messageId
       );
+    }
+
+    // Also maintain the old system for backwards compatibility
+    for (const memory of extractedMemories) {
+      // Only save high-importance memories directly to long-term
+      if (memory.importance_score >= 0.8) {
+        await upsertMemory(
+          memory,
+          userId,
+          groupId,
+          messageId,
+          isDM ? "dm" : "mention"
+        );
+      }
     }
 
     await enforceMemoryLimits(userId, groupId);
@@ -413,3 +428,51 @@ serve(async (req) => {
     );
   }
 });
+
+// New function to save to working memory (24-hour short-term)
+async function saveToWorkingMemory(
+  memory: ExtractedMemory,
+  userId: string,
+  groupId: string,
+  threadId: string | null,
+  sourceMessageId: string
+) {
+  if (containsSensitiveData(memory.content)) {
+    console.log("[saveToWorkingMemory] Rejected sensitive memory");
+    return;
+  }
+
+  // Determine memory type based on category
+  const memoryTypeMap: Record<string, string> = {
+    preference: 'context',
+    fact: 'fact',
+    event: 'context',
+    pattern: 'context',
+    relationship: 'context',
+  };
+
+  const memoryType = memoryTypeMap[memory.category] || 'context';
+
+  // Extract keywords from title and content
+  const keywords = [
+    ...memory.title.toLowerCase().split(/\s+/),
+    ...memory.content.toLowerCase().split(/\s+/),
+  ].filter((w) => w.length > 3).slice(0, 10);
+
+  await supabase.from("working_memory").insert({
+    group_id: groupId,
+    user_id: memory.scope === "user" ? userId : null,
+    conversation_thread_id: threadId,
+    memory_type: memoryType,
+    content: `[${memory.title}] ${memory.content}`,
+    importance_score: memory.importance_score,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+    metadata: {
+      source_message_id: sourceMessageId,
+      category: memory.category,
+      keywords,
+    },
+  });
+
+  console.log(`[saveToWorkingMemory] Created working memory: ${memory.title}`);
+}
