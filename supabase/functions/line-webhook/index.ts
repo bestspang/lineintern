@@ -5808,6 +5808,112 @@ async function handleJoinEvent(event: LineEvent) {
   console.log(`╚═══ [handleJoinEvent] END ═══╝\n`);
 }
 
+async function handleAttendanceCommand(
+  messageText: string,
+  user: any,
+  lineUserId: string,
+  locale: 'en' | 'th'
+): Promise<{ detected: boolean; type?: string; message: string }> {
+  const attendanceCommands = {
+    checkIn: ['checkin', 'เช็คอิน', 'เข้างาน', 'check in'],
+    checkOut: ['checkout', 'เช็คเอาต์', 'ออกงาน', 'check out']
+  };
+
+  const messageTextLower = messageText.toLowerCase().trim();
+  let type: 'check_in' | 'check_out' | null = null;
+
+  if (attendanceCommands.checkIn.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
+    type = 'check_in';
+  } else if (attendanceCommands.checkOut.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
+    type = 'check_out';
+  }
+
+  if (!type) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[handleAttendanceCommand] Processing ${type} for user ${user.id}`);
+  
+  try {
+    // Check if user is linked to an employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('*, branch:branches(*)')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .single();
+    
+    if (empError || !employee) {
+      console.log('[handleAttendanceCommand] Employee not found, prompting for linking');
+      const message = locale === 'th'
+        ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียนหรือเชื่อมโยงบัญชี LINE ของคุณกับระบบ\n\n---\n\nSorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.'
+        : 'Sorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.';
+      
+      return { detected: true, type, message };
+    }
+    
+    // Get effective settings
+    const { data: settings } = await supabase
+      .rpc('get_effective_attendance_settings', { p_employee_id: employee.id })
+      .single();
+    
+    const effectiveSettings = settings as { enable_attendance?: boolean; token_validity_minutes?: number } | null;
+    
+    if (!effectiveSettings?.enable_attendance) {
+      const message = locale === 'th'
+        ? 'ระบบเช็คชื่อยังไม่เปิดใช้งานสำหรับคุณ กรุณาติดต่อ HR\n\nAttendance system is not enabled for you. Please contact HR.'
+        : 'Attendance system is not enabled for you. Please contact HR.';
+      
+      return { detected: true, type, message };
+    }
+    
+    // Create attendance token
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + (effectiveSettings.token_validity_minutes || 10));
+    
+    const { data: token, error: tokenError } = await supabase
+      .from('attendance_tokens')
+      .insert({
+        employee_id: employee.id,
+        type: type,
+        status: 'pending',
+        expires_at: expiresAt.toISOString()
+      })
+      .select()
+      .single();
+    
+    if (tokenError || !token) {
+      console.error('[handleAttendanceCommand] Failed to create token:', tokenError);
+      const message = locale === 'th'
+        ? 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง\n\nError occurred. Please try again.'
+        : 'Error occurred. Please try again.';
+      
+      return { detected: true, type, message };
+    }
+    
+    // Generate attendance URL
+    const appDomain = Deno.env.get('VITE_SUPABASE_URL')?.replace('https://', '').replace('.supabase.co', '.lovable.app') || '';
+    const attendanceUrl = `https://${appDomain}/attendance?t=${token.id}`;
+    
+    const actionText = type === 'check_in' ? (locale === 'th' ? 'เช็คอิน' : 'Check In') : (locale === 'th' ? 'เช็คเอาต์' : 'Check Out');
+    
+    const message = locale === 'th'
+      ? `✅ กรุณากดลิงก์ด้านล่างเพื่อยืนยัน${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ ลิงก์นี้จะหมดอายุใน ${effectiveSettings.token_validity_minutes || 10} นาที\n\n---\n\n✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`
+      : `✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`;
+    
+    console.log('[handleAttendanceCommand] Attendance link sent successfully');
+    return { detected: true, type, message };
+    
+  } catch (error) {
+    console.error('[handleAttendanceCommand] Error:', error);
+    const message = locale === 'th'
+      ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่\n\nSystem error. Please try again.'
+      : 'System error. Please try again.';
+    
+    return { detected: true, type, message };
+  }
+}
+
 async function handleLeaveEvent(event: LineEvent) {
   console.log(`[handleLeaveEvent] Bot left group/room`);
   
@@ -6225,6 +6331,43 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending reminders list:', error);
+      }
+    }
+  }
+
+  // PHASE 2.95: Attendance Command Detection (DM only)
+  if (isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const attendanceResult = await handleAttendanceCommand(event.message.text, user, lineUserId, locale);
+    
+    if (attendanceResult.detected) {
+      console.log(`[handleMessageEvent] Detected attendance command: ${attendanceResult.type}`);
+      try {
+        await replyToLine(event.replyToken, attendanceResult.message);
+        console.log('[handleMessageEvent] Sent attendance link');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending attendance link:', error);
+      }
+    }
+  }
+
+  // Redirect attendance commands in groups to DM
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const attendanceCommands = ['checkin', 'เช็คอิน', 'เข้างาน', 'checkout', 'เช็คเอาต์', 'ออกงาน'];
+    const messageTextLower = event.message.text.toLowerCase().trim();
+    
+    if (attendanceCommands.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
+      try {
+        const message = locale === 'th' 
+          ? 'กรุณาเช็คอิน/เช็คเอาต์ผ่านแชทส่วนตัวกับบอทเท่านั้นครับ 🙏\n\nPlease check-in/out via private message with the bot.'
+          : 'Please check-in/out via private message with the bot. 🙏';
+        await replyToLine(event.replyToken, message);
+        console.log('[handleMessageEvent] Redirected group attendance command to DM');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending redirect message:', error);
       }
     }
   }

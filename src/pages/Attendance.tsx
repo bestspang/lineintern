@@ -1,0 +1,449 @@
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+
+export default function Attendance() {
+  const [searchParams] = useSearchParams();
+  const { toast } = useToast();
+  
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [tokenData, setTokenData] = useState<any>(null);
+  const [error, setError] = useState<string>('');
+  
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>('');
+  const [location, setLocation] = useState<{lat: number; lon: number} | null>(null);
+  const [locationError, setLocationError] = useState<string>('');
+  
+  const [submitted, setSubmitted] = useState(false);
+  const [submitResult, setSubmitResult] = useState<any>(null);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+
+  useEffect(() => {
+    const token = searchParams.get('t');
+    if (!token) {
+      setError('No token provided');
+      setLoading(false);
+      return;
+    }
+    
+    validateToken(token);
+  }, [searchParams]);
+
+  const validateToken = async (token: string) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-validate-token?t=${token}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          }
+        }
+      );
+
+      const data = await response.json();
+      
+      if (!response.ok || !data.valid) {
+        setError(data.error || 'Invalid token');
+        setLoading(false);
+        return;
+      }
+
+      setTokenData(data);
+      
+      // Auto-request location if required
+      if (data.settings?.require_location) {
+        requestLocation();
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Validation error:', err);
+      setError('Failed to validate token');
+      setLoading(false);
+    }
+  };
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        });
+        setLocationError('');
+      },
+      (error) => {
+        setLocationError(`Location error: ${error.message}`);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user' },
+        audio: false
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraActive(true);
+      }
+    } catch (err) {
+      toast({
+        title: 'Camera Error',
+        description: 'Failed to access camera',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+        setPhoto(file);
+        setPhotoPreview(canvas.toDataURL('image/jpeg'));
+        
+        // Stop camera
+        const stream = video.srcObject as MediaStream;
+        stream?.getTracks().forEach(track => track.stop());
+        setCameraActive(false);
+      }
+    }, 'image/jpeg', 0.9);
+  };
+
+  const handleSubmit = async () => {
+    if (!tokenData) return;
+
+    // Validate required fields
+    if (tokenData.settings?.require_photo && !photo) {
+      toast({
+        title: 'Photo Required',
+        description: 'Please take a photo to continue',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (tokenData.settings?.require_location && !location) {
+      toast({
+        title: 'Location Required',
+        description: 'Please allow location access to continue',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const formData = new FormData();
+      formData.append('token', tokenData.token.id);
+      formData.append('latitude', location?.lat.toString() || '');
+      formData.append('longitude', location?.lon.toString() || '');
+      formData.append('deviceTime', new Date().toISOString());
+      formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+      formData.append('deviceInfo', JSON.stringify({
+        userAgent: navigator.userAgent,
+        platform: navigator.platform
+      }));
+      
+      if (photo) {
+        formData.append('photo', photo);
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-submit`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: formData
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Submission failed');
+      }
+
+      setSubmitResult(result);
+      setSubmitted(true);
+      
+      toast({
+        title: 'Success!',
+        description: 'Attendance recorded successfully',
+      });
+
+    } catch (err) {
+      console.error('Submit error:', err);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to submit',
+        variant: 'destructive'
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/10 p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <p className="text-muted-foreground">Validating...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 to-destructive/10 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="h-6 w-6" />
+              Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <p className="mt-4 text-sm text-muted-foreground">
+              Please request a new link from the LINE bot.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (submitted && submitResult) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-950 dark:to-emerald-950 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="h-6 w-6" />
+              Success!
+            </CardTitle>
+            <CardDescription>
+              Your attendance has been recorded
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">
+                  {new Date(submitResult.log.server_time).toLocaleString('th-TH', {
+                    timeZone: 'Asia/Bangkok'
+                  })}
+                </span>
+              </div>
+              
+              {submitResult.log.is_flagged && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    ⚠️ {submitResult.log.flag_reason}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              You can close this page now. A confirmation has been sent to your LINE.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const actionText = tokenData?.token?.type === 'check_in' ? 'Check In' : 'Check Out';
+  const canSubmit = 
+    (!tokenData?.settings?.require_photo || photo) &&
+    (!tokenData?.settings?.require_location || location);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4 pb-20">
+      <div className="max-w-2xl mx-auto space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building className="h-5 w-5" />
+              {actionText}
+            </CardTitle>
+            <CardDescription>
+              Complete the steps below to record your attendance
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">{tokenData?.employee?.full_name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">{tokenData?.branch?.name || 'N/A'}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Photo Section */}
+        {tokenData?.settings?.require_photo && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Photo {tokenData?.settings?.require_photo && <span className="text-destructive">*</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!photo && !cameraActive && (
+                <Button onClick={startCamera} className="w-full">
+                  <Camera className="h-4 w-4 mr-2" />
+                  Take Photo
+                </Button>
+              )}
+
+              {cameraActive && (
+                <div className="space-y-4">
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline
+                    className="w-full rounded-lg"
+                  />
+                  <Button onClick={capturePhoto} className="w-full">
+                    Capture
+                  </Button>
+                </div>
+              )}
+
+              {photoPreview && (
+                <div className="space-y-2">
+                  <img src={photoPreview} alt="Preview" className="w-full rounded-lg" />
+                  <Button 
+                    onClick={() => {
+                      setPhoto(null);
+                      setPhotoPreview('');
+                      startCamera();
+                    }} 
+                    variant="outline" 
+                    className="w-full"
+                  >
+                    Retake Photo
+                  </Button>
+                </div>
+              )}
+
+              <canvas ref={canvasRef} className="hidden" />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Location Section */}
+        {tokenData?.settings?.require_location && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Location {tokenData?.settings?.require_location && <span className="text-destructive">*</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!location && (
+                <Button onClick={requestLocation} variant="outline" className="w-full">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Get Location
+                </Button>
+              )}
+
+              {location && (
+                <Alert>
+                  <MapPin className="h-4 w-4" />
+                  <AlertDescription>
+                    Location captured: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {locationError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{locationError}</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Submit Button */}
+        <Button 
+          onClick={handleSubmit} 
+          disabled={!canSubmit || submitting}
+          className="w-full h-12 text-lg"
+          size="lg"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Submitting...
+            </>
+          ) : (
+            `Submit ${actionText}`
+          )}
+        </Button>
+
+        <p className="text-xs text-center text-muted-foreground">
+          This link expires at {new Date(tokenData?.token?.expires_at).toLocaleTimeString('th-TH', {
+            timeZone: 'Asia/Bangkok',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
+        </p>
+      </div>
+    </div>
+  );
+}
