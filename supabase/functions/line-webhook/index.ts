@@ -5430,7 +5430,7 @@ async function initializePersonalityState(groupId: string) {
 
 async function checkAndCreateAutoSummary(groupId: string) {
   try {
-    const SUMMARY_THRESHOLD = 20; // Reduced from 100 for easier testing
+    const SUMMARY_THRESHOLD = 10; // Reduced to 10 for easier testing
     
     // Get last summary
     const { data: lastSummary } = await supabase
@@ -5855,8 +5855,9 @@ async function handleMessageEvent(event: LineEvent) {
   await passiveSafetyMonitoring(group.id, user.id, event.message.text, messageIdForAlert);
 
   // PASSIVE LEARNING: Trigger memory writer for ALL messages (even without @ or /)
-  supabase.functions
-    .invoke("memory-writer", {
+  try {
+    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, message="${event.message.text.substring(0, 50)}..."`);
+    const memoryResult = await supabase.functions.invoke("memory-writer", {
       body: {
         userId: user.id,
         groupId: group.id,
@@ -5864,8 +5865,16 @@ async function handleMessageEvent(event: LineEvent) {
         messageId: event.message.id,
         isDM,
       },
-    })
-    .catch((err) => console.error("[Memory Writer] Passive learning error:", err));
+    });
+    
+    if (memoryResult.error) {
+      console.error("[Memory Writer] Error:", memoryResult.error);
+    } else {
+      console.log(`[Memory Writer] Success:`, memoryResult.data);
+    }
+  } catch (err) {
+    console.error("[Memory Writer] Exception:", err);
+  }
 
   // PASSIVE PERSONALITY TRACKING: Update personality for ALL messages
   if (group.id && user.id) {

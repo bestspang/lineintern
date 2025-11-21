@@ -6,6 +6,12 @@ verify_jwt = false
 [functions.personality-engine]
 verify_jwt = false
 
+[functions.memory-writer]
+verify_jwt = false
+
+[functions.report-generator]
+verify_jwt = false
+
 [functions.health]
 verify_jwt = false
 
@@ -19,4 +25,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.work-reminder]
+verify_jwt = false
+
+[functions.task-scheduler]
+verify_jwt = false
+
+[functions.test-bot]
 verify_jwt = false
