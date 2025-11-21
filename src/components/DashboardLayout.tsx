@@ -86,6 +86,7 @@ const navigationGroups = [
     title: 'Attendance',
     icon: ClipboardCheck,
     items: [
+      { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
