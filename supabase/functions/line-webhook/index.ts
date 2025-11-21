@@ -5690,15 +5690,24 @@ async function checkAndCreateAutoSummary(groupId: string) {
 // =============================
 
 async function handleJoinEvent(event: LineEvent) {
-  console.log(`[handleJoinEvent] Bot joined group/room`);
+  console.log(`\n╔═══ [handleJoinEvent] Bot joined group/room ═══╗`);
+  console.log(`[handleJoinEvent] Source type: ${event.source.type}`);
+  console.log(`[handleJoinEvent] Group ID: ${event.source.groupId || 'N/A'}`);
   
   if (event.source.type === "group" && event.source.groupId) {
+    console.log(`[handleJoinEvent] Creating/updating group record...`);
     const group = await ensureGroup(event.source.groupId);
+    console.log(`[handleJoinEvent] ✓ Group ensured: ${group.id} (${group.display_name})`);
     
     // Initialize personality state immediately for new group
+    console.log(`[handleJoinEvent] Initializing personality state...`);
     await initializePersonalityState(group.id);
-    console.log(`[handleJoinEvent] Initialized personality state for group ${group.id}`);
+    console.log(`[handleJoinEvent] ✓ Personality state initialized`);
+  } else {
+    console.log(`[handleJoinEvent] ⚠ Not a group join event or missing groupId`);
   }
+  
+  console.log(`╚═══ [handleJoinEvent] END ═══╝\n`);
 }
 
 async function handleLeaveEvent(event: LineEvent) {
@@ -5721,34 +5730,53 @@ async function handleLeaveEvent(event: LineEvent) {
 }
 
 async function handleMemberJoinedEvent(event: LineEvent) {
-  console.log(`[handleMemberJoinedEvent] Members joined group`);
+  console.log(`\n╔═══ [handleMemberJoinedEvent] Members joined ═══╗`);
+  console.log(`[handleMemberJoinedEvent] Source type: ${event.source.type}`);
+  console.log(`[handleMemberJoinedEvent] Group ID: ${event.source.groupId || 'N/A'}`);
   
   if (!event.joined?.members || event.source.type !== "group" || !event.source.groupId) {
-    console.log(`[handleMemberJoinedEvent] Invalid event data or not a group`);
+    console.log(`[handleMemberJoinedEvent] ⚠ Invalid event data or not a group`);
+    console.log(`[handleMemberJoinedEvent] - Has members: ${!!event.joined?.members}`);
+    console.log(`[handleMemberJoinedEvent] - Source type: ${event.source.type}`);
+    console.log(`[handleMemberJoinedEvent] - Has groupId: ${!!event.source.groupId}`);
+    console.log(`╚═══ [handleMemberJoinedEvent] END ═══╝\n`);
     return;
   }
 
   const lineGroupId = event.source.groupId;
+  console.log(`[handleMemberJoinedEvent] Processing ${event.joined.members.length} new member(s)`);
   
   // Ensure group exists
+  console.log(`[handleMemberJoinedEvent] Ensuring group exists...`);
   const group = await ensureGroup(lineGroupId);
+  console.log(`[handleMemberJoinedEvent] ✓ Group ensured: ${group.id} (${group.display_name})`);
   
   // Process each member that joined
   for (const member of event.joined.members) {
+    console.log(`[handleMemberJoinedEvent] --- Processing member ---`);
+    console.log(`[handleMemberJoinedEvent] Member type: ${member.type}`);
+    console.log(`[handleMemberJoinedEvent] Member ID: ${member.userId || 'N/A'}`);
+    
     if (member.type === "user" && member.userId) {
-      console.log(`[handleMemberJoinedEvent] Processing user: ${member.userId}`);
-      
       try {
+        console.log(`[handleMemberJoinedEvent] Creating/updating user record...`);
         // Ensure user exists in users table (pass group.id for monitoring)
         const user = await ensureUser(member.userId, undefined, group.id);
+        console.log(`[handleMemberJoinedEvent] ✓ User ensured: ${user.id} (${user.display_name})`);
         
         // Add to group_members table
+        console.log(`[handleMemberJoinedEvent] Adding user to group_members...`);
         await ensureGroupMember(group.id, user.id);
+        console.log(`[handleMemberJoinedEvent] ✓ User added to group_members`);
         
-        console.log(`[handleMemberJoinedEvent] Added user ${user.id} to group ${group.id}`);
       } catch (error) {
-        console.error(`[handleMemberJoinedEvent] Error processing member ${member.userId}:`, error);
+        console.error(`[handleMemberJoinedEvent] ✗ Error processing member ${member.userId}:`, error);
+        if (error instanceof Error) {
+          console.error(`[handleMemberJoinedEvent] Error details: ${error.message}`);
+        }
       }
+    } else {
+      console.log(`[handleMemberJoinedEvent] ⚠ Skipping non-user member or member without userId`);
     }
   }
   
@@ -5842,24 +5870,54 @@ async function handleMemberLeftEvent(event: LineEvent) {
 }
 
 async function handleMessageEvent(event: LineEvent) {
-  if (!event.message || event.message.type !== "text" || !event.message.text) {
+  console.log(`\n╔═══ [handleMessageEvent] START ═══╗`);
+  
+  if (!event.message) {
+    console.log(`[handleMessageEvent] ⚠ No message in event, skipping`);
+    console.log(`╚═══ [handleMessageEvent] END ═══╝\n`);
     return;
   }
 
-  console.log(`[handleMessageEvent] Processing message: "${event.message.text.substring(0, 50)}..."`);
+  console.log(`[handleMessageEvent] Message type: ${event.message.type}`);
+  
+  if (event.message.type !== "text") {
+    console.log(`[handleMessageEvent] ⚠ Non-text message type (${event.message.type}), skipping`);
+    console.log(`╚═══ [handleMessageEvent] END ═══╝\n`);
+    return;
+  }
+
+  if (!event.message.text) {
+    console.log(`[handleMessageEvent] ⚠ Empty text message, skipping`);
+    console.log(`╚═══ [handleMessageEvent] END ═══╝\n`);
+    return;
+  }
+
+  const messagePreview = event.message.text.length > 100 
+    ? event.message.text.substring(0, 100) + "..." 
+    : event.message.text;
+  console.log(`[handleMessageEvent] Message text: "${messagePreview}"`);
+  console.log(`[handleMessageEvent] Message ID: ${event.message.id}`);
 
   const isDM = event.source.type === "user";
+  console.log(`[handleMessageEvent] Context: ${isDM ? 'Direct Message' : 'Group Chat'}`);
+  
   const rawLineUserId = event.source.userId!;
   const rawLineGroupId = event.source.groupId || event.source.userId!; // Use userId for DMs
+  console.log(`[handleMessageEvent] Raw LINE User ID: ${rawLineUserId}`);
+  console.log(`[handleMessageEvent] Raw LINE Group ID: ${rawLineGroupId}`);
 
   // Validate LINE IDs
   let lineUserId: string;
   let lineGroupId: string;
   try {
+    console.log(`[handleMessageEvent] Validating LINE IDs...`);
     lineUserId = validateLineId(rawLineUserId, "user ID");
     lineGroupId = validateLineId(rawLineGroupId, "group ID");
+    console.log(`[handleMessageEvent] ✓ LINE IDs validated successfully`);
   } catch (error) {
-    console.error(`[handleMessageEvent] ID validation failed:`, error);
+    console.error(`[handleMessageEvent] ✗ ID validation failed:`, error);
+    console.error(`[handleMessageEvent] This message will be skipped`);
+    console.log(`╚═══ [handleMessageEvent] END (validation error) ═══╝\n`);
     return; // Skip processing if IDs are invalid
   }
 
@@ -5868,12 +5926,16 @@ async function handleMessageEvent(event: LineEvent) {
   let groupIdForUser; // For monitoring in ensureUser
   
   if (event.source.type === "group") {
+    console.log(`[handleMessageEvent] Ensuring group exists...`);
     group = await ensureGroup(lineGroupId);
     groupIdForUser = group.id;
+    console.log(`[handleMessageEvent] ✓ Group ensured: ${group.id} (${group.display_name})`);
   }
 
   // Ensure user exists (with groupId for monitoring if available)
+  console.log(`[handleMessageEvent] Ensuring user exists...`);
   const user = await ensureUser(lineUserId, undefined, groupIdForUser);
+  console.log(`[handleMessageEvent] ✓ User ensured: ${user.id} (${user.display_name})`);
 
   // For DMs, create group after user (since we need user.display_name)
   if (event.source.type !== "group") {
@@ -6274,30 +6336,53 @@ async function handleMessageEvent(event: LineEvent) {
 }
 
 async function handleEvent(event: LineEvent) {
-  console.log(`[handleEvent] Type: ${event.type}, Source: ${event.source.type}`);
+  console.log(`\n--- [handleEvent] START ---`);
+  console.log(`[handleEvent] Event type: ${event.type}`);
+  console.log(`[handleEvent] Source type: ${event.source.type}`);
+  console.log(`[handleEvent] Source ID: ${event.source.groupId || event.source.userId || event.source.roomId || 'unknown'}`);
+  console.log(`[handleEvent] Timestamp: ${event.timestamp ? new Date(event.timestamp).toISOString() : 'N/A'}`);
 
   try {
     switch (event.type) {
       case "message":
+        console.log(`[handleEvent] → Routing to handleMessageEvent`);
         await handleMessageEvent(event);
+        console.log(`[handleEvent] ✓ handleMessageEvent completed`);
         break;
       case "join":
+        console.log(`[handleEvent] → Routing to handleJoinEvent`);
         await handleJoinEvent(event);
+        console.log(`[handleEvent] ✓ handleJoinEvent completed`);
         break;
       case "leave":
+        console.log(`[handleEvent] → Routing to handleLeaveEvent`);
         await handleLeaveEvent(event);
+        console.log(`[handleEvent] ✓ handleLeaveEvent completed`);
         break;
       case "memberJoined":
+        console.log(`[handleEvent] → Routing to handleMemberJoinedEvent`);
         await handleMemberJoinedEvent(event);
+        console.log(`[handleEvent] ✓ handleMemberJoinedEvent completed`);
         break;
       case "memberLeft":
+        console.log(`[handleEvent] → Routing to handleMemberLeftEvent`);
         await handleMemberLeftEvent(event);
+        console.log(`[handleEvent] ✓ handleMemberLeftEvent completed`);
         break;
       default:
-        console.log(`[handleEvent] Unhandled event type: ${event.type}`);
+        console.log(`[handleEvent] ⚠ Unhandled event type: ${event.type}`);
     }
+    console.log(`--- [handleEvent] END (success) ---\n`);
   } catch (error) {
-    console.error(`[handleEvent] Error handling event:`, error);
+    console.error(`--- [handleEvent] END (error) ---`);
+    console.error(`[handleEvent] ✗ Error handling ${event.type} event:`, error);
+    if (error instanceof Error) {
+      console.error(`[handleEvent] Error message: ${error.message}`);
+      console.error(`[handleEvent] Error stack:`, error.stack);
+    }
+    console.error(`---\n`);
+    // Re-throw to ensure it's logged at higher level
+    throw error;
   }
 }
 
@@ -6306,69 +6391,140 @@ async function handleEvent(event: LineEvent) {
 // =============================
 
 serve(async (req) => {
-  console.log(`[webhook] ===== NEW REQUEST =====`);
-  console.log(`[webhook] ${req.method} ${req.url}`);
-  console.log(`[webhook] Headers:`, Object.fromEntries(req.headers.entries()));
+  const timestamp = new Date().toISOString();
+  console.log(`\n${'='.repeat(80)}`);
+  console.log(`[${timestamp}] NEW WEBHOOK REQUEST`);
+  console.log(`${'='.repeat(80)}`);
+  console.log(`[webhook] Method: ${req.method}`);
+  console.log(`[webhook] URL: ${req.url}`);
+  console.log(`[webhook] Headers:`, JSON.stringify(Object.fromEntries(req.headers.entries()), null, 2));
+
+  // Health check endpoint (no signature required)
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("/health")) {
+    console.log(`[webhook] Health check requested`);
+    return new Response(JSON.stringify({ 
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      service: "line-webhook",
+      version: "2.0.0",
+      secrets_configured: {
+        LINE_CHANNEL_SECRET: !!LINE_CHANNEL_SECRET,
+        LINE_CHANNEL_ACCESS_TOKEN: !!LINE_CHANNEL_ACCESS_TOKEN,
+        SUPABASE_URL: !!SUPABASE_URL,
+      }
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    console.log(`[webhook] Handling CORS preflight`);
+    console.log(`[webhook] ✓ Handling CORS preflight`);
     return new Response(null, {
       status: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Line-Signature",
       },
     });
   }
 
   if (req.method !== "POST") {
-    console.log(`[webhook] Rejected: Method not POST`);
+    console.log(`[webhook] ✗ Rejected: Method ${req.method} not allowed (expected POST)`);
     return new Response("Method not allowed", { status: 405 });
   }
 
   try {
     // Get raw body and signature
+    console.log(`[webhook] Reading request body...`);
     const body = await req.text();
-    console.log(`[webhook] Body length: ${body.length} characters`);
+    console.log(`[webhook] ✓ Body received: ${body.length} characters`);
+    console.log(`[webhook] Body preview: ${body.substring(0, 200)}...`);
     
     const signature = req.headers.get("X-Line-Signature");
+    console.log(`[webhook] X-Line-Signature header: ${signature ? '✓ Present' : '✗ Missing'}`);
 
     if (!signature) {
-      console.error("[webhook] Missing X-Line-Signature header");
-      return new Response("Unauthorized", { status: 401 });
+      console.error("[webhook] ✗ REJECTED: Missing X-Line-Signature header");
+      console.error("[webhook] This usually means the webhook is NOT being called by LINE.");
+      console.error("[webhook] Check LINE Developers Console → Messaging API → Webhook URL");
+      return new Response("Unauthorized: Missing signature", { status: 401 });
     }
 
     // Verify signature
+    console.log(`[webhook] Verifying signature...`);
+    console.log(`[webhook] Using LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET ? '***' + LINE_CHANNEL_SECRET.slice(-4) : 'NOT SET'}`);
     const isValid = await verifySignature(body, signature);
+    console.log(`[webhook] Signature verification: ${isValid ? '✓ VALID' : '✗ INVALID'}`);
+    
     if (!isValid) {
-      console.error("[webhook] Invalid signature");
-      return new Response("Unauthorized", { status: 401 });
+      console.error("[webhook] ✗ REJECTED: Invalid signature");
+      console.error("[webhook] This means LINE_CHANNEL_SECRET is incorrect or the request is not from LINE");
+      return new Response("Unauthorized: Invalid signature", { status: 401 });
     }
 
     // Parse webhook body
+    console.log(`[webhook] Parsing webhook body...`);
     const webhookBody: WebhookBody = JSON.parse(body);
-    console.log(`[webhook] Received ${webhookBody.events.length} event(s)`);
-    console.log(`[webhook] Event types:`, webhookBody.events.map(e => e.type));
+    console.log(`[webhook] ✓ Parsed ${webhookBody.events.length} event(s)`);
+    
+    if (webhookBody.events.length === 0) {
+      console.log(`[webhook] ⚠ WARNING: No events in webhook body`);
+    }
+
+    // Log each event detail
+    webhookBody.events.forEach((event, index) => {
+      console.log(`\n[webhook] Event ${index + 1}/${webhookBody.events.length}:`);
+      console.log(`  - Type: ${event.type}`);
+      console.log(`  - Source: ${event.source.type} (${event.source.groupId || event.source.userId || 'unknown'})`);
+      if (event.type === 'message' && event.message) {
+        console.log(`  - Message type: ${event.message.type}`);
+        if (event.message.type === 'text') {
+          console.log(`  - Text: "${(event.message.text || '').substring(0, 100)}..."`);
+        }
+      }
+    });
 
     // Process events
-    const promises = webhookBody.events.map(event => handleEvent(event));
+    console.log(`[webhook] Processing events...`);
+    const promises = webhookBody.events.map((event, index) => {
+      console.log(`[webhook] Starting processing of event ${index + 1}...`);
+      return handleEvent(event);
+    });
     await Promise.all(promises);
 
-    console.log(`[webhook] ===== SUCCESS =====`);
-    return new Response(JSON.stringify({ success: true }), {
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[webhook] ✓✓✓ ALL EVENTS PROCESSED SUCCESSFULLY ✓✓✓`);
+    console.log(`${'='.repeat(80)}\n`);
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      processed: webhookBody.events.length,
+      timestamp: new Date().toISOString()
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("[webhook] ===== ERROR =====");
-    console.error("[webhook] Error:", error);
-    if (error instanceof Error) {
-      console.error("[webhook] Stack:", error.stack);
+    console.error(`\n${'!'.repeat(80)}`);
+    console.error("[webhook] ✗✗✗ ERROR OCCURRED ✗✗✗");
+    console.error(`${'!'.repeat(80)}`);
+    console.error("[webhook] Error type:", error?.constructor?.name);
+    console.error("[webhook] Error message:", error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error("[webhook] Stack trace:");
+      console.error(error.stack);
     }
+    console.error(`${'!'.repeat(80)}\n`);
+    
     return new Response(
-      JSON.stringify({ error: "Internal server error", message: String(error) }),
+      JSON.stringify({ 
+        error: "Internal server error", 
+        message: String(error),
+        timestamp: new Date().toISOString()
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
