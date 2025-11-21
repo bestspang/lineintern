@@ -59,6 +59,16 @@ The LINE Intern backend service is **fully implemented and production-ready**. A
 - ✅ **Comprehensive Logging**: Detailed logs for debugging
 - ✅ **Error Alerts**: Auto-creates alerts for failures
 
+### 8. Attendance System (DM Only)
+- ✅ **Check-in/Check-out**: Employees check in/out via DM
+- ✅ **One-time Links**: Secure token-based attendance submission
+- ✅ **Photo Capture**: Mobile camera integration for face photos
+- ✅ **Geolocation**: GPS validation with geofence checking
+- ✅ **LINE Announcements**: Auto-posts to configured groups
+- ✅ **Daily Summaries**: Automated attendance reports sent to LINE groups
+- ✅ **Admin Dashboard**: Manage employees, branches, logs, settings, analytics
+- ✅ **Analytics**: Charts for trends, peak hours, late patterns, branch comparisons
+
 ---
 
 ## 🚀 Quick Start Deployment
@@ -83,10 +93,13 @@ The following secrets are already configured:
 
 ### Edge Functions Deployed
 
-Both functions are configured in `supabase/config.toml` with `verify_jwt = false` to allow public access:
+All functions are configured in `supabase/config.toml` with `verify_jwt = false` to allow public access:
 
 1. **line-webhook** - Main webhook handler
 2. **health** - Status monitoring
+3. **attendance-validate-token** - Validates attendance tokens
+4. **attendance-submit** - Processes attendance submissions with photo/location
+5. **attendance-daily-summary** - Daily automated summaries (cron job)
 
 ---
 
