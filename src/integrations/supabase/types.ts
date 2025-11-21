@@ -1256,6 +1256,142 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          behavioral_patterns: Json | null
+          confidence_scores: Json | null
+          created_at: string | null
+          group_id: string
+          id: string
+          inferred_age_range: string | null
+          inferred_gender: string | null
+          inferred_occupation: string | null
+          last_updated_at: string | null
+          observation_count: number | null
+          personality_traits: Json | null
+          preferences: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          behavioral_patterns?: Json | null
+          confidence_scores?: Json | null
+          created_at?: string | null
+          group_id: string
+          id?: string
+          inferred_age_range?: string | null
+          inferred_gender?: string | null
+          inferred_occupation?: string | null
+          last_updated_at?: string | null
+          observation_count?: number | null
+          personality_traits?: Json | null
+          preferences?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          behavioral_patterns?: Json | null
+          confidence_scores?: Json | null
+          created_at?: string | null
+          group_id?: string
+          id?: string
+          inferred_age_range?: string | null
+          inferred_gender?: string | null
+          inferred_occupation?: string | null
+          last_updated_at?: string | null
+          observation_count?: number | null
+          personality_traits?: Json | null
+          preferences?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_relationships: {
+        Row: {
+          communication_style: Json | null
+          confidence_score: number | null
+          created_at: string | null
+          first_interaction_at: string | null
+          group_id: string
+          id: string
+          inferred_data: Json | null
+          interaction_count: number | null
+          last_interaction_at: string | null
+          relationship_type: string | null
+          updated_at: string | null
+          user_a_id: string
+          user_b_id: string
+        }
+        Insert: {
+          communication_style?: Json | null
+          confidence_score?: number | null
+          created_at?: string | null
+          first_interaction_at?: string | null
+          group_id: string
+          id?: string
+          inferred_data?: Json | null
+          interaction_count?: number | null
+          last_interaction_at?: string | null
+          relationship_type?: string | null
+          updated_at?: string | null
+          user_a_id: string
+          user_b_id: string
+        }
+        Update: {
+          communication_style?: Json | null
+          confidence_score?: number | null
+          created_at?: string | null
+          first_interaction_at?: string | null
+          group_id?: string
+          id?: string
+          inferred_data?: Json | null
+          interaction_count?: number | null
+          last_interaction_at?: string | null
+          relationship_type?: string | null
+          updated_at?: string | null
+          user_a_id?: string
+          user_b_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_relationships_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_relationships_user_a_id_fkey"
+            columns: ["user_a_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_relationships_user_b_id_fkey"
+            columns: ["user_b_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           granted_at: string | null

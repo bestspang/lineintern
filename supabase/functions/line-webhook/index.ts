@@ -3578,7 +3578,9 @@ If any section has no content, write "None" for that section.`;
       'N/A',
       'N/A',
       'N/A',
-      'N/A'
+      'N/A',
+      'N/A',
+      groupId
     );
 
     // Parse AI response to extract structured data
@@ -4286,7 +4288,9 @@ Provide a 3-4 sentence summary with:
       'N/A',
       'N/A',
       'N/A',
-      'N/A'
+      'N/A',
+      'N/A',
+      groupId
     );
 
     // Store report in database
@@ -4644,6 +4648,7 @@ Example conversions:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
       "N/A"
     );
 
@@ -4892,6 +4897,7 @@ Examples:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
       "N/A"
     );
     
@@ -5056,6 +5062,7 @@ Example conversions:
       parsePrompt,
       "helper",
       "ask",
+      "N/A",
       "N/A",
       "N/A",
       "N/A",
@@ -5321,6 +5328,91 @@ async function getWorkContext(groupId: string, userId?: string, locale: 'th' | '
 }
 
 // =============================
+// COGNITIVE PROCESSING
+// =============================
+
+async function processCognitiveInsights(
+  groupId: string,
+  userId: string,
+  messageText: string,
+  insertedMessage: any
+): Promise<void> {
+  console.log('[processCognitiveInsights] Starting cognitive processing...');
+  
+  try {
+    // Get recent messages for conversation context
+    const { data: recentMessages } = await supabase
+      .from('messages')
+      .select('id, user_id, text, sent_at, direction')
+      .eq('group_id', groupId)
+      .order('sent_at', { ascending: false })
+      .limit(20);
+
+    const conversationContext = (recentMessages || []).reverse();
+
+    // Call cognitive-processor edge function
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/cognitive-processor`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'analyze_interaction',
+        groupId,
+        userId,
+        messageData: {
+          user_id: userId,
+          text: messageText,
+          sent_at: new Date().toISOString(),
+        },
+        conversationContext,
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log('[processCognitiveInsights] Cognitive analysis complete:', result.analyzed ? 'Success' : 'No analysis needed');
+    } else {
+      console.error('[processCognitiveInsights] Cognitive processor returned error:', response.status);
+    }
+  } catch (error) {
+    console.error('[processCognitiveInsights] Error:', error);
+  }
+}
+
+async function getSocialContext(groupId: string, userId: string): Promise<string> {
+  console.log('[getSocialContext] Fetching social context...');
+  
+  try {
+    // Call cognitive-processor to get social context
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/cognitive-processor`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'get_social_context',
+        groupId,
+        userId,
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.contextText || 'No social context available yet.';
+    } else {
+      console.error('[getSocialContext] Error fetching social context:', response.status);
+      return 'No social context available.';
+    }
+  } catch (error) {
+    console.error('[getSocialContext] Error:', error);
+    return 'No social context available.';
+  }
+}
+
+// =============================
 // LOVABLE AI INTEGRATION
 // =============================
 
@@ -5335,6 +5427,7 @@ async function generateAiReply(
   workContext: string,
   threadContext: string,
   workingMemory: string,
+  socialContext: string,
   groupId?: string,
   userId?: string
 ): Promise<string> {
@@ -5986,6 +6079,14 @@ async function handleMessageEvent(event: LineEvent) {
       parsed.commandType
     );
 
+  // PHASE 2: Cognitive Processing - Analyze social interactions and update profiles
+  // Run in background to avoid blocking message processing
+  if (!isDM) {
+    processCognitiveInsights(group.id, user.id, event.message.text, insertedMessage).catch(err => {
+      console.error('[handleMessageEvent] Cognitive processing failed:', err);
+    });
+  }
+
   // Check for auto-summary trigger (every 100 messages)
   if (group.features?.summary && !isDM) {
     checkAndCreateAutoSummary(group.id).catch(err => {
@@ -6259,6 +6360,9 @@ async function handleMessageEvent(event: LineEvent) {
   const threadId = insertedMessage?.threadId || null;
   const threadContext = await getThreadContext(threadId);
   const workingMemory = await getWorkingMemoryContext(group.id, threadId);
+  
+  // Get social context for cognitive awareness
+  const socialContext = await getSocialContext(group.id, user.id);
 
   // Generate AI reply
   const startTime = Date.now();
@@ -6277,6 +6381,7 @@ async function handleMessageEvent(event: LineEvent) {
       workContext,
       threadContext,
       workingMemory,
+      socialContext,
       group.id,
       user.id
     );
