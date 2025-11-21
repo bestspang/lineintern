@@ -1784,10 +1784,16 @@ const COMMON_BEHAVIOR_PROMPT = `
 
 **COMMAND**: {COMMAND}
 
-**MEMORY_CONTEXT**: 
+**CURRENT THREAD (Immediate Context)**:
+{THREAD_CONTEXT}
+
+**WORKING MEMORY (Last 24 hours)**:
+{WORKING_MEMORY}
+
+**MEMORY_CONTEXT (Long-term Memories)**: 
 {MEMORY_CONTEXT}
 
-**RECENT_MESSAGES**: 
+**RECENT_MESSAGES (Broader Group Context)**: 
 {RECENT_MESSAGES}
 
 **KNOWLEDGE_SNIPPETS**: 
@@ -1806,6 +1812,14 @@ const COMMON_BEHAVIOR_PROMPT = `
 
 You've been invoked with the above context. Understand the USER_MESSAGE in context of the MODE and COMMAND.
 
+**CRITICAL - Conversation Context Awareness**:
+- **CURRENT THREAD**: Contains the immediate conversation you're in. Use this to understand what "this", "that", "it", etc. refer to
+- **WORKING MEMORY**: Contains recent conversations and facts from the last 24 hours. Use this to remember what was just discussed
+- **MEMORY_CONTEXT**: Contains long-term memories. Use this to recall important facts, preferences, and patterns
+- When user refers to previous messages ("what I said earlier", "the thing we discussed"), check CURRENT THREAD first, then WORKING MEMORY
+- Connect current conversation with past conversations naturally when relevant
+
+**Command-Specific Behavior**:
 - If COMMAND is "summary", provide a structured summary of RECENT_MESSAGES.
 - If COMMAND is "faq", use KNOWLEDGE_SNIPPETS to answer.
 - If COMMAND is "todo", acknowledge and structure the task request.
@@ -2602,51 +2616,6 @@ async function getKnowledgeSnippets(groupId: string, commandType: string): Promi
     .join("\n\n---\n\n");
 }
 
-async function getAnalyticsSnapshot(groupId: string): Promise<string> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  // Messages count
-  const { count: messageCount } = await supabase
-    .from("messages")
-    .select("*", { count: "exact", head: true })
-    .eq("group_id", groupId)
-    .gte("sent_at", sevenDaysAgo);
-
-  // Top 5 active users
-  const { data: topUsers } = await supabase
-    .from("messages")
-    .select("user_id, users(display_name)")
-    .eq("group_id", groupId)
-    .eq("direction", "human")
-    .gte("sent_at", sevenDaysAgo);
-
-  const userCounts: Record<string, number> = {};
-  topUsers?.forEach((m: any) => {
-    const name = m.users?.display_name || "Unknown";
-    userCounts[name] = (userCounts[name] || 0) + 1;
-  });
-
-  const topUsersStr = Object.entries(userCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([name, count]) => `${name}: ${count}`)
-    .join(", ");
-
-  // Alerts count
-  const { count: alertCount } = await supabase
-    .from("alerts")
-    .select("*", { count: "exact", head: true })
-    .eq("group_id", groupId)
-    .gte("created_at", sevenDaysAgo);
-
-  return JSON.stringify({
-    totalMessages: messageCount || 0,
-    topActiveUsers: topUsersStr || "None",
-    alertsTriggered: alertCount || 0,
-    period: "Last 7 days",
-  }, null, 2);
-}
-
 // =============================
 // MEMORY SYSTEM
 // =============================
@@ -2692,10 +2661,12 @@ async function loadRelevantMemories({
   userId,
   groupId,
   isDM,
+  userMessage = '',
 }: {
   userId: string;
   groupId: string;
   isDM: boolean;
+  userMessage?: string;
 }): Promise<string> {
   console.log(
     `[loadRelevantMemories] Loading for user=${userId}, group=${groupId}, isDM=${isDM}`
@@ -2718,27 +2689,52 @@ async function loadRelevantMemories({
 
   const memories: any[] = [];
 
-  const { data: globalMemories } = await supabase
+  // Extract keywords from user message for smart retrieval
+  const keywords = userMessage
+    ? userMessage.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 10)
+    : [];
+
+  // Search by keywords if available
+  if (keywords.length > 0) {
+    const { data: keywordMemories } = await supabase.rpc('search_memories_by_keywords', {
+      p_keywords: keywords,
+      p_group_id: groupId,
+      p_user_id: userId,
+      p_limit: 10,
+    });
+
+    if (keywordMemories && keywordMemories.length > 0) {
+      console.log(`[loadRelevantMemories] Found ${keywordMemories.length} keyword-matched memories`);
+      memories.push(...keywordMemories);
+    }
+  }
+
+  // Always get pinned memories
+  const { data: pinnedMemories } = await supabase
     .from("memory_items")
     .select("*")
-    .eq("scope", "global")
+    .or(`user_id.eq.${userId},group_id.eq.${groupId}`)
     .eq("is_deleted", false)
-    .order("importance_score", { ascending: false })
-    .order("last_used_at", { ascending: false, nullsFirst: false })
+    .eq("pinned", true)
+    .gt("memory_strength", 0.3)
     .limit(5);
 
-  if (globalMemories) memories.push(...globalMemories);
+  if (pinnedMemories) {
+    memories.push(...pinnedMemories);
+  }
 
+  // Get high-importance user memories
   const { data: userMemories } = await supabase
     .from("memory_items")
     .select("*")
     .eq("scope", "user")
     .eq("user_id", userId)
     .eq("is_deleted", false)
-    .order("pinned", { ascending: false })
+    .eq("pinned", false)
+    .gt("memory_strength", 0.5)
+    .order("memory_strength", { ascending: false })
     .order("importance_score", { ascending: false })
-    .order("last_used_at", { ascending: false, nullsFirst: false })
-    .limit(10);
+    .limit(5);
 
   if (userMemories) memories.push(...userMemories);
 
@@ -2749,39 +2745,180 @@ async function loadRelevantMemories({
       .eq("scope", "group")
       .eq("group_id", groupId)
       .eq("is_deleted", false)
-      .order("pinned", { ascending: false })
+      .eq("pinned", false)
+      .gt("memory_strength", 0.5)
+      .order("memory_strength", { ascending: false })
       .order("importance_score", { ascending: false })
-      .order("last_used_at", { ascending: false, nullsFirst: false })
-      .limit(10);
+      .limit(5);
 
     if (groupMemories) memories.push(...groupMemories);
   }
 
-  const memoryIds = memories.map((m) => m.id);
-  if (memoryIds.length > 0) {
-    await supabase
-      .from("memory_items")
-      .update({ last_used_at: new Date().toISOString() })
-      .in("id", memoryIds);
+  // Deduplicate and sort by relevance
+  const uniqueMemories = Array.from(new Map(memories.map(m => [m.id, m])).values());
+  const sortedMemories = uniqueMemories
+    .sort((a, b) => {
+      // Pinned memories first
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      // Then by memory strength
+      if (b.memory_strength !== a.memory_strength) {
+        return (b.memory_strength || 0) - (a.memory_strength || 0);
+      }
+      // Then by importance
+      return (b.importance_score || 0) - (a.importance_score || 0);
+    })
+    .slice(0, 15); // Top 15 memories
+
+  if (sortedMemories.length === 0) {
+    return "No relevant memories found.";
   }
 
-  if (memories.length === 0) {
+  // Mark memories as used (reinforcement)
+  const memoryIds = sortedMemories.map(m => m.id);
+  if (memoryIds.length > 0) {
+    supabase
+      .from("memory_items")
+      .update({
+        last_reinforced_at: new Date().toISOString(),
+      })
+      .in("id", memoryIds)
+      .then(() => {});
+    
+    // Update individual memory strengths
+    for (const memory of sortedMemories) {
+      supabase
+        .from("memory_items")
+        .update({
+          access_count: (memory.access_count || 0) + 1,
+          memory_strength: Math.min(1.0, (memory.memory_strength || 0.5) + 0.05),
+        })
+        .eq("id", memory.id)
+        .then(() => {});
+    }
+  }
+
+  return sortedMemories
+    .map((m: any) => `[${m.category}${m.pinned ? ' 📌' : ''}] ${m.title}: ${m.content}`)
+    .join("\n\n");
+}
+
+// Get thread context (immediate conversation)
+async function getThreadContext(threadId: string | null): Promise<string> {
+  if (!threadId) {
+    return "No active conversation thread.";
+  }
+
+  try {
+    const { data: messages, error } = await supabase.rpc('get_thread_context', {
+      p_thread_id: threadId,
+      p_limit: 20,
+    });
+
+    if (error) {
+      console.error('[getThreadContext] Error:', error);
+      return "Unable to load thread context.";
+    }
+
+    if (!messages || messages.length === 0) {
+      return "New conversation thread.";
+    }
+
+    return messages
+      .reverse()
+      .map((m: any) => {
+        const sender = m.direction === "bot" ? "Intern" : (m.user_display_name || "User");
+        return `${sender}: ${m.text}`;
+      })
+      .join("\n");
+  } catch (err) {
+    console.error('[getThreadContext] Exception:', err);
+    return "Unable to load thread context.";
+  }
+}
+
+// Get working memory (24h short-term context)
+async function getWorkingMemoryContext(groupId: string, threadId: string | null): Promise<string> {
+  try {
+    const { data: workingMemories, error } = await supabase.rpc('get_working_memory_context', {
+      p_group_id: groupId,
+      p_thread_id: threadId,
+      p_limit: 15,
+    });
+
+    if (error) {
+      console.error('[getWorkingMemoryContext] Error:', error);
+      return "N/A";
+    }
+
+    if (!workingMemories || workingMemories.length === 0) {
+      return "No recent working memory.";
+    }
+
+    // Group by memory type
+    const byType: Record<string, string[]> = {};
+    for (const wm of workingMemories) {
+      if (!byType[wm.memory_type]) byType[wm.memory_type] = [];
+      byType[wm.memory_type].push(wm.content);
+    }
+
+    const parts: string[] = [];
+    if (byType.answer) parts.push(`Recent Answers:\n${byType.answer.join('\n')}`);
+    if (byType.question) parts.push(`Recent Questions:\n${byType.question.join('\n')}`);
+    if (byType.decision) parts.push(`Recent Decisions:\n${byType.decision.join('\n')}`);
+    if (byType.fact) parts.push(`Recent Facts:\n${byType.fact.join('\n')}`);
+    if (byType.context) parts.push(`Recent Context:\n${byType.context.join('\n')}`);
+
+    return parts.length > 0 ? parts.join('\n\n') : "No recent working memory.";
+  } catch (err) {
+    console.error('[getWorkingMemoryContext] Exception:', err);
     return "N/A";
   }
+}
 
-  const formatted = memories
-    .map((m) => {
-      const scopeLabel =
-        m.scope === "user"
-          ? "User Memory"
-          : m.scope === "group"
-          ? "Group Memory"
-          : "Global Memory";
-      return `[${scopeLabel}] [${m.category}] ${m.title}: ${m.content}`;
-    })
-    .join("\n");
+async function getAnalyticsSnapshot(groupId: string): Promise<string> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  return formatted;
+  // Messages count
+  const { count: messageCount } = await supabase
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .eq("group_id", groupId)
+    .gte("sent_at", sevenDaysAgo);
+
+  // Top 5 active users
+  const { data: topUsers } = await supabase
+    .from("messages")
+    .select("user_id, users(display_name)")
+    .eq("group_id", groupId)
+    .eq("direction", "human")
+    .gte("sent_at", sevenDaysAgo);
+
+  const userCounts: Record<string, number> = {};
+  topUsers?.forEach((m: any) => {
+    const name = m.users?.display_name || "Unknown";
+    userCounts[name] = (userCounts[name] || 0) + 1;
+  });
+
+  const topUsersStr = Object.entries(userCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([name, count]) => `${name}: ${count}`)
+    .join(", ");
+
+  // Alerts count
+  const { count: alertCount } = await supabase
+    .from("alerts")
+    .select("*", { count: "exact", head: true })
+    .eq("group_id", groupId)
+    .gte("created_at", sevenDaysAgo);
+
+  return JSON.stringify({
+    totalMessages: messageCount || 0,
+    topActiveUsers: topUsersStr || "None",
+    alertsTriggered: alertCount || 0,
+    period: "Last 7 days",
+  }, null, 2);
 }
 
 // =============================
@@ -5262,6 +5399,8 @@ async function generateAiReply(
     .replace("{MODE}", mode)
     .replace("{COMMAND}", commandType)
     .replace("{MODE_INSTRUCTIONS}", modeInstructions)
+    .replace("{THREAD_CONTEXT}", "N/A") // Will be updated in next call
+    .replace("{WORKING_MEMORY}", "N/A") // Will be updated in next call
     .replace("{MEMORY_CONTEXT}", memoryContext)
     .replace("{RECENT_MESSAGES}", recentMessages)
     .replace("{KNOWLEDGE_SNIPPETS}", knowledgeSnippets)
