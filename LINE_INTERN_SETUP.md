@@ -4,10 +4,13 @@ This document provides instructions for deploying and configuring the LINE Inter
 
 ## Architecture Overview
 
-The LINE Intern backend consists of two Supabase Edge Functions:
+The LINE Intern backend consists of multiple Supabase Edge Functions:
 
 1. **line-webhook** - Main webhook endpoint for receiving LINE events
 2. **health** - Health check endpoint for monitoring
+3. **attendance-validate-token** - Validates attendance submission tokens
+4. **attendance-submit** - Processes photo and location submissions
+5. **attendance-daily-summary** - Sends daily attendance summaries (cron job)
 
 ## Prerequisites
 
@@ -75,6 +78,14 @@ https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/health
 - `/progress [text]` or `/update [text]` - Report work progress
   - Example: `/progress ทำไปแล้ว 50%`
 - `/reminders` or `/เตือน` - List all pending work reminders with urgency indicators
+
+**🕐 Attendance (DM only):**
+- `checkin` or `เช็คอิน` or `เข้างาน` - Check in to work
+- `checkout` or `เช็คเอาต์` or `ออกงาน` - Check out from work
+  - ⚠️ Must be sent in DM (private message) only
+  - Generates a one-time link to take photo and confirm location
+  - Posts confirmation to configured announcement LINE group
+  - See [ATTENDANCE_SYSTEM.md](ATTENDANCE_SYSTEM.md) for full documentation
 
 **📚 Knowledge:**
 - `/faq [question]` - Search knowledge base
