@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.test-bot]
 verify_jwt = false
+
+[functions.memory-consolidator]
+verify_jwt = false
+
+[functions.memory-decay]
+verify_jwt = false
