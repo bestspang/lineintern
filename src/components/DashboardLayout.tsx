@@ -18,7 +18,10 @@ import {
   Layers,
   Bot,
   Gauge,
-  Database
+  Database,
+  ClipboardCheck,
+  Building,
+  Calendar
 } from 'lucide-react';
 import {
   Sidebar,
@@ -77,6 +80,17 @@ const navigationGroups = [
       { title: 'Memory Bot', url: '/memory', icon: Brain },
       { title: 'Personality AI', url: '/personality', icon: Sparkles },
       { title: 'Commands', url: '/commands', icon: Terminal },
+    ],
+  },
+  {
+    title: 'Attendance',
+    icon: ClipboardCheck,
+    items: [
+      { title: 'Employees', url: '/attendance/employees', icon: Users },
+      { title: 'Branches', url: '/attendance/branches', icon: Building },
+      { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
+      { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
+      { title: 'Settings', url: '/attendance/settings', icon: Settings },
     ],
   },
   {

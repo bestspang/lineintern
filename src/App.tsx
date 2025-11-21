@@ -30,6 +30,12 @@ import Summaries from "./pages/Summaries";
 import Personality from "./pages/Personality";
 import SettingsLayout from "./pages/SettingsLayout";
 import NotFound from "./pages/NotFound";
+import Attendance from "./pages/Attendance";
+import AttendanceEmployees from "./pages/attendance/Employees";
+import AttendanceBranches from "./pages/attendance/Branches";
+import AttendanceLogs from "./pages/attendance/Logs";
+import AttendanceSummaries from "./pages/attendance/Summaries";
+import AttendanceSettings from "./pages/attendance/Settings";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +48,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/attendance" element={<Attendance />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <DashboardLayout>
@@ -61,6 +68,11 @@ const App = () => (
                     <Route path="/personality" element={<Personality />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/memory-analytics" element={<MemoryAnalytics />} />
+                    <Route path="/attendance/employees" element={<AttendanceEmployees />} />
+                    <Route path="/attendance/branches" element={<AttendanceBranches />} />
+                    <Route path="/attendance/logs" element={<AttendanceLogs />} />
+                    <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
+                    <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/settings" element={<SettingsLayout />}>
                       <Route index element={<Settings />} />
                       <Route path="safety" element={<SafetyRules />} />
