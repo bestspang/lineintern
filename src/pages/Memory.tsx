@@ -37,10 +37,13 @@ import {
   Brain,
   Clock,
   Users,
-  User
+  User,
+  Network,
+  LayoutGrid
 } from 'lucide-react';
 import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
 import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
+import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function Memory() {
@@ -57,6 +60,7 @@ export default function Memory() {
   const [timelineUserId, setTimelineUserId] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [selectedSocialGroupId, setSelectedSocialGroupId] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'graph' | 'cards'>('graph');
   
   const { data: groups } = useQuery({
     queryKey: ['groups'],
@@ -791,24 +795,43 @@ export default function Memory() {
                     </Card>
                   </div>
                   
-                  {/* Main Content: 2 columns */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Left Column: Relationships */}
-                    <div className="space-y-4">
+                  {/* Main Content: Network Graph + Cards Toggle */}
+                  <div className="space-y-4">
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Relationship Visualization</h3>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={viewMode === 'graph' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setViewMode('graph')}
+                        >
+                          <Network className="w-4 h-4 mr-2" />
+                          Graph
+                        </Button>
+                        <Button
+                          variant={viewMode === 'cards' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setViewMode('cards')}
+                        >
+                          <LayoutGrid className="w-4 h-4 mr-2" />
+                          Cards
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Network Graph View */}
+                    {viewMode === 'graph' && (
                       <Card>
                         <CardHeader>
                           <CardTitle>Relationship Network</CardTitle>
                           <CardDescription>
-                            Detected connections between users in this group
+                            Interactive visualization of connections between users
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
                           {relationships && relationships.length > 0 ? (
-                            <div className="space-y-4">
-                              {relationships.map(rel => (
-                                <RelationshipCard key={rel.id} relationship={rel} />
-                              ))}
-                            </div>
+                            <RelationshipGraph relationships={relationships} />
                           ) : (
                             <div className="text-center py-8 text-muted-foreground">
                               <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -820,36 +843,70 @@ export default function Memory() {
                           )}
                         </CardContent>
                       </Card>
-                    </div>
-                    
-                    {/* Right Column: User Profiles */}
-                    <div className="space-y-4">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>User Profiles</CardTitle>
-                          <CardDescription>
-                            AI-learned personality and preferences
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          {userProfiles && userProfiles.length > 0 ? (
-                            <div className="space-y-4">
-                              {userProfiles.map(profile => (
-                                <UserProfileCard key={profile.id} profile={profile} />
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-8 text-muted-foreground">
-                              <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                              <p>No user profiles yet</p>
-                              <p className="text-xs mt-1">
-                                The bot will learn about users as they interact
-                              </p>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
+                    )}
+
+                    {/* Cards View */}
+                    {viewMode === 'cards' && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Column: Relationships */}
+                        <div className="space-y-4">
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Relationship Network</CardTitle>
+                              <CardDescription>
+                                Detected connections between users in this group
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {relationships && relationships.length > 0 ? (
+                                <div className="space-y-4">
+                                  {relationships.map(rel => (
+                                    <RelationshipCard key={rel.id} relationship={rel} />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                  <p>No relationships detected yet</p>
+                                  <p className="text-xs mt-1">
+                                    The bot needs more conversations to learn relationships
+                                  </p>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </div>
+                        
+                        {/* Right Column: User Profiles */}
+                        <div className="space-y-4">
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>User Profiles</CardTitle>
+                              <CardDescription>
+                                AI-learned personality and preferences
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {userProfiles && userProfiles.length > 0 ? (
+                                <div className="space-y-4">
+                                  {userProfiles.map(profile => (
+                                    <UserProfileCard key={profile.id} profile={profile} />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                  <p>No user profiles yet</p>
+                                  <p className="text-xs mt-1">
+                                    The bot will learn about users as they interact
+                                  </p>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Relationship Type Distribution Chart */}
