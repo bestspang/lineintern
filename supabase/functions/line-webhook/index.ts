@@ -3576,6 +3576,8 @@ If any section has no content, write "None" for that section.`;
       '',
       '',
       'N/A',
+      'N/A',
+      'N/A',
       'N/A'
     );
 
@@ -4282,6 +4284,8 @@ Provide a 3-4 sentence summary with:
       '',
       '',
       'N/A',
+      'N/A',
+      'N/A',
       'N/A'
     );
 
@@ -4638,6 +4642,8 @@ Example conversions:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
+      "N/A",
       "N/A"
     );
 
@@ -4884,6 +4890,8 @@ Examples:
       "N/A",
       "N/A",
       "N/A",
+      "N/A",
+      "N/A",
       "N/A"
     );
     
@@ -5048,6 +5056,8 @@ Example conversions:
       parsePrompt,
       "helper",
       "ask",
+      "N/A",
+      "N/A",
       "N/A",
       "N/A",
       "N/A",
@@ -5323,6 +5333,8 @@ async function generateAiReply(
   knowledgeSnippets: string,
   analyticsSnapshot: string,
   workContext: string,
+  threadContext: string,
+  workingMemory: string,
   groupId?: string,
   userId?: string
 ): Promise<string> {
@@ -5399,8 +5411,8 @@ async function generateAiReply(
     .replace("{MODE}", mode)
     .replace("{COMMAND}", commandType)
     .replace("{MODE_INSTRUCTIONS}", modeInstructions)
-    .replace("{THREAD_CONTEXT}", "N/A") // Will be updated in next call
-    .replace("{WORKING_MEMORY}", "N/A") // Will be updated in next call
+    .replace("{THREAD_CONTEXT}", threadContext)
+    .replace("{WORKING_MEMORY}", workingMemory)
     .replace("{MEMORY_CONTEXT}", memoryContext)
     .replace("{RECENT_MESSAGES}", recentMessages)
     .replace("{KNOWLEDGE_SNIPPETS}", knowledgeSnippets)
@@ -6180,6 +6192,11 @@ async function handleMessageEvent(event: LineEvent) {
     : "N/A";
   const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
   const workContext = await getWorkContext(group.id, user.id, locale);
+  
+  // Fetch thread context and working memory for enhanced conversation awareness
+  const threadId = insertedMessage?.threadId || null;
+  const threadContext = await getThreadContext(threadId);
+  const workingMemory = await getWorkingMemoryContext(group.id, threadId);
 
   // Generate AI reply
   const startTime = Date.now();
@@ -6196,6 +6213,8 @@ async function handleMessageEvent(event: LineEvent) {
       knowledgeSnippets,
       analyticsSnapshot,
       workContext,
+      threadContext,
+      workingMemory,
       group.id,
       user.id
     );
