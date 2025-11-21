@@ -36,6 +36,7 @@ import AttendanceBranches from "./pages/attendance/Branches";
 import AttendanceLogs from "./pages/attendance/Logs";
 import AttendanceSummaries from "./pages/attendance/Summaries";
 import AttendanceSettings from "./pages/attendance/Settings";
+import AttendanceAnalytics from "./pages/attendance/Analytics";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +74,7 @@ const App = () => (
                     <Route path="/attendance/logs" element={<AttendanceLogs />} />
                     <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
+                    <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/settings" element={<SettingsLayout />}>
                       <Route index element={<Settings />} />
                       <Route path="safety" element={<SafetyRules />} />
