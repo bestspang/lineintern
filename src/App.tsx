@@ -37,6 +37,7 @@ import AttendanceLogs from "./pages/attendance/Logs";
 import AttendanceSummaries from "./pages/attendance/Summaries";
 import AttendanceSettings from "./pages/attendance/Settings";
 import AttendanceAnalytics from "./pages/attendance/Analytics";
+import EmployeeHistory from "./pages/attendance/EmployeeHistory";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/attendance" element={<Attendance />} />
+            <Route path="/attendance/employee-history" element={<EmployeeHistory />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <DashboardLayout>

@@ -5817,16 +5817,19 @@ async function handleAttendanceCommand(
 ): Promise<{ detected: boolean; type?: string; message: string }> {
   const attendanceCommands = {
     checkIn: ['checkin', 'เช็คอิน', 'เข้างาน', 'check in'],
-    checkOut: ['checkout', 'เช็คเอาต์', 'ออกงาน', 'check out']
+    checkOut: ['checkout', 'เช็คเอาต์', 'ออกงาน', 'check out'],
+    history: ['history', 'ประวัติ', 'ประวัติการเข้างาน']
   };
 
   const messageTextLower = messageText.toLowerCase().trim();
-  let type: 'check_in' | 'check_out' | null = null;
+  let type: 'check_in' | 'check_out' | 'history' | null = null;
 
   if (attendanceCommands.checkIn.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
     type = 'check_in';
   } else if (attendanceCommands.checkOut.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
     type = 'check_out';
+  } else if (attendanceCommands.history.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
+    type = 'history';
   }
 
   if (!type) {
@@ -5892,15 +5895,24 @@ async function handleAttendanceCommand(
       return { detected: true, type, message };
     }
     
-    // Generate attendance URL
+    // Generate URL based on command type
     const appDomain = Deno.env.get('VITE_SUPABASE_URL')?.replace('https://', '').replace('.supabase.co', '.lovable.app') || '';
-    const attendanceUrl = `https://${appDomain}/attendance?t=${token.id}`;
+    const pageUrl = type === 'history' 
+      ? `https://${appDomain}/attendance/employee-history?token=${token.id}`
+      : `https://${appDomain}/attendance?t=${token.id}`;
     
-    const actionText = type === 'check_in' ? (locale === 'th' ? 'เช็คอิน' : 'Check In') : (locale === 'th' ? 'เช็คเอาต์' : 'Check Out');
+    let message = '';
     
-    const message = locale === 'th'
-      ? `✅ กรุณากดลิงก์ด้านล่างเพื่อยืนยัน${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ ลิงก์นี้จะหมดอายุใน ${effectiveSettings.token_validity_minutes || 10} นาที\n\n---\n\n✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`
-      : `✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${attendanceUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`;
+    if (type === 'history') {
+      message = locale === 'th'
+        ? `📊 กรุณากดลิงก์ด้านล่างเพื่อดูประวัติการเข้างานของคุณ\n\n🔗 ${pageUrl}\n\n⏰ ลิงก์นี้จะหมดอายุใน ${effectiveSettings.token_validity_minutes || 10} นาที\n\n---\n\n📊 Please tap the link below to view your attendance history\n\n🔗 ${pageUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`
+        : `📊 Please tap the link below to view your attendance history\n\n🔗 ${pageUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`;
+    } else {
+      const actionText = type === 'check_in' ? (locale === 'th' ? 'เช็คอิน' : 'Check In') : (locale === 'th' ? 'เช็คเอาต์' : 'Check Out');
+      message = locale === 'th'
+        ? `✅ กรุณากดลิงก์ด้านล่างเพื่อยืนยัน${actionText}\n\n🔗 ${pageUrl}\n\n⏰ ลิงก์นี้จะหมดอายุใน ${effectiveSettings.token_validity_minutes || 10} นาที\n\n---\n\n✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${pageUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`
+        : `✅ Please tap the link below to confirm ${actionText}\n\n🔗 ${pageUrl}\n\n⏰ This link expires in ${effectiveSettings.token_validity_minutes || 10} minutes`;
+    }
     
     console.log('[handleAttendanceCommand] Attendance link sent successfully');
     return { detected: true, type, message };
@@ -6356,14 +6368,14 @@ async function handleMessageEvent(event: LineEvent) {
   // Redirect attendance commands in groups to DM
   if (!isDM) {
     const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const attendanceCommands = ['checkin', 'เช็คอิน', 'เข้างาน', 'checkout', 'เช็คเอาต์', 'ออกงาน'];
+    const attendanceCommands = ['checkin', 'เช็คอิน', 'เข้างาน', 'checkout', 'เช็คเอาต์', 'ออกงาน', 'history', 'ประวัติ', 'ประวัติการเข้างาน'];
     const messageTextLower = event.message.text.toLowerCase().trim();
     
     if (attendanceCommands.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
       try {
         const message = locale === 'th' 
-          ? 'กรุณาเช็คอิน/เช็คเอาต์ผ่านแชทส่วนตัวกับบอทเท่านั้นครับ 🙏\n\nPlease check-in/out via private message with the bot.'
-          : 'Please check-in/out via private message with the bot. 🙏';
+          ? 'กรุณาใช้ระบบเช็คชื่อและดูประวัติผ่านแชทส่วนตัวกับบอทเท่านั้นครับ 🙏\n\nPlease use attendance features via private message with the bot.'
+          : 'Please use attendance features via private message with the bot. 🙏';
         await replyToLine(event.replyToken, message);
         console.log('[handleMessageEvent] Redirected group attendance command to DM');
         return;
