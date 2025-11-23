@@ -95,16 +95,30 @@ export default function LiveTracking() {
         }
       });
 
+      // Group by employee_id and get only the LATEST check-in for each employee
+      const latestCheckInMap = new Map();
+      checkIns?.forEach(checkIn => {
+        const currentLatest = latestCheckInMap.get(checkIn.employee_id);
+        const checkInTime = new Date(checkIn.server_time);
+        
+        if (!currentLatest || checkInTime > new Date(currentLatest.server_time)) {
+          latestCheckInMap.set(checkIn.employee_id, checkIn);
+        }
+      });
+
+      // Convert Map to Array
+      const latestCheckIns = Array.from(latestCheckInMap.values());
+
       // Filter to only employees who:
       // 1. Haven't checked out yet today, OR
       // 2. Their latest check-in is after their latest check-out
-      const currentlyCheckedIn = checkIns?.filter(checkIn => {
+      const currentlyCheckedIn = latestCheckIns.filter(checkIn => {
         const latestCheckOut = latestCheckOutMap.get(checkIn.employee_id);
         if (!latestCheckOut) return true; // No check-out yet
         
         const checkInTime = new Date(checkIn.server_time);
         return checkInTime > latestCheckOut; // Check-in after check-out
-      }) || [];
+      });
 
       // Calculate expected check-out times
       const result: CheckedInEmployee[] = currentlyCheckedIn.map(checkIn => {
