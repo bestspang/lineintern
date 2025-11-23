@@ -765,6 +765,8 @@ export type Database = {
       }
       employees: {
         Row: {
+          allowed_work_end_time: string | null
+          allowed_work_start_time: string | null
           announcement_group_line_id: string | null
           branch_id: string | null
           break_hours: number | null
@@ -783,6 +785,8 @@ export type Database = {
           working_time_type: string | null
         }
         Insert: {
+          allowed_work_end_time?: string | null
+          allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
           branch_id?: string | null
           break_hours?: number | null
@@ -801,6 +805,8 @@ export type Database = {
           working_time_type?: string | null
         }
         Update: {
+          allowed_work_end_time?: string | null
+          allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
           branch_id?: string | null
           break_hours?: number | null

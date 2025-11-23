@@ -93,6 +93,30 @@ serve(async (req) => {
       );
     }
 
+    // Validate allowed work time for hours_based employees
+    if (token.employee.working_time_type === 'hours_based') {
+      const currentTime = new Date();
+      const bangkokTime = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const currentTimeStr = bangkokTime.toTimeString().substring(0, 8); // HH:MM:SS
+      
+      const allowedStart = token.employee.allowed_work_start_time || '06:00:00';
+      const allowedEnd = token.employee.allowed_work_end_time || '20:00:00';
+      
+      if (currentTimeStr < allowedStart || currentTimeStr > allowedEnd) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `ไม่สามารถ check-in นอกเวลาที่กำหนด (${allowedStart.substring(0,5)} - ${allowedEnd.substring(0,5)})`,
+            error_en: `Check-in is not allowed outside the designated hours (${allowedStart.substring(0,5)} - ${allowedEnd.substring(0,5)})`
+          }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+    }
+
     // Upload photo if provided
     if (photoFile) {
       const fileExt = photoFile.name.split('.').pop();
