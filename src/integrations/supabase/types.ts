@@ -204,6 +204,56 @@ export type Database = {
           },
         ]
       }
+      attendance_reminders: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          error_message: string | null
+          id: string
+          line_message_id: string | null
+          notification_type: string
+          reminder_date: string
+          reminder_type: string
+          scheduled_time: string
+          sent_at: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          notification_type: string
+          reminder_date: string
+          reminder_type: string
+          scheduled_time: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          notification_type?: string
+          reminder_date?: string
+          reminder_type?: string
+          scheduled_time?: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_reminders_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_settings: {
         Row: {
           branch_id: string | null
@@ -723,7 +773,10 @@ export type Database = {
           id: string
           is_active: boolean | null
           line_user_id: string | null
+          reminder_preferences: Json | null
           role: string | null
+          shift_end_time: string | null
+          shift_start_time: string | null
           updated_at: string | null
         }
         Insert: {
@@ -735,7 +788,10 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
+          reminder_preferences?: Json | null
           role?: string | null
+          shift_end_time?: string | null
+          shift_start_time?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -747,7 +803,10 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
+          reminder_preferences?: Json | null
           role?: string | null
+          shift_end_time?: string | null
+          shift_start_time?: string | null
           updated_at?: string | null
         }
         Relationships: [
