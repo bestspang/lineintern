@@ -283,15 +283,14 @@ export default function Tasks() {
               ))}
             </div>
           ) : tasks && tasks.length > 0 ? (
-            <div className="overflow-x-auto -mx-6 px-6">
+            <div className="rounded-md border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[30%] min-w-[180px]">Task</TableHead>
-                    <TableHead className="w-[15%] min-w-[100px]">Group</TableHead>
-                    <TableHead className="w-[15%] min-w-[120px]">Due Date</TableHead>
-                    <TableHead className="w-[10%]">Status</TableHead>
-                    <TableHead className="w-[10%]">Actions</TableHead>
+                    <TableHead className="w-[45%] min-w-[200px]">Task</TableHead>
+                    <TableHead className="w-[25%] min-w-[140px]">Group / Assigned</TableHead>
+                    <TableHead className="w-[20%] text-right">Due Date</TableHead>
+                    <TableHead className="w-[10%] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -300,65 +299,64 @@ export default function Tasks() {
                     return (
                       <TableRow key={task.id} className="hover:bg-muted/50">
                         <TableCell>
-                          <div className="space-y-1">
-                            <p className="font-medium line-clamp-2">{task.title}</p>
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium line-clamp-1 flex-1">{task.title}</p>
+                              {getStatusBadge(task.status)}
+                            </div>
                             {task.description && (
                               <p className="text-xs text-muted-foreground line-clamp-1">
                                 {task.description}
                               </p>
                             )}
                             {task.is_recurring && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <span>🔄</span>
-                                <span className="capitalize">{task.recurrence_pattern}</span>
-                              </div>
+                              <Badge variant="outline" className="text-xs h-5">
+                                🔄 {task.recurrence_pattern}
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="space-y-0.5">
+                          <div className="space-y-0.5 min-w-0">
                             <p className="text-sm font-medium truncate">{(task.groups as any)?.display_name || 'N/A'}</p>
                             <p className="text-xs text-muted-foreground truncate">
                               {(task.users as any)?.display_name || 'Unassigned'}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className={isOverdue ? 'text-destructive' : ''}>
-                            <p className="text-sm font-medium whitespace-nowrap">
-                              {format(new Date(task.due_at), 'MMM d, yyyy')}
+                        <TableCell className="text-right">
+                          <div className={cn("whitespace-nowrap", isOverdue && 'text-destructive')}>
+                            <p className="text-sm font-medium">
+                              {format(new Date(task.due_at), 'MMM d')}
                             </p>
-                            <p className="text-xs text-muted-foreground whitespace-nowrap">
+                            <p className="text-xs text-muted-foreground">
                               {format(new Date(task.due_at), 'HH:mm')}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell>{getStatusBadge(task.status)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {task.status === 'pending' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
-                                  disabled={updateTaskStatusMutation.isPending}
-                                >
-                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
-                                  disabled={updateTaskStatusMutation.isPending}
-                                >
-                                  <XCircle className="h-4 w-4 text-red-600" />
-                                </Button>
-                              </>
-                            )}
-                          </div>
+                        <TableCell className="text-right">
+                          {task.status === 'pending' && (
+                            <div className="flex gap-1 justify-end">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
+                                disabled={updateTaskStatusMutation.isPending}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
+                                disabled={updateTaskStatusMutation.isPending}
+                              >
+                                <XCircle className="h-3.5 w-3.5 text-red-600" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
