@@ -129,10 +129,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
-        <Sidebar className="border-r">
-          <div className="p-4 border-b">
-            <h1 className="text-lg font-bold text-primary">LINE Intern</h1>
-            <p className="text-xs text-muted-foreground">Control Panel</p>
+        <Sidebar className="border-r" collapsible="icon">
+          <div className="p-3 sm:p-4 border-b">
+            <h1 className="text-base sm:text-lg font-bold text-primary">LINE Intern</h1>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Control Panel</p>
           </div>
           
           <SidebarContent>
@@ -184,30 +184,30 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             ))}
           </SidebarContent>
 
-          <div className="p-4 border-t mt-auto">
+          <div className="p-3 sm:p-4 border-t mt-auto">
             <Button 
               variant="ghost" 
-              className="w-full justify-start" 
+              className="w-full justify-start text-sm" 
               onClick={signOut}
             >
               <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+              <span>Sign Out</span>
             </Button>
           </div>
         </Sidebar>
 
-        <div className="flex-1 flex flex-col">
-          <header className="h-14 border-b flex items-center px-4 gap-2 bg-background">
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-12 sm:h-14 border-b flex items-center px-3 sm:px-4 gap-2 bg-background shrink-0">
             <SidebarTrigger />
             <div className="ml-auto">
-              <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
+              <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
                 Sandbox
               </span>
             </div>
           </header>
 
           <main className="flex-1 overflow-auto">
-            <div className="container max-w-7xl mx-auto p-6">
+            <div className="container max-w-7xl mx-auto p-3 sm:p-4 md:p-6">
               {children}
             </div>
           </main>

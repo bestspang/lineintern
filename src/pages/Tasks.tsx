@@ -157,20 +157,20 @@ export default function Tasks() {
   };
 
   return (
-    <div className="space-y-6 max-w-full px-4 sm:px-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-bold">Tasks & Reminders</h1>
-          <p className="text-sm text-muted-foreground">Manage scheduled tasks across all groups</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage scheduled tasks across all groups</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto shrink-0">
               <Plus className="mr-2 h-4 w-4" />
               Create Task
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-[95vw] sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Create New Task</DialogTitle>
               <DialogDescription>
@@ -251,18 +251,18 @@ export default function Tasks() {
       </div>
 
       <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-lg sm:text-xl">All Tasks</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg md:text-xl">All Tasks</CardTitle>
           <CardDescription>
             <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 placeholder="Search tasks..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 sm:max-w-xs"
+                className="flex-1 sm:max-w-xs text-sm"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-40">
+                <SelectTrigger className="w-full sm:w-40 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -275,7 +275,7 @@ export default function Tasks() {
             </div>
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-3 sm:p-6">
+        <CardContent className="p-0 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (

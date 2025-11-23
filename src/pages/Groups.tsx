@@ -49,27 +49,27 @@ export default function Groups() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Groups</h1>
-          <p className="text-muted-foreground">Manage LINE group configurations</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Groups</h1>
+          <p className="text-sm text-muted-foreground">Manage LINE group configurations</p>
         </div>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>All Groups</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">All Groups</CardTitle>
           <CardDescription>
             <Input
               placeholder="Search by name or LINE ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
+              className="w-full sm:max-w-sm text-sm"
             />
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
@@ -81,9 +81,9 @@ export default function Groups() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[55%] min-w-[220px]">Group</TableHead>
-                    <TableHead className="w-[15%] text-right">Members</TableHead>
-                    <TableHead className="w-[30%] text-right">Last Activity</TableHead>
+                    <TableHead className="w-[60%] sm:w-[55%] min-w-[180px] text-xs sm:text-sm">Group</TableHead>
+                    <TableHead className="w-[40%] sm:w-[15%] text-right text-xs sm:text-sm hidden sm:table-cell">Members</TableHead>
+                    <TableHead className="w-[40%] sm:w-[30%] text-right text-xs sm:text-sm">Last Activity</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -93,33 +93,33 @@ export default function Groups() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/groups/${group.id}`)}
                     >
-                      <TableCell>
-                        <div className="space-y-1">
+                      <TableCell className="py-2">
+                        <div className="space-y-1 min-w-0">
                           <p
-                            className="font-medium truncate"
+                            className="text-xs sm:text-sm font-medium truncate"
                             title={group.display_name}
                           >
                             {group.display_name}
                           </p>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
                             {getStatusBadge(group.status)}
-                            <span>•</span>
-                            <Badge variant="outline" className="text-xs">
+                            <span className="hidden sm:inline">•</span>
+                            <Badge variant="outline" className="text-[10px] sm:text-xs h-4 sm:h-5">
                               {group.mode}
                             </Badge>
                             {group.member_count !== null && (
-                              <span className="hidden sm:inline-flex items-center gap-1">
-                                <span>Members:</span>
-                                <span className="font-medium">{group.member_count}</span>
-                              </span>
+                              <>
+                                <span className="sm:hidden">•</span>
+                                <span className="sm:hidden text-[10px]">{group.member_count}m</span>
+                              </>
                             )}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right align-top">
-                        {group.member_count || 0}
+                      <TableCell className="text-right align-top py-2 hidden sm:table-cell">
+                        <span className="text-sm">{group.member_count || 0}</span>
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground align-top whitespace-nowrap">
+                      <TableCell className="text-right text-[10px] sm:text-xs text-muted-foreground align-top whitespace-nowrap py-2">
                         {group.last_activity_at
                           ? formatDistanceToNow(new Date(group.last_activity_at), {
                               addSuffix: true,

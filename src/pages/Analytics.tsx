@@ -70,14 +70,14 @@ export default function Analytics() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Analytics</h1>
-          <p className="text-muted-foreground">Bot activity and engagement metrics</p>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold">Analytics</h1>
+          <p className="text-sm text-muted-foreground">Bot activity and engagement metrics</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full sm:w-40 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -88,71 +88,71 @@ export default function Analytics() {
         </Select>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Messages</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-6 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Messages</CardTitle>
+            <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalMessages || 0}</div>
-            <p className="text-xs text-muted-foreground">In selected period</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{stats?.totalMessages || 0}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">In selected period</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Groups</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-6 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Active Groups</CardTitle>
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.activeGroups || 0}</div>
-            <p className="text-xs text-muted-foreground">Currently active</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{stats?.activeGroups || 0}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">Currently active</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg per Group</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-6 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Avg per Group</CardTitle>
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.avgMessagesPerGroup || 0}</div>
-            <p className="text-xs text-muted-foreground">Messages per group</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{stats?.avgMessagesPerGroup || 0}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">Messages per group</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-6 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Alerts</CardTitle>
+            <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalAlerts || 0}</div>
-            <p className="text-xs text-muted-foreground">In selected period</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{stats?.totalAlerts || 0}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">In selected period</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Top 5 Active Groups</CardTitle>
-          <CardDescription>By message count in selected period</CardDescription>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">Top 5 Active Groups</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">By message count in selected period</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {topGroups && topGroups.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
               <BarChart data={topGroups}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" style={{ fontSize: '11px' }} />
+                <YAxis style={{ fontSize: '11px' }} />
                 <Tooltip />
                 <Bar dataKey="count" fill="hsl(var(--primary))" />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No data available</p>
+            <div className="text-center py-8 sm:py-12 text-muted-foreground">
+              <p className="text-sm">No data available</p>
             </div>
           )}
         </CardContent>
