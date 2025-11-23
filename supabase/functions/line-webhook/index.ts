@@ -5896,10 +5896,10 @@ async function handleAttendanceCommand(
     }
     
     // Generate URL based on command type
-    const appDomain = Deno.env.get('VITE_SUPABASE_URL')?.replace('https://', '').replace('.supabase.co', '.lovable.app') || '';
+    const appUrl = Deno.env.get('APP_URL') || 'https://intern.gem.me';
     const pageUrl = type === 'history' 
-      ? `https://${appDomain}/attendance/employee-history?token=${token.id}`
-      : `https://${appDomain}/attendance?t=${token.id}`;
+      ? `${appUrl}/attendance/employee-history?token=${token.id}`
+      : `${appUrl}/attendance?t=${token.id}`;
     
     let message = '';
     
