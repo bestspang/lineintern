@@ -90,6 +90,7 @@ const navigationGroups = [
     title: 'Attendance',
     icon: ClipboardCheck,
     items: [
+      { title: 'Dashboard', url: '/attendance/dashboard', icon: Gauge },
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
