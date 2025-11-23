@@ -107,50 +107,56 @@ export default function Alerts() {
               ))}
             </div>
           ) : alerts && alerts.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Summary</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {alerts.map((alert) => (
-                  <TableRow key={alert.id} className="hover:bg-muted/50">
-                    <TableCell className="text-muted-foreground">
-                      {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
-                    </TableCell>
-                    <TableCell>{(alert.groups as any)?.display_name || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{alert.type}</Badge>
-                    </TableCell>
-                    <TableCell>{getSeverityBadge(alert.severity)}</TableCell>
-                    <TableCell className="max-w-md truncate">{alert.summary}</TableCell>
-                    <TableCell>
-                      {alert.resolved ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Circle className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleResolved.mutate({ id: alert.id, resolved: alert.resolved })}
-                      >
-                        {alert.resolved ? 'Unresolve' : 'Resolve'}
-                      </Button>
-                    </TableCell>
+            <div className="rounded-md border bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[45%] min-w-[200px]">Alert</TableHead>
+                    <TableHead className="w-[25%] min-w-[140px]">Group</TableHead>
+                    <TableHead className="w-[20%]">Time</TableHead>
+                    <TableHead className="w-[10%] text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {alerts.map((alert) => (
+                    <TableRow key={alert.id} className="hover:bg-muted/50">
+                      <TableCell>
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline" className="text-xs">{alert.type}</Badge>
+                            {getSeverityBadge(alert.severity)}
+                            {alert.resolved ? (
+                              <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <p className="text-sm line-clamp-2">{alert.summary}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm truncate">{(alert.groups as any)?.display_name || 'N/A'}</p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
+                        </p>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => toggleResolved.mutate({ id: alert.id, resolved: alert.resolved })}
+                        >
+                          {alert.resolved ? 'Unresolve' : 'Resolve'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <p>No alerts found</p>

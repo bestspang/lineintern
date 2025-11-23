@@ -227,81 +227,84 @@ export default function KnowledgeBase() {
     }
 
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Scope</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Last Used</TableHead>
-            <TableHead>Updated</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.title}</TableCell>
-              <TableCell>
-                <Badge variant="outline">{item.category}</Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant="secondary" className="gap-1">
-                  {item.scope === 'global' ? (
-                    <>
-                      <Globe className="h-3 w-3" />
-                      Global
-                    </>
-                  ) : (
-                    <>
-                      <Users className="h-3 w-3" />
-                      {item.groups?.display_name || 'Group'}
-                    </>
-                  )}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={item.is_active}
-                    onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: item.id, is_active: checked })}
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {item.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {item.last_used_at
-                  ? formatDistanceToNow(new Date(item.last_used_at), { addSuffix: true })
-                  : 'Never'}
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true })}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openEditDialog(item)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(item)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </TableCell>
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[40%] min-w-[200px]">Knowledge Item</TableHead>
+              <TableHead className="w-[25%] min-w-[140px]">Scope</TableHead>
+              <TableHead className="w-[20%]">Updated</TableHead>
+              <TableHead className="w-[15%] text-right">Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium line-clamp-1 flex-1">{item.title}</p>
+                      <Switch
+                        checked={item.is_active}
+                        onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: item.id, is_active: checked })}
+                        className="scale-75"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-xs">{item.category}</Badge>
+                      {item.last_used_at && (
+                        <span className="text-xs text-muted-foreground">
+                          Used {formatDistanceToNow(new Date(item.last_used_at), { addSuffix: true })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    {item.scope === 'global' ? (
+                      <>
+                        <Globe className="h-3 w-3" />
+                        Global
+                      </>
+                    ) : (
+                      <>
+                        <Users className="h-3 w-3" />
+                        {item.groups?.display_name || 'Group'}
+                      </>
+                    )}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <p className="text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true })}
+                  </p>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => openEditDialog(item)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleDelete(item)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     );
   };
 
