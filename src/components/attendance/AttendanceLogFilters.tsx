@@ -46,22 +46,22 @@ export default function AttendanceLogFilters({
 }: AttendanceLogFiltersProps) {
   return (
     <Card>
-      <CardContent className="pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <CardContent className="p-4 sm:p-6 sm:pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {/* Date From */}
           <div className="space-y-2">
-            <Label>From Date</Label>
+            <Label className="text-xs sm:text-sm">From Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    'w-full justify-start text-left font-normal',
+                    'w-full justify-start text-left font-normal text-sm',
                     !dateFrom && 'text-muted-foreground'
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateFrom ? format(dateFrom, 'PPP') : 'Pick a date'}
+                  <CalendarIcon className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  {dateFrom ? format(dateFrom, 'PP') : 'Pick a date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
@@ -77,18 +77,18 @@ export default function AttendanceLogFilters({
 
           {/* Date To */}
           <div className="space-y-2">
-            <Label>To Date</Label>
+            <Label className="text-xs sm:text-sm">To Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    'w-full justify-start text-left font-normal',
+                    'w-full justify-start text-left font-normal text-sm',
                     !dateTo && 'text-muted-foreground'
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateTo ? format(dateTo, 'PPP') : 'Pick a date'}
+                  <CalendarIcon className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  {dateTo ? format(dateTo, 'PP') : 'Pick a date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
@@ -104,9 +104,9 @@ export default function AttendanceLogFilters({
 
           {/* Employee Filter */}
           <div className="space-y-2">
-            <Label>Employee</Label>
+            <Label className="text-xs sm:text-sm">Employee</Label>
             <Select value={employeeId} onValueChange={onEmployeeChange}>
-              <SelectTrigger>
+              <SelectTrigger className="text-sm">
                 <SelectValue placeholder="All employees" />
               </SelectTrigger>
               <SelectContent>
@@ -122,9 +122,9 @@ export default function AttendanceLogFilters({
 
           {/* Branch Filter */}
           <div className="space-y-2">
-            <Label>Branch</Label>
+            <Label className="text-xs sm:text-sm">Branch</Label>
             <Select value={branchId} onValueChange={onBranchChange}>
-              <SelectTrigger>
+              <SelectTrigger className="text-sm">
                 <SelectValue placeholder="All branches" />
               </SelectTrigger>
               <SelectContent>
@@ -140,9 +140,9 @@ export default function AttendanceLogFilters({
 
           {/* Event Type Filter */}
           <div className="space-y-2">
-            <Label>Event Type</Label>
+            <Label className="text-xs sm:text-sm">Event Type</Label>
             <Select value={eventType} onValueChange={onEventTypeChange}>
-              <SelectTrigger>
+              <SelectTrigger className="text-sm">
                 <SelectValue placeholder="All events" />
               </SelectTrigger>
               <SelectContent>
@@ -155,9 +155,9 @@ export default function AttendanceLogFilters({
 
           {/* Status Filter */}
           <div className="space-y-2">
-            <Label>Status</Label>
+            <Label className="text-xs sm:text-sm">Status</Label>
             <Select value={status} onValueChange={onStatusChange}>
-              <SelectTrigger>
+              <SelectTrigger className="text-sm">
                 <SelectValue placeholder="All status" />
               </SelectTrigger>
               <SelectContent>
@@ -170,9 +170,9 @@ export default function AttendanceLogFilters({
 
           {/* Reset Button */}
           <div className="space-y-2 flex items-end">
-            <Button variant="outline" onClick={onReset} className="w-full">
-              <X className="mr-2 h-4 w-4" />
-              Reset Filters
+            <Button variant="outline" onClick={onReset} className="w-full text-sm">
+              <X className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              Reset
             </Button>
           </div>
         </div>

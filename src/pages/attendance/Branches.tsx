@@ -135,16 +135,16 @@ export default function AttendanceBranches() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                <Building className="h-4 w-4 sm:h-5 sm:w-5" />
                 Branches
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm">
                 Manage branches, geofences, and announcement groups
               </CardDescription>
             </div>
@@ -153,12 +153,12 @@ export default function AttendanceBranches() {
               if (!open) resetForm();
             }}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Branch
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingBranch ? 'Edit' : 'Add'} Branch</DialogTitle>
                   <DialogDescription>
@@ -282,57 +282,65 @@ export default function AttendanceBranches() {
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Geofence Radius</TableHead>
-                <TableHead>Photo Required</TableHead>
-                <TableHead>LINE Group</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {branches?.map((branch) => (
-                <TableRow key={branch.id}>
-                  <TableCell className="font-medium">{branch.name}</TableCell>
-                  <TableCell className="capitalize">{branch.type}</TableCell>
-                  <TableCell>
-                    {branch.latitude && branch.longitude ? (
-                      <span className="text-xs font-mono">
-                        {branch.latitude.toFixed(4)}, {branch.longitude.toFixed(4)}
-                      </span>
-                    ) : (
-                      '-'
-                    )}
-                  </TableCell>
-                  <TableCell>{branch.radius_meters}m</TableCell>
-                  <TableCell>
-                    <Badge variant={branch.photo_required ? 'default' : 'secondary'}>
-                      {branch.photo_required ? 'Yes' : 'No'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={branch.line_group_id ? 'default' : 'secondary'}>
-                      {branch.line_group_id ? 'Configured' : 'Not Set'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(branch)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[120px] text-xs sm:text-sm py-2">Name</TableHead>
+                  <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Type</TableHead>
+                  <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Location</TableHead>
+                  <TableHead className="hidden lg:table-cell text-xs sm:text-sm py-2">Radius</TableHead>
+                  <TableHead className="text-xs sm:text-sm py-2">Photo</TableHead>
+                  <TableHead className="hidden lg:table-cell text-xs sm:text-sm py-2">LINE</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {branches?.map((branch) => (
+                  <TableRow key={branch.id}>
+                    <TableCell className="font-medium py-2">
+                      <div className="flex flex-col">
+                        <span className="text-sm">{branch.name}</span>
+                        <span className="text-[10px] sm:hidden text-muted-foreground capitalize">{branch.type}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell capitalize text-sm py-2">{branch.type}</TableCell>
+                    <TableCell className="hidden md:table-cell py-2">
+                      {branch.latitude && branch.longitude ? (
+                        <span className="text-[10px] font-mono">
+                          {branch.latitude.toFixed(4)}, {branch.longitude.toFixed(4)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-sm py-2">{branch.radius_meters}m</TableCell>
+                    <TableCell className="py-2">
+                      <Badge variant={branch.photo_required ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                        {branch.photo_required ? '✓' : '✗'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell py-2">
+                      <Badge variant={branch.line_group_id ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                        {branch.line_group_id ? 'Set' : 'No'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right py-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={() => handleEdit(branch)}
+                      >
+                        <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                    </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

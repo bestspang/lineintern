@@ -137,11 +137,11 @@ export default function AttendanceLogs() {
   const totalPages = logs?.count ? Math.ceil(logs.count / pageSize) : 0;
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Attendance Logs</h1>
-          <p className="text-muted-foreground">View and filter attendance records</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Attendance Logs</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">View and filter attendance records</p>
         </div>
         <AttendanceLogExport 
           logs={logs?.data || []} 
@@ -168,78 +168,82 @@ export default function AttendanceLogs() {
       />
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Logs ({logs?.count || 0} records)
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+            <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+            Logs ({logs?.count || 0})
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Recent attendance check-ins and check-outs
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs?.data?.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="font-medium">{log.employee?.full_name}</TableCell>
-                  <TableCell>
-                    <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'}>
-                      {log.event_type === 'check_in' ? 'Check In' : 'Check Out'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{log.branch?.name || '-'}</TableCell>
-                  <TableCell className="text-sm">
-                    {format(new Date(log.server_time), 'MMM dd, HH:mm')}
-                  </TableCell>
-                  <TableCell className="capitalize">{log.source}</TableCell>
-                  <TableCell>
-                    {log.is_flagged ? (
-                      <Badge variant="destructive" className="flex items-center gap-1 w-fit">
-                        <AlertTriangle className="h-3 w-3" />
-                        Flagged
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[120px] text-xs sm:text-sm py-2">Employee</TableHead>
+                  <TableHead className="text-xs sm:text-sm py-2">Event</TableHead>
+                  <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Branch</TableHead>
+                  <TableHead className="text-xs sm:text-sm py-2">Time</TableHead>
+                  <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Source</TableHead>
+                  <TableHead className="text-xs sm:text-sm py-2">Status</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs?.data?.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="font-medium text-sm py-2">{log.employee?.full_name}</TableCell>
+                    <TableCell className="py-2">
+                      <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                        {log.event_type === 'check_in' ? 'In' : 'Out'}
                       </Badge>
-                    ) : (
-                      <Badge variant="outline">OK</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewDetail(log)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm py-2">{log.branch?.name || '-'}</TableCell>
+                    <TableCell className="text-xs sm:text-sm py-2 whitespace-nowrap">
+                      {format(new Date(log.server_time), 'MMM dd, HH:mm')}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell capitalize text-sm py-2">{log.source}</TableCell>
+                    <TableCell className="py-2">
+                      {log.is_flagged ? (
+                        <Badge variant="destructive" className="flex items-center gap-1 w-fit h-4 sm:h-5 text-[10px] sm:text-xs">
+                          <AlertTriangle className="h-2 w-2 sm:h-3 sm:w-3" />
+                          Flag
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">OK</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right py-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={() => handleViewDetail(log)}
+                      >
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                    </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-between items-center mt-4">
-              <div className="text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4 px-4 sm:px-0">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Page {page + 1} of {totalPages}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={page === 0}
                   onClick={() => setPage(page - 1)}
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   Previous
                 </Button>
@@ -248,6 +252,7 @@ export default function AttendanceLogs() {
                   size="sm"
                   disabled={page >= totalPages - 1}
                   onClick={() => setPage(page + 1)}
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   Next
                 </Button>
