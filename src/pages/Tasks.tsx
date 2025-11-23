@@ -289,10 +289,10 @@ export default function Tasks() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[40%] min-w-[150px] text-xs sm:text-sm">Task</TableHead>
-                        <TableHead className="w-[25%] min-w-[100px] text-xs sm:text-sm hidden sm:table-cell">Group</TableHead>
-                        <TableHead className="w-[20%] min-w-[80px] text-xs sm:text-sm text-right">Due</TableHead>
-                        <TableHead className="w-[15%] min-w-[60px] text-xs sm:text-sm text-right">Actions</TableHead>
+                        <TableHead className="w-[50%] min-w-[200px] text-xs sm:text-sm">Task</TableHead>
+                        <TableHead className="w-[20%] min-w-[90px] text-xs sm:text-sm hidden sm:table-cell">Group</TableHead>
+                        <TableHead className="w-[18%] min-w-[70px] text-xs sm:text-sm text-right">Due</TableHead>
+                        <TableHead className="w-[12%] min-w-[60px] text-xs sm:text-sm text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -301,13 +301,13 @@ export default function Tasks() {
                         return (
                           <TableRow key={task.id} className="hover:bg-muted/50">
                             <TableCell className="py-2">
-                              <div className="space-y-1 min-w-0">
+                              <div className="space-y-1 min-w-0 max-w-full">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="text-xs sm:text-sm font-medium line-clamp-1 flex-1 min-w-0">{task.title}</p>
+                                  <p className="text-xs sm:text-sm font-medium flex-1 min-w-0 break-words">{task.title}</p>
                                   {getStatusBadge(task.status)}
                                 </div>
                                 {task.description && (
-                                  <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-1">
+                                  <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-1 break-words">
                                     {task.description}
                                   </p>
                                 )}
@@ -322,8 +322,8 @@ export default function Tasks() {
                               </div>
                             </TableCell>
                             <TableCell className="py-2 hidden sm:table-cell">
-                              <div className="space-y-0.5 min-w-0">
-                                <p className="text-xs font-medium truncate">{(task.groups as any)?.display_name || 'N/A'}</p>
+                              <div className="space-y-0.5 min-w-0 max-w-[120px]">
+                                <p className="text-[11px] font-medium truncate">{(task.groups as any)?.display_name || 'N/A'}</p>
                                 <p className="text-[10px] text-muted-foreground truncate">
                                   {(task.users as any)?.display_name || 'Unassigned'}
                                 </p>
