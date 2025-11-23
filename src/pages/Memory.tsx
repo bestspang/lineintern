@@ -1,15 +1,62 @@
 import { MemorySettings } from '@/components/MemorySettings';
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from '@/components/ui/dialog';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { useToast } from '@/hooks/use-toast';
+import { formatDistanceToNow } from 'date-fns';
+import { 
+  Pin, 
+  PinOff, 
+  Edit, 
+  Trash2, 
+  Plus, 
+  Search,
+  Brain,
+  Clock,
+  Users,
+  User,
+  Network,
+  LayoutGrid,
+  Settings as SettingsIcon
+} from 'lucide-react';
+import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
+import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
+import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // Working Memory Table Component
-function WorkingMemoryTable() {
+function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
   const { data: workingMemories, isLoading } = useQuery({
-    queryKey: ['working-memory'],
+    queryKey: ['working-memory', groupId, userId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('working_memory')
         .select(`
           *,
@@ -19,6 +66,15 @@ function WorkingMemoryTable() {
         .gt('expires_at', new Date().toISOString())
         .order('importance_score', { ascending: false })
         .order('created_at', { ascending: false });
+      
+      if (groupId) {
+        query = query.eq('group_id', groupId);
+      }
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -26,11 +82,10 @@ function WorkingMemoryTable() {
   
   const promoteToLongTermMutation = useMutation({
     mutationFn: async (workingMemory: any) => {
-      // Create long-term memory
       const { error: insertError } = await supabase
         .from('memory_items')
         .insert({
-          scope: workingMemory.group_id ? 'group' : 'global',
+          scope: workingMemory.group_id ? 'group' : workingMemory.user_id ? 'user' : 'global',
           group_id: workingMemory.group_id,
           user_id: workingMemory.user_id,
           category: 'context',
@@ -42,7 +97,6 @@ function WorkingMemoryTable() {
         });
       if (insertError) throw insertError;
       
-      // Delete from working memory
       const { error: deleteError } = await supabase
         .from('working_memory')
         .delete()
@@ -160,67 +214,22 @@ function WorkingMemoryTable() {
     </Table>
   );
 }
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
-} from '@/components/ui/dialog';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
-import { 
-  Pin, 
-  PinOff, 
-  Edit, 
-  Trash2, 
-  Plus, 
-  Search,
-  Brain,
-  Clock,
-  Users,
-  User,
-  Network,
-  LayoutGrid
-} from 'lucide-react';
-import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
-import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
-import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function Memory() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('by-group');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  
+  // Master context state
+  const [masterScope, setMasterScope] = useState<'group' | 'user' | 'global'>('group');
+  const [masterGroupId, setMasterGroupId] = useState<string>('');
+  const [masterUserId, setMasterUserId] = useState<string>('');
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState('memories');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingMemory, setEditingMemory] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [timelineScope, setTimelineScope] = useState<'all' | 'group' | 'user'>('all');
-  const [timelineGroupId, setTimelineGroupId] = useState<string>('');
-  const [timelineUserId, setTimelineUserId] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [selectedSocialGroupId, setSelectedSocialGroupId] = useState<string>('');
   const [viewMode, setViewMode] = useState<'graph' | 'cards'>('graph');
   
   const { data: groups } = useQuery({
@@ -235,18 +244,6 @@ export default function Memory() {
     },
   });
   
-  // Auto-refresh every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['memory-by-group'] });
-      queryClient.invalidateQueries({ queryKey: ['memory-by-user'] });
-      queryClient.invalidateQueries({ queryKey: ['memory-global'] });
-      queryClient.invalidateQueries({ queryKey: ['memory-timeline'] });
-      setLastUpdated(new Date());
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [queryClient]);
-  
   const { data: users } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
@@ -259,78 +256,121 @@ export default function Memory() {
     },
   });
   
-  // Fetch relationships for social intelligence tab
-  const { data: relationships } = useQuery({
-    queryKey: ['relationships', selectedSocialGroupId],
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-stats'] });
+      setLastUpdated(new Date());
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [queryClient]);
+  
+  // Fetch memory stats
+  const { data: stats } = useQuery({
+    queryKey: ['memory-stats', masterScope, masterGroupId, masterUserId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('user_relationships')
-        .select(`
-          *,
-          user_a:users!user_relationships_user_a_id_fkey(id, display_name, avatar_url),
-          user_b:users!user_relationships_user_b_id_fkey(id, display_name, avatar_url),
-          group:groups(id, display_name)
-        `)
-        .eq('group_id', selectedSocialGroupId)
-        .order('confidence_score', { ascending: false });
-      if (error) throw error;
-      return data;
+      let longTermQuery = supabase
+        .from('memory_items')
+        .select('importance_score', { count: 'exact' })
+        .eq('is_deleted', false);
+      
+      let workingQuery = supabase
+        .from('working_memory')
+        .select('*', { count: 'exact' })
+        .gt('expires_at', new Date().toISOString());
+      
+      if (masterScope === 'group' && masterGroupId) {
+        longTermQuery = longTermQuery.eq('group_id', masterGroupId);
+        workingQuery = workingQuery.eq('group_id', masterGroupId);
+      } else if (masterScope === 'user' && masterUserId) {
+        longTermQuery = longTermQuery.eq('user_id', masterUserId);
+        workingQuery = workingQuery.eq('user_id', masterUserId);
+      } else if (masterScope === 'global') {
+        longTermQuery = longTermQuery.eq('scope', 'global');
+      }
+      
+      const [longTermResult, workingResult] = await Promise.all([
+        longTermQuery,
+        workingQuery
+      ]);
+      
+      if (longTermResult.error) throw longTermResult.error;
+      if (workingResult.error) throw workingResult.error;
+      
+      const avgImportance = longTermResult.data && longTermResult.data.length > 0
+        ? (longTermResult.data.reduce((sum, m) => sum + m.importance_score, 0) / longTermResult.data.length * 100).toFixed(0)
+        : '0';
+      
+      return {
+        longTermCount: longTermResult.count || 0,
+        workingCount: workingResult.count || 0,
+        avgImportance: avgImportance + '%',
+      };
     },
-    enabled: !!selectedSocialGroupId
   });
-
-  // Fetch user profiles for social intelligence tab
-  const { data: userProfiles } = useQuery({
-    queryKey: ['user-profiles', selectedSocialGroupId],
+  
+  // Fetch memories based on master context
+  const { data: memories, isLoading } = useQuery({
+    queryKey: ['memories', masterScope, masterGroupId, masterUserId, searchQuery],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('user_profiles')
+      let query = supabase
+        .from('memory_items')
         .select(`
           *,
           user:users(id, display_name, avatar_url),
           group:groups(id, display_name)
         `)
-        .eq('group_id', selectedSocialGroupId)
-        .order('observation_count', { ascending: false });
+        .eq('is_deleted', false);
+      
+      if (masterScope === 'group' && masterGroupId) {
+        query = query.eq('scope', 'group').eq('group_id', masterGroupId);
+      } else if (masterScope === 'user' && masterUserId) {
+        query = query.eq('scope', 'user').eq('user_id', masterUserId);
+      } else if (masterScope === 'global') {
+        query = query.eq('scope', 'global');
+      } else {
+        return [];
+      }
+      
+      if (searchQuery) {
+        query = query.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%`);
+      }
+      
+      query = query.order('pinned', { ascending: false })
+                   .order('importance_score', { ascending: false })
+                   .order('created_at', { ascending: false });
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    enabled: !!selectedSocialGroupId
+    enabled: (masterScope === 'group' && !!masterGroupId) ||
+             (masterScope === 'user' && !!masterUserId) ||
+             masterScope === 'global'
   });
-  
-  // Process relationship type distribution data
-  const relationshipTypeData = relationships ? 
-    Object.entries(
-      relationships.reduce((acc: Record<string, number>, rel) => {
-        const type = rel.relationship_type || 'unknown';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {})
-    ).map(([type, count]) => ({
-      type: type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' '),
-      count
-    }))
-    : [];
   
   // Fetch timeline data
   const { data: timelineData } = useQuery({
-    queryKey: ['memory-timeline', timelineScope, timelineGroupId, timelineUserId],
+    queryKey: ['memory-timeline', masterScope, masterGroupId, masterUserId],
     queryFn: async () => {
       let query = supabase
         .from('memory_items')
         .select('id, scope, category, created_at, updated_at, last_used_at, importance_score')
         .eq('is_deleted', false);
       
-      if (timelineScope === 'group' && timelineGroupId) {
-        query = query.eq('group_id', timelineGroupId);
-      } else if (timelineScope === 'user' && timelineUserId) {
-        query = query.eq('user_id', timelineUserId);
+      if (masterScope === 'group' && masterGroupId) {
+        query = query.eq('group_id', masterGroupId);
+      } else if (masterScope === 'user' && masterUserId) {
+        query = query.eq('user_id', masterUserId);
+      } else if (masterScope === 'global') {
+        query = query.eq('scope', 'global');
       }
       
       const { data, error } = await query;
       if (error) throw error;
       
-      // Process data for timeline charts
       const now = new Date();
       const last30Days = Array.from({ length: 30 }, (_, i) => {
         const date = new Date(now);
@@ -338,7 +378,6 @@ export default function Memory() {
         return date.toISOString().split('T')[0];
       });
       
-      // Group by date
       const createdByDate: Record<string, number> = {};
       const updatedByDate: Record<string, number> = {};
       const usedByDate: Record<string, number> = {};
@@ -362,7 +401,6 @@ export default function Memory() {
         used: usedByDate[date] || 0,
       }));
       
-      // Category distribution
       const categoryCount: Record<string, number> = {};
       data?.forEach((memory) => {
         categoryCount[memory.category] = (categoryCount[memory.category] || 0) + 1;
@@ -373,65 +411,60 @@ export default function Memory() {
         count,
       }));
       
-      // Recent activity (last 10 memories by activity)
-      const recentActivity = data
-        ?.map((m) => ({
-          ...m,
-          lastActivity: m.last_used_at || m.updated_at,
-        }))
-        .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime())
-        .slice(0, 10);
-      
-      return {
-        activityData,
-        categoryData,
-        recentActivity,
-        totalMemories: data?.length || 0,
-        avgImportance: data?.length 
-          ? (data.reduce((sum, m) => sum + m.importance_score, 0) / data.length).toFixed(2)
-          : '0',
-      };
+      return { activityData, categoryData };
     },
   });
-
-  const { data: memories, isLoading } = useQuery({
-    queryKey: ['memories', activeTab, selectedGroupId, selectedUserId, searchQuery],
+  
+  // Fetch relationships for social intelligence tab
+  const { data: relationships } = useQuery({
+    queryKey: ['relationships', masterGroupId],
     queryFn: async () => {
-      let query = supabase
-        .from('memory_items')
+      const { data, error } = await supabase
+        .from('user_relationships')
+        .select(`
+          *,
+          user_a:users!user_relationships_user_a_id_fkey(id, display_name, avatar_url),
+          user_b:users!user_relationships_user_b_id_fkey(id, display_name, avatar_url),
+          group:groups(id, display_name)
+        `)
+        .eq('group_id', masterGroupId)
+        .order('confidence_score', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: masterScope === 'group' && !!masterGroupId
+  });
+
+  const { data: userProfiles } = useQuery({
+    queryKey: ['user-profiles', masterGroupId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_profiles')
         .select(`
           *,
           user:users(id, display_name, avatar_url),
           group:groups(id, display_name)
         `)
-        .eq('is_deleted', false);
-      
-      if (activeTab === 'by-group' && selectedGroupId) {
-        query = query.eq('scope', 'group').eq('group_id', selectedGroupId);
-      } else if (activeTab === 'by-user' && selectedUserId) {
-        query = query.eq('scope', 'user').eq('user_id', selectedUserId);
-      } else if (activeTab === 'global') {
-        query = query.eq('scope', 'global');
-      } else {
-        return [];
-      }
-      
-      if (searchQuery) {
-        query = query.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%`);
-      }
-      
-      query = query.order('pinned', { ascending: false })
-                   .order('importance_score', { ascending: false })
-                   .order('created_at', { ascending: false });
-      
-      const { data, error } = await query;
+        .eq('group_id', masterGroupId)
+        .order('observation_count', { ascending: false });
       if (error) throw error;
       return data;
     },
-    enabled: (activeTab === 'by-group' && !!selectedGroupId) ||
-             (activeTab === 'by-user' && !!selectedUserId) ||
-             activeTab === 'global'
+    enabled: masterScope === 'group' && !!masterGroupId
   });
+  
+  const relationshipTypeData = relationships ? 
+    Object.entries(
+      relationships.reduce((acc: Record<string, number>, rel) => {
+        const type = rel.relationship_type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {})
+    ).map(([type, count]) => ({
+      type: type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' '),
+      count
+    }))
+    : [];
   
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -508,9 +541,6 @@ export default function Memory() {
           <p className="text-lg text-muted-foreground mb-2">No memories yet</p>
           <p className="text-sm text-muted-foreground">
             Keep chatting in LINE and memories will appear automatically.
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Memories are extracted from meaningful conversations (preferences, facts, events).
           </p>
         </div>
       );
@@ -602,9 +632,9 @@ export default function Memory() {
           </div>
           <Button onClick={() => {
             setEditingMemory({
-              scope: activeTab === 'global' ? 'global' : activeTab === 'by-group' ? 'group' : 'user',
-              group_id: selectedGroupId,
-              user_id: selectedUserId,
+              scope: masterScope,
+              group_id: masterScope === 'group' ? masterGroupId : null,
+              user_id: masterScope === 'user' ? masterUserId : null,
               category: 'meta',
               importance_score: 0.5,
               pinned: false
@@ -617,6 +647,92 @@ export default function Memory() {
         </div>
       </div>
       
+      {/* Master Context Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Context Selector</CardTitle>
+          <CardDescription>Choose the scope to view memories</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <Label>Scope</Label>
+              <Select value={masterScope} onValueChange={(val: any) => setMasterScope(val)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="group">Group</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="global">Global</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {masterScope === 'group' && (
+              <div className="flex-1">
+                <Label>Select Group</Label>
+                <Select value={masterGroupId} onValueChange={setMasterGroupId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a group..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups?.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            {masterScope === 'user' && (
+              <div className="flex-1">
+                <Label>Select User</Label>
+                <Select value={masterUserId} onValueChange={setMasterUserId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a user..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users?.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-3xl font-bold">{stats?.longTermCount || 0}</div>
+            <p className="text-sm text-muted-foreground">Long-term Memories</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-3xl font-bold">{stats?.workingCount || 0}</div>
+            <p className="text-sm text-muted-foreground">Working Memories</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-3xl font-bold">{stats?.avgImportance || '0%'}</div>
+            <p className="text-sm text-muted-foreground">Avg Importance</p>
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Search & Tabs */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
@@ -631,53 +747,29 @@ export default function Memory() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="by-group">Long-Term: Groups</TabsTrigger>
-              <TabsTrigger value="by-user">Long-Term: Users</TabsTrigger>
-              <TabsTrigger value="global">Long-Term: Global</TabsTrigger>
-              <TabsTrigger value="working">Working Memory</TabsTrigger>
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              <TabsTrigger value="social">Social Intelligence</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="memories">
+                <Brain className="w-4 h-4 mr-2" />
+                Memories
+              </TabsTrigger>
+              <TabsTrigger value="timeline">
+                <Clock className="w-4 h-4 mr-2" />
+                Timeline
+              </TabsTrigger>
+              {masterScope === 'group' && (
+                <TabsTrigger value="social">
+                  <Users className="w-4 h-4 mr-2" />
+                  Social Intelligence
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="settings">
+                <SettingsIcon className="w-4 h-4 mr-2" />
+                Settings
+              </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="by-group" className="space-y-4">
-              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a group..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups?.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedGroupId && renderMemoryTable()}
-            </TabsContent>
-            
-            <TabsContent value="by-user" className="space-y-4">
-              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a user..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {users?.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedUserId && renderMemoryTable()}
-            </TabsContent>
-            
-            <TabsContent value="global" className="space-y-4">
-              {renderMemoryTable()}
-            </TabsContent>
-            
-            <TabsContent value="working" className="space-y-4">
+            <TabsContent value="memories" className="space-y-6">
+              {/* Working Memory Section */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -689,90 +781,35 @@ export default function Memory() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <WorkingMemoryTable />
+                  <WorkingMemoryTable 
+                    groupId={masterScope === 'group' ? masterGroupId : undefined}
+                    userId={masterScope === 'user' ? masterUserId : undefined}
+                  />
+                </CardContent>
+              </Card>
+              
+              {/* Long-term Memory Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="w-5 h-5" />
+                    Long-Term Memories
+                  </CardTitle>
+                  <CardDescription>
+                    Permanent memories learned from conversations
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="text-center py-8">Loading...</div>
+                  ) : (
+                    renderMemoryTable()
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <TabsContent value="settings" className="space-y-4">
-              <MemorySettings />
-            </TabsContent>
-            
             <TabsContent value="timeline" className="space-y-6">
-              {/* Timeline Scope Selector */}
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <Label>View Timeline For</Label>
-                  <Select value={timelineScope} onValueChange={(val: any) => setTimelineScope(val)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Memories</SelectItem>
-                      <SelectItem value="group">Specific Group</SelectItem>
-                      <SelectItem value="user">Specific User</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {timelineScope === 'group' && (
-                  <div className="flex-1">
-                    <Label>Select Group</Label>
-                    <Select value={timelineGroupId} onValueChange={setTimelineGroupId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a group..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {groups?.map((group) => (
-                          <SelectItem key={group.id} value={group.id}>
-                            {group.display_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                {timelineScope === 'user' && (
-                  <div className="flex-1">
-                    <Label>Select User</Label>
-                    <Select value={timelineUserId} onValueChange={setTimelineUserId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a user..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {users?.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.display_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-              
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Total Memories</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">{timelineData?.totalMemories || 0}</div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Avg. Importance</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">{timelineData?.avgImportance || '0'}</div>
-                  </CardContent>
-                </Card>
-              </div>
-              
               {/* Activity Timeline Chart */}
               <Card>
                 <CardHeader>
@@ -868,66 +905,10 @@ export default function Memory() {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-              
-              {/* Recent Activity List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Memory Activity</CardTitle>
-                  <CardDescription>
-                    Most recently created, updated, or used memories
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {timelineData?.recentActivity && timelineData.recentActivity.length > 0 ? (
-                    <div className="space-y-3">
-                      {timelineData.recentActivity.map((memory: any) => (
-                        <div 
-                          key={memory.id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                {memory.category}
-                              </Badge>
-                              <Badge variant="secondary" className="text-xs">
-                                {memory.scope}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-muted-foreground">
-                              {formatDistanceToNow(new Date(memory.lastActivity), { addSuffix: true })}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      No recent activity
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
             </TabsContent>
             
             <TabsContent value="social" className="space-y-6">
-              {/* Group Selector */}
-              <Select value={selectedSocialGroupId} onValueChange={setSelectedSocialGroupId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a group to view social dynamics..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups?.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {selectedSocialGroupId ? (
+              {masterGroupId ? (
                 <>
                   {/* Stats Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -979,121 +960,107 @@ export default function Memory() {
                     </Card>
                   </div>
                   
-                  {/* Main Content: Network Graph + Cards Toggle */}
-                  <div className="space-y-4">
-                    {/* View Mode Toggle */}
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Relationship Visualization</h3>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={viewMode === 'graph' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setViewMode('graph')}
-                        >
-                          <Network className="w-4 h-4 mr-2" />
-                          Graph
-                        </Button>
-                        <Button
-                          variant={viewMode === 'cards' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setViewMode('cards')}
-                        >
-                          <LayoutGrid className="w-4 h-4 mr-2" />
-                          Cards
-                        </Button>
+                  {/* View Mode Toggle */}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Relationship Visualization</h3>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={viewMode === 'graph' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setViewMode('graph')}
+                      >
+                        <Network className="w-4 h-4 mr-2" />
+                        Graph
+                      </Button>
+                      <Button
+                        variant={viewMode === 'cards' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setViewMode('cards')}
+                      >
+                        <LayoutGrid className="w-4 h-4 mr-2" />
+                        Cards
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Network Graph View */}
+                  {viewMode === 'graph' && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Relationship Network</CardTitle>
+                        <CardDescription>
+                          Interactive visualization of connections between users
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {relationships && relationships.length > 0 ? (
+                          <RelationshipGraph relationships={relationships} />
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                            <p>No relationships detected yet</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Cards View */}
+                  {viewMode === 'cards' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Relationship Network</CardTitle>
+                            <CardDescription>
+                              Detected connections between users in this group
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {relationships && relationships.length > 0 ? (
+                              <div className="space-y-4">
+                                {relationships.map(rel => (
+                                  <RelationshipCard key={rel.id} relationship={rel} />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                <p>No relationships detected yet</p>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>User Profiles</CardTitle>
+                            <CardDescription>
+                              AI-learned personality and preferences
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {userProfiles && userProfiles.length > 0 ? (
+                              <div className="space-y-4">
+                                {userProfiles.map(profile => (
+                                  <UserProfileCard key={profile.id} profile={profile} />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                <p>No user profiles yet</p>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
                       </div>
                     </div>
-
-                    {/* Network Graph View */}
-                    {viewMode === 'graph' && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Relationship Network</CardTitle>
-                          <CardDescription>
-                            Interactive visualization of connections between users
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          {relationships && relationships.length > 0 ? (
-                            <RelationshipGraph relationships={relationships} />
-                          ) : (
-                            <div className="text-center py-8 text-muted-foreground">
-                              <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                              <p>No relationships detected yet</p>
-                              <p className="text-xs mt-1">
-                                The bot needs more conversations to learn relationships
-                              </p>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Cards View */}
-                    {viewMode === 'cards' && (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Left Column: Relationships */}
-                        <div className="space-y-4">
-                          <Card>
-                            <CardHeader>
-                              <CardTitle>Relationship Network</CardTitle>
-                              <CardDescription>
-                                Detected connections between users in this group
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              {relationships && relationships.length > 0 ? (
-                                <div className="space-y-4">
-                                  {relationships.map(rel => (
-                                    <RelationshipCard key={rel.id} relationship={rel} />
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center py-8 text-muted-foreground">
-                                  <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                  <p>No relationships detected yet</p>
-                                  <p className="text-xs mt-1">
-                                    The bot needs more conversations to learn relationships
-                                  </p>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </div>
-                        
-                        {/* Right Column: User Profiles */}
-                        <div className="space-y-4">
-                          <Card>
-                            <CardHeader>
-                              <CardTitle>User Profiles</CardTitle>
-                              <CardDescription>
-                                AI-learned personality and preferences
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              {userProfiles && userProfiles.length > 0 ? (
-                                <div className="space-y-4">
-                                  {userProfiles.map(profile => (
-                                    <UserProfileCard key={profile.id} profile={profile} />
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center py-8 text-muted-foreground">
-                                  <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                  <p>No user profiles yet</p>
-                                  <p className="text-xs mt-1">
-                                    The bot will learn about users as they interact
-                                  </p>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  )}
                   
-                  {/* Relationship Type Distribution Chart */}
+                  {/* Relationship Type Distribution */}
                   {relationshipTypeData.length > 0 && (
                     <Card>
                       <CardHeader>
@@ -1136,10 +1103,14 @@ export default function Memory() {
                   <Users className="w-16 h-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
                   <h3 className="text-lg font-medium mb-2">Select a Group</h3>
                   <p className="text-sm text-muted-foreground">
-                    Choose a group above to see the social dynamics and relationships
+                    Social Intelligence is only available for groups. Please select a group in the Context Selector above.
                   </p>
                 </div>
               )}
+            </TabsContent>
+            
+            <TabsContent value="settings" className="space-y-4">
+              <MemorySettings />
             </TabsContent>
           </Tabs>
         </CardContent>
