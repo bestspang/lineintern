@@ -33,6 +33,15 @@ serve(async (req) => {
     if (wmError) throw wmError;
 
     console.log(`[Memory Consolidator] Found ${workingMemories?.length || 0} working memories to evaluate`);
+    if (workingMemories && workingMemories.length > 0) {
+      console.log(`[Memory Consolidator] Sample memories:`, 
+        workingMemories.slice(0, 3).map(m => ({
+          type: m.memory_type,
+          importance: m.importance_score,
+          content: m.content.substring(0, 80) + '...'
+        }))
+      );
+    }
 
     let consolidated = 0;
     let deleted = 0;
