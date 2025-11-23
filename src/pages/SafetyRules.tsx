@@ -146,22 +146,22 @@ export default function SafetyRules() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[80px] text-xs sm:text-sm">Status</TableHead>
-                        <TableHead className="min-w-[160px] text-xs sm:text-sm">Name</TableHead>
-                        <TableHead className="min-w-[100px] text-xs sm:text-sm">Type</TableHead>
-                        <TableHead className="min-w-[180px] text-xs sm:text-sm">Pattern</TableHead>
-                        <TableHead className="min-w-[90px] text-xs sm:text-sm">Severity</TableHead>
-                        <TableHead className="min-w-[100px] text-xs sm:text-sm">Action</TableHead>
-                        <TableHead className="min-w-[90px] text-xs sm:text-sm">Scope</TableHead>
-                        <TableHead className="min-w-[80px] text-xs sm:text-sm text-center">Matches</TableHead>
-                        <TableHead className="min-w-[120px] text-xs sm:text-sm">Last Matched</TableHead>
-                        <TableHead className="min-w-[80px] text-xs sm:text-sm text-right">Actions</TableHead>
+                        <TableHead className="min-w-[60px] text-[10px] sm:text-xs">Status</TableHead>
+                        <TableHead className="min-w-[120px] text-[10px] sm:text-xs">Name</TableHead>
+                        <TableHead className="hidden sm:table-cell min-w-[100px] text-[10px] sm:text-xs">Type</TableHead>
+                        <TableHead className="min-w-[150px] text-[10px] sm:text-xs">Pattern</TableHead>
+                        <TableHead className="min-w-[70px] text-[10px] sm:text-xs">Severity</TableHead>
+                        <TableHead className="min-w-[80px] text-[10px] sm:text-xs">Action</TableHead>
+                        <TableHead className="hidden sm:table-cell min-w-[90px] text-[10px] sm:text-xs">Scope</TableHead>
+                        <TableHead className="hidden sm:table-cell min-w-[80px] text-[10px] sm:text-xs text-center">Matches</TableHead>
+                        <TableHead className="min-w-[100px] text-[10px] sm:text-xs">Last Matched</TableHead>
+                        <TableHead className="min-w-[60px] text-[10px] sm:text-xs text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {rules.map((rule) => (
                         <TableRow key={rule.id}>
-                          <TableCell className="py-2">
+                          <TableCell className="py-1 sm:py-2">
                             <Switch
                               checked={rule.is_enabled}
                               onCheckedChange={() =>
@@ -169,65 +169,65 @@ export default function SafetyRules() {
                               }
                             />
                           </TableCell>
-                          <TableCell className="py-2 align-top">
-                            <div className="font-medium text-sm truncate max-w-[200px]">{rule.name}</div>
+                          <TableCell className="py-1 sm:py-2 align-top">
+                            <div className="font-medium text-[10px] sm:text-xs truncate max-w-[120px]">{rule.name}</div>
                             {rule.description && (
-                              <div className="text-[11px] text-muted-foreground line-clamp-2 break-words max-w-[260px]">
+                              <div className="text-[10px] sm:text-xs text-muted-foreground line-clamp-2 break-words max-w-[150px]">
                                 {rule.description}
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="py-2 align-top">
-                            <Badge variant="outline" className="text-[11px]">
+                          <TableCell className="hidden sm:table-cell py-1 sm:py-2 align-top">
+                            <Badge variant="outline" className="text-[10px] sm:text-xs">
                               {rule.rule_type}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-2 align-top max-w-xs">
-                            <code className="text-[11px] bg-muted px-2 py-1 rounded break-all block">
+                          <TableCell className="py-1 sm:py-2 align-top max-w-[150px]">
+                            <code className="text-[10px] sm:text-xs bg-muted px-2 py-1 rounded break-all block">
                               {rule.pattern}
                             </code>
                           </TableCell>
-                          <TableCell className="py-2 align-top">
+                          <TableCell className="py-1 sm:py-2 align-top">
                             {getSeverityBadge(rule.severity)}
                           </TableCell>
-                          <TableCell className="py-2 align-top">
-                            <Badge variant="secondary" className="text-[11px]">
+                          <TableCell className="py-1 sm:py-2 align-top">
+                            <Badge variant="secondary" className="text-[10px] sm:text-xs">
                               {rule.action}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-2 align-top">
-                            <Badge variant="outline" className="text-[11px]">
+                          <TableCell className="hidden sm:table-cell py-1 sm:py-2 align-top">
+                            <Badge variant="outline" className="text-[10px] sm:text-xs">
                               {rule.scope}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-2 text-center align-top text-sm">
+                          <TableCell className="hidden sm:table-cell py-1 sm:py-2 text-center align-top text-[10px] sm:text-xs">
                             {rule.match_count || 0}
                           </TableCell>
-                          <TableCell className="py-2 align-top text-[11px] text-muted-foreground">
+                          <TableCell className="py-1 sm:py-2 align-top text-[10px] sm:text-xs text-muted-foreground">
                             {rule.last_matched_at
                               ? formatDistanceToNow(new Date(rule.last_matched_at), { addSuffix: true })
                               : 'Never'}
                           </TableCell>
-                          <TableCell className="py-2 align-top">
-                            <div className="flex gap-1 justify-end">
+                          <TableCell className="py-1 sm:py-2 align-top">
+                            <div className="flex gap-0.5 justify-end">
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7"
+                                className="h-6 w-6"
                                 onClick={() => {
                                   setEditingRule(rule);
                                   setIsDialogOpen(true);
                                 }}
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="w-3 h-3" />
                               </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7"
+                                className="h-6 w-6"
                                 onClick={() => deleteRuleMutation.mutate(rule.id)}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
                           </TableCell>
