@@ -160,19 +160,19 @@ export default function AttendanceAnalytics() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8" />
             Attendance Analytics
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Insights and trends from attendance data
           </p>
         </div>
         <Select value={dateRange} onValueChange={setDateRange}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px] text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -185,85 +185,85 @@ export default function AttendanceAnalytics() {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Check-Ins</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Check-Ins</CardTitle>
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCheckIns}</div>
-            <p className="text-xs text-muted-foreground">
-              {totalCheckOuts} check-outs recorded
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{totalCheckIns}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              {totalCheckOuts} check-outs
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Employees</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Employees</CardTitle>
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{uniqueEmployees}</div>
-            <p className="text-xs text-muted-foreground">
-              Unique employees tracked
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{uniqueEmployees}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              Unique tracked
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Flagged Events</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Flagged</CardTitle>
+            <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{flaggedCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {totalCheckIns > 0 ? Math.round((flaggedCount / totalCheckIns) * 100) : 0}% of total check-ins
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold text-destructive">{flaggedCount}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              {totalCheckIns > 0 ? Math.round((flaggedCount / totalCheckIns) * 100) : 0}% of total
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Daily Check-Ins</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Avg Daily</CardTitle>
+            <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">
               {dailyTrend ? Math.round(totalCheckIns / dailyTrend.length) : 0}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Per day average
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              Per day
             </p>
           </CardContent>
         </Card>
       </div>
 
       <Tabs defaultValue="trends" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="hours">Peak Hours</TabsTrigger>
-          <TabsTrigger value="late">Late Patterns</TabsTrigger>
-          <TabsTrigger value="branches">Branch Comparison</TabsTrigger>
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="trends" className="text-xs sm:text-sm">Trends</TabsTrigger>
+          <TabsTrigger value="hours" className="text-xs sm:text-sm hidden sm:inline-flex">Peak Hours</TabsTrigger>
+          <TabsTrigger value="late" className="text-xs sm:text-sm">Late</TabsTrigger>
+          <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">Branches</TabsTrigger>
         </TabsList>
 
         {/* Daily Trends */}
         <TabsContent value="trends" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Daily Attendance Trend</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg md:text-xl">Daily Attendance Trend</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Check-ins and check-outs over time
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px] md:h-[400px]">
                 <LineChart data={dailyTrend}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="date" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <XAxis dataKey="date" style={{ fontSize: '11px' }} />
+                  <YAxis style={{ fontSize: '11px' }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--background))',
@@ -295,18 +295,18 @@ export default function AttendanceAnalytics() {
         {/* Peak Hours */}
         <TabsContent value="hours" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Peak Check-In Hours</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg md:text-xl">Peak Check-In Hours</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Distribution of check-ins throughout the day
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px] md:h-[400px]">
                 <BarChart data={peakHours}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="hour" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <XAxis dataKey="hour" style={{ fontSize: '11px' }} />
+                  <YAxis style={{ fontSize: '11px' }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--background))',
@@ -323,16 +323,16 @@ export default function AttendanceAnalytics() {
 
         {/* Late Patterns */}
         <TabsContent value="late" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <Card>
-              <CardHeader>
-                <CardTitle>Late Arrivals by Branch</CardTitle>
-                <CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg">Late Arrivals by Branch</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   Percentage of late check-ins per branch
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <ResponsiveContainer width="100%" height={200} className="sm:h-[250px] md:h-[300px]">
                   <BarChart data={lateByBranch}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="branch" className="text-xs" />
@@ -351,14 +351,14 @@ export default function AttendanceAnalytics() {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Flagged Reasons</CardTitle>
-                <CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg">Flagged Reasons</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   Distribution of attendance flags
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <ResponsiveContainer width="100%" height={200} className="sm:h-[250px] md:h-[300px]">
                   <PieChart>
                     <Pie
                       data={flaggedReasons}
@@ -388,28 +388,28 @@ export default function AttendanceAnalytics() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Late Arrival Details</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Late Arrival Details</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="space-y-3 sm:space-y-4">
                 {lateByBranch?.map((branch, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{branch.branch}</span>
+                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+                      <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium text-sm truncate">{branch.branch}</span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        {branch.late} / {branch.total} late
+                    <div className="flex items-center gap-2 sm:gap-4 ml-5 sm:ml-0">
+                      <div className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+                        {branch.late} / {branch.total}
                       </div>
-                      <div className="w-32 bg-muted rounded-full h-2">
+                      <div className="w-20 sm:w-32 bg-muted rounded-full h-2">
                         <div 
                           className="bg-destructive h-2 rounded-full transition-all"
                           style={{ width: `${branch.latePercentage}%` }}
                         />
                       </div>
-                      <span className="text-sm font-medium w-12 text-right">
+                      <span className="text-xs sm:text-sm font-medium w-8 sm:w-12 text-right">
                         {branch.latePercentage}%
                       </span>
                     </div>
@@ -423,18 +423,18 @@ export default function AttendanceAnalytics() {
         {/* Branch Comparison */}
         <TabsContent value="branches" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Branch Performance Comparison</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg md:text-xl">Branch Performance</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Check-ins and flagged events by branch
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px] md:h-[400px]">
                 <BarChart data={branchComparison}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="branch" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <XAxis dataKey="branch" style={{ fontSize: '11px' }} />
+                  <YAxis style={{ fontSize: '11px' }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--background))',
@@ -450,11 +450,11 @@ export default function AttendanceAnalytics() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {branchComparison?.map((branch, idx) => (
               <Card key={idx}>
-                <CardHeader>
-                  <CardTitle className="text-base">{branch.branch}</CardTitle>
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="text-sm sm:text-base">{branch.branch}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-center justify-between">

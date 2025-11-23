@@ -180,16 +180,16 @@ export default function AttendanceEmployees() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                <Users className="h-4 w-4 sm:h-5 sm:w-5" />
                 Employees
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm">
                 Manage employee records and LINE account linking
               </CardDescription>
             </div>
@@ -198,12 +198,12 @@ export default function AttendanceEmployees() {
               if (!open) resetForm();
             }}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Employee
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingEmployee ? 'Edit' : 'Add'} Employee</DialogTitle>
                   <DialogDescription>
@@ -418,68 +418,64 @@ export default function AttendanceEmployees() {
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>LINE User</TableHead>
-                <TableHead>Announcement Group</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[80px] text-xs sm:text-sm py-2">Code</TableHead>
+                  <TableHead className="min-w-[120px] text-xs sm:text-sm py-2">Name</TableHead>
+                  <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Role</TableHead>
+                  <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Branch</TableHead>
+                  <TableHead className="hidden lg:table-cell text-xs sm:text-sm py-2">LINE</TableHead>
+                <TableHead className="text-xs sm:text-sm py-2">Status</TableHead>
+                <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {employees?.map((employee) => (
                 <TableRow key={employee.id}>
-                  <TableCell className="font-medium">{employee.code}</TableCell>
-                  <TableCell>{employee.full_name}</TableCell>
-                  <TableCell className="capitalize">{employee.role}</TableCell>
-                  <TableCell>{employee.branch?.name || '-'}</TableCell>
-                  <TableCell>
+                  <TableCell className="font-medium font-mono text-xs sm:text-sm py-2">{employee.code}</TableCell>
+                  <TableCell className="py-2">
+                    <div className="flex flex-col">
+                      <span className="font-medium text-sm">{employee.full_name}</span>
+                      <span className="text-[10px] sm:hidden text-muted-foreground capitalize">{employee.role}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell capitalize text-sm py-2">{employee.role}</TableCell>
+                  <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
+                  <TableCell className="hidden lg:table-cell py-2">
                     {employee.line_user_id ? (
-                      <div className="flex items-center gap-2">
-                        <LinkIcon className="h-3 w-3 text-green-500" />
-                        <span className="text-xs truncate max-w-[100px]">
-                          {lineUsers?.find(u => u.line_user_id === employee.line_user_id)?.display_name || 'Unknown'}
-                        </span>
-                      </div>
+                      <Badge variant="default" className="flex items-center gap-1 w-fit h-4 sm:h-5 text-[10px] sm:text-xs">
+                        <LinkIcon className="h-2 w-2 sm:h-3 sm:w-3" />
+                        Linked
+                      </Badge>
                     ) : (
-                      <Badge variant="secondary">Not Linked</Badge>
+                      <Badge variant="secondary" className="h-4 sm:h-5 text-[10px] sm:text-xs">Not Linked</Badge>
                     )}
                   </TableCell>
-                  <TableCell>
-                    {employee.announcement_group_line_id ? (
-                      <span className="text-xs truncate max-w-[120px]">
-                        {lineGroups?.find(g => g.line_group_id === employee.announcement_group_line_id)?.display_name || 'Unknown'}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">None</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={employee.is_active ? 'default' : 'secondary'}>
+                  <TableCell className="py-2">
+                    <Badge variant={employee.is_active ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
                       {employee.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <TableCell className="text-right py-2">
+                    <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => navigate(`/attendance/employees/${employee.id}`)}
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={() => handleEdit(employee)}
                       >
-                        <Eye className="h-4 w-4" />
+                        <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleEdit(employee)}
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={() => navigate(`/attendance/employees/${employee.id}`)}
                       >
-                        <Edit className="h-4 w-4" />
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                     </div>
                   </TableCell>
@@ -487,6 +483,7 @@ export default function AttendanceEmployees() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
