@@ -23,7 +23,8 @@ import {
   Building,
   Calendar,
   Camera,
-  Shield
+  Shield,
+  Bell
 } from 'lucide-react';
 import {
   Sidebar,
@@ -95,6 +96,7 @@ const navigationGroups = [
       { title: 'Photos', url: '/attendance/photos', icon: Camera },
       { title: 'Fraud Detection', url: '/attendance/fraud-detection', icon: Shield },
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
+      { title: 'Reminder Logs', url: '/attendance/reminder-logs', icon: Bell },
       { title: 'Settings', url: '/attendance/settings', icon: Settings },
     ],
   },
