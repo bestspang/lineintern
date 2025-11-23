@@ -32,8 +32,11 @@ export default function AttendanceEmployees() {
     branch_id: '',
     line_user_id: '',
     announcement_group_line_id: '',
+    working_time_type: 'time_based',
     shift_start_time: '',
     shift_end_time: '',
+    hours_per_day: null,
+    break_hours: 1.00,
     reminder_preferences: {
       check_in_reminder_enabled: true,
       check_out_reminder_enabled: true,
@@ -136,8 +139,11 @@ export default function AttendanceEmployees() {
       branch_id: '',
       line_user_id: '',
       announcement_group_line_id: '',
+      working_time_type: 'time_based',
       shift_start_time: '',
       shift_end_time: '',
+      hours_per_day: null,
+      break_hours: 1.00,
       reminder_preferences: {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -159,8 +165,11 @@ export default function AttendanceEmployees() {
       branch_id: employee.branch_id || '',
       line_user_id: employee.line_user_id || '',
       announcement_group_line_id: employee.announcement_group_line_id || '',
+      working_time_type: employee.working_time_type || 'time_based',
       shift_start_time: employee.shift_start_time || '',
       shift_end_time: employee.shift_end_time || '',
+      hours_per_day: employee.hours_per_day || null,
+      break_hours: employee.break_hours || 1.00,
       reminder_preferences: employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -181,6 +190,16 @@ export default function AttendanceEmployees() {
       emp => emp.code === formData.code && emp.id !== editingEmployee?.id
     );
     if (duplicateCode) return "Employee code already exists";
+    
+    if (formData.working_time_type === 'time_based') {
+      if (!formData.shift_start_time || !formData.shift_end_time) {
+        return "กรุณาระบุเวลาเริ่มและเวลาสิ้นสุดกะ";
+      }
+    } else if (formData.working_time_type === 'hours_based') {
+      if (!formData.hours_per_day || formData.hours_per_day <= 0) {
+        return "กรุณาระบุจำนวนชั่วโมงทำงานต่อวัน";
+      }
+    }
     
     return null;
   };
@@ -425,29 +444,94 @@ export default function AttendanceEmployees() {
                     </p>
                   </div>
 
-                  {/* Shift Times Section */}
+                  {/* Work Schedule Section */}
                   <div className="space-y-4 border-t pt-4">
                     <h4 className="font-medium text-sm">Work Schedule & Reminders</h4>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="shift_start_time">Shift Start Time</Label>
-                        <Input
-                          id="shift_start_time"
-                          type="time"
-                          value={formData.shift_start_time}
-                          onChange={(e) => setFormData({ ...formData, shift_start_time: e.target.value })}
+                    <div className="space-y-2">
+                      <Label>รูปแบบการคำนวณเวลาทำงาน</Label>
+                      <Select 
+                        value={formData.working_time_type}
+                        onValueChange={(value) => {
+                          setFormData(prev => ({
+                            ...prev, 
+                            working_time_type: value,
+                            shift_start_time: value === 'hours_based' ? '' : prev.shift_start_time,
+                            shift_end_time: value === 'hours_based' ? '' : prev.shift_end_time,
+                            hours_per_day: value === 'time_based' ? null : prev.hours_per_day
+                          }))
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="time_based">กำหนดช่วงเวลา (เช่น 09:00-18:00)</SelectItem>
+                          <SelectItem value="hours_based">กำหนดจำนวนชั่วโมง (เช่น 8 ชั่วโมง/วัน)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {formData.working_time_type === 'time_based' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="shift_start_time">Shift Start Time</Label>
+                          <Input
+                            id="shift_start_time"
+                            type="time"
+                            value={formData.shift_start_time}
+                            onChange={(e) => setFormData({ ...formData, shift_start_time: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="shift_end_time">Shift End Time</Label>
+                          <Input
+                            id="shift_end_time"
+                            type="time"
+                            value={formData.shift_end_time}
+                            onChange={(e) => setFormData({ ...formData, shift_end_time: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {formData.working_time_type === 'hours_based' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="hours_per_day">จำนวนชั่วโมงต่อวัน</Label>
+                        <Input 
+                          id="hours_per_day"
+                          type="number" 
+                          step="0.5"
+                          min="1"
+                          max="24"
+                          value={formData.hours_per_day || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev, 
+                            hours_per_day: e.target.value ? parseFloat(e.target.value) : null
+                          }))}
+                          placeholder="เช่น 8 หรือ 8.5"
                         />
                       </div>
-                      <div>
-                        <Label htmlFor="shift_end_time">Shift End Time</Label>
-                        <Input
-                          id="shift_end_time"
-                          type="time"
-                          value={formData.shift_end_time}
-                          onChange={(e) => setFormData({ ...formData, shift_end_time: e.target.value })}
-                        />
-                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="break_hours">ชั่วโมงพัก (ชั่วโมง)</Label>
+                      <Input 
+                        id="break_hours"
+                        type="number" 
+                        step="0.5"
+                        min="0"
+                        max="4"
+                        value={formData.break_hours || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev, 
+                          break_hours: e.target.value ? parseFloat(e.target.value) : 0
+                        }))}
+                        placeholder="เช่น 1 หรือ 1.5"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        ระบุเวลาพักกลางวัน/พักรับประทานอาหาร
+                      </p>
                     </div>
 
                     {/* Reminder Preferences */}
@@ -601,11 +685,27 @@ export default function AttendanceEmployees() {
                   <TableCell className="hidden sm:table-cell capitalize text-sm py-2">{employee.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
                   <TableCell className="hidden lg:table-cell py-2">
-                    {employee.shift_start_time && employee.shift_end_time ? (
+                    {employee.working_time_type === 'hours_based' ? (
+                      <div className="text-sm">
+                        <div className="font-medium">
+                          {employee.hours_per_day} ชม./วัน
+                        </div>
+                        {employee.break_hours && (
+                          <div className="text-xs text-muted-foreground">
+                            พัก: {employee.break_hours} ชม.
+                          </div>
+                        )}
+                      </div>
+                    ) : employee.shift_start_time && employee.shift_end_time ? (
                       <div className="text-sm">
                         <div className="font-medium">
                           {employee.shift_start_time.substring(0, 5)} - {employee.shift_end_time.substring(0, 5)}
                         </div>
+                        {employee.break_hours && (
+                          <div className="text-xs text-muted-foreground">
+                            พัก: {employee.break_hours} ชม.
+                          </div>
+                        )}
                         {employee.reminder_preferences && 
                          typeof employee.reminder_preferences === 'object' && 
                          'check_in_reminder_enabled' in employee.reminder_preferences &&
