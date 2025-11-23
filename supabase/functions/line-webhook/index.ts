@@ -6203,6 +6203,21 @@ async function handleMessageEvent(event: LineEvent) {
       parsed.commandType
     );
 
+  // PASSIVE LEARNING: Call memory-writer for ALL messages (fire-and-forget, before any early returns)
+  supabase.functions
+    .invoke("memory-writer", {
+      body: {
+        userId: user.id,
+        groupId: group.id,
+        messageText: event.message.text,
+        messageId: event.message.id,
+        threadId: insertedMessage?.threadId || null,
+        isDM,
+        recentMessages: "", // Will be fetched inside memory-writer if needed
+      },
+    })
+    .catch(err => console.error("[Memory Writer] Passive invoke error:", err));
+
   // PHASE 2: Cognitive Processing - Analyze social interactions and update profiles
   // Run in background to avoid blocking message processing
   if (!isDM) {
@@ -6388,82 +6403,6 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 3: Passive Safety Monitoring (runs for EVERY message)
   const messageIdForAlert = (insertedMessage as any)?.id || event.message.id || '';
   await passiveSafetyMonitoring(group.id, user.id, event.message.text, messageIdForAlert);
-
-  // PASSIVE LEARNING: Trigger memory writer for ALL messages (even without @ or /)
-  try {
-    // === HYBRID CONTEXT RETRIEVAL ===
-    console.log(`[Context] Building hybrid context for group=${group.id}, thread=${insertedMessage?.threadId}`);
-    
-    // 1. Thread Context (current conversation)
-    const threadContext = await getThreadContext(insertedMessage?.threadId || null);
-    console.log(`[Context] Thread: ${threadContext.length} chars`);
-    
-    // 2. Working Memory (24-hour short-term)
-    const workingMemoryCtx = await getWorkingMemoryContext(group.id, insertedMessage?.threadId || null);
-    console.log(`[Context] Working memory: ${workingMemoryCtx.length} chars`);
-    
-    // 3. Long-term Memories (keyword-based)
-    const relevantMemories = await loadRelevantMemories({
-      userId: user.id,
-      groupId: group.id,
-      isDM,
-      userMessage: event.message.text
-    });
-    console.log(`[Context] Long-term memories: ${relevantMemories.length} chars`);
-    
-    // 4. Combine all context
-    const enrichedContext = [
-      threadContext && threadContext !== "No active conversation thread." && threadContext !== "New conversation thread." 
-        ? `=== Thread Context ===\n${threadContext}` 
-        : '',
-      workingMemoryCtx !== "N/A" && workingMemoryCtx !== "No recent working memory." 
-        ? `\n=== Recent Context (24h) ===\n${workingMemoryCtx}` 
-        : '',
-      relevantMemories !== "N/A" 
-        ? `\n=== Related Knowledge ===\n${relevantMemories}` 
-        : '',
-    ].filter(Boolean).join('\n\n');
-    
-    // 5. Fallback to recent messages if context is minimal
-    let finalContext = enrichedContext;
-    if (!enrichedContext || enrichedContext.length < 100) {
-      console.log('[Context] Minimal enriched context, using fallback recent messages');
-      const { data: fallbackMsgs } = await supabase
-        .from('messages')
-        .select('text, user_id, sent_at')
-        .eq('group_id', group.id)
-        .order('sent_at', { ascending: false })
-        .limit(10);
-      
-      finalContext = fallbackMsgs
-        ?.map(m => m.text)
-        .reverse()
-        .join('\n') || '';
-    }
-    
-    console.log(`[Context] Total enriched context: ${finalContext.length} chars`);
-    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, thread=${insertedMessage?.threadId}, message="${event.message.text.substring(0, 50)}..."`);
-    
-    const memoryResult = await supabase.functions.invoke("memory-writer", {
-      body: {
-        userId: user.id,
-        groupId: group.id,
-        messageText: event.message.text,
-        messageId: event.message.id,
-        threadId: insertedMessage?.threadId || null,
-        isDM,
-        recentMessages: finalContext,
-      },
-    });
-    
-    if (memoryResult.error) {
-      console.error("[Memory Writer] Error:", memoryResult.error);
-    } else {
-      console.log(`[Memory Writer] Success:`, memoryResult.data);
-    }
-  } catch (err) {
-    console.error("[Memory Writer] Exception:", err);
-  }
 
   // PASSIVE PERSONALITY TRACKING: Update personality for ALL messages
   if (group.id && user.id) {
