@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Loader2, 
@@ -18,9 +19,24 @@ import {
   CheckCircle2, 
   XCircle,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  BarChart3
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
+import { 
+  LineChart, 
+  Line, 
+  BarChart, 
+  Bar, 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Legend 
+} from 'recharts';
 
 export default function EmployeeDetail() {
   const { id } = useParams();
@@ -37,7 +53,7 @@ export default function EmployeeDetail() {
           branch:branches(id, name, address)
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
       return data;
@@ -101,6 +117,68 @@ export default function EmployeeDetail() {
         totalDays,
         attendanceRate: totalDays > 0 ? ((totalDays / 30) * 100).toFixed(1) : '0'
       };
+    }
+  });
+
+  const { data: chartData } = useQuery({
+    queryKey: ['employee-chart-data', id],
+    queryFn: async () => {
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      
+      const { data: logs, error } = await supabase
+        .from('attendance_logs')
+        .select('event_type, server_time, is_flagged')
+        .eq('employee_id', id)
+        .gte('server_time', thirtyDaysAgo.toISOString())
+        .order('server_time', { ascending: true });
+      
+      if (error) throw error;
+
+      // Create daily data for the last 30 days
+      const days = eachDayOfInterval({
+        start: thirtyDaysAgo,
+        end: new Date()
+      });
+
+      const dailyData = days.map(day => {
+        const dayStart = startOfDay(day);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const dayLogs = logs.filter(log => {
+          const logDate = new Date(log.server_time);
+          return logDate >= dayStart && logDate <= dayEnd;
+        });
+
+        const checkIns = dayLogs.filter(l => l.event_type === 'check_in').length;
+        const checkOuts = dayLogs.filter(l => l.event_type === 'check_out').length;
+        const flagged = dayLogs.filter(l => l.is_flagged).length;
+
+        return {
+          date: format(day, 'MMM dd'),
+          fullDate: format(day, 'yyyy-MM-dd'),
+          checkIns,
+          checkOuts,
+          flagged,
+          total: dayLogs.length,
+          attended: checkIns > 0 ? 1 : 0
+        };
+      });
+
+      // Calculate weekly attendance rate
+      const weeklyData: { week: string; rate: number; days: number }[] = [];
+      for (let i = 0; i < dailyData.length; i += 7) {
+        const weekSlice = dailyData.slice(i, i + 7);
+        const attended = weekSlice.filter(d => d.attended > 0).length;
+        const rate = (attended / weekSlice.length) * 100;
+        weeklyData.push({
+          week: `Week ${Math.floor(i / 7) + 1}`,
+          rate: Math.round(rate),
+          days: attended
+        });
+      }
+
+      return { dailyData, weeklyData };
     }
   });
 
@@ -246,6 +324,134 @@ export default function EmployeeDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Charts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Attendance Analytics
+          </CardTitle>
+          <CardDescription>Visual representation of attendance patterns over the last 30 days</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="daily" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="daily">Daily Activity</TabsTrigger>
+              <TabsTrigger value="comparison">Check-in vs Check-out</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly Trend</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="daily" className="space-y-4">
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData?.dailyData || []}>
+                    <defs>
+                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="date" 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="total" 
+                      stroke="hsl(var(--primary))" 
+                      fillOpacity={1} 
+                      fill="url(#colorTotal)"
+                      name="Total Events"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="comparison" className="space-y-4">
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData?.dailyData || []}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="date" 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="checkIns" fill="hsl(142 76% 36%)" name="Check-ins" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="checkOuts" fill="hsl(217 91% 60%)" name="Check-outs" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="flagged" fill="hsl(25 95% 53%)" name="Flagged" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="weekly" className="space-y-4">
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData?.weeklyData || []}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="week" 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      domain={[0, 100]}
+                      label={{ value: 'Attendance Rate (%)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="rate" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={3}
+                      dot={{ fill: 'hsl(var(--primary))', r: 4 }}
+                      activeDot={{ r: 6 }}
+                      name="Attendance Rate (%)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {/* Attendance History */}
       <Card>
