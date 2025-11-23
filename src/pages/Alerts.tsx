@@ -70,14 +70,14 @@ export default function Alerts() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
       <Card>
-        <CardHeader>
-          <CardTitle>All Alerts</CardTitle>
-          <CardDescription className="flex gap-2">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">All Alerts</CardTitle>
+          <CardDescription className="flex flex-col sm:flex-row gap-2">
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -88,7 +88,7 @@ export default function Alerts() {
               </SelectContent>
             </Select>
             <Select value={resolvedFilter} onValueChange={setResolvedFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -99,7 +99,7 @@ export default function Alerts() {
             </Select>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
@@ -111,42 +111,45 @@ export default function Alerts() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[45%] min-w-[200px]">Alert</TableHead>
-                    <TableHead className="w-[25%] min-w-[140px]">Group</TableHead>
-                    <TableHead className="w-[20%]">Time</TableHead>
-                    <TableHead className="w-[10%] text-right">Actions</TableHead>
+                    <TableHead className="w-[55%] sm:w-[45%] min-w-[160px] text-xs sm:text-sm">Alert</TableHead>
+                    <TableHead className="w-[45%] sm:w-[25%] min-w-[100px] text-xs sm:text-sm hidden sm:table-cell">Group</TableHead>
+                    <TableHead className="w-[20%] text-xs sm:text-sm hidden md:table-cell">Time</TableHead>
+                    <TableHead className="w-[45%] sm:w-[10%] text-right text-xs sm:text-sm">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {alerts.map((alert) => (
                     <TableRow key={alert.id} className="hover:bg-muted/50">
-                      <TableCell>
+                      <TableCell className="py-2">
                         <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className="text-xs">{alert.type}</Badge>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[10px] sm:text-xs h-4 sm:h-5">{alert.type}</Badge>
                             {getSeverityBadge(alert.severity)}
                             {alert.resolved ? (
-                              <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                              <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500" />
                             ) : (
-                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                              <Circle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
                             )}
                           </div>
-                          <p className="text-sm line-clamp-2">{alert.summary}</p>
+                          <p className="text-xs sm:text-sm line-clamp-2">{alert.summary}</p>
+                          <p className="sm:hidden text-[10px] text-muted-foreground">
+                            {(alert.groups as any)?.display_name || 'N/A'}
+                          </p>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <p className="text-sm truncate">{(alert.groups as any)?.display_name || 'N/A'}</p>
+                      <TableCell className="py-2 hidden sm:table-cell">
+                        <p className="text-xs sm:text-sm truncate">{(alert.groups as any)?.display_name || 'N/A'}</p>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-2 hidden md:table-cell">
                         <p className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
                         </p>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right py-2">
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 text-xs"
+                          className="h-6 text-[10px] sm:text-xs px-2"
                           onClick={() => toggleResolved.mutate({ id: alert.id, resolved: alert.resolved })}
                         >
                           {alert.resolved ? 'Unresolve' : 'Resolve'}

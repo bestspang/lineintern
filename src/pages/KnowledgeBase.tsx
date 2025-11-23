@@ -231,36 +231,39 @@ export default function KnowledgeBase() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[40%] min-w-[200px]">Knowledge Item</TableHead>
-              <TableHead className="w-[25%] min-w-[140px]">Scope</TableHead>
-              <TableHead className="w-[20%]">Updated</TableHead>
-              <TableHead className="w-[15%] text-right">Actions</TableHead>
+              <TableHead className="w-[55%] sm:w-[40%] min-w-[160px] text-xs sm:text-sm">Knowledge Item</TableHead>
+              <TableHead className="w-[45%] sm:w-[25%] min-w-[100px] text-xs sm:text-sm hidden sm:table-cell">Scope</TableHead>
+              <TableHead className="w-[20%] text-xs sm:text-sm hidden md:table-cell">Updated</TableHead>
+              <TableHead className="w-[45%] sm:w-[15%] text-right text-xs sm:text-sm">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((item) => (
               <TableRow key={item.id}>
-                <TableCell>
+                <TableCell className="py-2">
                   <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium line-clamp-1 flex-1">{item.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs sm:text-sm font-medium line-clamp-1 flex-1">{item.title}</p>
                       <Switch
                         checked={item.is_active}
                         onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: item.id, is_active: checked })}
-                        className="scale-75"
+                        className="scale-75 shrink-0"
                       />
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="text-xs">{item.category}</Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] sm:text-xs h-4 sm:h-5">{item.category}</Badge>
+                      <span className="sm:hidden text-[10px] text-muted-foreground">
+                        {item.scope === 'global' ? '🌍' : '👥'}
+                      </span>
                       {item.last_used_at && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground hidden md:inline">
                           Used {formatDistanceToNow(new Date(item.last_used_at), { addSuffix: true })}
                         </span>
                       )}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-2 hidden sm:table-cell">
                   <Badge variant="secondary" className="gap-1 text-xs">
                     {item.scope === 'global' ? (
                       <>
@@ -270,33 +273,33 @@ export default function KnowledgeBase() {
                     ) : (
                       <>
                         <Users className="h-3 w-3" />
-                        {item.groups?.display_name || 'Group'}
+                        <span className="truncate max-w-[100px]">{item.groups?.display_name || 'Group'}</span>
                       </>
                     )}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-2 hidden md:table-cell">
                   <p className="text-xs text-muted-foreground whitespace-nowrap">
                     {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true })}
                   </p>
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+                <TableCell className="text-right py-2">
+                  <div className="flex justify-end gap-0.5">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className="h-6 w-6 p-0"
                       onClick={() => openEditDialog(item)}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3 w-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className="h-6 w-6 p-0"
                       onClick={() => handleDelete(item)}
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
                 </TableCell>
@@ -309,36 +312,36 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Knowledge Base</h1>
-          <p className="text-muted-foreground">Manage FAQ and documentation snippets</p>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold">Knowledge Base</h1>
+          <p className="text-sm text-muted-foreground">Manage FAQ and documentation snippets</p>
         </div>
-        <Button onClick={openCreateDialog}>
+        <Button onClick={openCreateDialog} className="w-full sm:w-auto shrink-0">
           <Plus className="h-4 w-4 mr-2" />
           Add Knowledge Item
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Search Knowledge</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">Search Knowledge</CardTitle>
           <CardDescription>
             <Input
               placeholder="Search by title or content..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
+              className="w-full sm:max-w-sm text-sm"
             />
           </CardDescription>
         </CardHeader>
       </Card>
 
       <Tabs defaultValue="global">
-        <TabsList>
-          <TabsTrigger value="global">Global Knowledge</TabsTrigger>
-          <TabsTrigger value="group">Per-Group Knowledge</TabsTrigger>
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="global" className="text-xs sm:text-sm">Global Knowledge</TabsTrigger>
+          <TabsTrigger value="group" className="text-xs sm:text-sm">Per-Group Knowledge</TabsTrigger>
         </TabsList>
 
         <TabsContent value="global">
@@ -368,7 +371,7 @@ export default function KnowledgeBase() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
               <DialogTitle>{editingItem ? 'Edit Knowledge Item' : 'Create Knowledge Item'}</DialogTitle>

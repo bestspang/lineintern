@@ -78,26 +78,27 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
       <Card>
-        <CardHeader>
-          <CardTitle>General Settings</CardTitle>
-          <CardDescription>Configure global bot behavior</CardDescription>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">General Settings</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Configure global bot behavior</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-4 sm:p-6">
           <div className="space-y-2">
-            <Label htmlFor="env">Environment Name</Label>
+            <Label htmlFor="env" className="text-sm">Environment Name</Label>
             <Input
               id="env"
               value={environmentName}
               onChange={(e) => setEnvironmentName(e.target.value)}
               placeholder="e.g., Sandbox, Production"
+              className="text-sm"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mode">Default Mode for New Groups</Label>
+            <Label htmlFor="mode" className="text-sm">Default Mode for New Groups</Label>
             <Select value={defaultMode} onValueChange={setDefaultMode}>
               <SelectTrigger id="mode">
                 <SelectValue />
@@ -113,7 +114,7 @@ export default function Settings() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="lang">Default Language</Label>
+            <Label htmlFor="lang" className="text-sm">Default Language</Label>
             <Select value={defaultLanguage} onValueChange={setDefaultLanguage}>
               <SelectTrigger id="lang">
                 <SelectValue />
@@ -127,39 +128,41 @@ export default function Settings() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model">OpenAI Model</Label>
+            <Label htmlFor="model" className="text-sm">OpenAI Model</Label>
             <Input
               id="model"
               value={openaiModel}
               onChange={(e) => setOpenaiModel(e.target.value)}
               placeholder="e.g., gpt-4, gpt-3.5-turbo"
+              className="text-sm"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="max">Max Messages for Summaries</Label>
+            <Label htmlFor="max" className="text-sm">Max Messages for Summaries</Label>
             <Input
               id="max"
               type="number"
               value={maxSummaryMessages}
               onChange={(e) => setMaxSummaryMessages(e.target.value)}
               placeholder="100"
+              className="text-sm"
             />
           </div>
 
-          <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+          <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="w-full sm:w-auto">
             {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Admin Accounts</CardTitle>
-          <CardDescription>Manage dashboard access</CardDescription>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">Admin Accounts</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Manage dashboard access</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
+        <CardContent className="p-4 sm:p-6">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Admin management coming soon. Use authentication to control access.
           </p>
         </CardContent>

@@ -51,11 +51,11 @@ export default function Reports() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
         <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px] text-sm">
             <SelectValue placeholder="All Groups" />
           </SelectTrigger>
           <SelectContent>
@@ -67,7 +67,7 @@ export default function Reports() {
         </Select>
 
         <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px] text-sm">
             <SelectValue placeholder="All Periods" />
           </SelectTrigger>
           <SelectContent>
@@ -80,34 +80,34 @@ export default function Reports() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {[1, 2, 3].map((i) => (
-            <Card key={i}><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader></Card>
+            <Card key={i}><CardHeader className="p-4 sm:p-6"><Skeleton className="h-6 w-1/3" /></CardHeader></Card>
           ))}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {reports?.length === 0 ? (
-            <Card><CardContent className="flex flex-col items-center justify-center p-12">
-              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No reports found</p>
+            <Card><CardContent className="flex flex-col items-center justify-center p-8 sm:p-12">
+              <FileText className="h-8 h-8 sm:h-12 sm:w-12 text-muted-foreground mb-4" />
+              <p className="text-sm sm:text-base text-muted-foreground">No reports found</p>
             </CardContent></Card>
           ) : (
             reports?.map((report) => (
               <Card key={report.id} className="cursor-pointer hover:bg-accent/50" onClick={() => setSelectedReport(report)}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>{(report.groups as any)?.display_name || "Unknown Group"}</CardTitle>
-                      <CardDescription>
+                <CardHeader className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-base sm:text-lg truncate">{(report.groups as any)?.display_name || "Unknown Group"}</CardTitle>
+                      <CardDescription className="text-xs sm:text-sm">
                         {format(new Date(report.from_date), "MMM d")} - {format(new Date(report.to_date), "MMM d, yyyy")}
                       </CardDescription>
                     </div>
-                    <Badge>{report.period}</Badge>
+                    <Badge className="shrink-0 text-xs">{report.period}</Badge>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-4 gap-4 text-sm">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 text-xs sm:text-sm">
                     <div><div className="text-muted-foreground">Messages</div><div className="font-semibold">{getData(report, 'activity.totalMessages')}</div></div>
                     <div><div className="text-muted-foreground">Users</div><div className="font-semibold">{getData(report, 'activity.activeUsers')}</div></div>
                     <div><div className="text-muted-foreground">Mood</div><div className="font-semibold">{(getData(report, 'sentiment.moodScore') * 100).toFixed(0)}/100</div></div>
