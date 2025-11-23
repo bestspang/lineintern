@@ -113,58 +113,59 @@ export default function GroupDetail() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{group.display_name}</h1>
-          <p className="text-muted-foreground flex items-center gap-2">
-            LINE ID: {group.line_group_id}
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{group.display_name}</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2">
+            <span className="truncate">LINE ID: {group.line_group_id}</span>
             <Button
               variant="ghost"
               size="sm"
+              className="h-6 w-6 p-0 shrink-0"
               onClick={() => copyToClipboard(group.line_group_id)}
             >
               <Copy className="h-3 w-3" />
             </Button>
           </p>
         </div>
-        <Badge>{group.status}</Badge>
+        <Badge className="shrink-0">{group.status}</Badge>
       </div>
 
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="messages">Messages</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
-          <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-          <TabsTrigger value="alerts">Alerts</TabsTrigger>
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+          <TabsTrigger value="members" className="text-xs sm:text-sm">Members</TabsTrigger>
+          <TabsTrigger value="messages" className="text-xs sm:text-sm">Messages</TabsTrigger>
+          <TabsTrigger value="tasks" className="text-xs sm:text-sm hidden sm:inline-flex">Tasks</TabsTrigger>
+          <TabsTrigger value="knowledge" className="text-xs sm:text-sm hidden md:inline-flex">Knowledge</TabsTrigger>
+          <TabsTrigger value="alerts" className="text-xs sm:text-sm hidden md:inline-flex">Alerts</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
+        <TabsContent value="overview" className="space-y-3 sm:space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Group Information</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Group Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <Label className="text-muted-foreground">Status</Label>
-                  <p className="font-medium">{group.status}</p>
+                  <Label className="text-xs sm:text-sm text-muted-foreground">Status</Label>
+                  <p className="text-sm sm:text-base font-medium">{group.status}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Members</Label>
-                  <p className="font-medium">{group.member_count || 0}</p>
+                  <Label className="text-xs sm:text-sm text-muted-foreground">Members</Label>
+                  <p className="text-sm sm:text-base font-medium">{group.member_count || 0}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Joined</Label>
-                  <p className="font-medium">
+                  <Label className="text-xs sm:text-sm text-muted-foreground">Joined</Label>
+                  <p className="text-xs sm:text-sm font-medium">
                     {formatDistanceToNow(new Date(group.joined_at), { addSuffix: true })}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Last Activity</Label>
-                  <p className="font-medium">
+                  <Label className="text-xs sm:text-sm text-muted-foreground">Last Activity</Label>
+                  <p className="text-xs sm:text-sm font-medium">
                     {group.last_activity_at
                       ? formatDistanceToNow(new Date(group.last_activity_at), { addSuffix: true })
                       : 'Never'}
@@ -175,12 +176,12 @@ export default function GroupDetail() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Configuration</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Configuration</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
               <div className="space-y-2">
-                <Label>Mode</Label>
+                <Label className="text-sm">Mode</Label>
                 <Select value={mode} onValueChange={setMode}>
                   <SelectTrigger>
                     <SelectValue />
@@ -196,7 +197,7 @@ export default function GroupDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label>Features</Label>
+                <Label className="text-sm">Features</Label>
                 <div className="space-y-2">
                   {['summary', 'faq', 'todos', 'reports', 'safety'].map((feature) => (
                     <div key={feature} className="flex items-center space-x-2">
@@ -207,7 +208,7 @@ export default function GroupDetail() {
                           setFeatures({ ...features, [feature]: !!checked })
                         }
                       />
-                      <Label htmlFor={feature} className="capitalize cursor-pointer">
+                      <Label htmlFor={feature} className="text-sm capitalize cursor-pointer">
                         {feature}
                       </Label>
                     </div>
@@ -215,67 +216,67 @@ export default function GroupDetail() {
                 </div>
               </div>
 
-              <Button onClick={handleSave} disabled={updateMutation.isPending}>
+              <Button onClick={handleSave} disabled={updateMutation.isPending} className="w-full sm:w-auto">
                 {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
               </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="members" className="space-y-4">
+        <TabsContent value="members" className="space-y-3 sm:space-y-4">
           {/* Current Members Section */}
           <Card>
-            <CardHeader>
-              <CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">
                 Current Members ({members?.filter(m => !m.left_at).length || 0})
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {members && members.filter(m => !m.left_at).length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {members
                     .filter(m => !m.left_at)
                     .map((member) => (
                       <div 
                         key={member.id} 
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+                        className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors"
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                           {/* Avatar */}
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                             {member.user?.avatar_url ? (
                               <img 
                                 src={member.user.avatar_url} 
                                 alt={member.user.display_name}
-                                className="w-10 h-10 rounded-full"
+                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full"
                               />
                             ) : (
-                              <span className="text-primary font-semibold">
+                              <span className="text-primary text-xs sm:text-sm font-semibold">
                                 {member.user?.display_name?.[0]?.toUpperCase() || '?'}
                               </span>
                             )}
                           </div>
                           
                           {/* User Info */}
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm sm:text-base font-medium truncate">
                                 {member.user?.display_name || 'Unknown User'}
                               </span>
                               {member.role && (
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant="secondary" className="text-[10px] sm:text-xs h-4 sm:h-5">
                                   {member.role}
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                               Joined {formatDistanceToNow(new Date(member.joined_at), { addSuffix: true })}
                             </p>
                           </div>
                         </div>
                         
                         {/* Last Seen */}
-                        <div className="text-right">
+                        <div className="text-right shrink-0 hidden sm:block">
                           <p className="text-xs text-muted-foreground">
                             {member.user?.last_seen_at ? (
                               <>
@@ -298,12 +299,12 @@ export default function GroupDetail() {
 
           {/* Historical Members Section */}
           <Card>
-            <CardHeader>
-              <CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">
                 Historical Members ({members?.filter(m => m.left_at).length || 0})
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {members && members.filter(m => m.left_at).length > 0 ? (
                 <div className="space-y-3">
                   {members
@@ -366,32 +367,32 @@ export default function GroupDetail() {
 
         <TabsContent value="messages">
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Messages ({messages?.length || 0})</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Recent Messages ({messages?.length || 0})</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {messages && messages.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {messages.map((msg) => (
                     <div 
                       key={msg.id} 
-                      className={`p-3 rounded-lg ${
+                      className={`p-2 sm:p-3 rounded-lg ${
                         msg.direction === 'bot' 
-                          ? 'bg-blue-50 border-l-4 border-blue-500' 
+                          ? 'bg-blue-50 dark:bg-blue-950 border-l-2 sm:border-l-4 border-blue-500' 
                           : 'bg-muted'
                       }`}
                     >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-semibold text-sm">
+                      <div className="flex justify-between items-start mb-1 gap-2">
+                        <span className="font-semibold text-xs sm:text-sm truncate">
                           {msg.direction === 'bot' ? '🤖 GoodLime' : msg.user?.display_name || 'User'}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap shrink-0">
                           {formatDistanceToNow(new Date(msg.sent_at), { addSuffix: true })}
                         </span>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{msg.text}</p>
                       {msg.command_type && (
-                        <Badge variant="outline" className="mt-2 text-xs">
+                        <Badge variant="outline" className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs h-4 sm:h-5">
                           {msg.command_type}
                         </Badge>
                       )}
