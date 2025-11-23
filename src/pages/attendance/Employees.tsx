@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
@@ -25,6 +26,7 @@ export default function AttendanceEmployees() {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  const [sampleCheckInTime, setSampleCheckInTime] = useState('09:00');
   const [formData, setFormData] = useState({
     code: '',
     full_name: '',
@@ -153,6 +155,7 @@ export default function AttendanceEmployees() {
       },
       is_active: true
     });
+    setSampleCheckInTime('09:00');
     setEditingEmployee(null);
   };
 
@@ -533,6 +536,80 @@ export default function AttendanceEmployees() {
                         ระบุเวลาพักกลางวัน/พักรับประทานอาหาร
                       </p>
                     </div>
+
+                    {/* Hours-Based Preview Calculation */}
+                    {formData.working_time_type === 'hours_based' && formData.hours_per_day && (
+                      <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+                        <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <AlertDescription className="space-y-3">
+                          <div className="font-medium text-sm text-blue-900 dark:text-blue-100">
+                            📊 ตัวอย่างการคำนวณเวลา Check-Out
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Label htmlFor="sample_check_in" className="text-xs min-w-24">
+                                ตัวอย่าง Check-In:
+                              </Label>
+                              <Input
+                                id="sample_check_in"
+                                type="time"
+                                value={sampleCheckInTime}
+                                onChange={(e) => setSampleCheckInTime(e.target.value)}
+                                className="h-8 w-32 text-sm"
+                              />
+                            </div>
+
+                            {(() => {
+                              const [hour, minute] = sampleCheckInTime.split(':').map(Number);
+                              const checkInDate = new Date();
+                              checkInDate.setHours(hour, minute, 0, 0);
+                              
+                              const hoursPerDay = formData.hours_per_day || 0;
+                              const breakHours = formData.break_hours || 0;
+                              const totalMinutes = (hoursPerDay + breakHours) * 60;
+                              
+                              const checkOutDate = new Date(checkInDate.getTime() + totalMinutes * 60000);
+                              const checkOutTime = checkOutDate.toTimeString().substring(0, 5);
+                              
+                              return (
+                                <div className="space-y-1 text-xs bg-white dark:bg-gray-900/50 p-3 rounded-md border border-blue-100 dark:border-blue-900">
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">เวลาทำงาน:</span>
+                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                      {hoursPerDay} ชม.
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">เวลาพัก:</span>
+                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                      {breakHours} ชม.
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">เวลารวม:</span>
+                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                      {hoursPerDay + breakHours} ชม.
+                                    </span>
+                                  </div>
+                                  <div className="border-t border-blue-100 dark:border-blue-900 mt-2 pt-2"></div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-muted-foreground">คาดว่าจะ Check-Out:</span>
+                                    <span className="font-bold text-base text-green-600 dark:text-green-400">
+                                      {checkOutTime} น.
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          <p className="text-xs text-muted-foreground italic">
+                            💡 ระบบจะคำนวณเวลา Check-Out อัตโนมัติจากเวลาที่พนักงาน Check-In จริง
+                          </p>
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
                     {/* Reminder Preferences */}
                     <div className="space-y-3 border-t pt-3">
