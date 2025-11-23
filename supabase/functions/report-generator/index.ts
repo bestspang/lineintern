@@ -339,25 +339,245 @@ async function generateReportForGroup(groupId: string, period: "daily" | "weekly
 }
 
 // =============================
+// PHASE 1: SMART MESSAGE SELECTION
+// =============================
+
+interface MessageScore {
+  message: any;
+  score: number;
+  reasons: string[];
+}
+
+// Calculate importance score for a message
+function calculateMessageImportance(message: any, allMessages: any[]): MessageScore {
+  let score = 0;
+  const reasons: string[] = [];
+  
+  const text = message.text.toLowerCase();
+  
+  // Score 1: Mentions (@mentions) - High importance
+  if (text.includes('@') || text.includes('ถึง') || text.includes('for ')) {
+    score += 15;
+    reasons.push('contains_mention');
+  }
+  
+  // Score 2: Decision/Action words - Very High importance
+  const decisionWords = ['ตกลง', 'เห็นด้วย', 'อนุมัติ', 'ยืนยัน', 'approve', 'confirm', 'decided', 'agree', 
+                         'ปฏิเสธ', 'ไม่เห็นด้วย', 'reject', 'deny', 'cancel', 'ยกเลิก'];
+  if (decisionWords.some(word => text.includes(word))) {
+    score += 20;
+    reasons.push('contains_decision');
+  }
+  
+  // Score 3: Action/Task words - High importance
+  const actionWords = ['ทำ', 'จัด', 'ส่ง', 'ซื้อ', 'เช็ค', 'ตรวจสอบ', 'ติดตาม', 'ประสานงาน',
+                       'do', 'send', 'buy', 'check', 'verify', 'follow up', 'coordinate', 'prepare', 'เตรียม'];
+  if (actionWords.some(word => text.includes(word))) {
+    score += 12;
+    reasons.push('contains_action');
+  }
+  
+  // Score 4: Questions - Medium-High importance
+  if (text.includes('?') || text.includes('ไหม') || text.includes('หรือ') || text.includes('เมื่อไหร่')) {
+    score += 10;
+    reasons.push('is_question');
+  }
+  
+  // Score 5: Deadlines/Time references - Very High importance
+  const timeWords = ['วันนี้', 'พรุ่งนี้', 'เร็ว', 'ด่วน', 'ทันที', 'today', 'tomorrow', 'urgent', 
+                     'asap', 'deadline', 'กำหนด', 'ภายใน'];
+  if (timeWords.some(word => text.includes(word)) || /\d{1,2}[\/\-\.]\d{1,2}/.test(text)) {
+    score += 18;
+    reasons.push('contains_deadline');
+  }
+  
+  // Score 6: Numbers/Quantities - Medium importance (often related to business)
+  if (/\d+/.test(text) && text.length > 20) {
+    score += 8;
+    reasons.push('contains_numbers');
+  }
+  
+  // Score 7: URLs/Links - Medium importance
+  if (message.has_url || text.includes('http')) {
+    score += 7;
+    reasons.push('contains_url');
+  }
+  
+  // Score 8: Money/Financial terms - High importance
+  const moneyWords = ['บาท', 'เงิน', 'ชำระ', 'จ่าย', 'ราคา', 'ค่า', 'baht', 'pay', 'payment', 'price', 'cost', 'invoice'];
+  if (moneyWords.some(word => text.includes(word)) || /\d+\s*(บาท|baht|฿)/.test(text)) {
+    score += 15;
+    reasons.push('financial_content');
+  }
+  
+  // Score 9: Message length - Longer messages often more important
+  if (text.length > 100) {
+    score += 5;
+    reasons.push('long_message');
+  } else if (text.length < 10) {
+    score -= 10; // Penalize very short messages
+    reasons.push('very_short');
+  }
+  
+  // Score 10: Names/People - Medium importance
+  const namePattern = /[A-Z][a-z]+\s+[A-Z][a-z]+|[@][a-z]+/i;
+  if (namePattern.test(message.text)) {
+    score += 6;
+    reasons.push('contains_names');
+  }
+  
+  return { message, score: Math.max(0, score), reasons };
+}
+
+// Remove noise messages
+function filterNoiseMessages(messages: any[]): any[] {
+  const noisePatterns = [
+    /^(ok|okay|ครับ|ค่ะ|จ้า|จ๊ะ|ได้|55+|5555|ฮา+|ha+|😂|😊|👍|🙏)$/i,
+    /^[\s\u200B\u200C\u200D]*$/, // Empty or whitespace only
+  ];
+  
+  return messages.filter(msg => {
+    const text = msg.text.trim();
+    
+    // Filter out very short messages
+    if (text.length < 3) return false;
+    
+    // Filter out noise patterns
+    if (noisePatterns.some(pattern => pattern.test(text))) return false;
+    
+    // Filter out emoji-only messages
+    const emojiRegex = /^[\p{Emoji}\s]+$/u;
+    if (emojiRegex.test(text)) return false;
+    
+    return true;
+  });
+}
+
+// Group messages into conversation threads
+function clusterMessagesByThread(messages: any[]): any[][] {
+  const clusters: any[][] = [];
+  let currentCluster: any[] = [];
+  let lastMessageTime: Date | null = null;
+  
+  // Sort messages chronologically
+  const sortedMessages = [...messages].sort((a, b) => 
+    new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+  );
+  
+  const THREAD_GAP_MINUTES = 30; // Messages within 30 minutes are considered same thread
+  
+  for (const msg of sortedMessages) {
+    const msgTime = new Date(msg.sent_at);
+    
+    if (lastMessageTime && currentCluster.length > 0) {
+      const timeDiff = (msgTime.getTime() - lastMessageTime.getTime()) / 1000 / 60;
+      
+      // If gap is too large, start new cluster
+      if (timeDiff > THREAD_GAP_MINUTES) {
+        if (currentCluster.length > 0) {
+          clusters.push([...currentCluster]);
+        }
+        currentCluster = [msg];
+      } else {
+        currentCluster.push(msg);
+      }
+    } else {
+      currentCluster.push(msg);
+    }
+    
+    lastMessageTime = msgTime;
+  }
+  
+  // Add last cluster
+  if (currentCluster.length > 0) {
+    clusters.push(currentCluster);
+  }
+  
+  return clusters;
+}
+
+// Smart message selection - selects most important messages
+function selectImportantMessages(messages: any[], targetCount: number = 50): any[] {
+  console.log(`[selectImportantMessages] Processing ${messages.length} messages`);
+  
+  // Step 1: Remove noise
+  const cleanMessages = filterNoiseMessages(messages);
+  console.log(`[selectImportantMessages] After noise removal: ${cleanMessages.length} messages`);
+  
+  // Step 2: Score all messages
+  const scoredMessages = cleanMessages.map(msg => calculateMessageImportance(msg, cleanMessages));
+  
+  // Step 3: Sort by score (descending)
+  scoredMessages.sort((a, b) => b.score - a.score);
+  
+  // Step 4: Take top N messages
+  const topMessages = scoredMessages.slice(0, targetCount);
+  
+  // Step 5: Re-sort by time to maintain conversation flow
+  topMessages.sort((a, b) => 
+    new Date(a.message.sent_at).getTime() - new Date(b.message.sent_at).getTime()
+  );
+  
+  console.log(`[selectImportantMessages] Selected ${topMessages.length} important messages`);
+  console.log(`[selectImportantMessages] Score range: ${topMessages[0]?.score} to ${topMessages[topMessages.length - 1]?.score}`);
+  
+  return topMessages.map(sm => sm.message);
+}
+
+// =============================
 // AI SUMMARY GENERATION
 // =============================
 
-async function generateSummaryWithAI(messages: any[], groupId: string) {
-  const messagesText = messages
-    .reverse() // Oldest first for context
+async function generateSummaryWithAI(messages: any[], groupId: string, threadClusters?: any[][]) {
+  const selectedMessages = selectImportantMessages(messages, 80);
+  
+  const messagesText = selectedMessages
     .map((m: any) => `${m.users?.display_name || 'Unknown'}: ${m.text}`)
     .join('\n');
+  
+  // Calculate thread info
+  const clusters = threadClusters || clusterMessagesByThread(selectedMessages);
+  const threadSummary = clusters.length > 1 
+    ? `การสนทนาแบ่งออกเป็น ${clusters.length} เธรด/หัวข้อย่อย\n` 
+    : '';
 
-  const summaryPrompt = `สรุปการสนทนาในกลุ่มแชทนี้เป็นภาษาไทย แยกเป็น:
-1. หัวข้อหลักที่พูดคุยกัน (3-5 หัวข้อ)
-2. การตัดสินใจที่สำคัญ (ระบุแต่ละรายการ)
-3. งานที่ต้องทำพร้อมผู้รับผิดชอบ (ระบุแต่ละรายการในรูปแบบ: "งาน - ผู้รับผิดชอบ")
-4. คำถามที่ยังรอคำตอบ
+  const summaryPrompt = `คุณเป็น AI ที่ชำนาญในการวิเคราะห์และสรุปการสนทนาในกลุ่มทำงาน/ธุรกิจ
 
-ข้อความแชท (${messages.length} ข้อความ):
+📊 ข้อมูลการสนทนา:
+- จำนวนข้อความทั้งหมด: ${messages.length} ข้อความ
+- ข้อความสำคัญที่เลือกมาวิเคราะห์: ${selectedMessages.length} ข้อความ
+- ${threadSummary}
+
+💬 ข้อความที่สำคัญ:
 ${messagesText}
 
-ให้สรุปอย่างชัดเจนและกระชับในภาษาไทย`;
+📝 กรุณาสรุปการสนทนาอย่างละเอียดและครบถ้วนในภาษาไทย โดยแบ่งเป็น:
+
+**1. หัวข้อหลักที่พูดคุยกัน:**
+- ระบุหัวข้อหลักทั้งหมดที่พบ (3-7 หัวข้อ)
+- เรียงลำดับตามความสำคัญ
+
+**2. การตัดสินใจที่สำคัญ:**
+- ระบุทุกการตัดสินใจที่ชัดเจน
+- บอกว่าใครตัดสินใจอะไร ด้วยเหตุผลอะไร
+- แยกเป็นรายการ
+
+**3. งานที่ต้องทำพร้อมผู้รับผิดชอบ:**
+- ระบุทุกงาน/task ที่กล่าวถึง
+- รูปแบบ: "งาน - @ชื่อผู้รับผิดชอบ - กำหนดเวลา (ถ้ามี)"
+- แยกตามความเร่งด่วน (ด่วน / ปกติ)
+
+**4. คำถามที่ยังรอคำตอบ:**
+- ระบุทุกคำถามที่ยังไม่มีคำตอบชัดเจน
+- บอกว่าใครถามใคร เกี่ยวกับเรื่องอะไร
+
+**5. ข้อมูลสำคัญอื่น ๆ:**
+- ตัวเลข/ข้อมูลเชิงปริมาณที่สำคัญ
+- การกล่าวถึงเงิน/งบประมาณ
+- ข้อมูลติดต่อ (เบอร์โทร, ไลน์, อีเมล)
+- กำหนดเวลา/Deadlines
+
+ให้วิเคราะห์อย่างละเอียดและไม่พลาดข้อมูลสำคัญใด ๆ`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -369,7 +589,7 @@ ${messagesText}
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: 'คุณเป็นผู้ช่วยที่สรุปการสนทนาในกลุ่มแชทได้อย่างชัดเจนและกระชับเป็นภาษาไทย' },
+          { role: 'system', content: 'คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสนทนาธุรกิจและสรุปข้อมูลสำคัญได้อย่างครบถ้วนและแม่นยำ' },
           { role: 'user', content: summaryPrompt }
         ],
       }),
@@ -404,14 +624,14 @@ serve(async (req) => {
     if (type === 'auto_summary' && requestedGroupId) {
       console.log(`[report-generator] Auto-summary for group ${requestedGroupId}`);
       
-      // Fetch recent messages
+      // Fetch recent messages with higher limit (we'll filter smartly)
       const { data: messages, error: messagesError } = await supabase
         .from('messages')
         .select('*, users(display_name)')
         .eq('group_id', requestedGroupId)
         .eq('direction', 'human')
         .order('sent_at', { ascending: false })
-        .limit(messageLimit || 100);
+        .limit(messageLimit || 200); // Increased limit for better selection
 
       if (messagesError || !messages || messages.length === 0) {
         console.error('[report-generator] Error fetching messages:', messagesError);
@@ -421,26 +641,66 @@ serve(async (req) => {
         );
       }
 
-      // Generate AI summary
-      const summaryText = await generateSummaryWithAI(messages, requestedGroupId);
+      console.log(`[report-generator] Fetched ${messages.length} messages`);
+      
+      // Phase 1: Smart Message Selection
+      // Remove noise and select important messages
+      const cleanMessages = filterNoiseMessages(messages);
+      console.log(`[report-generator] After noise removal: ${cleanMessages.length} messages`);
+      
+      // Cluster messages into threads
+      const threadClusters = clusterMessagesByThread(cleanMessages);
+      console.log(`[report-generator] Identified ${threadClusters.length} conversation threads`);
+      
+      // Score and select important messages (max 100 for AI processing)
+      const selectedMessages = selectImportantMessages(cleanMessages, 100);
+      console.log(`[report-generator] Selected ${selectedMessages.length} important messages for summary`);
 
-      // Extract structured data from messages
+      // Generate AI summary with smart selection
+      const summaryText = await generateSummaryWithAI(selectedMessages, requestedGroupId, threadClusters);
+
+      // Enhanced extraction logic based on importance scores
+      const scoredMessages = selectedMessages.map(msg => 
+        calculateMessageImportance(msg, selectedMessages)
+      );
+      
       const mainTopics: string[] = [];
       const decisions: any[] = [];
       const actionItems: any[] = [];
       const openQuestions: string[] = [];
 
-      // Simple extraction logic
-      messages.forEach((msg: any) => {
-        if (msg.text.includes('?') && msg.text.length < 200) {
-          openQuestions.push(msg.text);
+      scoredMessages.forEach((scored: any) => {
+        const msg = scored.message;
+        const reasons = scored.reasons;
+        
+        // Extract decisions (high confidence)
+        if (reasons.includes('contains_decision')) {
+          decisions.push({
+            text: msg.text,
+            user: msg.users?.display_name || 'Unknown',
+            timestamp: msg.sent_at,
+            score: scored.score
+          });
         }
-        if (msg.text.includes('ตกลง') || msg.text.includes('เห็นด้วย') || msg.text.includes('decide')) {
-          decisions.push({ text: msg.text.substring(0, 100) });
+        
+        // Extract action items
+        if (reasons.includes('contains_action') || reasons.includes('contains_deadline')) {
+          actionItems.push({
+            text: msg.text,
+            user: msg.users?.display_name || 'Unknown',
+            timestamp: msg.sent_at,
+            score: scored.score,
+            has_deadline: reasons.includes('contains_deadline')
+          });
+        }
+        
+        // Extract open questions (store as strings)
+        if (reasons.includes('is_question')) {
+          openQuestions.push(`[${msg.users?.display_name || 'Unknown'}] ${msg.text}`);
         }
       });
 
-      // Save summary to database
+      // Save summary to database with enhanced metadata
       const { error: insertError } = await supabase
         .from('chat_summaries')
         .insert({
@@ -449,10 +709,10 @@ serve(async (req) => {
           from_time: messages[messages.length - 1].sent_at,
           to_time: messages[0].sent_at,
           message_count: messages.length,
-          main_topics: mainTopics.slice(0, 5),
-          decisions,
-          action_items: actionItems,
-          open_questions: openQuestions.slice(0, 5),
+          main_topics: mainTopics.slice(0, 7),
+          decisions: decisions.slice(0, 10),
+          action_items: actionItems.slice(0, 15),
+          open_questions: openQuestions.slice(0, 10),
         });
 
       if (insertError) {
@@ -461,9 +721,22 @@ serve(async (req) => {
       }
 
       console.log(`[report-generator] Auto-summary created for group ${requestedGroupId}`);
+      console.log(`[report-generator] Stats: ${decisions.length} decisions, ${actionItems.length} actions, ${openQuestions.length} questions`);
       
       return new Response(
-        JSON.stringify({ success: true, message: 'Auto-summary created' }),
+        JSON.stringify({ 
+          success: true, 
+          message: 'Auto-summary created',
+          stats: {
+            total_messages: messages.length,
+            clean_messages: cleanMessages.length,
+            threads: threadClusters.length,
+            selected_messages: selectedMessages.length,
+            decisions: decisions.length,
+            actions: actionItems.length,
+            questions: openQuestions.length
+          }
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
