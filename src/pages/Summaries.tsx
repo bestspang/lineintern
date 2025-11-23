@@ -50,6 +50,18 @@ interface SummaryStats {
     user_profiles: number;
     business_topics: string[];
   };
+  quality?: {
+    completeness: number;
+    actionability: number;
+    insightfulness: number;
+    confidence: number;
+    coverage: {
+      messagesAnalyzed: number;
+      threadsAnalyzed: number;
+      usersInvolved: number;
+      importantTopicsCovered: number;
+    };
+  };
 }
 
 export default function Summaries() {
@@ -338,6 +350,93 @@ export default function Summaries() {
                     <Progress value={(lastStats.selected_messages / lastStats.total_messages) * 100} className="h-2" />
                     <div className="text-xs text-muted-foreground mt-1">
                       {Math.round((lastStats.selected_messages / lastStats.total_messages) * 100)}% of messages selected as important
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Phase 4: Quality Metrics Display */}
+              {lastStats.quality && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-lg border border-primary/20 space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <h4 className="font-semibold text-sm">Summary Quality Assessment</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Completeness */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium">Completeness</span>
+                        <span className="text-xs font-bold text-blue-600">{lastStats.quality.completeness}%</span>
+                      </div>
+                      <Progress value={lastStats.quality.completeness} className="h-2" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Coverage of key content</p>
+                    </div>
+                    
+                    {/* Actionability */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium">Actionability</span>
+                        <span className="text-xs font-bold text-green-600">{lastStats.quality.actionability}%</span>
+                      </div>
+                      <Progress value={lastStats.quality.actionability} className="h-2" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Clarity of action items</p>
+                    </div>
+                    
+                    {/* Insightfulness */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium">Insightfulness</span>
+                        <span className="text-xs font-bold text-purple-600">{lastStats.quality.insightfulness}%</span>
+                      </div>
+                      <Progress value={lastStats.quality.insightfulness} className="h-2" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Depth of analysis</p>
+                    </div>
+                    
+                    {/* Confidence */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium">Confidence</span>
+                        <span className="text-xs font-bold text-orange-600">{lastStats.quality.confidence}%</span>
+                      </div>
+                      <Progress value={lastStats.quality.confidence} className="h-2" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Overall reliability</p>
+                    </div>
+                  </div>
+                  
+                  {/* Overall Quality Score */}
+                  <div className="pt-2 border-t">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-semibold">Overall Quality</span>
+                      <span className="text-sm font-bold text-primary">
+                        {Math.round((
+                          lastStats.quality.completeness + 
+                          lastStats.quality.actionability + 
+                          lastStats.quality.insightfulness + 
+                          lastStats.quality.confidence
+                        ) / 4)}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(
+                        lastStats.quality.completeness + 
+                        lastStats.quality.actionability + 
+                        lastStats.quality.insightfulness + 
+                        lastStats.quality.confidence
+                      ) / 4} 
+                      className="h-3"
+                    />
+                  </div>
+                  
+                  {/* Coverage Details */}
+                  <div className="pt-2 border-t text-xs">
+                    <div className="text-muted-foreground mb-1">Coverage Details:</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>📊 Messages: {lastStats.quality.coverage.messagesAnalyzed}</div>
+                      <div>🧵 Threads: {lastStats.quality.coverage.threadsAnalyzed}</div>
+                      <div>👥 Users: {lastStats.quality.coverage.usersInvolved}</div>
+                      <div>🏷️ Topics: {lastStats.quality.coverage.importantTopicsCovered}</div>
                     </div>
                   </div>
                 </div>
