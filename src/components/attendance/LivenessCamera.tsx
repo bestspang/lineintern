@@ -20,9 +20,9 @@ export interface LivenessData {
 type Challenge = "blink" | "turn_left" | "turn_right";
 
 const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
-  { type: "blink", text: "กระพริบตา 2 ครั้ง / Blink twice", icon: Eye },
-  { type: "turn_left", text: "หันหน้าไปซ้าย / Turn left", icon: MoveHorizontal },
-  { type: "turn_right", text: "หันหน้าไปขวา / Turn right", icon: MoveHorizontal },
+  { type: "blink", text: "กระพริบตา 2 ครั้ง", icon: Eye },
+  { type: "turn_left", text: "หันหน้าไปทางซ้าย", icon: MoveHorizontal },
+  { type: "turn_right", text: "หันหน้าไปทางขวา", icon: MoveHorizontal },
 ];
 
 export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraProps) {
@@ -115,6 +115,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       }
     };
   }, []);
+
+  // Auto-capture when challenge completed
+  useEffect(() => {
+    if (challengeCompleted) {
+      const timer = setTimeout(() => {
+        capturePhoto();
+      }, 800);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [challengeCompleted]);
 
   // Process video frames
   useEffect(() => {
@@ -284,10 +295,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Camera className="h-5 w-5" />
-            Liveness Verification
+            ตรวจสอบใบหน้า
           </CardTitle>
           <CardDescription>
-            Follow the instruction to verify you're a real person
+            ทำตามคำแนะนำเพื่อยืนยันตัวตน
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -298,29 +309,37 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
           ) : (
             <>
               {/* Challenge Instructions */}
-              <div className="bg-primary/10 p-4 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <ChallengeIcon className="h-6 w-6 text-primary" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-lg">{currentChallengeInfo.text}</div>
-                    {currentChallenge === "blink" && (
-                      <div className="text-sm text-muted-foreground">
-                        Blinks detected: {blinkCount} / 2
-                      </div>
-                    )}
-                    {currentChallenge.includes("turn") && (
-                      <div className="text-sm text-muted-foreground">
-                        Head position: {headPosition}
-                      </div>
-                    )}
+              <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
+                <div className="flex flex-col items-center gap-4">
+                  <ChallengeIcon className="h-12 w-12 text-primary" />
+                  
+                  {/* Challenge Text - ขนาดใหญ่และชัดเจน */}
+                  <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                    {currentChallengeInfo.text}
                   </div>
+                  
+                  {/* Progress Info */}
+                  {currentChallenge === "blink" && (
+                    <div className="text-base text-muted-foreground">
+                      ตรวจพบ: {blinkCount} / 2 ครั้ง
+                    </div>
+                  )}
+                  {currentChallenge.includes("turn") && (
+                    <div className="text-base text-muted-foreground">
+                      ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
+                    </div>
+                  )}
+                  
+                  {/* Status Badge */}
                   {challengeCompleted ? (
-                    <Badge variant="default" className="gap-1">
-                      <Check className="h-3 w-3" />
-                      Completed
+                    <Badge variant="default" className="gap-2 px-4 py-2 text-base">
+                      <Check className="h-4 w-4" />
+                      เสร็จสิ้น
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">In Progress</Badge>
+                    <Badge variant="secondary" className="px-4 py-2 text-base">
+                      กำลังดำเนินการ
+                    </Badge>
                   )}
                 </div>
               </div>
@@ -338,7 +357,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 {/* Face detection overlay */}
                 {!faceLandmarker && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                    Loading face detection...
+                    กำลังโหลดระบบตรวจจับใบหน้า...
                   </div>
                 )}
               </div>
@@ -351,22 +370,31 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                   disabled={isProcessing}
                   className="flex-1"
                 >
-                  Cancel
+                  ยกเลิก
                 </Button>
-                <Button
-                  onClick={capturePhoto}
-                  disabled={!challengeCompleted || isProcessing}
-                  className="flex-1"
-                >
-                  {isProcessing ? "Processing..." : "Capture Photo"}
-                </Button>
+                {challengeCompleted && isProcessing ? (
+                  <Button disabled className="flex-1">
+                    <Camera className="h-4 w-4 mr-2" />
+                    กำลังถ่ายรูป...
+                  </Button>
+                ) : challengeCompleted ? (
+                  <Button disabled className="flex-1">
+                    <Check className="h-4 w-4 mr-2" />
+                    กำลังประมวลผล...
+                  </Button>
+                ) : (
+                  <Button disabled className="flex-1 opacity-50">
+                    รอการยืนยัน...
+                  </Button>
+                )}
               </div>
 
               {/* Tips */}
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>• Make sure your face is well-lit and clearly visible</p>
-                <p>• Position your face in the center of the frame</p>
-                <p>• Complete the challenge to enable photo capture</p>
+              <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-4 rounded-lg">
+                <p>💡 <strong>คำแนะนำ:</strong></p>
+                <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าชัดเจน</p>
+                <p>• วางใบหน้าให้อยู่ตรงกลางกรอบ</p>
+                <p>• ทำตามคำสั่งให้ครบถ้วน ระบบจะถ่ายรูปอัตโนมัติ</p>
               </div>
             </>
           )}
