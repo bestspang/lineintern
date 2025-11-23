@@ -21,7 +21,8 @@ import {
   Database,
   ClipboardCheck,
   Building,
-  Calendar
+  Calendar,
+  Camera
 } from 'lucide-react';
 import {
   Sidebar,
@@ -90,6 +91,7 @@ const navigationGroups = [
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
+      { title: 'Photos', url: '/attendance/photos', icon: Camera },
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
       { title: 'Settings', url: '/attendance/settings', icon: Settings },
     ],
