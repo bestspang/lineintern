@@ -253,24 +253,26 @@ export default function Tasks() {
       <Card>
         <CardHeader>
           <CardTitle>All Tasks</CardTitle>
-          <CardDescription className="flex gap-2">
-            <Input
-              placeholder="Search tasks..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+          <CardDescription>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="Search tasks..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-sm"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -281,100 +283,102 @@ export default function Tasks() {
               ))}
             </div>
           ) : tasks && tasks.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Task</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => {
-                  const isOverdue = isPast(new Date(task.due_at)) && task.status === 'pending';
-                  return (
-                    <TableRow key={task.id} className="hover:bg-muted/50">
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{task.title}</p>
-                          {task.description && (
-                            <p className="text-sm text-muted-foreground truncate max-w-md">
-                              {task.description}
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {task.is_recurring ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">🔄</span>
-                            <div className="text-xs">
-                              <div className="font-medium capitalize">{task.recurrence_pattern}</div>
-                              {task.recurrence_pattern === 'weekly' && task.recurrence_day_of_week !== null && (
-                                <div className="text-muted-foreground">
-                                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][task.recurrence_day_of_week]}
-                                </div>
-                              )}
-                              {task.recurrence_pattern === 'monthly' && task.recurrence_day_of_month !== null && (
-                                <div className="text-muted-foreground">Day {task.recurrence_day_of_month}</div>
-                              )}
-                              {task.recurrence_time && (
-                                <div className="text-muted-foreground">{task.recurrence_time}</div>
-                              )}
-                            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[200px]">Task</TableHead>
+                    <TableHead className="min-w-[120px]">Type</TableHead>
+                    <TableHead className="min-w-[150px]">Group</TableHead>
+                    <TableHead className="min-w-[120px]">Assigned To</TableHead>
+                    <TableHead className="min-w-[150px]">Due Date</TableHead>
+                    <TableHead className="min-w-[100px]">Status</TableHead>
+                    <TableHead className="min-w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tasks.map((task) => {
+                    const isOverdue = isPast(new Date(task.due_at)) && task.status === 'pending';
+                    return (
+                      <TableRow key={task.id} className="hover:bg-muted/50">
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{task.title}</p>
+                            {task.description && (
+                              <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                {task.description}
+                              </p>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">One-time</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{(task.groups as any)?.display_name || 'N/A'}</TableCell>
-                      <TableCell>
-                        {(task.users as any)?.display_name || 'Unassigned'}
-                      </TableCell>
-                      <TableCell>
-                        <div className={isOverdue ? 'text-destructive' : ''}>
-                          <p className="font-medium">
-                            {format(new Date(task.due_at), 'MMM d, yyyy HH:mm')}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.due_at), { addSuffix: true })}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(task.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          {task.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
-                                disabled={updateTaskStatusMutation.isPending}
-                              >
-                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
-                                disabled={updateTaskStatusMutation.isPending}
-                              >
-                                <XCircle className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </>
+                        </TableCell>
+                        <TableCell>
+                          {task.is_recurring ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">🔄</span>
+                              <div className="text-xs">
+                                <div className="font-medium capitalize">{task.recurrence_pattern}</div>
+                                {task.recurrence_pattern === 'weekly' && task.recurrence_day_of_week !== null && (
+                                  <div className="text-muted-foreground">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][task.recurrence_day_of_week]}
+                                  </div>
+                                )}
+                                {task.recurrence_pattern === 'monthly' && task.recurrence_day_of_month !== null && (
+                                  <div className="text-muted-foreground">Day {task.recurrence_day_of_month}</div>
+                                )}
+                                {task.recurrence_time && (
+                                  <div className="text-muted-foreground">{task.recurrence_time}</div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">One-time</span>
                           )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell>{(task.groups as any)?.display_name || 'N/A'}</TableCell>
+                        <TableCell>
+                          {(task.users as any)?.display_name || 'Unassigned'}
+                        </TableCell>
+                        <TableCell>
+                          <div className={isOverdue ? 'text-destructive' : ''}>
+                            <p className="font-medium whitespace-nowrap">
+                              {format(new Date(task.due_at), 'MMM d, yyyy HH:mm')}
+                            </p>
+                            <p className="text-xs text-muted-foreground whitespace-nowrap">
+                              {formatDistanceToNow(new Date(task.due_at), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(task.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {task.status === 'pending' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
+                                  disabled={updateTaskStatusMutation.isPending}
+                                >
+                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
+                                  disabled={updateTaskStatusMutation.isPending}
+                                >
+                                  <XCircle className="h-4 w-4 text-red-600" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <p>No tasks found</p>
