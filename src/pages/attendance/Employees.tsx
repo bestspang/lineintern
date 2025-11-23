@@ -229,7 +229,47 @@ export default function AttendanceEmployees() {
       });
       return;
     }
-    saveMutation.mutate(formData);
+
+    // Sanitize data based on working_time_type
+    const dataToSave = { ...formData };
+
+    if (formData.working_time_type === 'hours_based') {
+      // สำหรับ hours_based: ลบ shift times (ใช้ hours + allowed times แทน)
+      dataToSave.shift_start_time = null;
+      dataToSave.shift_end_time = null;
+      
+      // ตรวจสอบว่ามีค่า allowed_work times (ถ้าเป็น empty string ให้ใช้ default)
+      if (!dataToSave.allowed_work_start_time) {
+        dataToSave.allowed_work_start_time = '06:00:00';
+      }
+      if (!dataToSave.allowed_work_end_time) {
+        dataToSave.allowed_work_end_time = '20:00:00';
+      }
+      
+      // เพิ่ม :00 ถ้ารูปแบบเป็น HH:MM
+      if (dataToSave.allowed_work_start_time.length === 5) {
+        dataToSave.allowed_work_start_time += ':00';
+      }
+      if (dataToSave.allowed_work_end_time.length === 5) {
+        dataToSave.allowed_work_end_time += ':00';
+      }
+    } else if (formData.working_time_type === 'time_based') {
+      // สำหรับ time_based: ลบ hours + allowed times (ใช้ shift times แทน)
+      dataToSave.hours_per_day = null;
+      dataToSave.break_hours = null;
+      dataToSave.allowed_work_start_time = null;
+      dataToSave.allowed_work_end_time = null;
+      
+      // เพิ่ม :00 ถ้ารูปแบบเป็น HH:MM
+      if (dataToSave.shift_start_time && dataToSave.shift_start_time.length === 5) {
+        dataToSave.shift_start_time += ':00';
+      }
+      if (dataToSave.shift_end_time && dataToSave.shift_end_time.length === 5) {
+        dataToSave.shift_end_time += ':00';
+      }
+    }
+
+    saveMutation.mutate(dataToSave);
   };
 
   if (isLoading) {
