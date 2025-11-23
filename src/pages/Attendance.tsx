@@ -113,8 +113,8 @@ export default function Attendance() {
     setShowLivenessCamera(false);
     
     toast({
-      title: 'Photo Captured',
-      description: 'Liveness verification completed successfully',
+      title: 'ถ่ายรูปสำเร็จ',
+      description: 'ยืนยันใบหน้าเรียบร้อยแล้ว',
     });
   };
 
@@ -332,15 +332,15 @@ export default function Attendance() {
                   <div className="bg-primary/10 p-3 rounded-lg">
                     <div className="flex items-center gap-2 text-sm">
                       <Shield className="h-4 w-4 text-primary" />
-                      <span className="font-medium">Liveness Verification Enabled</span>
+                      <span className="font-medium">เปิดใช้งานการยืนยันใบหน้า</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      You'll need to complete a simple challenge to verify you're a real person
+                      คุณจะต้องทำตามคำสั่งง่ายๆ เพื่อยืนยันว่าเป็นคนจริง
                     </p>
                   </div>
                   <Button onClick={startCamera} className="w-full text-sm sm:text-base h-9 sm:h-10">
                     <Camera className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-                    Start Liveness Check
+                    เริ่มการตรวจสอบใบหน้า
                   </Button>
                 </div>
               )}
@@ -351,16 +351,16 @@ export default function Attendance() {
                     <img src={photoPreview} alt="Preview" className="w-full rounded-lg" />
                     {livenessData && (
                       <div className="absolute top-2 right-2">
-                        <Badge variant="default" className="gap-1 bg-green-600">
-                          <Shield className="h-3 w-3" />
-                          Verified
-                        </Badge>
+                      <Badge variant="default" className="gap-1 bg-green-600">
+                        <Shield className="h-3 w-3" />
+                        ยืนยันแล้ว
+                      </Badge>
                       </div>
                     )}
                   </div>
                   {livenessData && (
                     <div className="text-xs text-muted-foreground bg-green-50 dark:bg-green-950 p-2 rounded">
-                      ✓ Liveness verified: {livenessData.challenge}
+                      ✓ ยืนยันใบหน้าสำเร็จ: {livenessData.challenge}
                     </div>
                   )}
                   <Button 
@@ -372,7 +372,7 @@ export default function Attendance() {
                     variant="outline" 
                     className="w-full text-sm sm:text-base h-9 sm:h-10"
                   >
-                    Retake Photo
+                    ถ่ายรูปใหม่
                   </Button>
                 </div>
               )}
