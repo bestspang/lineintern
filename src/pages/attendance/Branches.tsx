@@ -265,14 +265,13 @@ export default function AttendanceBranches() {
                   <div>
                     <Label htmlFor="line_group_id">LINE Group</Label>
                     <Select 
-                      value={formData.line_group_id} 
+                      value={formData.line_group_id || undefined} 
                       onValueChange={(value) => setFormData({ ...formData, line_group_id: value })}
                     >
                       <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select a LINE group" />
+                        <SelectValue placeholder="Select a LINE group (optional)" />
                       </SelectTrigger>
                       <SelectContent className="bg-background z-50">
-                        <SelectItem value="">None</SelectItem>
                         {groups?.map((group) => (
                           <SelectItem key={group.id} value={group.line_group_id}>
                             {group.display_name}
