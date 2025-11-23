@@ -7,15 +7,25 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const MEMORY_EXTRACTION_PROMPT = `You are a Memory Extraction Assistant. Your job is to analyze conversations and identify TRULY MEMORABLE information.
+const MEMORY_EXTRACTION_PROMPT = `You are a Memory Extraction Assistant for business group chats. Analyze conversations and identify TRULY MEMORABLE information.
 
-Extract ONLY information worth remembering long-term:
+Extract ONLY information worth remembering:
+
 ✅ DO EXTRACT:
-- Personal preferences: "ชอบกินข้าวผัด", "ไม่ชอบของหวาน", "ชอบดูหนัง"
-- Important facts: "ทำงานที่ BKK", "เรียนที่จุฬา", "อาศัยอยู่สีลม"
-- Recurring patterns: "ตื่นสายทุกวัน", "ชอบดื่มกาแฟตอนเช้า", "ไปทำงานสาย"
-- Significant events: "วันเกิด 15 ธันวา", "เพิ่งไปเที่ยวญี่ปุ่น", "กำลังหางานใหม่"
-- Relationships: "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y", "แฟนทำงานที่ Z"
+
+**Business & Group Context (PRIORITY):**
+- Decisions: "อนุมัติให้รับพนักงาน", "ตัดสินใจทำลายสินค้า", "ไม่อนุมัติโครงการนี้"
+- Policies & SOPs: "วิธีทำลายสินค้า: ถ่ายรูป+เซ็นต์เอกสาร", "ขั้นตอนส่งเอกสาร", "กฎการลา"
+- Tasks & Assignments: "ให้ @คนA ทำงานB ภายในวันที่C", "มอบหมายให้เช็คสต๊อค"
+- Metrics & Numbers: "มีชีสเค้ก 200 ชิ้น", "ยอดขาย 50,000 บาท", "deadline วันที่ 25"
+- Important dates: "ส่งเอกสารวันศุกร์", "ประชุมวันที่ 20", "ปิดโครงการ 31 ธ.ค."
+
+**Personal Context (if relevant):**
+- Personal preferences: "ชอบกินข้าวผัด", "ไม่ชอบของหวาน"
+- Important facts: "ทำงานที่ BKK", "เรียนที่จุฬา"
+- Recurring patterns: "ตื่นสายทุกวัน", "ชอบดื่มกาแฟตอนเช้า"
+- Significant events: "วันเกิด 15 ธันวา", "เพิ่งไปเที่ยวญี่ปุ่น"
+- Relationships: "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y"
 
 ❌ DON'T EXTRACT:
 - Greetings: "สวัสดี", "ว่าไง", "ดีจ้า"
@@ -23,25 +33,40 @@ Extract ONLY information worth remembering long-term:
 - Short responses: "ok", "ครับ", "ได้", "จ้า"
 - Temporary states: "หิวข้าว", "เหนื่อย", "ง่วง" (unless recurring)
 - Generic chitchat: "อากาศร้อน", "ฝนตก", "คนเยอะ"
+- Spam or irrelevant memes
 
 For each memory:
-- scope: "user" or "group"
-- category: "preference" | "fact" | "event" | "pattern" | "relationship"
+- scope: "user" (personal info) or "group" (team/business info)
+- category: "decision" | "policy" | "task" | "metric" | "preference" | "fact" | "event" | "pattern" | "relationship"
 - title: Short summary (10-120 chars)
-- content: 1-2 sentences (20-300 chars)
-- importance_score: 0.0-1.0
+- content: 1-3 sentences with context (20-500 chars)
+- importance_score: 0.0-1.0 (business decisions/tasks are usually 0.7-1.0)
 
-Return JSON with "memories" array (0-3 items, or empty if nothing memorable).
+Return JSON with "memories" array (0-5 items, or empty if nothing memorable).
 
-Example:
+Examples:
 {
   "memories": [
     {
+      "scope": "group",
+      "category": "decision",
+      "title": "อนุมัติทำลายชีสเค้ก 200 ชิ้น",
+      "content": "Manager approved destroying 200 cheesecake pieces due to expiration. Must take photo as evidence and submit document.",
+      "importance_score": 0.9
+    },
+    {
+      "scope": "group",
+      "category": "task",
+      "title": "ให้ @John เช็คสต๊อคสินค้า ภายในวันศุกร์",
+      "content": "Assigned @John to check inventory by Friday. Urgent task due to upcoming audit.",
+      "importance_score": 0.85
+    },
+    {
       "scope": "user",
       "category": "preference",
-      "title": "ชอบกินข้าวผัด",
-      "content": "User mentioned they love fried rice and eat it often.",
-      "importance_score": 0.7
+      "title": "Sarah ชอบกาแฟเข้ม",
+      "content": "Sarah mentioned she prefers strong black coffee, no sugar.",
+      "importance_score": 0.6
     }
   ]
 }`;
@@ -397,10 +422,10 @@ serve(async (req) => {
       );
     }
 
-    // Also maintain the old system for backwards compatibility
+    // Also save very high-importance memories directly to long-term (only critical ones)
     for (const memory of extractedMemories) {
-      // Only save high-importance memories directly to long-term
-      if (memory.importance_score >= 0.8) {
+      // Only save extremely important memories directly to long-term (9.0+)
+      if (memory.importance_score >= 0.9) {
         await upsertMemory(
           memory,
           userId,
@@ -442,13 +467,19 @@ async function saveToWorkingMemory(
     return;
   }
 
-  // Determine memory type based on category
+  // Determine memory type based on category (including new business categories)
   const memoryTypeMap: Record<string, string> = {
+    // Personal categories
     preference: 'context',
     fact: 'fact',
     event: 'context',
     pattern: 'context',
     relationship: 'context',
+    // Business categories
+    decision: 'decision',
+    policy: 'fact',
+    task: 'decision',
+    metric: 'fact',
   };
 
   const memoryType = memoryTypeMap[memory.category] || 'context';

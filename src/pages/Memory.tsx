@@ -134,7 +134,7 @@ function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: st
         <Clock className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
         <p className="text-lg text-muted-foreground mb-2">No working memories</p>
         <p className="text-sm text-muted-foreground">
-          Short-term memories will appear here as the bot learns from conversations
+          Working memories store recent decisions, tasks, and important context for 24 hours
         </p>
       </div>
     );
@@ -256,6 +256,42 @@ export default function Memory() {
     },
   });
   
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['memories'] });
+    queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+    queryClient.invalidateQueries({ queryKey: ['memory-stats'] });
+    setLastUpdated(new Date());
+    toast({ title: 'Refreshed memory data' });
+  };
+
+  // Manual consolidation trigger
+  const consolidateMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('memory-consolidator', {
+        body: { trigger: 'manual', groupId: masterGroupId || null },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-stats'] });
+      toast({ 
+        title: 'Consolidation completed', 
+        description: `Evaluated: ${data?.stats?.evaluated || 0}, Consolidated: ${data?.stats?.consolidated || 0}` 
+      });
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Consolidation failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
   // Auto-refresh every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -624,12 +660,29 @@ export default function Memory() {
             <Brain className="w-8 h-8" />
             Memory Bot
           </h1>
-          <p className="text-muted-foreground">Manage what the bot remembers about users and groups</p>
+          <p className="text-muted-foreground">Manage business decisions, tasks, and context memory</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           <div className="text-sm text-muted-foreground">
             Last updated: {lastUpdated.toLocaleTimeString()}
           </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleManualRefresh}
+          >
+            <Clock className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+          <Button 
+            variant="default" 
+            size="sm"
+            onClick={() => consolidateMutation.mutate()}
+            disabled={consolidateMutation.isPending}
+          >
+            <Brain className="w-4 h-4 mr-2" />
+            {consolidateMutation.isPending ? 'Running...' : 'Consolidate'}
+          </Button>
           <Button onClick={() => {
             setEditingMemory({
               scope: masterScope,
@@ -777,7 +830,8 @@ export default function Memory() {
                     Working Memory (Short-Term)
                   </CardTitle>
                   <CardDescription>
-                    Temporary memories that will be consolidated into long-term memory within 24 hours
+                    Recent 24-hour memory capturing business decisions, task assignments, and important context. 
+                    High-importance items (0.6+) are automatically consolidated to long-term every 10 minutes.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -796,7 +850,7 @@ export default function Memory() {
                     Long-Term Memories
                   </CardTitle>
                   <CardDescription>
-                    Permanent memories learned from conversations
+                    Consolidated knowledge from working memory: business decisions, SOPs, recurring tasks, and critical context
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
