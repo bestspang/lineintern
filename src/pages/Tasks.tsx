@@ -157,20 +157,20 @@ export default function Tasks() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">Tasks & Reminders</h1>
-          <p className="text-muted-foreground">Manage scheduled tasks across all groups</p>
+    <div className="space-y-6 max-w-full px-4 sm:px-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold">Tasks & Reminders</h1>
+          <p className="text-sm text-muted-foreground">Manage scheduled tasks across all groups</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               Create Task
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Create New Task</DialogTitle>
               <DialogDescription>
@@ -250,16 +250,16 @@ export default function Tasks() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
-          <CardTitle>All Tasks</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">All Tasks</CardTitle>
           <CardDescription>
             <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 placeholder="Search tasks..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="max-w-sm"
+                className="flex-1 sm:max-w-xs"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40">
@@ -275,7 +275,7 @@ export default function Tasks() {
             </div>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
@@ -283,86 +283,93 @@ export default function Tasks() {
               ))}
             </div>
           ) : tasks && tasks.length > 0 ? (
-            <div className="rounded-md border bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[45%] min-w-[200px]">Task</TableHead>
-                    <TableHead className="w-[25%] min-w-[140px]">Group / Assigned</TableHead>
-                    <TableHead className="w-[20%] text-right">Due Date</TableHead>
-                    <TableHead className="w-[10%] text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.map((task) => {
-                    const isOverdue = isPast(new Date(task.due_at)) && task.status === 'pending';
-                    return (
-                      <TableRow key={task.id} className="hover:bg-muted/50">
-                        <TableCell>
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium line-clamp-1 flex-1">{task.title}</p>
-                              {getStatusBadge(task.status)}
-                            </div>
-                            {task.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-1">
-                                {task.description}
-                              </p>
-                            )}
-                            {task.is_recurring && (
-                              <Badge variant="outline" className="text-xs h-5">
-                                🔄 {task.recurrence_pattern}
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5 min-w-0">
-                            <p className="text-sm font-medium truncate">{(task.groups as any)?.display_name || 'N/A'}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {(task.users as any)?.display_name || 'Unassigned'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className={cn("whitespace-nowrap", isOverdue && 'text-destructive')}>
-                            <p className="text-sm font-medium">
-                              {format(new Date(task.due_at), 'MMM d')}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(task.due_at), 'HH:mm')}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {task.status === 'pending' && (
-                            <div className="flex gap-1 justify-end">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
-                                disabled={updateTaskStatusMutation.isPending}
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
-                                disabled={updateTaskStatusMutation.isPending}
-                              >
-                                <XCircle className="h-3.5 w-3.5 text-red-600" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <div className="overflow-hidden rounded-md border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40%] min-w-[150px] text-xs sm:text-sm">Task</TableHead>
+                        <TableHead className="w-[25%] min-w-[100px] text-xs sm:text-sm hidden sm:table-cell">Group</TableHead>
+                        <TableHead className="w-[20%] min-w-[80px] text-xs sm:text-sm text-right">Due</TableHead>
+                        <TableHead className="w-[15%] min-w-[60px] text-xs sm:text-sm text-right">Actions</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {tasks.map((task) => {
+                        const isOverdue = isPast(new Date(task.due_at)) && task.status === 'pending';
+                        return (
+                          <TableRow key={task.id} className="hover:bg-muted/50">
+                            <TableCell className="py-2">
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-xs sm:text-sm font-medium line-clamp-1 flex-1 min-w-0">{task.title}</p>
+                                  {getStatusBadge(task.status)}
+                                </div>
+                                {task.description && (
+                                  <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-1">
+                                    {task.description}
+                                  </p>
+                                )}
+                                <div className="sm:hidden text-[10px] text-muted-foreground truncate">
+                                  {(task.groups as any)?.display_name || 'N/A'}
+                                </div>
+                                {task.is_recurring && (
+                                  <Badge variant="outline" className="text-[10px] h-4 hidden sm:inline-flex">
+                                    🔄 {task.recurrence_pattern}
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2 hidden sm:table-cell">
+                              <div className="space-y-0.5 min-w-0">
+                                <p className="text-xs font-medium truncate">{(task.groups as any)?.display_name || 'N/A'}</p>
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  {(task.users as any)?.display_name || 'Unassigned'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right py-2">
+                              <div className={cn("whitespace-nowrap", isOverdue && 'text-destructive')}>
+                                <p className="text-[10px] sm:text-xs font-medium">
+                                  {format(new Date(task.due_at), 'MMM d')}
+                                </p>
+                                <p className="text-[9px] sm:text-[10px] text-muted-foreground">
+                                  {format(new Date(task.due_at), 'HH:mm')}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right py-2">
+                              {task.status === 'pending' && (
+                                <div className="flex gap-0.5 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
+                                    disabled={updateTaskStatusMutation.isPending}
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 text-green-600" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
+                                    disabled={updateTaskStatusMutation.isPending}
+                                  >
+                                    <XCircle className="h-3 w-3 text-red-600" />
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
