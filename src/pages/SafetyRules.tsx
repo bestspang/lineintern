@@ -248,113 +248,118 @@ export default function SafetyRules() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingRule?.id ? 'Edit Safety Rule' : 'Create Safety Rule'}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">
+              {editingRule?.id ? 'Edit Safety Rule' : 'Create Safety Rule'}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               Configure detection patterns to monitor and protect your community
             </DialogDescription>
           </DialogHeader>
           {editingRule && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Rule Name *</Label>
+            <div className="space-y-3 sm:space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Rule Name *</Label>
                   <Input
                     value={editingRule.name}
                     onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })}
                     placeholder="Suspicious Links"
+                    className="text-sm h-9 sm:h-10"
                   />
                 </div>
-                <div>
-                  <Label>Rule Type *</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Rule Type *</Label>
                   <Select
                     value={editingRule.rule_type}
                     onValueChange={(val) => setEditingRule({ ...editingRule, rule_type: val })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="text-sm h-9 sm:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="url_pattern">URL Pattern</SelectItem>
-                      <SelectItem value="keyword">Keyword</SelectItem>
-                      <SelectItem value="spam_rate">Spam Rate</SelectItem>
-                      <SelectItem value="toxicity">Toxicity</SelectItem>
+                      <SelectItem value="url_pattern" className="text-sm">URL Pattern</SelectItem>
+                      <SelectItem value="keyword" className="text-sm">Keyword</SelectItem>
+                      <SelectItem value="spam_rate" className="text-sm">Spam Rate</SelectItem>
+                      <SelectItem value="toxicity" className="text-sm">Toxicity</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              <div>
-                <Label>Description</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Description</Label>
                 <Textarea
                   value={editingRule.description || ''}
                   onChange={(e) => setEditingRule({ ...editingRule, description: e.target.value })}
                   rows={2}
                   placeholder="Describe what this rule detects..."
+                  className="text-sm min-h-[60px]"
                 />
               </div>
-              <div>
-                <Label>Pattern (Regex or keywords) *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Pattern (Regex or keywords) *</Label>
                 <Input
                   value={editingRule.pattern}
                   onChange={(e) => setEditingRule({ ...editingRule, pattern: e.target.value })}
                   placeholder="(bit\.ly|tinyurl\.com|suspicious\.xyz)"
+                  className="font-mono text-sm h-9 sm:h-10"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
                   Use regex for URL patterns, keywords separated by | for keyword detection
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>Severity *</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Severity *</Label>
                   <Select
                     value={editingRule.severity}
                     onValueChange={(val) => setEditingRule({ ...editingRule, severity: val })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="text-sm h-9 sm:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="low" className="text-sm">Low</SelectItem>
+                      <SelectItem value="medium" className="text-sm">Medium</SelectItem>
+                      <SelectItem value="high" className="text-sm">High</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Action *</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Action *</Label>
                   <Select
                     value={editingRule.action}
                     onValueChange={(val) => setEditingRule({ ...editingRule, action: val })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="text-sm h-9 sm:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="log">Log Only</SelectItem>
-                      <SelectItem value="warn">Warn Group</SelectItem>
-                      <SelectItem value="notify_admin">Notify Admin</SelectItem>
+                      <SelectItem value="log" className="text-sm">Log Only</SelectItem>
+                      <SelectItem value="warn" className="text-sm">Warn Group</SelectItem>
+                      <SelectItem value="notify_admin" className="text-sm">Notify Admin</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Scope *</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Scope *</Label>
                   <Select
                     value={editingRule.scope}
                     onValueChange={(val) => setEditingRule({ ...editingRule, scope: val })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="text-sm h-9 sm:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="global">Global</SelectItem>
-                      <SelectItem value="group">Per-Group</SelectItem>
+                      <SelectItem value="global" className="text-sm">Global</SelectItem>
+                      <SelectItem value="group" className="text-sm">Per-Group</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <Label>Enabled</Label>
+              <div className="flex items-center justify-between py-2">
+                <Label className="text-xs sm:text-sm">Enabled</Label>
                 <Switch
                   checked={editingRule.is_enabled}
                   onCheckedChange={(checked) => setEditingRule({ ...editingRule, is_enabled: checked })}
@@ -362,11 +367,11 @@ export default function SafetyRules() {
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto text-sm h-9 sm:h-10">
               Cancel
             </Button>
-            <Button onClick={() => saveRuleMutation.mutate(editingRule)}>
+            <Button onClick={() => saveRuleMutation.mutate(editingRule)} className="w-full sm:w-auto text-sm h-9 sm:h-10">
               {editingRule?.id ? 'Update' : 'Create'}
             </Button>
           </DialogFooter>
