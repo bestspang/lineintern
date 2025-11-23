@@ -1,5 +1,8 @@
 project_id = "bjzzqfzgnslefqhnsmla"
 
+[functions.attendance-reminder]
+verify_jwt = false
+
 [functions.line-webhook]
 verify_jwt = false
 
