@@ -25,6 +25,16 @@ serve(async (req) => {
     const timezone = formData.get('timezone') as string;
     const deviceInfo = formData.get('deviceInfo') as string;
     const photoFile = formData.get('photo') as File | null;
+    const livenessDataRaw = formData.get('livenessData') as string | null;
+    
+    let livenessData = null;
+    if (livenessDataRaw) {
+      try {
+        livenessData = JSON.parse(livenessDataRaw);
+      } catch (e) {
+        console.error('Failed to parse liveness data:', e);
+      }
+    }
 
     // Validate token again
     const { data: token, error: tokenError } = await supabase
@@ -100,8 +110,29 @@ serve(async (req) => {
         size: photoFile.size,
         type: photoFile.type,
         lastModified: photoFile.lastModified,
-        uploadTime: Date.now()
+        uploadTime: Date.now(),
+        livenessVerified: !!livenessData,
+        livenessChallenge: livenessData?.challenge || null,
+        blinkDetected: livenessData?.blinked || false,
+        headTurnDetected: livenessData?.headTurned || false,
       };
+      
+      // Adjust fraud score based on liveness verification
+      if (livenessData) {
+        // Liveness verification passed - reduce fraud score
+        fraudScore -= 20;
+        fraudReasons.push('liveness_verified');
+        
+        // Check if challenge was completed
+        if (!livenessData.blinked && !livenessData.headTurned) {
+          fraudScore += 15;
+          fraudReasons.push('liveness_challenge_failed');
+        }
+      } else {
+        // No liveness verification - increase fraud score
+        fraudScore += 30;
+        fraudReasons.push('no_liveness_verification');
+      }
 
       // Check for duplicate photos
       if (photoHash) {

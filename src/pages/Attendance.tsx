@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import LivenessCamera, { LivenessData } from '@/components/attendance/LivenessCamera';
 
 export default function Attendance() {
   const [searchParams] = useSearchParams();
@@ -19,10 +21,12 @@ export default function Attendance() {
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [location, setLocation] = useState<{lat: number; lon: number} | null>(null);
   const [locationError, setLocationError] = useState<string>('');
+  const [livenessData, setLivenessData] = useState<LivenessData | null>(null);
   
   const [submitted, setSubmitted] = useState(false);
   const [submitResult, setSubmitResult] = useState<any>(null);
   
+  const [showLivenessCamera, setShowLivenessCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -97,49 +101,25 @@ export default function Attendance() {
     );
   };
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' },
-        audio: false
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraActive(true);
-      }
-    } catch (err) {
-      toast({
-        title: 'Camera Error',
-        description: 'Failed to access camera',
-        variant: 'destructive'
-      });
-    }
+  const startCamera = () => {
+    setShowLivenessCamera(true);
   };
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+  const handleLivenessCapture = (blob: Blob, liveness: LivenessData) => {
+    const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(blob));
+    setLivenessData(liveness);
+    setShowLivenessCamera(false);
+    
+    toast({
+      title: 'Photo Captured',
+      description: 'Liveness verification completed successfully',
+    });
+  };
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context?.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-        setPhoto(file);
-        setPhotoPreview(canvas.toDataURL('image/jpeg'));
-        
-        // Stop camera
-        const stream = video.srcObject as MediaStream;
-        stream?.getTracks().forEach(track => track.stop());
-        setCameraActive(false);
-      }
-    }, 'image/jpeg', 0.9);
+  const handleLivenessCancel = () => {
+    setShowLivenessCamera(false);
   };
 
   const handleSubmit = async () => {
@@ -175,11 +155,17 @@ export default function Attendance() {
       formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
       formData.append('deviceInfo', JSON.stringify({
         userAgent: navigator.userAgent,
-        platform: navigator.platform
+        platform: navigator.platform,
+        livenessVerified: !!livenessData,
+        livenessChallenge: livenessData?.challenge || 'none',
       }));
       
       if (photo) {
         formData.append('photo', photo);
+      }
+      
+      if (livenessData) {
+        formData.append('livenessData', JSON.stringify(livenessData));
       }
 
       const response = await fetch(
@@ -341,35 +327,47 @@ export default function Attendance() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
-              {!photo && !cameraActive && (
-                <Button onClick={startCamera} className="w-full text-sm sm:text-base h-9 sm:h-10">
-                  <Camera className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-                  Take Photo
-                </Button>
-              )}
-
-              {cameraActive && (
-                <div className="space-y-3 sm:space-y-4">
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline
-                    className="w-full rounded-lg"
-                  />
-                  <Button onClick={capturePhoto} className="w-full text-sm sm:text-base h-9 sm:h-10">
-                    Capture
+              {!photo && (
+                <div className="space-y-3">
+                  <div className="bg-primary/10 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Shield className="h-4 w-4 text-primary" />
+                      <span className="font-medium">Liveness Verification Enabled</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      You'll need to complete a simple challenge to verify you're a real person
+                    </p>
+                  </div>
+                  <Button onClick={startCamera} className="w-full text-sm sm:text-base h-9 sm:h-10">
+                    <Camera className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
+                    Start Liveness Check
                   </Button>
                 </div>
               )}
 
               {photoPreview && (
                 <div className="space-y-2">
-                  <img src={photoPreview} alt="Preview" className="w-full rounded-lg" />
+                  <div className="relative">
+                    <img src={photoPreview} alt="Preview" className="w-full rounded-lg" />
+                    {livenessData && (
+                      <div className="absolute top-2 right-2">
+                        <Badge variant="default" className="gap-1 bg-green-600">
+                          <Shield className="h-3 w-3" />
+                          Verified
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                  {livenessData && (
+                    <div className="text-xs text-muted-foreground bg-green-50 dark:bg-green-950 p-2 rounded">
+                      ✓ Liveness verified: {livenessData.challenge}
+                    </div>
+                  )}
                   <Button 
                     onClick={() => {
                       setPhoto(null);
                       setPhotoPreview('');
-                      startCamera();
+                      setLivenessData(null);
                     }} 
                     variant="outline" 
                     className="w-full text-sm sm:text-base h-9 sm:h-10"
@@ -444,6 +442,14 @@ export default function Attendance() {
           })}
         </p>
       </div>
+
+      {/* Liveness Camera Modal */}
+      {showLivenessCamera && (
+        <LivenessCamera
+          onCapture={handleLivenessCapture}
+          onCancel={handleLivenessCancel}
+        />
+      )}
     </div>
   );
 }
