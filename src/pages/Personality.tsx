@@ -503,14 +503,21 @@ export default function Personality() {
                     </h3>
                     {recentTopics.length > 0 ? (
                       <div className="space-y-1">
-                        {recentTopics.slice(0, 5).map((topic, idx) => (
-                          <div key={idx} className="flex justify-between text-sm">
-                            <span>{topic.topic}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {topic.count}x
-                            </Badge>
-                          </div>
-                        ))}
+                        {recentTopics.slice(0, 5).map((topic, idx) => {
+                          const label = typeof topic === "string" ? topic : topic.topic;
+                          const count = typeof topic === "string" ? undefined : topic.count;
+
+                          return (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <span className="truncate max-w-[260px]">{label}</span>
+                              {typeof count === "number" && count > 1 && (
+                                <Badge variant="outline" className="text-xs">
+                                  {count}x
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">No recent topics tracked yet</p>
