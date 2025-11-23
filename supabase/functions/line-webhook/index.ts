@@ -5573,16 +5573,23 @@ async function generateAiReply(
 // LINE REPLY
 // =============================
 
-async function replyToLine(replyToken: string, text: string) {
-  console.log(`[replyToLine] Sending reply (${text.length} chars)`);
+async function replyToLine(replyToken: string, text: string, quickReply?: any) {
+  console.log(`[replyToLine] Sending reply (${text.length} chars)${quickReply ? ' with Quick Reply' : ''}`);
   
   // LINE has a 5000 character limit per message
-  const chunks = [];
+  const chunks: string[] = [];
   for (let i = 0; i < text.length; i += 5000) {
     chunks.push(text.substring(i, i + 5000));
   }
 
-  const messages = chunks.map(chunk => ({ type: "text", text: chunk }));
+  const messages = chunks.map(chunk => {
+    const msg: any = { type: "text", text: chunk };
+    // Add quick reply to the first message only
+    if (quickReply && chunk === chunks[0]) {
+      msg.quickReply = quickReply;
+    }
+    return msg;
+  });
 
   try {
     const response = await fetch("https://api.line.me/v2/bot/message/reply", {
@@ -5608,6 +5615,46 @@ async function replyToLine(replyToken: string, text: string) {
     console.error(`[replyToLine] Error:`, error);
     throw error;
   }
+}
+
+// Generate Quick Reply for attendance actions
+function getAttendanceQuickReply(locale: 'th' | 'en' = 'th') {
+  return {
+    items: [
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '🟢 เข้างาน' : '🟢 Check In',
+          text: 'checkin'
+        }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '🔴 ออกงาน' : '🔴 Check Out',
+          text: 'checkout'
+        }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '📋 ประวัติ' : '📋 History',
+          text: 'history'
+        }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '❓ ช่วยเหลือ' : '❓ Help',
+          text: '/help'
+        }
+      }
+    ]
+  };
 }
 
 async function pushToLine(to: string, text: string) {
@@ -5814,7 +5861,7 @@ async function handleAttendanceCommand(
   user: any,
   lineUserId: string,
   locale: 'en' | 'th'
-): Promise<{ detected: boolean; type?: string; message: string }> {
+): Promise<{ detected: boolean; type?: string; message: string; quickReply?: any }> {
   const attendanceCommands = {
     checkIn: ['checkin', 'เช็คอิน', 'เข้างาน', 'check in'],
     checkOut: ['checkout', 'เช็คเอาต์', 'ออกงาน', 'check out'],
@@ -5853,7 +5900,7 @@ async function handleAttendanceCommand(
         ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียนหรือเชื่อมโยงบัญชี LINE ของคุณกับระบบ\n\n---\n\nSorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.'
         : 'Sorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.';
       
-      return { detected: true, type, message };
+      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
     }
     
     // Get effective settings
@@ -5868,7 +5915,7 @@ async function handleAttendanceCommand(
         ? 'ระบบเช็คชื่อยังไม่เปิดใช้งานสำหรับคุณ กรุณาติดต่อ HR\n\nAttendance system is not enabled for you. Please contact HR.'
         : 'Attendance system is not enabled for you. Please contact HR.';
       
-      return { detected: true, type, message };
+      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
     }
     
     // Create attendance token
@@ -5892,7 +5939,7 @@ async function handleAttendanceCommand(
         ? 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง\n\nError occurred. Please try again.'
         : 'Error occurred. Please try again.';
       
-      return { detected: true, type, message };
+      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
     }
     
     // Generate URL based on command type
@@ -5918,7 +5965,7 @@ async function handleAttendanceCommand(
     }
     
     console.log('[handleAttendanceCommand] Attendance link sent successfully');
-    return { detected: true, type, message };
+    return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
     
   } catch (error) {
     console.error('[handleAttendanceCommand] Error:', error);
@@ -5926,7 +5973,7 @@ async function handleAttendanceCommand(
       ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่\n\nSystem error. Please try again.'
       : 'System error. Please try again.';
     
-    return { detected: true, type, message };
+    return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
   }
 }
 
@@ -6368,17 +6415,36 @@ async function handleMessageEvent(event: LineEvent) {
 
   // PHASE 2.95: Attendance Command Detection (DM only)
   if (isDM) {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const attendanceResult = await handleAttendanceCommand(event.message.text, user, lineUserId, locale);
+    const attendanceLocale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const attendanceResult = await handleAttendanceCommand(event.message.text, user, lineUserId, attendanceLocale);
     
     if (attendanceResult.detected) {
       console.log(`[handleMessageEvent] Detected attendance command: ${attendanceResult.type}`);
       try {
-        await replyToLine(event.replyToken, attendanceResult.message);
-        console.log('[handleMessageEvent] Sent attendance link');
+        await replyToLine(event.replyToken, attendanceResult.message, attendanceResult.quickReply);
+        console.log('[handleMessageEvent] Sent attendance link with Quick Reply');
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending attendance link:', error);
+      }
+    }
+    
+    // Welcome message with Quick Reply for unrecognized commands in DM
+    const menuLocale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const lowerText = event.message.text.toLowerCase().trim();
+    
+    // Check if it's a help/menu command
+    if (lowerText === '/menu' || lowerText === 'menu' || lowerText === 'เมนู' || lowerText === '/start' || lowerText === 'start') {
+      try {
+        const welcomeMessage = menuLocale === 'th'
+          ? `สวัสดีครับ คุณ${user.display_name}! 👋\n\nเลือกคำสั่งที่ต้องการ:`
+          : `Hello ${user.display_name}! 👋\n\nPlease select an option:`;
+        
+        await replyToLine(event.replyToken, welcomeMessage, getAttendanceQuickReply(menuLocale));
+        console.log('[handleMessageEvent] Sent welcome message with Quick Reply');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending welcome message:', error);
       }
     }
   }

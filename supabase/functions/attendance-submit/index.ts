@@ -305,7 +305,7 @@ serve(async (req) => {
       );
     }
 
-    // Send confirmation DM
+    // Send confirmation DM with Quick Reply
     const actionText = token.type === 'check_in' ? 'เช็คอิน' : 'เช็คเอาต์';
     const actionTextEn = token.type === 'check_in' ? 'checked in' : 'checked out';
     const timeStr = new Date().toLocaleTimeString('th-TH', { 
@@ -315,6 +315,45 @@ serve(async (req) => {
     });
 
     const flagWarning = isFlagged ? `\n\n⚠️ คำเตือน: ${flagReasons.join(', ')}` : '';
+    
+    // Suggest next action based on current action
+    const nextActionHint = token.type === 'check_in' 
+      ? '\n\nเลิกงานแล้วอย่าลืม Check Out นะครับ! 😊'
+      : '\n\nขอบคุณสำหรับการทำงานวันนี้! พรุ่งนี้เจอกันครับ 👋';
+    
+    const nextActionHintEn = token.type === 'check_in'
+      ? '\n\nDon\'t forget to Check Out when you finish work! 😊'
+      : '\n\nThank you for your work today! See you tomorrow! 👋';
+
+    // Quick Reply buttons
+    const quickReply = {
+      items: [
+        {
+          type: 'action',
+          action: {
+            type: 'message',
+            label: token.type === 'check_in' ? '🔴 ออกงาน' : '🟢 เข้างาน',
+            text: token.type === 'check_in' ? 'checkout' : 'checkin'
+          }
+        },
+        {
+          type: 'action',
+          action: {
+            type: 'message',
+            label: '📋 ประวัติ',
+            text: 'history'
+          }
+        },
+        {
+          type: 'action',
+          action: {
+            type: 'message',
+            label: '❓ ช่วยเหลือ',
+            text: '/help'
+          }
+        }
+      ]
+    };
 
     await fetch(`https://api.line.me/v2/bot/message/push`, {
       method: 'POST',
@@ -326,7 +365,8 @@ serve(async (req) => {
         to: token.employee.line_user_id,
         messages: [{
           type: 'text',
-          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${flagWarning}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${flagWarning}`
+          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${flagWarning}${nextActionHintEn}`,
+          quickReply: quickReply
         }]
       })
     });
