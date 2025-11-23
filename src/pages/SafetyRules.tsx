@@ -101,34 +101,38 @@ export default function SafetyRules() {
   };
 
   return (
-    <div className="space-y-6">
-
+    <div className="space-y-6 max-w-full px-4 sm:px-6">
       <Card>
         <CardHeader>
           <CardTitle>Detection Rules</CardTitle>
-          <CardDescription className="flex justify-between items-center">
-            <span>Customize patterns for spam, scams, and toxic content detection</span>
-            <Button
-              onClick={() => {
-                setEditingRule({
-                  name: '',
-                  description: '',
-                  rule_type: 'url_pattern',
-                  pattern: '',
-                  severity: 'medium',
-                  action: 'log',
-                  scope: 'global',
-                  is_enabled: true,
-                });
-                setIsDialogOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Rule
-            </Button>
+          <CardDescription>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">
+                Customize patterns for spam, scams, and toxic content detection
+              </span>
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  setEditingRule({
+                    name: '',
+                    description: '',
+                    rule_type: 'url_pattern',
+                    pattern: '',
+                    severity: 'medium',
+                    action: 'log',
+                    scope: 'global',
+                    is_enabled: true,
+                  });
+                  setIsDialogOpen(true);
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Rule
+              </Button>
+            </div>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
@@ -136,82 +140,104 @@ export default function SafetyRules() {
               ))}
             </div>
           ) : rules && rules.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Pattern</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Matches</TableHead>
-                  <TableHead>Last Matched</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((rule) => (
-                  <TableRow key={rule.id}>
-                    <TableCell>
-                      <Switch
-                        checked={rule.is_enabled}
-                        onCheckedChange={() =>
-                          toggleRuleMutation.mutate({ id: rule.id, isEnabled: rule.is_enabled })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{rule.name}</div>
-                      {rule.description && (
-                        <div className="text-xs text-muted-foreground">{rule.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{rule.rule_type}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-xs">
-                      <code className="text-xs bg-muted px-2 py-1 rounded">{rule.pattern}</code>
-                    </TableCell>
-                    <TableCell>{getSeverityBadge(rule.severity)}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{rule.action}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{rule.scope}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">{rule.match_count || 0}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {rule.last_matched_at
-                        ? formatDistanceToNow(new Date(rule.last_matched_at), { addSuffix: true })
-                        : 'Never'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditingRule(rule);
-                            setIsDialogOpen(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteRuleMutation.mutate(rule.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <div className="overflow-hidden rounded-md border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[80px] text-xs sm:text-sm">Status</TableHead>
+                        <TableHead className="min-w-[160px] text-xs sm:text-sm">Name</TableHead>
+                        <TableHead className="min-w-[100px] text-xs sm:text-sm">Type</TableHead>
+                        <TableHead className="min-w-[220px] text-xs sm:text-sm">Pattern</TableHead>
+                        <TableHead className="min-w-[90px] text-xs sm:text-sm">Severity</TableHead>
+                        <TableHead className="min-w-[100px] text-xs sm:text-sm">Action</TableHead>
+                        <TableHead className="min-w-[90px] text-xs sm:text-sm">Scope</TableHead>
+                        <TableHead className="min-w-[80px] text-xs sm:text-sm text-center">Matches</TableHead>
+                        <TableHead className="min-w-[140px] text-xs sm:text-sm">Last Matched</TableHead>
+                        <TableHead className="min-w-[100px] text-xs sm:text-sm text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rules.map((rule) => (
+                        <TableRow key={rule.id}>
+                          <TableCell className="py-2">
+                            <Switch
+                              checked={rule.is_enabled}
+                              onCheckedChange={() =>
+                                toggleRuleMutation.mutate({ id: rule.id, isEnabled: rule.is_enabled })
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            <div className="font-medium text-sm truncate max-w-[200px]">{rule.name}</div>
+                            {rule.description && (
+                              <div className="text-[11px] text-muted-foreground line-clamp-2 break-words max-w-[260px]">
+                                {rule.description}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            <Badge variant="outline" className="text-[11px]">
+                              {rule.rule_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2 align-top max-w-xs">
+                            <code className="text-[11px] bg-muted px-2 py-1 rounded break-all block">
+                              {rule.pattern}
+                            </code>
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            {getSeverityBadge(rule.severity)}
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            <Badge variant="secondary" className="text-[11px]">
+                              {rule.action}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            <Badge variant="outline" className="text-[11px]">
+                              {rule.scope}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2 text-center align-top text-sm">
+                            {rule.match_count || 0}
+                          </TableCell>
+                          <TableCell className="py-2 align-top text-[11px] text-muted-foreground">
+                            {rule.last_matched_at
+                              ? formatDistanceToNow(new Date(rule.last_matched_at), { addSuffix: true })
+                              : 'Never'}
+                          </TableCell>
+                          <TableCell className="py-2 align-top">
+                            <div className="flex gap-1 justify-end">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  setEditingRule(rule);
+                                  setIsDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => deleteRuleMutation.mutate(rule.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <AlertTriangle className="w-12 h-12 mx-auto mb-4 opacity-50" />
