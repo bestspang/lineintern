@@ -128,12 +128,16 @@ export type Database = {
           device_time: string | null
           employee_id: string
           event_type: string
+          exif_data: Json | null
           flag_reason: string | null
+          fraud_reasons: string[] | null
+          fraud_score: number | null
           id: string
           is_flagged: boolean | null
           latitude: number | null
           line_message_id: string | null
           longitude: number | null
+          photo_hash: string | null
           photo_url: string | null
           server_time: string
           source: string | null
@@ -146,12 +150,16 @@ export type Database = {
           device_time?: string | null
           employee_id: string
           event_type: string
+          exif_data?: Json | null
           flag_reason?: string | null
+          fraud_reasons?: string[] | null
+          fraud_score?: number | null
           id?: string
           is_flagged?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          photo_hash?: string | null
           photo_url?: string | null
           server_time?: string
           source?: string | null
@@ -164,12 +172,16 @@ export type Database = {
           device_time?: string | null
           employee_id?: string
           event_type?: string
+          exif_data?: Json | null
           flag_reason?: string | null
+          fraud_reasons?: string[] | null
+          fraud_score?: number | null
           id?: string
           is_flagged?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          photo_hash?: string | null
           photo_url?: string | null
           server_time?: string
           source?: string | null
@@ -1913,6 +1925,19 @@ export type Database = {
         Args: { lat1: number; lat2: number; lon1: number; lon2: number }
         Returns: number
       }
+      detect_duplicate_photos: {
+        Args: {
+          p_employee_id: string
+          p_hours_lookback?: number
+          p_photo_hash: string
+        }
+        Returns: {
+          is_duplicate: boolean
+          similar_log_id: string
+          similar_photo_url: string
+          time_diff_hours: number
+        }[]
+      }
       find_or_create_thread: {
         Args: {
           p_group_id: string
@@ -1951,6 +1976,16 @@ export type Database = {
           require_location: boolean
           require_photo: boolean
           token_validity_minutes: number
+        }[]
+      }
+      get_fraud_detection_stats: {
+        Args: never
+        Returns: {
+          duplicate_photos: number
+          flagged_logs: number
+          high_risk_logs: number
+          suspicious_timing: number
+          total_logs: number
         }[]
       }
       get_overdue_work_tasks: {

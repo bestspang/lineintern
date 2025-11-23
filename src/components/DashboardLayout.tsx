@@ -22,7 +22,8 @@ import {
   ClipboardCheck,
   Building,
   Calendar,
-  Camera
+  Camera,
+  Shield
 } from 'lucide-react';
 import {
   Sidebar,
@@ -92,6 +93,7 @@ const navigationGroups = [
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
       { title: 'Photos', url: '/attendance/photos', icon: Camera },
+      { title: 'Fraud Detection', url: '/attendance/fraud-detection', icon: Shield },
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
       { title: 'Settings', url: '/attendance/settings', icon: Settings },
     ],
