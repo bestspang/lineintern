@@ -32,6 +32,7 @@ import SettingsLayout from "./pages/SettingsLayout";
 import NotFound from "./pages/NotFound";
 import Attendance from "./pages/Attendance";
 import AttendanceEmployees from "./pages/attendance/Employees";
+import EmployeeDetail from "./pages/attendance/EmployeeDetail";
 import AttendanceBranches from "./pages/attendance/Branches";
 import AttendanceLogs from "./pages/attendance/Logs";
 import AttendanceSummaries from "./pages/attendance/Summaries";
@@ -72,6 +73,7 @@ const App = () => (
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/memory-analytics" element={<MemoryAnalytics />} />
                     <Route path="/attendance/employees" element={<AttendanceEmployees />} />
+                    <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
                     <Route path="/attendance/branches" element={<AttendanceBranches />} />
                     <Route path="/attendance/logs" element={<AttendanceLogs />} />
                     <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
