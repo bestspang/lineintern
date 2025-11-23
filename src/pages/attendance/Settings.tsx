@@ -94,14 +94,14 @@ export default function AttendanceSettings() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <SettingsIcon className="h-5 w-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <SettingsIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             Global Attendance Settings
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Configure default attendance system settings
           </CardDescription>
         </CardHeader>

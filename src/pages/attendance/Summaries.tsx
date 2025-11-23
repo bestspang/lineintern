@@ -28,25 +28,25 @@ export default function AttendanceSummaries() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
             Daily Summaries
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             View daily attendance summaries sent to LINE groups
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
           {summaries?.map((summary) => (
             <Card key={summary.id}>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {summary.branch?.name} - {format(new Date(summary.summary_date), 'MMMM dd, yyyy')}
+              <CardHeader className="p-3 sm:p-6">
+                <CardTitle className="text-sm sm:text-base">
+                  {summary.branch?.name} - {format(new Date(summary.summary_date), 'MMM dd, yyyy')}
                 </CardTitle>
-                <CardDescription className="grid grid-cols-4 gap-2 text-sm">
+                <CardDescription className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs sm:text-sm">
                   <div>Checked In: {summary.checked_in}/{summary.total_employees}</div>
                   <div>Checked Out: {summary.checked_out}/{summary.total_employees}</div>
                   <div>Late: {summary.late_count}</div>

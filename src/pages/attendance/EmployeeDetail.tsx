@@ -211,36 +211,36 @@ export default function EmployeeDetail() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => navigate('/attendance/employees')}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
+          <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
+          <span className="text-xs sm:text-sm">Back</span>
         </Button>
       </div>
 
       {/* Employee Info Card */}
       <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-8 w-8 text-primary" />
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <User className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-2xl">{employee.full_name}</CardTitle>
-                <CardDescription className="text-base mt-1">
+                <CardTitle className="text-lg sm:text-2xl">{employee.full_name}</CardTitle>
+                <CardDescription className="text-xs sm:text-base mt-1">
                   Employee Code: {employee.code}
                 </CardDescription>
               </div>
             </div>
-            <Badge variant={employee.is_active ? 'default' : 'secondary'} className="text-sm">
+            <Badge variant={employee.is_active ? 'default' : 'secondary'} className="h-5 sm:h-6 text-xs sm:text-sm">
               {employee.is_active ? 'Active' : 'Inactive'}
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="space-y-4 p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
               <Briefcase className="h-5 w-5 text-muted-foreground" />
               <div>
@@ -278,15 +278,15 @@ export default function EmployeeDetail() {
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:pt-6 sm:pb-3 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Check-ins (30d)</p>
-                <p className="text-2xl font-bold">{stats?.checkIns || 0}</p>
+                <p className="text-[10px] sm:text-sm text-muted-foreground">Check-ins (30d)</p>
+                <p className="text-xl sm:text-2xl font-bold">{stats?.checkIns || 0}</p>
               </div>
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
+              <CheckCircle2 className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
             </div>
           </CardContent>
         </Card>
@@ -327,19 +327,19 @@ export default function EmployeeDetail() {
 
       {/* Charts */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
             Attendance Analytics
           </CardTitle>
-          <CardDescription>Visual representation of attendance patterns over the last 30 days</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">Visual representation of attendance patterns over the last 30 days</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           <Tabs defaultValue="daily" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="daily">Daily Activity</TabsTrigger>
-              <TabsTrigger value="comparison">Check-in vs Check-out</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly Trend</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 h-auto">
+              <TabsTrigger value="daily" className="text-xs sm:text-sm px-2 sm:px-3">Daily</TabsTrigger>
+              <TabsTrigger value="comparison" className="text-xs sm:text-sm px-2 sm:px-3">Compare</TabsTrigger>
+              <TabsTrigger value="weekly" className="text-xs sm:text-sm px-2 sm:px-3">Weekly</TabsTrigger>
             </TabsList>
             
             <TabsContent value="daily" className="space-y-4">
