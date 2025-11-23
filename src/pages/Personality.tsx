@@ -496,12 +496,12 @@ export default function Personality() {
                   </div>
 
                   {/* Recent Topics */}
-                  {recentTopics.length > 0 && (
-                    <div className="space-y-2">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <MessageCircle className="h-4 w-4 text-green-500" />
-                        Recent Topics
-                      </h3>
+                  <div className="space-y-2">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4 text-green-500" />
+                      Recent Topics
+                    </h3>
+                    {recentTopics.length > 0 ? (
                       <div className="space-y-1">
                         {recentTopics.slice(0, 5).map((topic, idx) => (
                           <div key={idx} className="flex justify-between text-sm">
@@ -512,8 +512,10 @@ export default function Personality() {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No recent topics tracked yet</p>
+                    )}
+                  </div>
 
                   {/* Relationship Map */}
                   <div className="space-y-2">
