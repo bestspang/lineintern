@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Calendar, MessageSquare, ListChecks, HelpCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Search, Calendar, MessageSquare, ListChecks, HelpCircle, Sparkles, Brain, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -27,6 +30,28 @@ interface ChatSummary {
   };
 }
 
+interface Group {
+  id: string;
+  display_name: string;
+  line_group_id: string;
+}
+
+interface SummaryStats {
+  total_messages: number;
+  clean_messages: number;
+  threads: number;
+  selected_messages: number;
+  decisions: number;
+  actions: number;
+  questions: number;
+  context?: {
+    working_memories: number;
+    long_term_memories: number;
+    user_profiles: number;
+    business_topics: string[];
+  };
+}
+
 export default function Summaries() {
   const [summaries, setSummaries] = useState<ChatSummary[]>([]);
   const [filteredSummaries, setFilteredSummaries] = useState<ChatSummary[]>([]);
@@ -36,6 +61,10 @@ export default function Summaries() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [messageLimit, setMessageLimit] = useState<string>("200");
+  const [lastStats, setLastStats] = useState<SummaryStats | null>(null);
   const { toast } = useToast();
 
   // Auto-refresh every 10 seconds
@@ -49,6 +78,7 @@ export default function Summaries() {
 
   useEffect(() => {
     fetchSummaries();
+    fetchGroups();
   }, []);
 
   useEffect(() => {
@@ -96,18 +126,56 @@ export default function Summaries() {
     }
   };
 
+  const fetchGroups = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("groups")
+        .select("id, display_name, line_group_id")
+        .eq("status", "active")
+        .order("display_name");
+
+      if (error) throw error;
+      setGroups(data || []);
+      
+      // Auto-select first group
+      if (data && data.length > 0 && !selectedGroupId) {
+        setSelectedGroupId(data[0].id);
+      }
+    } catch (error: any) {
+      console.error("Error fetching groups:", error);
+    }
+  };
+
   const generateSummaryNow = async () => {
+    if (!selectedGroupId) {
+      toast({
+        title: "Error",
+        description: "Please select a group first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsGenerating(true);
-      const { error } = await supabase.functions.invoke("report-generator", {
-        body: { type: "auto_summary" },
+      const { data, error } = await supabase.functions.invoke("report-generator", {
+        body: { 
+          type: "auto_summary",
+          groupId: selectedGroupId,
+          messageLimit: parseInt(messageLimit)
+        },
       });
 
       if (error) throw error;
 
+      // Store stats if available
+      if (data?.stats) {
+        setLastStats(data.stats);
+      }
+
       toast({
         title: "Success",
-        description: "Summary generated successfully",
+        description: data?.message || "Summary generated successfully",
       });
 
       await fetchSummaries();
@@ -115,7 +183,7 @@ export default function Summaries() {
       console.error("Error generating summary:", error);
       toast({
         title: "Error",
-        description: "Failed to generate summary",
+        description: error.message || "Failed to generate summary",
         variant: "destructive",
       });
     } finally {
@@ -139,16 +207,145 @@ export default function Summaries() {
         <div>
           <h1 className="text-3xl font-bold mb-2">Chat Summaries</h1>
           <p className="text-muted-foreground">
-            Browse and search past conversation summaries from all groups
+            Intelligent conversation summaries with context enrichment and multi-stage analysis
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Total messages: {messageCount} • Auto-summary at 20 messages • Last updated: {lastUpdated.toLocaleTimeString()}
+            Total messages: {messageCount} • Last updated: {lastUpdated.toLocaleTimeString()}
           </p>
         </div>
-        <Button onClick={generateSummaryNow} disabled={isGenerating}>
-          {isGenerating ? "Generating..." : "Generate Summary Now"}
-        </Button>
       </div>
+
+      {/* Generate New Summary Card */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            Generate New Summary
+          </CardTitle>
+          <CardDescription>
+            Create an intelligent summary with importance scoring, thread clustering, and context enrichment
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label>Select Group</Label>
+              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label>Message Limit</Label>
+              <Select value={messageLimit} onValueChange={setMessageLimit}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="100">Last 100 messages</SelectItem>
+                  <SelectItem value="200">Last 200 messages</SelectItem>
+                  <SelectItem value="300">Last 300 messages</SelectItem>
+                  <SelectItem value="500">Last 500 messages</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-end">
+              <Button 
+                onClick={generateSummaryNow} 
+                disabled={isGenerating || !selectedGroupId}
+                className="w-full"
+              >
+                {isGenerating ? "Generating..." : "Generate Summary"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats Display */}
+          {lastStats && (
+            <div className="mt-4 p-4 bg-background rounded-lg border space-y-3">
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-4 h-4 text-primary" />
+                <h4 className="font-semibold text-sm">Last Generation Stats</h4>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-muted-foreground text-xs">Total Messages</div>
+                  <div className="font-bold">{lastStats.total_messages}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs">After Filtering</div>
+                  <div className="font-bold text-green-600">{lastStats.clean_messages}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs">Threads Detected</div>
+                  <div className="font-bold text-blue-600">{lastStats.threads}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs">Important Messages</div>
+                  <div className="font-bold text-purple-600">{lastStats.selected_messages}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-sm pt-2 border-t">
+                <div>
+                  <div className="text-muted-foreground text-xs">Decisions</div>
+                  <div className="font-bold text-orange-600">{lastStats.decisions}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs">Action Items</div>
+                  <div className="font-bold text-cyan-600">{lastStats.actions}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs">Questions</div>
+                  <div className="font-bold text-pink-600">{lastStats.questions}</div>
+                </div>
+              </div>
+
+              {lastStats.context && (
+                <div className="pt-2 border-t space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Users className="w-3 h-3" />
+                    <span>Context Enrichment</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Working Memory:</span> {lastStats.context.working_memories}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Long-term:</span> {lastStats.context.long_term_memories}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Profiles:</span> {lastStats.context.user_profiles}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Topics:</span> {lastStats.context.business_topics.join(', ') || 'General'}
+                    </div>
+                  </div>
+                  
+                  <div className="mt-2">
+                    <div className="text-xs text-muted-foreground mb-1">Selection Quality</div>
+                    <Progress value={(lastStats.selected_messages / lastStats.total_messages) * 100} className="h-2" />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {Math.round((lastStats.selected_messages / lastStats.total_messages) * 100)}% of messages selected as important
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Search Bar */}
       <Card>
