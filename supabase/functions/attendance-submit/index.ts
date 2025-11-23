@@ -59,6 +59,11 @@ serve(async (req) => {
     } | null;
 
     let photoUrl: string | null = null;
+    let photoPath: string | null = null;
+    let photoHash: string | null = null;
+    let exifData: any = null;
+    let fraudScore = 0;
+    let fraudReasons: string[] = [];
     let isFlagged = false;
     let flagReasons: string[] = [];
 
@@ -83,6 +88,41 @@ serve(async (req) => {
       const fileExt = photoFile.name.split('.').pop();
       const fileName = `${token.employee.id}/${Date.now()}.${fileExt}`;
       
+      // Calculate photo hash for duplicate detection
+      const photoBytes = new Uint8Array(await photoFile.arrayBuffer());
+      const hashBuffer = await crypto.subtle.digest('SHA-256', photoBytes);
+      photoHash = Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      // Extract basic EXIF-like metadata
+      exifData = {
+        size: photoFile.size,
+        type: photoFile.type,
+        lastModified: photoFile.lastModified,
+        uploadTime: Date.now()
+      };
+
+      // Check for duplicate photos
+      if (photoHash) {
+        const { data: duplicates } = await supabase
+          .rpc('detect_duplicate_photos', {
+            p_employee_id: token.employee.id,
+            p_photo_hash: photoHash,
+            p_hours_lookback: 168 // 7 days
+          });
+
+        if (duplicates && duplicates.length > 0 && duplicates[0].is_duplicate) {
+          fraudScore += 50;
+          fraudReasons.push('duplicate_photo');
+          const hoursDiff = duplicates[0].time_diff_hours;
+          if (hoursDiff < 24) {
+            fraudScore += 30; // Higher score if duplicate within 24h
+            fraudReasons.push('duplicate_within_24h');
+          }
+        }
+      }
+      
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('attendance-photos')
         .upload(fileName, photoFile, {
@@ -95,6 +135,7 @@ serve(async (req) => {
         flagReasons.push('Photo upload failed');
         isFlagged = true;
       } else {
+        photoPath = fileName;
         const { data: { publicUrl } } = supabase.storage
           .from('attendance-photos')
           .getPublicUrl(fileName);
@@ -116,8 +157,58 @@ serve(async (req) => {
         if (distance && distance > (token.employee.branch.radius_meters || 200)) {
           isFlagged = true;
           flagReasons.push(`นอกพื้นที่ (ห่าง ${distance} เมตร) / Outside geofence (${distance}m away)`);
+          fraudScore += 20;
+          fraudReasons.push('outside_geofence');
         }
       }
+    }
+
+    // Check for suspicious timing patterns
+    const currentTime = new Date();
+    const currentHour = currentTime.getUTCHours() + 7; // Bangkok time
+    const currentMinute = currentTime.getMinutes();
+    const currentSecond = currentTime.getSeconds();
+
+    // Check if time is too exact (e.g., 08:00:00 every day)
+    if (currentSecond === 0 && currentMinute === 0) {
+      fraudScore += 15;
+      fraudReasons.push('suspicious_timing');
+    }
+
+    // Check for unusual hours
+    if (currentHour < 5 || currentHour > 23) {
+      fraudScore += 10;
+      fraudReasons.push('unusual_hours');
+    }
+
+    // Get recent check-ins to detect patterns
+    const { data: recentLogs } = await supabase
+      .from('attendance_logs')
+      .select('server_time')
+      .eq('employee_id', token.employee.id)
+      .gte('server_time', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('server_time', { ascending: false })
+      .limit(5);
+
+    if (recentLogs && recentLogs.length >= 3) {
+      // Check if all times are suspiciously similar
+      const times = recentLogs.map(log => new Date(log.server_time));
+      const minutes = times.map(t => t.getMinutes());
+      const seconds = times.map(t => t.getSeconds());
+      
+      const allSameMinute = minutes.every(m => m === minutes[0]);
+      const allSameSecond = seconds.every(s => s === seconds[0]);
+      
+      if (allSameMinute && allSameSecond) {
+        fraudScore += 25;
+        fraudReasons.push('identical_time_pattern');
+      }
+    }
+
+    // Set flagged status based on fraud score
+    if (fraudScore >= 40) {
+      isFlagged = true;
+      flagReasons.push(`Fraud detection: score ${fraudScore}`);
     }
 
     // Mark token as used
@@ -138,7 +229,11 @@ serve(async (req) => {
         timezone: timezone,
         latitude: latitude,
         longitude: longitude,
-        photo_url: photoUrl,
+        photo_url: photoPath,
+        photo_hash: photoHash,
+        exif_data: exifData,
+        fraud_score: fraudScore,
+        fraud_reasons: fraudReasons,
         device_info: JSON.parse(deviceInfo || '{}'),
         source: 'webapp',
         is_flagged: isFlagged,
