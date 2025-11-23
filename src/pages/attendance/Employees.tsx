@@ -39,6 +39,8 @@ export default function AttendanceEmployees() {
     shift_end_time: '',
     hours_per_day: null,
     break_hours: 1.00,
+    allowed_work_start_time: '06:00',
+    allowed_work_end_time: '20:00',
     reminder_preferences: {
       check_in_reminder_enabled: true,
       check_out_reminder_enabled: true,
@@ -146,6 +148,8 @@ export default function AttendanceEmployees() {
       shift_end_time: '',
       hours_per_day: null,
       break_hours: 1.00,
+      allowed_work_start_time: '06:00',
+      allowed_work_end_time: '20:00',
       reminder_preferences: {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -173,6 +177,8 @@ export default function AttendanceEmployees() {
       shift_end_time: employee.shift_end_time || '',
       hours_per_day: employee.hours_per_day || null,
       break_hours: employee.break_hours || 1.00,
+      allowed_work_start_time: employee.allowed_work_start_time?.substring(0, 5) || '06:00',
+      allowed_work_end_time: employee.allowed_work_end_time?.substring(0, 5) || '20:00',
       reminder_preferences: employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -201,6 +207,12 @@ export default function AttendanceEmployees() {
     } else if (formData.working_time_type === 'hours_based') {
       if (!formData.hours_per_day || formData.hours_per_day <= 0) {
         return "กรุณาระบุจำนวนชั่วโมงทำงานต่อวัน";
+      }
+      if (!formData.allowed_work_start_time || !formData.allowed_work_end_time) {
+        return "กรุณาระบุช่วงเวลาที่อนุญาตให้นับชั่วโมง";
+      }
+      if (formData.allowed_work_start_time >= formData.allowed_work_end_time) {
+        return "เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด";
       }
     }
     
@@ -517,6 +529,65 @@ export default function AttendanceEmployees() {
                       </div>
                     )}
 
+                    {formData.working_time_type === 'hours_based' && (
+                      <div className="space-y-3 bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-900">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-amber-600" />
+                          <Label className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            ⏰ ช่วงเวลาที่อนุญาตให้นับชั่วโมง
+                          </Label>
+                        </div>
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          พนักงานจะสามารถ check-in และนับชั่วโมงได้เฉพาะในช่วงเวลานี้เท่านั้น
+                        </p>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label htmlFor="allowed_work_start_time" className="text-xs">
+                              เริ่มต้น (เช่น 06:00)
+                            </Label>
+                            <Input
+                              id="allowed_work_start_time"
+                              type="time"
+                              value={formData.allowed_work_start_time}
+                              onChange={(e) => setFormData({ 
+                                ...formData, 
+                                allowed_work_start_time: e.target.value 
+                              })}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="allowed_work_end_time" className="text-xs">
+                              สิ้นสุด (เช่น 20:00)
+                            </Label>
+                            <Input
+                              id="allowed_work_end_time"
+                              type="time"
+                              value={formData.allowed_work_end_time}
+                              onChange={(e) => setFormData({ 
+                                ...formData, 
+                                allowed_work_end_time: e.target.value 
+                              })}
+                            />
+                          </div>
+                        </div>
+
+                        {formData.allowed_work_start_time && formData.allowed_work_end_time && (
+                          <Alert className="bg-white dark:bg-gray-900/50 border-amber-200 dark:border-amber-800">
+                            <AlertDescription className="text-xs space-y-1">
+                              <div className="font-semibold text-amber-900 dark:text-amber-100">
+                                ตัวอย่าง:
+                              </div>
+                              <div className="text-muted-foreground space-y-0.5">
+                                <div>✅ อนุญาต: Check-in เวลา {formData.allowed_work_start_time} - {formData.allowed_work_end_time}</div>
+                                <div>❌ ไม่อนุญาต: Check-in ก่อน {formData.allowed_work_start_time} หรือหลัง {formData.allowed_work_end_time}</div>
+                              </div>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label htmlFor="break_hours">ชั่วโมงพัก (ชั่วโมง)</Label>
                       <Input 
@@ -572,34 +643,51 @@ export default function AttendanceEmployees() {
                               const checkOutDate = new Date(checkInDate.getTime() + totalMinutes * 60000);
                               const checkOutTime = checkOutDate.toTimeString().substring(0, 5);
                               
+                              // Check if check-in time is within allowed hours
+                              const isCheckInAllowed = sampleCheckInTime >= formData.allowed_work_start_time && 
+                                                       sampleCheckInTime <= formData.allowed_work_end_time;
+                              
                               return (
-                                <div className="space-y-1 text-xs bg-white dark:bg-gray-900/50 p-3 rounded-md border border-blue-100 dark:border-blue-900">
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">เวลาทำงาน:</span>
-                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                      {hoursPerDay} ชม.
-                                    </span>
+                                <>
+                                  {!isCheckInAllowed && (
+                                    <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded p-2">
+                                      <p className="text-xs text-red-700 dark:text-red-300 font-medium">
+                                        ⚠️ เวลา check-in นี้อยู่นอกช่วงที่อนุญาต!
+                                      </p>
+                                      <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                                        ระบบจะไม่อนุญาตให้ check-in ในเวลานี้
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  <div className="space-y-1 text-xs bg-white dark:bg-gray-900/50 p-3 rounded-md border border-blue-100 dark:border-blue-900">
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">เวลาทำงาน:</span>
+                                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                        {hoursPerDay} ชม.
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">เวลาพัก:</span>
+                                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                        {breakHours} ชม.
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">เวลารวม:</span>
+                                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                        {hoursPerDay + breakHours} ชม.
+                                      </span>
+                                    </div>
+                                    <div className="border-t border-blue-100 dark:border-blue-900 mt-2 pt-2"></div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-muted-foreground">คาดว่าจะ Check-Out:</span>
+                                      <span className="font-bold text-base text-green-600 dark:text-green-400">
+                                        {checkOutTime} น.
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">เวลาพัก:</span>
-                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                      {breakHours} ชม.
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">เวลารวม:</span>
-                                    <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                      {hoursPerDay + breakHours} ชม.
-                                    </span>
-                                  </div>
-                                  <div className="border-t border-blue-100 dark:border-blue-900 mt-2 pt-2"></div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-muted-foreground">คาดว่าจะ Check-Out:</span>
-                                    <span className="font-bold text-base text-green-600 dark:text-green-400">
-                                      {checkOutTime} น.
-                                    </span>
-                                  </div>
-                                </div>
+                                </>
                               );
                             })()}
                           </div>
@@ -763,13 +851,18 @@ export default function AttendanceEmployees() {
                   <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
                   <TableCell className="hidden lg:table-cell py-2">
                     {employee.working_time_type === 'hours_based' ? (
-                      <div className="text-sm">
+                      <div className="text-sm space-y-1">
                         <div className="font-medium">
                           {employee.hours_per_day} ชม./วัน
                         </div>
                         {employee.break_hours && (
                           <div className="text-xs text-muted-foreground">
                             พัก: {employee.break_hours} ชม.
+                          </div>
+                        )}
+                        {employee.allowed_work_start_time && employee.allowed_work_end_time && (
+                          <div className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                            ⏰ {employee.allowed_work_start_time.substring(0,5)} - {employee.allowed_work_end_time.substring(0,5)}
                           </div>
                         )}
                       </div>

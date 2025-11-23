@@ -317,6 +317,26 @@ export default function Attendance() {
           </CardContent>
         </Card>
 
+        {/* Hours-Based Time Restriction Alert */}
+        {tokenData?.employee?.working_time_type === 'hours_based' && 
+         tokenData?.employee?.allowed_work_start_time && 
+         tokenData?.employee?.allowed_work_end_time && (
+          <Alert className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+            <Clock className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-sm space-y-1">
+              <div className="font-semibold text-amber-900 dark:text-amber-100">
+                ⏰ ช่วงเวลาที่อนุญาตให้ check-in:
+              </div>
+              <div className="text-amber-700 dark:text-amber-300">
+                {tokenData.employee.allowed_work_start_time.substring(0,5)} - {tokenData.employee.allowed_work_end_time.substring(0,5)} น.
+              </div>
+              <div className="text-xs text-muted-foreground">
+                คุณจะสามารถนับชั่วโมงได้เฉพาะในช่วงเวลานี้เท่านั้น
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Photo Section */}
         {tokenData?.settings?.require_photo && (
           <Card>
