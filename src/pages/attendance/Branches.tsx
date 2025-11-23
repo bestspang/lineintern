@@ -11,13 +11,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Building, Plus, Edit } from 'lucide-react';
+import { Loader2, Building, Plus, Edit, MapPin } from 'lucide-react';
+import { MapPicker } from '@/components/attendance/MapPicker';
 
 export default function AttendanceBranches() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'office',
@@ -216,28 +218,34 @@ export default function AttendanceBranches() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="latitude">Latitude</Label>
+                  <div>
+                    <Label>Location (Latitude, Longitude)</Label>
+                    <div className="flex gap-2">
                       <Input
-                        id="latitude"
                         type="number"
                         step="0.000001"
                         value={formData.latitude}
                         onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                         placeholder="13.756331"
+                        className="flex-1"
                       />
-                    </div>
-                    <div>
-                      <Label htmlFor="longitude">Longitude</Label>
                       <Input
-                        id="longitude"
                         type="number"
                         step="0.000001"
                         value={formData.longitude}
                         onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                         placeholder="100.501765"
+                        className="flex-1"
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setMapPickerOpen(true)}
+                        className="flex-shrink-0"
+                      >
+                        <MapPin className="h-4 w-4 mr-2" />
+                        แผนที่
+                      </Button>
                     </div>
                   </div>
 
@@ -366,6 +374,21 @@ export default function AttendanceBranches() {
           </div>
         </CardContent>
       </Card>
+
+      <MapPicker
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLat={parseFloat(formData.latitude) || 13.756331}
+        initialLng={parseFloat(formData.longitude) || 100.501765}
+        onLocationSelect={(lat, lng) => {
+          setFormData({
+            ...formData,
+            latitude: lat.toString(),
+            longitude: lng.toString()
+          });
+          setMapPickerOpen(false);
+        }}
+      />
     </div>
   );
 }
