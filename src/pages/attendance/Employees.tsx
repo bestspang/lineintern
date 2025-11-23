@@ -32,6 +32,15 @@ export default function AttendanceEmployees() {
     branch_id: '',
     line_user_id: '',
     announcement_group_line_id: '',
+    shift_start_time: '',
+    shift_end_time: '',
+    reminder_preferences: {
+      check_in_reminder_enabled: true,
+      check_out_reminder_enabled: true,
+      notification_type: 'private',
+      grace_period_minutes: 15,
+      check_out_reminder_after_minutes: 15,
+    },
     is_active: true
   });
 
@@ -127,6 +136,15 @@ export default function AttendanceEmployees() {
       branch_id: '',
       line_user_id: '',
       announcement_group_line_id: '',
+      shift_start_time: '',
+      shift_end_time: '',
+      reminder_preferences: {
+        check_in_reminder_enabled: true,
+        check_out_reminder_enabled: true,
+        notification_type: 'private',
+        grace_period_minutes: 15,
+        check_out_reminder_after_minutes: 15,
+      },
       is_active: true
     });
     setEditingEmployee(null);
@@ -141,6 +159,15 @@ export default function AttendanceEmployees() {
       branch_id: employee.branch_id || '',
       line_user_id: employee.line_user_id || '',
       announcement_group_line_id: employee.announcement_group_line_id || '',
+      shift_start_time: employee.shift_start_time || '',
+      shift_end_time: employee.shift_end_time || '',
+      reminder_preferences: employee.reminder_preferences || {
+        check_in_reminder_enabled: true,
+        check_out_reminder_enabled: true,
+        notification_type: 'private',
+        grace_period_minutes: 15,
+        check_out_reminder_after_minutes: 15,
+      },
       is_active: employee.is_active
     });
     setDialogOpen(true);
@@ -397,7 +424,135 @@ export default function AttendanceEmployees() {
                       Attendance notifications will be posted here
                     </p>
                   </div>
-                  <div className="flex items-center space-x-2">
+
+                  {/* Shift Times Section */}
+                  <div className="space-y-4 border-t pt-4">
+                    <h4 className="font-medium text-sm">Work Schedule & Reminders</h4>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="shift_start_time">Shift Start Time</Label>
+                        <Input
+                          id="shift_start_time"
+                          type="time"
+                          value={formData.shift_start_time}
+                          onChange={(e) => setFormData({ ...formData, shift_start_time: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="shift_end_time">Shift End Time</Label>
+                        <Input
+                          id="shift_end_time"
+                          type="time"
+                          value={formData.shift_end_time}
+                          onChange={(e) => setFormData({ ...formData, shift_end_time: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Reminder Preferences */}
+                    <div className="space-y-3 border-t pt-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="check_in_reminder">Check-In Reminder</Label>
+                        <Switch
+                          id="check_in_reminder"
+                          checked={formData.reminder_preferences.check_in_reminder_enabled}
+                          onCheckedChange={(checked) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              check_in_reminder_enabled: checked
+                            }
+                          })}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="check_out_reminder">Check-Out Reminder</Label>
+                        <Switch
+                          id="check_out_reminder"
+                          checked={formData.reminder_preferences.check_out_reminder_enabled}
+                          onCheckedChange={(checked) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              check_out_reminder_enabled: checked
+                            }
+                          })}
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="notification_type">Notification Type</Label>
+                        <Select 
+                          value={formData.reminder_preferences.notification_type}
+                          onValueChange={(value) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              notification_type: value
+                            }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="private">Private (DM)</SelectItem>
+                            <SelectItem value="group">Group Only</SelectItem>
+                            <SelectItem value="both">Both</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Where to send reminder notifications
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="grace_period">Grace Period (minutes)</Label>
+                        <Input
+                          id="grace_period"
+                          type="number"
+                          min="0"
+                          max="60"
+                          value={formData.reminder_preferences.grace_period_minutes}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              grace_period_minutes: parseInt(e.target.value) || 0
+                            }
+                          })}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Minutes after shift start before sending reminder
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="checkout_reminder_delay">Check-Out Reminder Delay (minutes)</Label>
+                        <Input
+                          id="checkout_reminder_delay"
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={formData.reminder_preferences.check_out_reminder_after_minutes}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              check_out_reminder_after_minutes: parseInt(e.target.value) || 0
+                            }
+                          })}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Minutes after shift end before sending reminder
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 border-t pt-4">
                     <Switch
                       id="is_active"
                       checked={formData.is_active}
@@ -427,7 +582,8 @@ export default function AttendanceEmployees() {
                   <TableHead className="min-w-[120px] text-xs sm:text-sm py-2">Name</TableHead>
                   <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Role</TableHead>
                   <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Branch</TableHead>
-                  <TableHead className="hidden lg:table-cell text-xs sm:text-sm py-2">LINE</TableHead>
+                  <TableHead className="hidden lg:table-cell text-xs sm:text-sm py-2">Shift</TableHead>
+                  <TableHead className="hidden xl:table-cell text-xs sm:text-sm py-2">LINE</TableHead>
                 <TableHead className="text-xs sm:text-sm py-2">Status</TableHead>
                 <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
               </TableRow>
@@ -445,6 +601,25 @@ export default function AttendanceEmployees() {
                   <TableCell className="hidden sm:table-cell capitalize text-sm py-2">{employee.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
                   <TableCell className="hidden lg:table-cell py-2">
+                    {employee.shift_start_time && employee.shift_end_time ? (
+                      <div className="text-sm">
+                        <div className="font-medium">
+                          {employee.shift_start_time.substring(0, 5)} - {employee.shift_end_time.substring(0, 5)}
+                        </div>
+                        {employee.reminder_preferences && 
+                         typeof employee.reminder_preferences === 'object' && 
+                         'check_in_reminder_enabled' in employee.reminder_preferences &&
+                         employee.reminder_preferences.check_in_reminder_enabled && (
+                          <Badge variant="outline" className="text-xs mt-1">
+                            🔔 Reminders
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">Not set</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell py-2">
                     {employee.line_user_id ? (
                       <Badge variant="default" className="flex items-center gap-1 w-fit h-4 sm:h-5 text-[10px] sm:text-xs">
                         <LinkIcon className="h-2 w-2 sm:h-3 sm:w-3" />
