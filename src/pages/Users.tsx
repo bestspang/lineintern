@@ -28,8 +28,11 @@ export default function Users() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['users', search],
     queryFn: async () => {
-      let query = supabase.from('users').select('*').order('last_seen_at', { ascending: false, nullsFirst: false });
-      
+      let query = supabase
+        .from('users')
+        .select('*')
+        .order('last_seen_at', { ascending: false, nullsFirst: false });
+
       if (search) {
         query = query.or(`display_name.ilike.%${search}%,line_user_id.ilike.%${search}%`);
       }
@@ -76,16 +79,18 @@ export default function Users() {
                   className="pl-10"
                 />
               </div>
-              
+
               <Button
                 onClick={() => fixNamesMutation.mutate()}
                 disabled={fixNamesMutation.isPending}
                 variant="outline"
               >
-                <RefreshCw className={cn(
-                  "h-4 w-4 mr-2",
-                  fixNamesMutation.isPending && "animate-spin"
-                )} />
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 mr-2',
+                    fixNamesMutation.isPending && 'animate-spin',
+                  )}
+                />
                 Fix Display Names
               </Button>
             </div>
@@ -99,14 +104,13 @@ export default function Users() {
               ))}
             </div>
           ) : users && users.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="rounded-md border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[200px]">User</TableHead>
-                    <TableHead className="min-w-[200px]">LINE User ID</TableHead>
-                    <TableHead className="min-w-[100px]">Language</TableHead>
-                    <TableHead className="min-w-[150px]">Last Seen</TableHead>
+                    <TableHead className="w-[60%] min-w-[240px]">User</TableHead>
+                    <TableHead className="w-[20%]">Language</TableHead>
+                    <TableHead className="w-[20%] text-right">Last Seen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -116,20 +120,38 @@ export default function Users() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/users/${user.id}`)}
                     >
-                      <TableCell className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={user.avatar_url || undefined} />
-                          <AvatarFallback>
-                            {user.display_name.substring(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{user.display_name}</span>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8 flex-shrink-0">
+                            <AvatarImage src={user.avatar_url || undefined} />
+                            <AvatarFallback>
+                              {user.display_name.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 space-y-1">
+                            <p
+                              className="font-medium truncate"
+                              title={user.display_name}
+                            >
+                              {user.display_name}
+                            </p>
+                            <p
+                              className="font-mono text-[11px] text-muted-foreground truncate"
+                              title={user.line_user_id}
+                            >
+                              {user.line_user_id}
+                            </p>
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{user.line_user_id}</TableCell>
-                      <TableCell>{user.primary_language || 'auto'}</TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="align-top">
+                        {user.primary_language || 'auto'}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground align-top whitespace-nowrap">
                         {user.last_seen_at
-                          ? formatDistanceToNow(new Date(user.last_seen_at), { addSuffix: true })
+                          ? formatDistanceToNow(new Date(user.last_seen_at), {
+                              addSuffix: true,
+                            })
                           : 'Never'}
                       </TableCell>
                     </TableRow>

@@ -23,8 +23,11 @@ export default function Groups() {
   const { data: groups, isLoading } = useQuery({
     queryKey: ['groups', search],
     queryFn: async () => {
-      let query = supabase.from('groups').select('*').order('last_activity_at', { ascending: false, nullsFirst: false });
-      
+      let query = supabase
+        .from('groups')
+        .select('*')
+        .order('last_activity_at', { ascending: false, nullsFirst: false });
+
       if (search) {
         query = query.or(`display_name.ilike.%${search}%,line_group_id.ilike.%${search}%`);
       }
@@ -74,15 +77,13 @@ export default function Groups() {
               ))}
             </div>
           ) : groups && groups.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="rounded-md border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[200px]">Group Name</TableHead>
-                    <TableHead className="min-w-[100px]">Status</TableHead>
-                    <TableHead className="min-w-[100px]">Mode</TableHead>
-                    <TableHead className="min-w-[100px]">Members</TableHead>
-                    <TableHead className="min-w-[150px]">Last Activity</TableHead>
+                    <TableHead className="w-[55%] min-w-[220px]">Group</TableHead>
+                    <TableHead className="w-[15%] text-right">Members</TableHead>
+                    <TableHead className="w-[30%] text-right">Last Activity</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -92,13 +93,39 @@ export default function Groups() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/groups/${group.id}`)}
                     >
-                      <TableCell className="font-medium">{group.display_name}</TableCell>
-                      <TableCell>{getStatusBadge(group.status)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{group.mode}</Badge>
+                        <div className="space-y-1">
+                          <p
+                            className="font-medium truncate"
+                            title={group.display_name}
+                          >
+                            {group.display_name}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            {getStatusBadge(group.status)}
+                            <span>•</span>
+                            <Badge variant="outline" className="text-xs">
+                              {group.mode}
+                            </Badge>
+                            {group.member_count !== null && (
+                              <span className="hidden sm:inline-flex items-center gap-1">
+                                <span>Members:</span>
+                                <span className="font-medium">{group.member_count}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>{group.member_count || 0}</TableCell>
-                      <TableCell className="text-muted-foreground">{group.last_activity_at ? formatDistanceToNow(new Date(group.last_activity_at), { addSuffix: true }) : 'Never'}</TableCell>
+                      <TableCell className="text-right align-top">
+                        {group.member_count || 0}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground align-top whitespace-nowrap">
+                        {group.last_activity_at
+                          ? formatDistanceToNow(new Date(group.last_activity_at), {
+                              addSuffix: true,
+                            })
+                          : 'Never'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
