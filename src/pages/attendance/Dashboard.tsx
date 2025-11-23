@@ -23,6 +23,21 @@ interface EmployeeStatus {
 export default function AttendanceDashboard() {
   const today = format(new Date(), 'yyyy-MM-dd');
 
+  // Fetch attendance settings for grace period
+  const { data: attendanceSettings } = useQuery({
+    queryKey: ['attendance-settings-grace'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('attendance_settings')
+        .select('grace_period_minutes')
+        .eq('scope', 'global')
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const gracePeriodMinutes = attendanceSettings?.grace_period_minutes || 15;
+
   // Fetch active employees with branches
   const { data: employees } = useQuery({
     queryKey: ['active-employees'],
@@ -110,8 +125,11 @@ export default function AttendanceDashboard() {
               const [hour, minute] = employee.shift_start_time.split(':').map(Number);
               const shiftStart = new Date(checkInTime);
               shiftStart.setHours(hour, minute, 0, 0);
+              
+              // Add grace period
+              const lateThreshold = new Date(shiftStart.getTime() + gracePeriodMinutes * 60000);
 
-              if (checkInTime <= shiftStart) {
+              if (checkInTime <= lateThreshold) {
                 onTime++;
               } else {
                 late++;
@@ -149,6 +167,18 @@ export default function AttendanceDashboard() {
     } else if (checkIn && checkOut) {
       status = 'checked_out';
       minutesWorked = differenceInMinutes(new Date(checkOut.server_time), new Date(checkIn.server_time));
+    } else {
+      // Check if employee should have arrived
+      const now = new Date();
+      
+      if (emp.working_time_type === 'time_based' && emp.shift_start_time) {
+        const [hour, minute] = emp.shift_start_time.split(':').map(Number);
+        const shiftStart = new Date();
+        shiftStart.setHours(hour, minute, 0, 0);
+        
+        // Only mark as "not arrived" if past shift start time
+        status = now < shiftStart ? 'not_arrived' : 'not_arrived';
+      }
     }
 
     return {
@@ -172,6 +202,8 @@ export default function AttendanceDashboard() {
     absent: 0,
   };
 
+  const now = new Date();
+
   attendanceLogs?.forEach((log) => {
     if (log.event_type === 'check_in') {
       const employee = log.employees;
@@ -181,8 +213,11 @@ export default function AttendanceDashboard() {
         const [hour, minute] = employee.shift_start_time.split(':').map(Number);
         const shiftStart = new Date(checkInTime);
         shiftStart.setHours(hour, minute, 0, 0);
+        
+        // Add grace period
+        const lateThreshold = new Date(shiftStart.getTime() + gracePeriodMinutes * 60000);
 
-        if (checkInTime <= shiftStart) {
+        if (checkInTime <= lateThreshold) {
           attendanceStatus.onTime++;
         } else {
           attendanceStatus.late++;
@@ -193,10 +228,32 @@ export default function AttendanceDashboard() {
     }
   });
 
+  // Calculate absent: employees who should have arrived but haven't checked in
   const checkedInEmployeeIds = new Set(
     attendanceLogs?.filter((log) => log.event_type === 'check_in').map((log) => log.employee_id) || []
   );
-  attendanceStatus.absent = (employees?.length || 0) - checkedInEmployeeIds.size;
+
+  let shouldHaveArrivedCount = 0;
+  employees?.forEach(emp => {
+    if (emp.working_time_type === 'time_based' && emp.shift_start_time) {
+      const [hour, minute] = emp.shift_start_time.split(':').map(Number);
+      const shiftStart = new Date();
+      shiftStart.setHours(hour, minute, 0, 0);
+      
+      // If past shift start + grace period = should have arrived
+      const shouldHaveArrived = new Date(shiftStart.getTime() + gracePeriodMinutes * 60000);
+      if (now >= shouldHaveArrived && !checkedInEmployeeIds.has(emp.id)) {
+        shouldHaveArrivedCount++;
+      }
+    } else if (emp.working_time_type === 'hours_based') {
+      // For hours_based, count as absent if no check-in today
+      if (!checkedInEmployeeIds.has(emp.id)) {
+        shouldHaveArrivedCount++;
+      }
+    }
+  });
+
+  attendanceStatus.absent = shouldHaveArrivedCount;
 
   // Calculate branch breakdown
   const branchStats = employees?.reduce((acc, emp) => {
@@ -240,9 +297,14 @@ export default function AttendanceDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Attendance Dashboard</h1>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          ภาพรวมระบบเข้างาน • {format(new Date(), 'dd MMMM yyyy')}
-        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-muted-foreground text-sm sm:text-base">
+            ภาพรวมระบบเข้างาน • {format(new Date(), 'dd MMMM yyyy')}
+          </p>
+          <Badge variant="outline" className="text-xs">
+            Grace Period: {gracePeriodMinutes} นาที
+          </Badge>
+        </div>
       </div>
 
       {/* Overview Cards */}

@@ -21,7 +21,8 @@ export default function AttendanceSettings() {
     daily_summary_enabled: true,
     daily_summary_time: '18:00',
     time_zone: 'Asia/Bangkok',
-    token_validity_minutes: 10
+    token_validity_minutes: 10,
+    grace_period_minutes: 15
   });
 
   const { data: settings, isLoading } = useQuery({
@@ -74,7 +75,8 @@ export default function AttendanceSettings() {
         daily_summary_enabled: settings.daily_summary_enabled ?? true,
         daily_summary_time: settings.daily_summary_time || '18:00',
         time_zone: settings.time_zone || 'Asia/Bangkok',
-        token_validity_minutes: settings.token_validity_minutes || 10
+        token_validity_minutes: settings.token_validity_minutes || 10,
+        grace_period_minutes: settings.grace_period_minutes || 15
       });
     }
   });
@@ -264,6 +266,32 @@ export default function AttendanceSettings() {
               <p className="text-sm text-muted-foreground">
                 How long the check-in/out link remains valid
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="grace_period_minutes">Grace Period สำหรับเข้าสาย (นาที)</Label>
+              <Input
+                id="grace_period_minutes"
+                type="number"
+                min="0"
+                max="120"
+                value={formData.grace_period_minutes}
+                onChange={(e) => setFormData({ ...formData, grace_period_minutes: parseInt(e.target.value) })}
+                className="w-40"
+              />
+              <p className="text-sm text-muted-foreground">
+                ถ้า check-in ช้าไม่เกิน {formData.grace_period_minutes} นาที จะถือว่าเข้าตรงเวลา
+              </p>
+              <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg text-sm">
+                <p className="text-blue-700 dark:text-blue-300">
+                  <strong>ตัวอย่าง:</strong> ถ้าเวลาเริ่มงาน 09:00 และ grace period = {formData.grace_period_minutes} นาที
+                </p>
+                <ul className="mt-1 space-y-1 text-blue-600 dark:text-blue-400 text-xs list-disc list-inside">
+                  <li>Check-in ก่อน 09:00 → <span className="font-semibold text-green-600">เข้าตรงเวลา</span></li>
+                  <li>Check-in 09:00-09:{formData.grace_period_minutes.toString().padStart(2, '0')} → <span className="font-semibold text-green-600">เข้าตรงเวลา</span></li>
+                  <li>Check-in หลัง 09:{formData.grace_period_minutes.toString().padStart(2, '0')} → <span className="font-semibold text-amber-600">เข้าสาย</span></li>
+                </ul>
+              </div>
             </div>
           </div>
 

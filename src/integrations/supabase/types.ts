@@ -262,6 +262,7 @@ export type Database = {
           daily_summary_time: string | null
           employee_id: string | null
           enable_attendance: boolean | null
+          grace_period_minutes: number | null
           id: string
           require_location: boolean | null
           require_photo: boolean | null
@@ -278,6 +279,7 @@ export type Database = {
           daily_summary_time?: string | null
           employee_id?: string | null
           enable_attendance?: boolean | null
+          grace_period_minutes?: number | null
           id?: string
           require_location?: boolean | null
           require_photo?: boolean | null
@@ -294,6 +296,7 @@ export type Database = {
           daily_summary_time?: string | null
           employee_id?: string | null
           enable_attendance?: boolean | null
+          grace_period_minutes?: number | null
           id?: string
           require_location?: boolean | null
           require_photo?: boolean | null

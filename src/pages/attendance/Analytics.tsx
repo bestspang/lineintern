@@ -18,6 +18,21 @@ export default function AttendanceAnalytics() {
   const [dateRange, setDateRange] = useState('7');
   const [selectedBranch, setSelectedBranch] = useState('all');
 
+  // Fetch grace period setting
+  const { data: attendanceSettings } = useQuery({
+    queryKey: ['attendance-settings-grace'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('attendance_settings')
+        .select('grace_period_minutes')
+        .eq('scope', 'global')
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const gracePeriodMinutes = attendanceSettings?.grace_period_minutes || 15;
+
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: async () => {
@@ -74,14 +89,17 @@ export default function AttendanceAnalytics() {
   const attendanceStatus = checkInLogs.reduce((acc, log) => {
     if (!log.employee?.shift_start_time && log.employee?.working_time_type === 'time_based') return acc;
     
-    // For time_based employees, check if late
+    // For time_based employees, check if late (with grace period)
     if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
       const checkInTime = new Date(log.server_time);
       const [hours, minutes] = log.employee.shift_start_time.split(':');
       const standardTime = new Date(checkInTime);
       standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
       
-      if (checkInTime > standardTime) {
+      // Add grace period
+      const lateThreshold = new Date(standardTime.getTime() + gracePeriodMinutes * 60000);
+      
+      if (checkInTime > lateThreshold) {
         acc.late++;
       } else {
         acc.onTime++;
@@ -205,7 +223,10 @@ export default function AttendanceAnalytics() {
       const [hours, minutes] = log.employee.shift_start_time.split(':');
       const standardTime = new Date(checkInTime);
       standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
-      status = checkInTime > standardTime ? 'late' : 'onTime';
+      
+      // Add grace period
+      const lateThreshold = new Date(standardTime.getTime() + gracePeriodMinutes * 60000);
+      status = checkInTime > lateThreshold ? 'late' : 'onTime';
     }
     
     if (existing) {
@@ -317,6 +338,9 @@ export default function AttendanceAnalytics() {
             <p className="text-[10px] sm:text-xs text-muted-foreground">
               {totalCheckIns > 0 ? Math.round((attendanceStatus.onTime / totalCheckIns) * 100) : 0}% ของทั้งหมด
             </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+              ภายใน {gracePeriodMinutes} นาที
+            </p>
           </CardContent>
         </Card>
 
@@ -329,6 +353,9 @@ export default function AttendanceAnalytics() {
             <div className="text-xl sm:text-2xl font-bold text-amber-600">{attendanceStatus.late}</div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">
               {totalCheckIns > 0 ? Math.round((attendanceStatus.late / totalCheckIns) * 100) : 0}% ของทั้งหมด
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+              เกิน {gracePeriodMinutes} นาที
             </p>
           </CardContent>
         </Card>
