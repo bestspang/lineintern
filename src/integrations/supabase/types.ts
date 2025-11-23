@@ -767,9 +767,11 @@ export type Database = {
         Row: {
           announcement_group_line_id: string | null
           branch_id: string | null
+          break_hours: number | null
           code: string
           created_at: string | null
           full_name: string
+          hours_per_day: number | null
           id: string
           is_active: boolean | null
           line_user_id: string | null
@@ -778,13 +780,16 @@ export type Database = {
           shift_end_time: string | null
           shift_start_time: string | null
           updated_at: string | null
+          working_time_type: string | null
         }
         Insert: {
           announcement_group_line_id?: string | null
           branch_id?: string | null
+          break_hours?: number | null
           code: string
           created_at?: string | null
           full_name: string
+          hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
@@ -793,13 +798,16 @@ export type Database = {
           shift_end_time?: string | null
           shift_start_time?: string | null
           updated_at?: string | null
+          working_time_type?: string | null
         }
         Update: {
           announcement_group_line_id?: string | null
           branch_id?: string | null
+          break_hours?: number | null
           code?: string
           created_at?: string | null
           full_name?: string
+          hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
@@ -808,6 +816,7 @@ export type Database = {
           shift_end_time?: string | null
           shift_start_time?: string | null
           updated_at?: string | null
+          working_time_type?: string | null
         }
         Relationships: [
           {
