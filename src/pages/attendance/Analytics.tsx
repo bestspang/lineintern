@@ -4,9 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User } from 'lucide-react';
+import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User, CheckCircle2, XCircle, Timer } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,6 +16,7 @@ const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3
 
 export default function AttendanceAnalytics() {
   const [dateRange, setDateRange] = useState('7');
+  const [selectedBranch, setSelectedBranch] = useState('all');
 
   const { data: branches } = useQuery({
     queryKey: ['branches'],
@@ -28,26 +29,79 @@ export default function AttendanceAnalytics() {
     }
   });
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['attendance-analytics', dateRange],
+  const { data: employees } = useQuery({
+    queryKey: ['employees-active'],
     queryFn: async () => {
-      const days = parseInt(dateRange);
-      const fromDate = startOfDay(subDays(new Date(), days));
-      
       const { data, error } = await supabase
-        .from('attendance_logs')
-        .select(`
-          *,
-          employee:employees(full_name, branch_id),
-          branch:branches(name, standard_start_time)
-        `)
-        .gte('server_time', fromDate.toISOString())
-        .order('server_time', { ascending: true });
-      
+        .from('employees')
+        .select('id, full_name, branch_id, working_time_type, shift_start_time')
+        .eq('is_active', true);
       if (error) throw error;
       return data;
     }
   });
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ['attendance-analytics', dateRange, selectedBranch],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const fromDate = startOfDay(subDays(new Date(), days));
+      
+      let query = supabase
+        .from('attendance_logs')
+        .select(`
+          *,
+          employee:employees(full_name, branch_id, working_time_type, shift_start_time),
+          branch:branches(id, name, standard_start_time)
+        `)
+        .gte('server_time', fromDate.toISOString())
+        .order('server_time', { ascending: true });
+      
+      // Filter by branch if selected
+      if (selectedBranch !== 'all') {
+        query = query.eq('branch_id', selectedBranch);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Calculate attendance status (on time, late, absent)
+  const checkInLogs = logs?.filter(l => l.event_type === 'check_in') || [];
+  
+  const attendanceStatus = checkInLogs.reduce((acc, log) => {
+    if (!log.employee?.shift_start_time && log.employee?.working_time_type === 'time_based') return acc;
+    
+    // For time_based employees, check if late
+    if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
+      const checkInTime = new Date(log.server_time);
+      const [hours, minutes] = log.employee.shift_start_time.split(':');
+      const standardTime = new Date(checkInTime);
+      standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
+      
+      if (checkInTime > standardTime) {
+        acc.late++;
+      } else {
+        acc.onTime++;
+      }
+    } else {
+      // For hours_based, count as on time if checked in
+      acc.onTime++;
+    }
+    
+    return acc;
+  }, { onTime: 0, late: 0, absent: 0 });
+
+  // Calculate absent (employees who should have checked in but didn't)
+  const daysInRange = parseInt(dateRange);
+  const activeEmployees = employees?.filter(e => 
+    selectedBranch === 'all' || e.branch_id === selectedBranch
+  ).length || 0;
+  const expectedCheckIns = activeEmployees * daysInRange;
+  const actualCheckIns = checkInLogs.length;
+  attendanceStatus.absent = Math.max(0, expectedCheckIns - actualCheckIns);
 
   // Calculate metrics
   const totalCheckIns = logs?.filter(l => l.event_type === 'check_in').length || 0;
@@ -140,6 +194,51 @@ export default function AttendanceAnalytics() {
     return acc;
   }, [] as Array<{ branch: string; checkIns: number; flagged: number }>);
 
+  // Attendance by branch breakdown (on time, late, absent)
+  const branchAttendanceBreakdown = checkInLogs.reduce((acc, log) => {
+    const branchName = log.branch?.name || 'Unknown';
+    const existing = acc.find(b => b.branch === branchName);
+    
+    let status = 'onTime';
+    if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
+      const checkInTime = new Date(log.server_time);
+      const [hours, minutes] = log.employee.shift_start_time.split(':');
+      const standardTime = new Date(checkInTime);
+      standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
+      status = checkInTime > standardTime ? 'late' : 'onTime';
+    }
+    
+    if (existing) {
+      if (status === 'late') existing.late++;
+      else existing.onTime++;
+      existing.total++;
+    } else {
+      acc.push({
+        branch: branchName,
+        onTime: status === 'onTime' ? 1 : 0,
+        late: status === 'late' ? 1 : 0,
+        absent: 0,
+        total: 1
+      });
+    }
+    return acc;
+  }, [] as Array<{ branch: string; onTime: number; late: number; absent: number; total: number }>);
+
+  // Add absent count per branch
+  const employeesByBranch = employees?.reduce((acc, emp) => {
+    const branchId = emp.branch_id;
+    if (!branchId) return acc;
+    const branch = branches?.find(b => b.id === branchId);
+    const branchName = branch?.name || 'Unknown';
+    acc[branchName] = (acc[branchName] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  branchAttendanceBreakdown.forEach(branch => {
+    const expectedCheckIns = (employeesByBranch?.[branch.branch] || 0) * daysInRange;
+    branch.absent = Math.max(0, expectedCheckIns - branch.total);
+  });
+
   // Flagged reasons pie chart
   const flaggedReasons = logs
     ?.filter(l => l.is_flagged && l.flag_reason)
@@ -165,97 +264,198 @@ export default function AttendanceAnalytics() {
 
   return (
     <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8" />
-            Attendance Analytics
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Insights and trends from attendance data
-          </p>
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+              <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8" />
+              รายงานสรุปการเข้างาน
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              สรุปรายสัปดาห์/เดือน แสดงสถิติการเข้างาน สาย ขาด
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+              <SelectTrigger className="w-full sm:w-[180px] text-sm">
+                <Building2 className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="เลือกสาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกสาขา</SelectItem>
+                {branches?.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-full sm:w-[180px] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 วันที่แล้ว</SelectItem>
+                <SelectItem value="14">14 วันที่แล้ว</SelectItem>
+                <SelectItem value="30">30 วันที่แล้ว</SelectItem>
+                <SelectItem value="90">90 วันที่แล้ว</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <Select value={dateRange} onValueChange={setDateRange}>
-          <SelectTrigger className="w-full sm:w-[180px] text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="14">Last 14 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
-      {/* Overview Cards */}
+      {/* Overview Cards - On Time, Late, Absent */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Check-Ins</CardTitle>
-            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+            <CardTitle className="text-xs sm:text-sm font-medium">เข้าตรงเวลา</CardTitle>
+            <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{totalCheckIns}</div>
+            <div className="text-xl sm:text-2xl font-bold text-green-600">{attendanceStatus.onTime}</div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">
-              {totalCheckOuts} check-outs
+              {totalCheckIns > 0 ? Math.round((attendanceStatus.onTime / totalCheckIns) * 100) : 0}% ของทั้งหมด
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Employees</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">เข้าสาย</CardTitle>
+            <Timer className="h-3 w-3 sm:h-4 sm:w-4 text-amber-600" />
+          </CardHeader>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold text-amber-600">{attendanceStatus.late}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              {totalCheckIns > 0 ? Math.round((attendanceStatus.late / totalCheckIns) * 100) : 0}% ของทั้งหมด
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">ขาดงาน</CardTitle>
+            <XCircle className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+          </CardHeader>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold text-red-600">{attendanceStatus.absent}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              ประมาณการจากจำนวนพนักงาน
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">พนักงานทั้งหมด</CardTitle>
             <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             <div className="text-xl sm:text-2xl font-bold">{uniqueEmployees}</div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Unique tracked
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Flagged</CardTitle>
-            <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold text-destructive">{flaggedCount}</div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              {totalCheckIns > 0 ? Math.round((flaggedCount / totalCheckIns) * 100) : 0}% of total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Avg Daily</CardTitle>
-            <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">
-              {dailyTrend ? Math.round(totalCheckIns / dailyTrend.length) : 0}
-            </div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Per day
+              มีการบันทึกเข้างาน
             </p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="live" className="space-y-4">
-        <TabsList className="w-full justify-start">
+      <Tabs defaultValue="summary" className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="summary" className="text-xs sm:text-sm">
+            <BarChart3 className="h-3 w-3 mr-1" />
+            สรุปการเข้างาน
+          </TabsTrigger>
           <TabsTrigger value="live" className="text-xs sm:text-sm">
             <Activity className="h-3 w-3 mr-1" />
-            Live Status
+            สถานะปัจจุบัน
           </TabsTrigger>
-          <TabsTrigger value="trends" className="text-xs sm:text-sm">Trends</TabsTrigger>
-          <TabsTrigger value="hours" className="text-xs sm:text-sm hidden sm:inline-flex">Peak Hours</TabsTrigger>
-          <TabsTrigger value="late" className="text-xs sm:text-sm">Late</TabsTrigger>
-          <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">Branches</TabsTrigger>
+          <TabsTrigger value="trends" className="text-xs sm:text-sm">แนวโน้ม</TabsTrigger>
+          <TabsTrigger value="late" className="text-xs sm:text-sm">เข้าสาย</TabsTrigger>
+          <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">เปรียบเทียบสาขา</TabsTrigger>
         </TabsList>
+
+        {/* Summary Tab - On Time, Late, Absent by Branch */}
+        <TabsContent value="summary" className="space-y-4">
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg md:text-xl">สรุปการเข้างานแยกตามสาขา</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                เปรียบเทียบจำนวนพนักงานที่เข้างานตรงเวลา สาย และขาดงาน
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <ResponsiveContainer width="100%" height={300} className="sm:h-[350px] md:h-[450px]">
+                <BarChart data={branchAttendanceBreakdown}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="branch" style={{ fontSize: '11px' }} />
+                  <YAxis style={{ fontSize: '11px' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--background))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px'
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="onTime" stackId="a" fill="hsl(var(--chart-1))" name="เข้าตรงเวลา" />
+                  <Bar dataKey="late" stackId="a" fill="hsl(var(--chart-3))" name="เข้าสาย" />
+                  <Bar dataKey="absent" stackId="a" fill="hsl(var(--chart-5))" name="ขาดงาน" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Branch Summary Table */}
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">รายละเอียดแยกตามสาขา</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>สาขา</TableHead>
+                    <TableHead className="text-right">เข้าตรงเวลา</TableHead>
+                    <TableHead className="text-right">เข้าสาย</TableHead>
+                    <TableHead className="text-right">ขาดงาน</TableHead>
+                    <TableHead className="text-right">รวม</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {branchAttendanceBreakdown.map((branch, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          {branch.branch}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline" className="bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                          {branch.onTime}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                          {branch.late}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline" className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
+                          {branch.absent}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {branch.total + branch.absent}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Live Status Tab */}
         <TabsContent value="live" className="space-y-4">
