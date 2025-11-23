@@ -380,6 +380,7 @@ export default function AttendanceBranches() {
         onOpenChange={setMapPickerOpen}
         initialLat={parseFloat(formData.latitude) || 13.756331}
         initialLng={parseFloat(formData.longitude) || 100.501765}
+        radiusMeters={parseInt(formData.radius_meters) || 200}
         onLocationSelect={(lat, lng) => {
           setFormData({
             ...formData,

@@ -12,6 +12,7 @@ interface MapPickerProps {
   onOpenChange: (open: boolean) => void;
   initialLat: number;
   initialLng: number;
+  radiusMeters?: number;
   onLocationSelect: (lat: number, lng: number) => void;
 }
 
@@ -20,6 +21,7 @@ export function MapPicker({
   onOpenChange,
   initialLat,
   initialLng,
+  radiusMeters = 200,
   onLocationSelect,
 }: MapPickerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -69,11 +71,52 @@ export function MapPicker({
         .setLngLat([currentLng, currentLat])
         .addTo(map.current);
 
+      // Helper function to create circle GeoJSON
+      const createCircleGeoJSON = (center: [number, number], radiusInMeters: number) => {
+        const points = 64;
+        const coords = {
+          latitude: center[1],
+          longitude: center[0]
+        };
+        
+        const km = radiusInMeters / 1000;
+        const ret = [];
+        const distanceX = km / (111.32 * Math.cos(coords.latitude * Math.PI / 180));
+        const distanceY = km / 110.574;
+
+        for (let i = 0; i < points; i++) {
+          const theta = (i / points) * (2 * Math.PI);
+          const x = distanceX * Math.cos(theta);
+          const y = distanceY * Math.sin(theta);
+          ret.push([coords.longitude + x, coords.latitude + y]);
+        }
+        ret.push(ret[0]);
+
+        return {
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Polygon' as const,
+            coordinates: [ret]
+          },
+          properties: {}
+        };
+      };
+
+      // Update circle function
+      const updateCircle = (lng: number, lat: number) => {
+        const circleGeoJSON = createCircleGeoJSON([lng, lat], radiusMeters);
+        
+        if (map.current?.getSource('geofence-circle')) {
+          (map.current.getSource('geofence-circle') as mapboxgl.GeoJSONSource).setData(circleGeoJSON as any);
+        }
+      };
+
       // Update coordinates when marker is dragged
       marker.current.on('dragend', () => {
         const lngLat = marker.current!.getLngLat();
         setCurrentLng(lngLat.lng);
         setCurrentLat(lngLat.lat);
+        updateCircle(lngLat.lng, lngLat.lat);
       });
 
       // Update marker when clicking on map
@@ -82,11 +125,41 @@ export function MapPicker({
         marker.current?.setLngLat([lng, lat]);
         setCurrentLng(lng);
         setCurrentLat(lat);
+        updateCircle(lng, lat);
       });
 
       // Map loaded event
       map.current.on('load', () => {
         setMapLoading(false);
+        
+        // Add geofence circle
+        const circleGeoJSON = createCircleGeoJSON([currentLng, currentLat], radiusMeters);
+        
+        map.current!.addSource('geofence-circle', {
+          type: 'geojson',
+          data: circleGeoJSON as any
+        });
+
+        map.current!.addLayer({
+          id: 'geofence-fill',
+          type: 'fill',
+          source: 'geofence-circle',
+          paint: {
+            'fill-color': '#ef4444',
+            'fill-opacity': 0.15
+          }
+        });
+
+        map.current!.addLayer({
+          id: 'geofence-outline',
+          type: 'line',
+          source: 'geofence-circle',
+          paint: {
+            'line-color': '#ef4444',
+            'line-width': 2,
+            'line-dasharray': [2, 2]
+          }
+        });
       });
 
       // Error handling
@@ -105,7 +178,7 @@ export function MapPicker({
       marker.current?.remove();
       map.current?.remove();
     };
-  }, [open, mapboxToken]);
+  }, [open, mapboxToken, currentLat, currentLng, radiusMeters]);
 
   const handleUseCurrentLocation = () => {
     setLoading(true);
@@ -126,6 +199,40 @@ export function MapPicker({
         if (map.current && marker.current) {
           map.current.flyTo({ center: [longitude, latitude], zoom: 15 });
           marker.current.setLngLat([longitude, latitude]);
+          
+          // Update circle
+          const circleGeoJSON = {
+            type: 'Feature' as const,
+            geometry: {
+              type: 'Polygon' as const,
+              coordinates: [[]]
+            },
+            properties: {}
+          };
+          
+          const createCircle = (center: [number, number], radiusInMeters: number) => {
+            const points = 64;
+            const coords = { latitude: center[1], longitude: center[0] };
+            const km = radiusInMeters / 1000;
+            const ret = [];
+            const distanceX = km / (111.32 * Math.cos(coords.latitude * Math.PI / 180));
+            const distanceY = km / 110.574;
+
+            for (let i = 0; i < points; i++) {
+              const theta = (i / points) * (2 * Math.PI);
+              const x = distanceX * Math.cos(theta);
+              const y = distanceY * Math.sin(theta);
+              ret.push([coords.longitude + x, coords.latitude + y]);
+            }
+            ret.push(ret[0]);
+            return ret;
+          };
+          
+          circleGeoJSON.geometry.coordinates = [createCircle([longitude, latitude], radiusMeters)];
+          
+          if (map.current?.getSource('geofence-circle')) {
+            (map.current.getSource('geofence-circle') as mapboxgl.GeoJSONSource).setData(circleGeoJSON as any);
+          }
         }
         
         setLoading(false);
@@ -222,11 +329,18 @@ export function MapPicker({
             </div>
           )}
           
-          <div className="flex items-center gap-2 text-sm bg-muted/50 p-2 rounded-lg">
-            <MapPin className="h-4 w-4 text-destructive" />
-            <span className="font-mono text-xs">
-              {currentLat.toFixed(6)}, {currentLng.toFixed(6)}
-            </span>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-2 text-sm bg-muted/50 p-2 rounded-lg">
+              <MapPin className="h-4 w-4 text-destructive" />
+              <span className="font-mono text-xs">
+                {currentLat.toFixed(6)}, {currentLng.toFixed(6)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg">
+              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">
+                Radius: {radiusMeters}m
+              </span>
+            </div>
           </div>
 
           <div className="flex-1 rounded-lg overflow-hidden border relative">
