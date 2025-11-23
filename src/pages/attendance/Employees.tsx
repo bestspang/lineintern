@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Users, Plus, Edit, Link as LinkIcon } from 'lucide-react';
 
@@ -48,6 +49,31 @@ export default function AttendanceEmployees() {
         .select('*')
         .order('name');
       
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: lineUsers } = useQuery({
+    queryKey: ['line-users'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, display_name, line_user_id')
+        .order('display_name');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: lineGroups } = useQuery({
+    queryKey: ['line-groups'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, display_name, line_group_id')
+        .eq('status', 'active')
+        .order('display_name');
       if (error) throw error;
       return data;
     }
@@ -113,7 +139,28 @@ export default function AttendanceEmployees() {
     setDialogOpen(true);
   };
 
+  const validateForm = () => {
+    if (!formData.code) return "Employee code is required";
+    if (!formData.full_name) return "Full name is required";
+    
+    const duplicateCode = employees?.some(
+      emp => emp.code === formData.code && emp.id !== editingEmployee?.id
+    );
+    if (duplicateCode) return "Employee code already exists";
+    
+    return null;
+  };
+
   const handleSave = () => {
+    const error = validateForm();
+    if (error) {
+      toast({
+        title: 'Validation Error',
+        description: error,
+        variant: 'destructive',
+      });
+      return;
+    }
     saveMutation.mutate(formData);
   };
 
@@ -203,13 +250,64 @@ export default function AttendanceEmployees() {
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="line_user_id">LINE User ID</Label>
-                    <Input
-                      id="line_user_id"
-                      value={formData.line_user_id}
-                      onChange={(e) => setFormData({ ...formData, line_user_id: e.target.value })}
-                      placeholder="U1234567890abcdef"
+                    <Label htmlFor="line_user_id">LINE User</Label>
+                    <Select 
+                      value={formData.line_user_id} 
+                      onValueChange={(value) => setFormData({ ...formData, line_user_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select LINE user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None (Link later)</SelectItem>
+                        {lineUsers
+                          ?.filter(user => {
+                            const isLinkedToOther = employees?.some(
+                              emp => emp.line_user_id === user.line_user_id && 
+                                     emp.id !== editingEmployee?.id
+                            );
+                            return !isLinkedToOther;
+                          })
+                          .map((user) => (
+                            <SelectItem key={user.id} value={user.line_user_id}>
+                              {user.display_name} ({user.line_user_id.substring(0, 10)}...)
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Select a LINE user to link with this employee
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="announcement_group_line_id">Announcement Group</Label>
+                    <Select 
+                      value={formData.announcement_group_line_id} 
+                      onValueChange={(value) => setFormData({ ...formData, announcement_group_line_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select announcement group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No announcement group</SelectItem>
+                        {lineGroups?.map((group) => (
+                          <SelectItem key={group.id} value={group.line_group_id}>
+                            {group.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Attendance notifications will be posted to this group
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                     />
+                    <Label htmlFor="is_active">Active Employee</Label>
                   </div>
                   <div className="flex gap-2">
                     <Button onClick={handleSave} disabled={!formData.code || !formData.full_name || saveMutation.isPending}>
@@ -232,7 +330,8 @@ export default function AttendanceEmployees() {
                 <TableHead>Name</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Branch</TableHead>
-                <TableHead>LINE Linked</TableHead>
+                <TableHead>LINE User</TableHead>
+                <TableHead>Announcement Group</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -245,9 +344,25 @@ export default function AttendanceEmployees() {
                   <TableCell className="capitalize">{employee.role}</TableCell>
                   <TableCell>{employee.branch?.name || '-'}</TableCell>
                   <TableCell>
-                    <Badge variant={employee.line_user_id ? 'default' : 'secondary'}>
-                      {employee.line_user_id ? 'Linked' : 'Not Linked'}
-                    </Badge>
+                    {employee.line_user_id ? (
+                      <div className="flex items-center gap-2">
+                        <LinkIcon className="h-3 w-3 text-green-500" />
+                        <span className="text-xs truncate max-w-[100px]">
+                          {lineUsers?.find(u => u.line_user_id === employee.line_user_id)?.display_name || 'Unknown'}
+                        </span>
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">Not Linked</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {employee.announcement_group_line_id ? (
+                      <span className="text-xs truncate max-w-[120px]">
+                        {lineGroups?.find(g => g.line_group_id === employee.announcement_group_line_id)?.display_name || 'Unknown'}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">None</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={employee.is_active ? 'default' : 'secondary'}>
