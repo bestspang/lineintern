@@ -24,7 +24,8 @@ import {
   Calendar,
   Camera,
   Shield,
-  Bell
+  Bell,
+  Activity
 } from 'lucide-react';
 import {
   Sidebar,
@@ -90,6 +91,7 @@ const navigationGroups = [
     icon: ClipboardCheck,
     items: [
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
+      { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },

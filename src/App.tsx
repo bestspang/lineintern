@@ -42,6 +42,7 @@ import AttendancePhotos from "./pages/attendance/Photos";
 import AttendanceFraudDetection from "./pages/attendance/FraudDetection";
 import EmployeeHistory from "./pages/attendance/EmployeeHistory";
 import AttendanceReminderLogs from "./pages/attendance/ReminderLogs";
+import AttendanceLiveTracking from "./pages/attendance/LiveTracking";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +84,7 @@ const App = () => (
                     <Route path="/attendance/fraud-detection" element={<AttendanceFraudDetection />} />
                     <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
                     <Route path="/attendance/reminder-logs" element={<AttendanceReminderLogs />} />
+                    <Route path="/attendance/live-tracking" element={<AttendanceLiveTracking />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/settings" element={<SettingsLayout />}>
