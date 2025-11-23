@@ -509,6 +509,157 @@ async function buildEnrichedContext(
 // PHASE 3: MULTI-STAGE AI PROMPTING
 // =============================
 
+interface SummaryQuality {
+  completeness: number; // 0-1: How much of important content is covered
+  actionability: number; // 0-1: How clear and actionable are items
+  insightfulness: number; // 0-1: Depth of analysis
+  confidence: number; // 0-1: Overall confidence in summary
+  coverage: {
+    messagesAnalyzed: number;
+    threadsAnalyzed: number;
+    usersInvolved: number;
+    importantTopicsCovered: number;
+  };
+}
+
+// =============================
+// PHASE 4: QUALITY SCORING & VALIDATION
+// =============================
+
+function calculateSummaryQuality(
+  context: EnrichedContext,
+  structuredData: any,
+  summaryText: string,
+  originalMessageCount: number
+): SummaryQuality {
+  console.log('[calculateSummaryQuality] Analyzing summary quality...');
+  
+  // 1. COMPLETENESS SCORE (0-1)
+  // Based on: decisions extracted, actions identified, questions captured, key info found
+  let completeness = 0;
+  const hasDecisions = (structuredData?.key_decisions?.length || 0) > 0;
+  const hasActions = (structuredData?.action_items?.length || 0) > 0;
+  const hasQuestions = (structuredData?.open_questions?.length || 0) > 0;
+  const hasKeyInfo = (structuredData?.key_information?.length || 0) > 0;
+  
+  completeness += hasDecisions ? 0.3 : 0;
+  completeness += hasActions ? 0.3 : 0;
+  completeness += hasQuestions ? 0.2 : 0;
+  completeness += hasKeyInfo ? 0.2 : 0;
+  
+  // Bonus if we found memories
+  if (context.longTermMemories.length > 0) {
+    completeness = Math.min(1.0, completeness + 0.1);
+  }
+  
+  // 2. ACTIONABILITY SCORE (0-1)
+  // Based on: clarity of action items, presence of assignees, deadlines
+  let actionability = 0;
+  const actions = structuredData?.action_items || [];
+  if (actions.length > 0) {
+    const withAssignee = actions.filter((a: any) => a.assignee && a.assignee !== 'ไม่ระบุ').length;
+    const withDeadline = actions.filter((a: any) => a.deadline && a.deadline !== 'ไม่ระบุ').length;
+    const withPriority = actions.filter((a: any) => a.priority && a.priority !== 'unclear').length;
+    
+    actionability = (
+      (withAssignee / actions.length) * 0.4 +
+      (withDeadline / actions.length) * 0.3 +
+      (withPriority / actions.length) * 0.3
+    );
+  } else {
+    // No actions = neutral score (not necessarily bad)
+    actionability = 0.5;
+  }
+  
+  // 3. INSIGHTFULNESS SCORE (0-1)
+  // Based on: depth of summary, use of context, business understanding
+  let insightfulness = 0;
+  
+  // Summary length (longer = more detailed, but not too long)
+  const summaryLength = summaryText.length;
+  if (summaryLength > 300 && summaryLength < 3000) {
+    insightfulness += 0.3;
+  } else if (summaryLength >= 200) {
+    insightfulness += 0.15;
+  }
+  
+  // Used business context
+  if (context.businessContext.topics.length > 0) {
+    insightfulness += 0.2;
+  }
+  
+  // Used long-term memories
+  if (context.longTermMemories.length > 0) {
+    insightfulness += 0.2;
+  }
+  
+  // Detected urgency
+  if (context.businessContext.urgency === 'high') {
+    insightfulness += 0.15;
+  }
+  
+  // Multiple threads analyzed (shows deep understanding)
+  if (context.threads.length > 2) {
+    insightfulness += 0.15;
+  }
+  
+  insightfulness = Math.min(1.0, insightfulness);
+  
+  // 4. CONFIDENCE SCORE (0-1)
+  // Based on: data quality, coverage, consistency
+  let confidence = 0;
+  
+  // Message coverage ratio
+  const coverageRatio = context.messages.length / originalMessageCount;
+  confidence += coverageRatio * 0.3;
+  
+  // Thread detection (good clustering = high confidence)
+  if (context.threads.length > 0) {
+    confidence += 0.2;
+  }
+  
+  // Context enrichment (more context = higher confidence)
+  const hasWorkingMem = context.workingMemories.length > 0;
+  const hasLongTermMem = context.longTermMemories.length > 0;
+  const hasProfiles = context.userProfiles.length > 0;
+  
+  if (hasWorkingMem) confidence += 0.15;
+  if (hasLongTermMem) confidence += 0.15;
+  if (hasProfiles) confidence += 0.1;
+  
+  // Consistency check (if decisions and actions exist, they should be related)
+  if (hasDecisions && hasActions) {
+    confidence += 0.1;
+  }
+  
+  confidence = Math.min(1.0, confidence);
+  
+  // 5. COVERAGE METRICS
+  const uniqueUsers = new Set(context.messages.map(m => m.user_id).filter(Boolean)).size;
+  
+  const coverage = {
+    messagesAnalyzed: context.messages.length,
+    threadsAnalyzed: context.threads.length,
+    usersInvolved: uniqueUsers,
+    importantTopicsCovered: context.businessContext.topics.length
+  };
+  
+  console.log('[calculateSummaryQuality] Quality scores:', {
+    completeness: completeness.toFixed(2),
+    actionability: actionability.toFixed(2),
+    insightfulness: insightfulness.toFixed(2),
+    confidence: confidence.toFixed(2)
+  });
+  
+  return {
+    completeness,
+    actionability,
+    insightfulness,
+    confidence,
+    coverage
+  };
+}
+
 async function extractStructuredData(context: EnrichedContext): Promise<any> {
   const messagesText = context.messages
     .map((m: any) => `[${m.users?.display_name || 'Unknown'}] ${m.text}`)
@@ -949,6 +1100,15 @@ serve(async (req) => {
       const summaryText = await generateExecutiveSummary(enrichedContext, structuredData);
       console.log(`[report-generator] Executive summary generated`);
 
+      // Phase 4: Calculate Quality Scores
+      const qualityMetrics = calculateSummaryQuality(
+        enrichedContext,
+        structuredData,
+        summaryText,
+        messages.length
+      );
+      console.log(`[report-generator] Quality assessment completed`);
+
       // Enhanced extraction logic based on importance scores
       const decisions = structuredData?.key_decisions || [];
       const actionItems = structuredData?.action_items || [];
@@ -996,6 +1156,13 @@ serve(async (req) => {
               long_term_memories: enrichedContext.longTermMemories.length,
               user_profiles: enrichedContext.userProfiles.length,
               business_topics: enrichedContext.businessContext.topics
+            },
+            quality: {
+              completeness: Math.round(qualityMetrics.completeness * 100),
+              actionability: Math.round(qualityMetrics.actionability * 100),
+              insightfulness: Math.round(qualityMetrics.insightfulness * 100),
+              confidence: Math.round(qualityMetrics.confidence * 100),
+              coverage: qualityMetrics.coverage
             }
           }
         }),
