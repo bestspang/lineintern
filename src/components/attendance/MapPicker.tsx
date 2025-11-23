@@ -28,6 +28,7 @@ export function MapPicker({
   const [currentLat, setCurrentLat] = useState(initialLat);
   const [currentLng, setCurrentLng] = useState(initialLng);
   const [loading, setLoading] = useState(false);
+  const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mapboxToken, setMapboxToken] = useState('');
   const [tokenInput, setTokenInput] = useState('');
@@ -46,6 +47,7 @@ export function MapPicker({
     if (!open || !mapContainer.current || !mapboxToken) return;
 
     try {
+      setMapLoading(true);
       mapboxgl.accessToken = mapboxToken;
 
       // Initialize map
@@ -81,9 +83,22 @@ export function MapPicker({
         setCurrentLng(lng);
         setCurrentLat(lat);
       });
+
+      // Map loaded event
+      map.current.on('load', () => {
+        setMapLoading(false);
+      });
+
+      // Error handling
+      map.current.on('error', (e) => {
+        console.error('Map error:', e);
+        setError('เกิดข้อผิดพลาดในการโหลดแผนที่');
+        setMapLoading(false);
+      });
     } catch (err) {
-      setError('Failed to initialize map. Please check your Mapbox token.');
+      setError('ไม่สามารถโหลดแผนที่ได้ กรุณาตรวจสอบ Mapbox token');
       console.error('Map initialization error:', err);
+      setMapLoading(false);
     }
 
     return () => {
@@ -201,25 +216,33 @@ export function MapPicker({
         
         <div className="flex-1 flex flex-col gap-4">
           {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">
-              {error}
+            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
           
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm bg-muted/50 p-2 rounded-lg">
             <MapPin className="h-4 w-4 text-destructive" />
-            <span className="font-medium">
+            <span className="font-mono text-xs">
               {currentLat.toFixed(6)}, {currentLng.toFixed(6)}
             </span>
           </div>
 
-          <div 
-            ref={mapContainer} 
-            className="flex-1 rounded-lg overflow-hidden border"
-          />
+          <div className="flex-1 rounded-lg overflow-hidden border relative">
+            {mapLoading && (
+              <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <span className="text-sm text-muted-foreground">กำลังโหลดแผนที่...</span>
+                </div>
+              </div>
+            )}
+            <div ref={mapContainer} className="w-full h-full" />
+          </div>
 
-          <div className="text-xs text-muted-foreground">
-            💡 คลิกบนแผนที่หรือลาก marker สีแดงเพื่อเลือกตำแหน่ง
+          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg">
+            💡 <strong>วิธีใช้:</strong> คลิกบนแผนที่ หรือลาก marker สีแดง หรือใช้ปุ่ม "ใช้ตำแหน่งปัจจุบัน"
           </div>
         </div>
 
