@@ -74,38 +74,36 @@ export default function Groups() {
               ))}
             </div>
           ) : groups && groups.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Group Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Mode</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead>Last Activity</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groups.map((group) => (
-                  <TableRow
-                    key={group.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/groups/${group.id}`)}
-                  >
-                    <TableCell className="font-medium">{group.display_name}</TableCell>
-                    <TableCell>{getStatusBadge(group.status)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{group.mode}</Badge>
-                    </TableCell>
-                    <TableCell>{group.member_count || 0}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {group.last_activity_at
-                        ? formatDistanceToNow(new Date(group.last_activity_at), { addSuffix: true })
-                        : 'Never'}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[200px]">Group Name</TableHead>
+                    <TableHead className="min-w-[100px]">Status</TableHead>
+                    <TableHead className="min-w-[100px]">Mode</TableHead>
+                    <TableHead className="min-w-[100px]">Members</TableHead>
+                    <TableHead className="min-w-[150px]">Last Activity</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {groups.map((group) => (
+                    <TableRow
+                      key={group.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/groups/${group.id}`)}
+                    >
+                      <TableCell className="font-medium">{group.display_name}</TableCell>
+                      <TableCell>{getStatusBadge(group.status)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{group.mode}</Badge>
+                      </TableCell>
+                      <TableCell>{group.member_count || 0}</TableCell>
+                      <TableCell className="text-muted-foreground">{group.last_activity_at ? formatDistanceToNow(new Date(group.last_activity_at), { addSuffix: true }) : 'Never'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <p>No groups found</p>

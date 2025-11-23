@@ -99,42 +99,44 @@ export default function Users() {
               ))}
             </div>
           ) : users && users.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>LINE User ID</TableHead>
-                  <TableHead>Language</TableHead>
-                  <TableHead>Last Seen</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow
-                    key={user.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/users/${user.id}`)}
-                  >
-                    <TableCell className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.avatar_url || undefined} />
-                        <AvatarFallback>
-                          {user.display_name.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{user.display_name}</span>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{user.line_user_id}</TableCell>
-                    <TableCell>{user.primary_language || 'auto'}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {user.last_seen_at
-                        ? formatDistanceToNow(new Date(user.last_seen_at), { addSuffix: true })
-                        : 'Never'}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[200px]">User</TableHead>
+                    <TableHead className="min-w-[200px]">LINE User ID</TableHead>
+                    <TableHead className="min-w-[100px]">Language</TableHead>
+                    <TableHead className="min-w-[150px]">Last Seen</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow
+                      key={user.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/users/${user.id}`)}
+                    >
+                      <TableCell className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={user.avatar_url || undefined} />
+                          <AvatarFallback>
+                            {user.display_name.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{user.display_name}</span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{user.line_user_id}</TableCell>
+                      <TableCell>{user.primary_language || 'auto'}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {user.last_seen_at
+                          ? formatDistanceToNow(new Date(user.last_seen_at), { addSuffix: true })
+                          : 'Never'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <p>No users found</p>
