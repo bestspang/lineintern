@@ -75,22 +75,36 @@ export default function LiveTracking() {
 
       if (checkInError) throw checkInError;
 
-      // Get all check-outs for today
+      // Get all check-outs for today with timestamps
       const { data: checkOuts, error: checkOutError } = await supabase
         .from('attendance_logs')
-        .select('employee_id')
+        .select('employee_id, server_time')
         .eq('event_type', 'check_out')
         .gte('server_time', `${today}T00:00:00`)
         .lte('server_time', `${today}T23:59:59`);
 
       if (checkOutError) throw checkOutError;
 
-      const checkedOutEmployeeIds = new Set(checkOuts?.map(co => co.employee_id) || []);
+      // Create map of employee_id to their latest check-out time
+      const latestCheckOutMap = new Map<string, Date>();
+      checkOuts?.forEach(co => {
+        const currentTime = latestCheckOutMap.get(co.employee_id);
+        const newTime = new Date(co.server_time);
+        if (!currentTime || newTime > currentTime) {
+          latestCheckOutMap.set(co.employee_id, newTime);
+        }
+      });
 
-      // Filter to only employees who haven't checked out
-      const currentlyCheckedIn = checkIns?.filter(
-        checkIn => !checkedOutEmployeeIds.has(checkIn.employee_id)
-      ) || [];
+      // Filter to only employees who:
+      // 1. Haven't checked out yet today, OR
+      // 2. Their latest check-in is after their latest check-out
+      const currentlyCheckedIn = checkIns?.filter(checkIn => {
+        const latestCheckOut = latestCheckOutMap.get(checkIn.employee_id);
+        if (!latestCheckOut) return true; // No check-out yet
+        
+        const checkInTime = new Date(checkIn.server_time);
+        return checkInTime > latestCheckOut; // Check-in after check-out
+      }) || [];
 
       // Calculate expected check-out times
       const result: CheckedInEmployee[] = currentlyCheckedIn.map(checkIn => {
