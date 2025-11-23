@@ -342,6 +342,367 @@ async function generateReportForGroup(groupId: string, period: "daily" | "weekly
 // PHASE 1: SMART MESSAGE SELECTION
 // =============================
 
+interface EnrichedContext {
+  messages: any[];
+  threads: any[][];
+  workingMemories: any[];
+  longTermMemories: any[];
+  userProfiles: any[];
+  businessContext: {
+    topics: string[];
+    urgency: string;
+    hasFinancial: boolean;
+    hasDeadlines: boolean;
+  };
+}
+
+// =============================
+// PHASE 2: CONTEXT ENRICHMENT
+// =============================
+
+async function getThreadContext(groupId: string, messageIds: string[]): Promise<any[]> {
+  if (messageIds.length === 0) return [];
+  
+  const { data, error } = await supabase
+    .rpc('get_thread_context', {
+      p_thread_id: messageIds[0], // Simplified - in real scenario would need proper thread tracking
+      p_limit: 50
+    });
+  
+  if (error) {
+    console.error('[getThreadContext] Error:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+async function getWorkingMemoryContext(groupId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('working_memory')
+    .select('*')
+    .eq('group_id', groupId)
+    .gt('expires_at', new Date().toISOString())
+    .order('importance_score', { ascending: false })
+    .limit(20);
+  
+  if (error) {
+    console.error('[getWorkingMemoryContext] Error:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+async function searchRelevantMemories(groupId: string, keywords: string[]): Promise<any[]> {
+  if (keywords.length === 0) return [];
+  
+  const { data, error } = await supabase
+    .rpc('search_memories_by_keywords', {
+      p_group_id: groupId,
+      p_keywords: keywords,
+      p_limit: 15
+    });
+  
+  if (error) {
+    console.error('[searchRelevantMemories] Error:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+async function getUserProfiles(groupId: string, userIds: string[]): Promise<any[]> {
+  if (userIds.length === 0) return [];
+  
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*, users(display_name, line_user_id)')
+    .eq('group_id', groupId)
+    .in('user_id', userIds);
+  
+  if (error) {
+    console.error('[getUserProfiles] Error:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+function detectBusinessContext(messages: any[]): any {
+  const allText = messages.map(m => m.text.toLowerCase()).join(' ');
+  
+  const topics = [];
+  const topicKeywords = {
+    'sales': ['ขาย', 'ลูกค้า', 'sales', 'customer', 'quote', 'ใบเสนอราคา'],
+    'inventory': ['สต็อก', 'สินค้า', 'stock', 'inventory', 'product', 'ของ'],
+    'hr': ['สมัครงาน', 'พนักงาน', 'employee', 'hr', 'recruitment', 'hiring'],
+    'finance': ['เงิน', 'ชำระ', 'บาท', 'invoice', 'payment', 'budget'],
+    'operations': ['จัด', 'ทำ', 'operate', 'process', 'workflow'],
+  };
+  
+  for (const [topic, keywords] of Object.entries(topicKeywords)) {
+    if (keywords.some(kw => allText.includes(kw))) {
+      topics.push(topic);
+    }
+  }
+  
+  const urgencyWords = ['ด่วน', 'urgent', 'asap', 'ทันที', 'เร็ว'];
+  const urgency = urgencyWords.some(w => allText.includes(w)) ? 'high' : 'normal';
+  
+  const hasFinancial = /\d+\s*(บาท|baht|฿)/.test(allText) || 
+                       ['เงิน', 'ชำระ', 'จ่าย', 'payment'].some(w => allText.includes(w));
+  
+  const hasDeadlines = /\d{1,2}[\/\-\.]\d{1,2}/.test(allText) ||
+                      ['วันนี้', 'พรุ่งนี้', 'deadline', 'กำหนด'].some(w => allText.includes(w));
+  
+  return { topics, urgency, hasFinancial, hasDeadlines };
+}
+
+async function buildEnrichedContext(
+  groupId: string, 
+  messages: any[], 
+  threadClusters: any[][]
+): Promise<EnrichedContext> {
+  console.log('[buildEnrichedContext] Building enriched context...');
+  
+  // Extract keywords from important messages for memory search
+  const keywords = new Set<string>();
+  messages.forEach(msg => {
+    const words = msg.text.toLowerCase()
+      .match(/[ก-๙a-z]{3,}/g) || [];
+    words.forEach((w: string) => keywords.add(w));
+  });
+  
+  const topKeywords = Array.from(keywords).slice(0, 20);
+  
+  // Extract unique user IDs
+  const userIds = [...new Set(messages.map(m => m.user_id).filter(Boolean))];
+  
+  // Fetch all context in parallel
+  const [workingMemories, longTermMemories, userProfiles] = await Promise.all([
+    getWorkingMemoryContext(groupId),
+    searchRelevantMemories(groupId, topKeywords),
+    getUserProfiles(groupId, userIds)
+  ]);
+  
+  const businessContext = detectBusinessContext(messages);
+  
+  console.log('[buildEnrichedContext] Context gathered:', {
+    workingMemories: workingMemories.length,
+    longTermMemories: longTermMemories.length,
+    userProfiles: userProfiles.length,
+    businessTopics: businessContext.topics
+  });
+  
+  return {
+    messages,
+    threads: threadClusters,
+    workingMemories,
+    longTermMemories,
+    userProfiles,
+    businessContext
+  };
+}
+
+// =============================
+// PHASE 3: MULTI-STAGE AI PROMPTING
+// =============================
+
+async function extractStructuredData(context: EnrichedContext): Promise<any> {
+  const messagesText = context.messages
+    .map((m: any) => `[${m.users?.display_name || 'Unknown'}] ${m.text}`)
+    .join('\n');
+  
+  const memoriesText = context.longTermMemories.length > 0
+    ? '\n\n🧠 ความจำระยะยาว:\n' + context.longTermMemories
+        .slice(0, 10)
+        .map(mem => `- ${mem.title}: ${mem.content.substring(0, 150)}`)
+        .join('\n')
+    : '';
+  
+  const workingMemText = context.workingMemories.length > 0
+    ? '\n\n💭 ความจำชั่วคราว:\n' + context.workingMemories
+        .slice(0, 5)
+        .map(wm => `- ${wm.content}`)
+        .join('\n')
+    : '';
+
+  const extractionPrompt = `คุณเป็น AI Expert ในการวิเคราะห์การสนทนาธุรกิจ กรุณาแยกข้อมูลสำคัญจากการสนทนาต่อไปนี้
+
+📊 METADATA:
+- จำนวนข้อความ: ${context.messages.length}
+- จำนวน Threads: ${context.threads.length}
+- Business Context: ${context.businessContext.topics.join(', ') || 'General'}
+- Urgency Level: ${context.businessContext.urgency}
+- มีข้อมูลทางการเงิน: ${context.businessContext.hasFinancial ? 'ใช่' : 'ไม่'}
+- มี Deadlines: ${context.businessContext.hasDeadlines ? 'ใช่' : 'ไม่'}
+${memoriesText}
+${workingMemText}
+
+💬 MESSAGES:
+${messagesText}
+
+กรุณาวิเคราะห์และแยกข้อมูลเป็น JSON ตามรูปแบบนี้:
+
+{
+  "key_decisions": [
+    {
+      "decision": "คำอธิบายการตัดสินใจ",
+      "who": "ชื่อผู้ตัดสินใจ",
+      "impact": "high/medium/low",
+      "reasoning": "เหตุผล"
+    }
+  ],
+  "action_items": [
+    {
+      "task": "งานที่ต้องทำ",
+      "assignee": "@ชื่อผู้รับผิดชอบ",
+      "deadline": "กำหนดเวลา หรือ null",
+      "priority": "urgent/high/medium/low",
+      "status": "pending/mentioned/unclear"
+    }
+  ],
+  "open_questions": [
+    {
+      "question": "คำถาม",
+      "asker": "ผู้ถาม",
+      "context": "บริบท",
+      "importance": "high/medium/low"
+    }
+  ],
+  "key_information": [
+    {
+      "type": "financial/contact/deadline/data/other",
+      "content": "ข้อมูล",
+      "relevance": "high/medium/low"
+    }
+  ]
+}
+
+ตอบเป็น JSON เท่านั้น ไม่ต้องมีคำอธิบายเพิ่ม`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'คุณเป็น AI ที่เชี่ยวชาญในการแยกและจัดโครงสร้างข้อมูลจากการสนทนา ตอบเป็น JSON เท่านั้น' },
+          { role: 'user', content: extractionPrompt }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[extractStructuredData] API error:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    
+    // Try to parse JSON from the response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    
+    return null;
+  } catch (err) {
+    console.error('[extractStructuredData] Exception:', err);
+    return null;
+  }
+}
+
+async function generateExecutiveSummary(context: EnrichedContext, structuredData: any): Promise<string> {
+  const decisionsText = structuredData?.key_decisions?.length > 0
+    ? structuredData.key_decisions
+        .map((d: any, i: number) => `${i + 1}. **${d.decision}** (โดย ${d.who})\n   - Impact: ${d.impact}\n   - เหตุผล: ${d.reasoning}`)
+        .join('\n\n')
+    : 'ไม่มีการตัดสินใจที่ชัดเจน';
+
+  const actionsText = structuredData?.action_items?.length > 0
+    ? structuredData.action_items
+        .map((a: any, i: number) => `${i + 1}. ${a.task}\n   - ผู้รับผิดชอบ: ${a.assignee}\n   - Deadline: ${a.deadline || 'ไม่ระบุ'}\n   - Priority: ${a.priority}`)
+        .join('\n\n')
+    : 'ไม่มีงานที่ระบุชัดเจน';
+
+  const questionsText = structuredData?.open_questions?.length > 0
+    ? structuredData.open_questions
+        .map((q: any, i: number) => `${i + 1}. ${q.question}\n   - ผู้ถาม: ${q.asker}\n   - บริบท: ${q.context}`)
+        .join('\n\n')
+    : 'ไม่มีคำถามค้างคำตอบ';
+
+  const keyInfoText = structuredData?.key_information?.length > 0
+    ? structuredData.key_information
+        .filter((k: any) => k.relevance === 'high')
+        .map((k: any, i: number) => `${i + 1}. [${k.type}] ${k.content}`)
+        .join('\n')
+    : 'ไม่มีข้อมูลสำคัญเพิ่มเติม';
+
+  const summaryPrompt = `สร้างสรุปการสนทนาแบบ Executive Summary ที่ครบถ้วนและเป็นมืออาชีพ
+
+📊 CONTEXT:
+- Business Topics: ${context.businessContext.topics.join(', ') || 'General Discussion'}
+- Urgency: ${context.businessContext.urgency === 'high' ? '🔴 สูง' : '🟢 ปกติ'}
+- Threads: ${context.threads.length} conversation threads
+- Messages Analyzed: ${context.messages.length}
+
+📋 DECISIONS (${structuredData?.key_decisions?.length || 0}):
+${decisionsText}
+
+✅ ACTION ITEMS (${structuredData?.action_items?.length || 0}):
+${actionsText}
+
+❓ OPEN QUESTIONS (${structuredData?.open_questions?.length || 0}):
+${questionsText}
+
+💡 KEY INFORMATION:
+${keyInfoText}
+
+กรุณาสร้างสรุปที่:
+1. เริ่มด้วย Executive Summary 2-3 ประโยค (ภาพรวมสำคัญที่สุด)
+2. สรุปหัวข้อหลัก (3-7 หัวข้อ) พร้อมรายละเอียดย่อ
+3. ยกประเด็นสำคัญที่ต้องติดตาม
+4. ชี้ Red Flags หรือความเสี่ยง (ถ้ามี)
+5. แนะนำ Next Steps
+
+ใช้ภาษาไทยที่เป็นมืออาชีพ กระชับ และอ่านง่าย`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'คุณเป็น Executive Assistant ที่เชี่ยวชาญในการสรุปการประชุมและการสนทนาธุรกิจอย่างเป็นมืออาชีพ' },
+          { role: 'user', content: summaryPrompt }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[generateExecutiveSummary] API error:', response.status);
+      return 'ไม่สามารถสร้างสรุปได้';
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (err) {
+    console.error('[generateExecutiveSummary] Exception:', err);
+    return 'เกิดข้อผิดพลาดในการสร้างสรุป';
+  }
+}
+
 interface MessageScore {
   message: any;
   score: number;
@@ -524,90 +885,6 @@ function selectImportantMessages(messages: any[], targetCount: number = 50): any
   return topMessages.map(sm => sm.message);
 }
 
-// =============================
-// AI SUMMARY GENERATION
-// =============================
-
-async function generateSummaryWithAI(messages: any[], groupId: string, threadClusters?: any[][]) {
-  const selectedMessages = selectImportantMessages(messages, 80);
-  
-  const messagesText = selectedMessages
-    .map((m: any) => `${m.users?.display_name || 'Unknown'}: ${m.text}`)
-    .join('\n');
-  
-  // Calculate thread info
-  const clusters = threadClusters || clusterMessagesByThread(selectedMessages);
-  const threadSummary = clusters.length > 1 
-    ? `การสนทนาแบ่งออกเป็น ${clusters.length} เธรด/หัวข้อย่อย\n` 
-    : '';
-
-  const summaryPrompt = `คุณเป็น AI ที่ชำนาญในการวิเคราะห์และสรุปการสนทนาในกลุ่มทำงาน/ธุรกิจ
-
-📊 ข้อมูลการสนทนา:
-- จำนวนข้อความทั้งหมด: ${messages.length} ข้อความ
-- ข้อความสำคัญที่เลือกมาวิเคราะห์: ${selectedMessages.length} ข้อความ
-- ${threadSummary}
-
-💬 ข้อความที่สำคัญ:
-${messagesText}
-
-📝 กรุณาสรุปการสนทนาอย่างละเอียดและครบถ้วนในภาษาไทย โดยแบ่งเป็น:
-
-**1. หัวข้อหลักที่พูดคุยกัน:**
-- ระบุหัวข้อหลักทั้งหมดที่พบ (3-7 หัวข้อ)
-- เรียงลำดับตามความสำคัญ
-
-**2. การตัดสินใจที่สำคัญ:**
-- ระบุทุกการตัดสินใจที่ชัดเจน
-- บอกว่าใครตัดสินใจอะไร ด้วยเหตุผลอะไร
-- แยกเป็นรายการ
-
-**3. งานที่ต้องทำพร้อมผู้รับผิดชอบ:**
-- ระบุทุกงาน/task ที่กล่าวถึง
-- รูปแบบ: "งาน - @ชื่อผู้รับผิดชอบ - กำหนดเวลา (ถ้ามี)"
-- แยกตามความเร่งด่วน (ด่วน / ปกติ)
-
-**4. คำถามที่ยังรอคำตอบ:**
-- ระบุทุกคำถามที่ยังไม่มีคำตอบชัดเจน
-- บอกว่าใครถามใคร เกี่ยวกับเรื่องอะไร
-
-**5. ข้อมูลสำคัญอื่น ๆ:**
-- ตัวเลข/ข้อมูลเชิงปริมาณที่สำคัญ
-- การกล่าวถึงเงิน/งบประมาณ
-- ข้อมูลติดต่อ (เบอร์โทร, ไลน์, อีเมล)
-- กำหนดเวลา/Deadlines
-
-ให้วิเคราะห์อย่างละเอียดและไม่พลาดข้อมูลสำคัญใด ๆ`;
-
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: 'คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสนทนาธุรกิจและสรุปข้อมูลสำคัญได้อย่างครบถ้วนและแม่นยำ' },
-          { role: 'user', content: summaryPrompt }
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      console.error('[generateSummaryWithAI] AI API error:', response.status, await response.text());
-      return 'ไม่สามารถสร้างสรุปได้เนื่องจากเกิดข้อผิดพลาดจากบริการ AI';
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (err) {
-    console.error('[generateSummaryWithAI] Exception:', err);
-    return 'ไม่สามารถสร้างสรุปได้เนื่องจากเกิดข้อผิดพลาด';
-  }
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -644,7 +921,6 @@ serve(async (req) => {
       console.log(`[report-generator] Fetched ${messages.length} messages`);
       
       // Phase 1: Smart Message Selection
-      // Remove noise and select important messages
       const cleanMessages = filterNoiseMessages(messages);
       console.log(`[report-generator] After noise removal: ${cleanMessages.length} messages`);
       
@@ -656,49 +932,29 @@ serve(async (req) => {
       const selectedMessages = selectImportantMessages(cleanMessages, 100);
       console.log(`[report-generator] Selected ${selectedMessages.length} important messages for summary`);
 
-      // Generate AI summary with smart selection
-      const summaryText = await generateSummaryWithAI(selectedMessages, requestedGroupId, threadClusters);
+      // Phase 2: Build Enriched Context
+      const enrichedContext = await buildEnrichedContext(requestedGroupId, selectedMessages, threadClusters);
+      console.log(`[report-generator] Context enriched with memories and profiles`);
+
+      // Phase 3: Multi-Stage AI Processing
+      // Stage 1: Extract structured data
+      const structuredData = await extractStructuredData(enrichedContext);
+      console.log(`[report-generator] Structured data extracted:`, {
+        decisions: structuredData?.key_decisions?.length || 0,
+        actions: structuredData?.action_items?.length || 0,
+        questions: structuredData?.open_questions?.length || 0
+      });
+
+      // Stage 2: Generate executive summary
+      const summaryText = await generateExecutiveSummary(enrichedContext, structuredData);
+      console.log(`[report-generator] Executive summary generated`);
 
       // Enhanced extraction logic based on importance scores
-      const scoredMessages = selectedMessages.map(msg => 
-        calculateMessageImportance(msg, selectedMessages)
+      const decisions = structuredData?.key_decisions || [];
+      const actionItems = structuredData?.action_items || [];
+      const openQuestions = (structuredData?.open_questions || []).map((q: any) => 
+        `[${q.asker}] ${q.question}`
       );
-      
-      const mainTopics: string[] = [];
-      const decisions: any[] = [];
-      const actionItems: any[] = [];
-      const openQuestions: string[] = [];
-
-      scoredMessages.forEach((scored: any) => {
-        const msg = scored.message;
-        const reasons = scored.reasons;
-        
-        // Extract decisions (high confidence)
-        if (reasons.includes('contains_decision')) {
-          decisions.push({
-            text: msg.text,
-            user: msg.users?.display_name || 'Unknown',
-            timestamp: msg.sent_at,
-            score: scored.score
-          });
-        }
-        
-        // Extract action items
-        if (reasons.includes('contains_action') || reasons.includes('contains_deadline')) {
-          actionItems.push({
-            text: msg.text,
-            user: msg.users?.display_name || 'Unknown',
-            timestamp: msg.sent_at,
-            score: scored.score,
-            has_deadline: reasons.includes('contains_deadline')
-          });
-        }
-        
-        // Extract open questions (store as strings)
-        if (reasons.includes('is_question')) {
-          openQuestions.push(`[${msg.users?.display_name || 'Unknown'}] ${msg.text}`);
-        }
-      });
 
       // Save summary to database with enhanced metadata
       const { error: insertError } = await supabase
@@ -709,10 +965,10 @@ serve(async (req) => {
           from_time: messages[messages.length - 1].sent_at,
           to_time: messages[0].sent_at,
           message_count: messages.length,
-          main_topics: mainTopics.slice(0, 7),
-          decisions: decisions.slice(0, 10),
-          action_items: actionItems.slice(0, 15),
-          open_questions: openQuestions.slice(0, 10),
+          main_topics: enrichedContext.businessContext.topics,
+          decisions: decisions,
+          action_items: actionItems,
+          open_questions: openQuestions,
         });
 
       if (insertError) {
@@ -726,7 +982,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'Auto-summary created',
+          message: 'Auto-summary created with enriched context',
           stats: {
             total_messages: messages.length,
             clean_messages: cleanMessages.length,
@@ -734,7 +990,13 @@ serve(async (req) => {
             selected_messages: selectedMessages.length,
             decisions: decisions.length,
             actions: actionItems.length,
-            questions: openQuestions.length
+            questions: openQuestions.length,
+            context: {
+              working_memories: enrichedContext.workingMemories.length,
+              long_term_memories: enrichedContext.longTermMemories.length,
+              user_profiles: enrichedContext.userProfiles.length,
+              business_topics: enrichedContext.businessContext.topics
+            }
           }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
