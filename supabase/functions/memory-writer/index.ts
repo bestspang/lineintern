@@ -382,6 +382,24 @@ serve(async (req) => {
 
     console.log(`[memory-writer] Processing for user=${userId}, group=${groupId}, thread=${threadId}`);
 
+    // Fetch recent messages for context if not provided or too short
+    let contextMessages = recentMessages || "";
+    if (!contextMessages || contextMessages.length < 50) {
+      console.log("[memory-writer] Fetching recent messages for context...");
+      const { data: msgs } = await supabase
+        .from('messages')
+        .select('text, direction, sent_at')
+        .eq('group_id', groupId)
+        .order('sent_at', { ascending: false })
+        .limit(30);
+      
+      contextMessages = msgs
+        ?.map(m => `[${m.direction}] ${m.text}`)
+        .reverse()
+        .join('\n') || "";
+      console.log(`[memory-writer] Fetched ${msgs?.length || 0} messages (${contextMessages.length} chars)`);
+    }
+
     const memoryEnabled = await checkMemorySettings(userId, groupId);
     if (!memoryEnabled) {
       console.log("[memory-writer] Memory disabled");
@@ -404,7 +422,7 @@ serve(async (req) => {
 
     const extractedMemories = await extractMemoriesWithAI(
       messageText,
-      recentMessages || "",
+      contextMessages,
       existingMemories,
       isDM
     );
