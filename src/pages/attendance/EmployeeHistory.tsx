@@ -72,22 +72,22 @@ export default function EmployeeHistory() {
   const { employee, logs, statistics } = data;
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl space-y-6">
+    <div className="container mx-auto py-4 sm:py-8 px-4 max-w-4xl space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Attendance History</h1>
-        <p className="text-lg text-muted-foreground">{employee.full_name}</p>
-        <p className="text-sm text-muted-foreground">Employee Code: {employee.code}</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Attendance History</h1>
+        <p className="text-base sm:text-lg text-muted-foreground">{employee.full_name}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">Employee Code: {employee.code}</p>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-2">
-              <Calendar className="h-8 w-8 mx-auto text-primary" />
-              <div className="text-2xl font-bold">{statistics.totalDays}</div>
-              <p className="text-xs text-muted-foreground">Days Worked</p>
+          <CardContent className="p-3 sm:pt-6 sm:pb-3 sm:px-6">
+            <div className="text-center space-y-1 sm:space-y-2">
+              <Calendar className="h-6 w-6 sm:h-8 sm:w-8 mx-auto text-primary" />
+              <div className="text-xl sm:text-2xl font-bold">{statistics.totalDays}</div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Days Worked</p>
             </div>
           </CardContent>
         </Card>

@@ -81,20 +81,20 @@ export default function TestBot() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Bot Testing Interface</h1>
-        <p className="text-muted-foreground">
+    <div className="container mx-auto p-3 sm:p-6 max-w-5xl">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-2">Bot Testing Interface</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Test LINE Intern bot responses without using the actual LINE app
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Settings Panel */}
         <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Test Settings</CardTitle>
-            <CardDescription>Configure test parameters</CardDescription>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-base sm:text-lg">Test Settings</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Configure test parameters</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -171,18 +171,18 @@ export default function TestBot() {
 
         {/* Chat Panel */}
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
               Conversation
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Messages: {messages.length} | Bot responses: {messages.filter((m) => m.direction === "bot").length}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
             {/* Messages */}
-            <ScrollArea className="h-[400px] w-full rounded-md border p-4">
+            <ScrollArea className="h-[350px] sm:h-[400px] w-full rounded-md border p-3 sm:p-4">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <Bot className="h-12 w-12 mb-4 opacity-50" />

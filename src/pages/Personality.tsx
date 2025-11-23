@@ -250,17 +250,17 @@ export default function Personality() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Personality Dashboard</h1>
-        <p className="text-muted-foreground">View AI mood, energy, interests, and relationships for magic mode groups</p>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-2">Personality Dashboard</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">View AI mood, energy, interests, and relationships for magic mode groups</p>
       </div>
 
       {/* Group Filter */}
-      <div className="flex items-center gap-4">
-        <label className="text-sm font-medium">Filter by Group:</label>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+        <label className="text-xs sm:text-sm font-medium">Filter by Group:</label>
         <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-          <SelectTrigger className="w-[300px]">
+          <SelectTrigger className="w-full sm:w-[300px] text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -290,11 +290,11 @@ export default function Personality() {
             {loadingHistory ? (
               <Skeleton className="h-[300px] w-full" />
             ) : !moodHistory || moodHistory.length === 0 ? (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              <div className="flex items-center justify-center h-[250px] sm:h-[300px] text-xs sm:text-sm text-muted-foreground px-4 text-center">
                 No mood history recorded yet. The AI will start tracking mood changes after messages in magic mode.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                 <LineChart data={moodHistory.map(h => ({
                   time: new Date(h.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit' }),
                   energy: h.energy_level,

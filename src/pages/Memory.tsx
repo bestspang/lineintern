@@ -141,17 +141,18 @@ function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: st
   }
   
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Type</TableHead>
-          <TableHead>Content</TableHead>
-          <TableHead>Importance</TableHead>
-          <TableHead>Expires</TableHead>
-          <TableHead>Source</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="min-w-[80px] text-xs sm:text-sm py-2">Type</TableHead>
+            <TableHead className="min-w-[200px] text-xs sm:text-sm py-2">Content</TableHead>
+            <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Importance</TableHead>
+            <TableHead className="text-xs sm:text-sm py-2">Expires</TableHead>
+            <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Source</TableHead>
+            <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
       <TableBody>
         {workingMemories.map((memory) => {
           const timeRemaining = new Date(memory.expires_at).getTime() - Date.now();
@@ -160,50 +161,53 @@ function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: st
           
           return (
             <TableRow key={memory.id}>
-              <TableCell>
-                <Badge variant="outline">{memory.memory_type}</Badge>
+              <TableCell className="py-2">
+                <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">{memory.memory_type}</Badge>
               </TableCell>
-              <TableCell className="max-w-md">
-                <div className="truncate">{memory.content}</div>
+              <TableCell className="max-w-md py-2">
+                <div className="truncate text-xs sm:text-sm">{memory.content}</div>
                 {memory.user && (
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                     User: {memory.user.display_name}
                   </div>
                 )}
               </TableCell>
-              <TableCell>
-                <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'}>
+              <TableCell className="hidden sm:table-cell py-2">
+                <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
                   {((memory.importance_score || 0) * 100).toFixed(0)}%
                 </Badge>
               </TableCell>
-              <TableCell className="text-sm">
+              <TableCell className="text-xs sm:text-sm py-2">
                 {timeRemaining > 0 ? (
                   <div className="text-muted-foreground">
                     {hoursRemaining > 0 && `${hoursRemaining}h `}
                     {minutesRemaining}m
                   </div>
                 ) : (
-                  <Badge variant="destructive">Expired</Badge>
+                  <Badge variant="destructive" className="h-4 sm:h-5 text-[10px] sm:text-xs">Expired</Badge>
                 )}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
+              <TableCell className="hidden md:table-cell text-xs sm:text-sm text-muted-foreground py-2">
                 {memory.group?.display_name || 'Global'}
               </TableCell>
-              <TableCell>
-                <div className="flex gap-2">
+              <TableCell className="py-2">
+                <div className="flex gap-1 sm:gap-2 justify-end">
                   <Button
                     size="sm"
                     variant="outline"
+                    className="h-6 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3"
                     onClick={() => promoteToLongTermMutation.mutate(memory)}
                   >
-                    Promote
+                    <span className="hidden sm:inline">Promote</span>
+                    <span className="sm:hidden">↑</span>
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="h-6 w-6 p-0 sm:h-8 sm:w-8"
                     onClick={() => discardMemoryMutation.mutate(memory.id)}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                   </Button>
                 </div>
               </TableCell>
@@ -212,6 +216,7 @@ function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: st
         })}
       </TableBody>
     </Table>
+    </div>
   );
 }
 
@@ -653,37 +658,43 @@ export default function Memory() {
   };
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Brain className="w-8 h-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <Brain className="w-6 h-6 sm:w-8 sm:h-8" />
             Memory Bot
           </h1>
-          <p className="text-muted-foreground">Manage business decisions, tasks, and context memory</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage business decisions, tasks, and context memory</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs sm:text-sm text-muted-foreground">
             Last updated: {lastUpdated.toLocaleTimeString()}
           </div>
           <Button 
             variant="outline" 
             size="sm"
+            className="h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
             onClick={handleManualRefresh}
           >
-            <Clock className="w-4 h-4 mr-2" />
-            Refresh
+            <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Refresh</span>
+            <span className="sm:hidden">↻</span>
           </Button>
           <Button 
             variant="default" 
             size="sm"
+            className="h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
             onClick={() => consolidateMutation.mutate()}
             disabled={consolidateMutation.isPending}
           >
-            <Brain className="w-4 h-4 mr-2" />
+            <Brain className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {consolidateMutation.isPending ? 'Running...' : 'Consolidate'}
           </Button>
-          <Button onClick={() => {
+          <Button 
+            size="sm"
+            className="h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+            onClick={() => {
             setEditingMemory({
               scope: masterScope,
               group_id: masterScope === 'group' ? masterGroupId : null,
@@ -694,20 +705,21 @@ export default function Memory() {
             });
             setIsDialogOpen(true);
           }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Memory
+            <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Add Memory</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         </div>
       </div>
       
       {/* Master Context Selector */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Context Selector</CardTitle>
-          <CardDescription>Choose the scope to view memories</CardDescription>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">Context Selector</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Choose the scope to view memories</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="flex-1">
               <Label>Scope</Label>
               <Select value={masterScope} onValueChange={(val: any) => setMasterScope(val)}>

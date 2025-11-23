@@ -159,14 +159,14 @@ export default function MemoryAnalytics() {
     : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Memory System Analytics</h1>
-          <p className="text-muted-foreground">Performance metrics and cognitive processing statistics</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Memory System Analytics</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Performance metrics and cognitive processing statistics</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full sm:w-40 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -178,15 +178,15 @@ export default function MemoryAnalytics() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Working Memory</CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Working Memory</CardTitle>
+            <Zap className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{memoryStats?.workingMemories || 0}</div>
-            <p className="text-xs text-muted-foreground">Short-term memories active</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{memoryStats?.workingMemories || 0}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Short-term memories active</p>
           </CardContent>
         </Card>
 
@@ -255,11 +255,11 @@ export default function MemoryAnalytics() {
           </CardHeader>
           <CardContent>
             {strengthDistribution && strengthDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                 <BarChart data={strengthDistribution}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
+                  <XAxis dataKey="name" tick={{ fontSize: '11px' }} />
+                  <YAxis tick={{ fontSize: '11px' }} />
                   <Tooltip />
                   <Bar dataKey="count" fill="hsl(var(--primary))" />
                 </BarChart>
