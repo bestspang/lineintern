@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,14 +11,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   const [formData, setFormData] = useState({
     code: '',
     full_name: '',
@@ -251,54 +258,143 @@ export default function AttendanceEmployees() {
                   </div>
                   <div>
                     <Label htmlFor="line_user_id">LINE User</Label>
-                    <Select 
-                      value={formData.line_user_id} 
-                      onValueChange={(value) => setFormData({ ...formData, line_user_id: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select LINE user" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">None (Link later)</SelectItem>
-                        {lineUsers
-                          ?.filter(user => {
-                            const isLinkedToOther = employees?.some(
-                              emp => emp.line_user_id === user.line_user_id && 
-                                     emp.id !== editingEmployee?.id
-                            );
-                            return !isLinkedToOther;
-                          })
-                          .map((user) => (
-                            <SelectItem key={user.id} value={user.line_user_id}>
-                              {user.display_name} ({user.line_user_id.substring(0, 10)}...)
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={userSearchOpen}
+                          className="w-full justify-between"
+                        >
+                          {formData.line_user_id
+                            ? lineUsers?.find((user) => user.line_user_id === formData.line_user_id)?.display_name
+                            : "Select LINE user..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search LINE users..." />
+                          <CommandList>
+                            <CommandEmpty>No user found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value=""
+                                onSelect={() => {
+                                  setFormData({ ...formData, line_user_id: '' });
+                                  setUserSearchOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.line_user_id === "" ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                None (Link later)
+                              </CommandItem>
+                              {lineUsers
+                                ?.filter(user => {
+                                  const isLinkedToOther = employees?.some(
+                                    emp => emp.line_user_id === user.line_user_id && 
+                                           emp.id !== editingEmployee?.id
+                                  );
+                                  return !isLinkedToOther;
+                                })
+                                .map((user) => (
+                                  <CommandItem
+                                    key={user.id}
+                                    value={user.display_name}
+                                    onSelect={() => {
+                                      setFormData({ ...formData, line_user_id: user.line_user_id });
+                                      setUserSearchOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        formData.line_user_id === user.line_user_id ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex flex-col">
+                                      <span>{user.display_name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {user.line_user_id.substring(0, 15)}...
+                                      </span>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Select a LINE user to link with this employee
+                      Search and select a LINE user to link
                     </p>
                   </div>
                   <div>
                     <Label htmlFor="announcement_group_line_id">Announcement Group</Label>
-                    <Select 
-                      value={formData.announcement_group_line_id} 
-                      onValueChange={(value) => setFormData({ ...formData, announcement_group_line_id: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select announcement group" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">No announcement group</SelectItem>
-                        {lineGroups?.map((group) => (
-                          <SelectItem key={group.id} value={group.line_group_id}>
-                            {group.display_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={groupSearchOpen} onOpenChange={setGroupSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={groupSearchOpen}
+                          className="w-full justify-between"
+                        >
+                          {formData.announcement_group_line_id
+                            ? lineGroups?.find((group) => group.line_group_id === formData.announcement_group_line_id)?.display_name
+                            : "Select announcement group..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search groups..." />
+                          <CommandList>
+                            <CommandEmpty>No group found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value=""
+                                onSelect={() => {
+                                  setFormData({ ...formData, announcement_group_line_id: '' });
+                                  setGroupSearchOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.announcement_group_line_id === "" ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                No announcement group
+                              </CommandItem>
+                              {lineGroups?.map((group) => (
+                                <CommandItem
+                                  key={group.id}
+                                  value={group.display_name}
+                                  onSelect={() => {
+                                    setFormData({ ...formData, announcement_group_line_id: group.line_group_id });
+                                    setGroupSearchOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      formData.announcement_group_line_id === group.line_group_id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {group.display_name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Attendance notifications will be posted to this group
+                      Attendance notifications will be posted here
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -370,13 +466,22 @@ export default function AttendanceEmployees() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(employee)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/attendance/employees/${employee.id}`)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(employee)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
