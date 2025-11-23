@@ -198,7 +198,7 @@ serve(async (req) => {
       }
     }
 
-    // Check geofence if branch has location
+    // Check geofence if branch has location (STRICT MODE - Block if outside)
     if (token.employee.branch && token.employee.branch.latitude && token.employee.branch.longitude) {
       if (latitude && longitude) {
         const { data: distance } = await supabase
@@ -209,11 +209,24 @@ serve(async (req) => {
             lon2: longitude
           });
 
-        if (distance && distance > (token.employee.branch.radius_meters || 200)) {
-          isFlagged = true;
-          flagReasons.push(`นอกพื้นที่ (ห่าง ${distance} เมตร) / Outside geofence (${distance}m away)`);
-          fraudScore += 20;
-          fraudReasons.push('outside_geofence');
+        const allowedRadius = token.employee.branch.radius_meters || 200;
+
+        if (distance && distance > allowedRadius) {
+          // BLOCK: Don't allow check-in outside geofence
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด\n\n📍 ระยะห่าง: ${Math.round(distance)} เมตร\n✅ อนุญาตภายใน: ${allowedRadius} เมตร\n\nกรุณาเข้าใกล้สาขา "${token.employee.branch.name}" เพื่อ check-in`,
+              error_en: `🚫 You are outside the allowed area\n\n📍 Distance: ${Math.round(distance)} meters\n✅ Allowed within: ${allowedRadius} meters\n\nPlease move closer to "${token.employee.branch.name}" branch to check in`,
+              distance: Math.round(distance),
+              allowed_radius: allowedRadius,
+              branch_name: token.employee.branch.name
+            }),
+            { 
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
         }
       }
     }
