@@ -83,22 +83,23 @@ export default function AttendanceLogExport({ logs, filters }: AttendanceLogExpo
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export
+        <Button variant="outline" className="w-full sm:w-auto text-xs sm:text-sm h-8 sm:h-10">
+          <Download className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Export</span>
+          <span className="sm:hidden">CSV</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={exportToCSV}>
-          <FileText className="mr-2 h-4 w-4" />
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={exportToCSV} className="text-xs sm:text-sm">
+          <FileText className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Export as CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={exportToExcel}>
-          <FileSpreadsheet className="mr-2 h-4 w-4" />
+        <DropdownMenuItem onClick={exportToExcel} className="text-xs sm:text-sm">
+          <FileSpreadsheet className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Export as Excel
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={exportToPDF}>
-          <FileText className="mr-2 h-4 w-4" />
+        <DropdownMenuItem onClick={exportToPDF} className="text-xs sm:text-sm">
+          <FileText className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Export as PDF
         </DropdownMenuItem>
       </DropdownMenuContent>

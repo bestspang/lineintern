@@ -136,25 +136,25 @@ export function MemorySettings() {
   };
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Global Settings Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             Global Memory Settings
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Configure default memory behavior for all groups and users
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
+        <CardContent className="p-4 sm:p-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Memory Enabled Toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-base">Memory System Enabled</Label>
-                <p className="text-sm text-muted-foreground">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1">
+                <Label className="text-sm sm:text-base">Memory System Enabled</Label>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Enable or disable the entire memory system
                 </p>
               </div>
@@ -253,13 +253,14 @@ export function MemorySettings() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex gap-2">
-          <Button onClick={handleSaveSettings} disabled={saveSettingsMutation.isPending}>
+        <CardFooter className="flex flex-col sm:flex-row gap-2 p-4 sm:p-6">
+          <Button onClick={handleSaveSettings} disabled={saveSettingsMutation.isPending} className="w-full sm:w-auto text-sm">
             {saveSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
           </Button>
-          <Button variant="outline" onClick={handleResetDefaults}>
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset to Defaults
+          <Button variant="outline" onClick={handleResetDefaults} className="w-full sm:w-auto text-sm">
+            <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+            <span className="hidden sm:inline">Reset to Defaults</span>
+            <span className="sm:hidden">Reset</span>
           </Button>
         </CardFooter>
       </Card>

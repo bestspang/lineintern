@@ -68,16 +68,17 @@ export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelect
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" disabled={disabled} className="gap-2">
-          <Settings className="h-4 w-4" />
+        <Button variant="outline" disabled={disabled} className="gap-1 sm:gap-2 text-xs sm:text-sm h-8 sm:h-10 px-2 sm:px-4">
+          <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
           <span className="hidden sm:inline">Mode:</span>
-          <Badge variant="secondary" className="gap-1">
+          <Badge variant="secondary" className="gap-1 h-5 sm:h-6 text-xs">
             <Icon className="h-3 w-3" />
-            {currentModeData.label}
+            <span className="hidden sm:inline">{currentModeData.label}</span>
+            <span className="sm:hidden">{currentModeData.label.slice(0, 3)}</span>
           </Badge>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent align="end" className="w-[90vw] sm:w-80 max-w-[320px]">
         <DropdownMenuLabel>Select Bot Mode</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {modes.map((mode) => {

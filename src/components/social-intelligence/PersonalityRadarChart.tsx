@@ -12,17 +12,18 @@ export function PersonalityRadarChart({ traits, userName }: PersonalityRadarChar
   }));
   
   return (
-    <ResponsiveContainer width="100%" height={250}>
+    <ResponsiveContainer width="100%" height={200} className="sm:h-[250px]">
       <RadarChart data={data}>
         <PolarGrid stroke="hsl(var(--border))" />
         <PolarAngleAxis 
           dataKey="trait" 
-          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+          className="sm:text-xs"
         />
         <PolarRadiusAxis 
           angle={90} 
           domain={[0, 1]} 
-          tick={{ fill: 'hsl(var(--muted-foreground))' }}
+          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
         />
         <Radar 
           name={userName || 'User'} 
@@ -31,7 +32,7 @@ export function PersonalityRadarChart({ traits, userName }: PersonalityRadarChar
           fill="hsl(var(--primary))" 
           fillOpacity={0.6} 
         />
-        <Legend wrapperStyle={{ fontSize: '12px' }} />
+        <Legend wrapperStyle={{ fontSize: '10px' }} className="sm:text-xs" />
       </RadarChart>
     </ResponsiveContainer>
   );

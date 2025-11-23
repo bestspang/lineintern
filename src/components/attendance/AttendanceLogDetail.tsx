@@ -15,12 +15,12 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            Attendance Detail
+          <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-base sm:text-lg">
+            <span>Attendance Detail</span>
             {log.is_flagged && (
-              <Badge variant="destructive" className="flex items-center gap-1">
+              <Badge variant="destructive" className="flex items-center gap-1 h-5 sm:h-6 text-xs">
                 <AlertTriangle className="h-3 w-3" />
                 Flagged
               </Badge>
@@ -28,11 +28,11 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Employee Info */}
           <div>
-            <h3 className="font-semibold mb-2">Employee Information</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <h3 className="font-semibold mb-2 text-sm sm:text-base">Employee Information</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
               <div>
                 <span className="text-muted-foreground">Name:</span>
                 <p className="font-medium">{log.employee?.full_name}</p>
@@ -48,25 +48,25 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
 
           {/* Event Info */}
           <div>
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <Clock className="h-4 w-4" />
+            <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+              <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
               Event Information
             </h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
               <div>
                 <span className="text-muted-foreground">Event Type:</span>
-                <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="ml-2">
+                <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="ml-2 h-4 sm:h-5 text-xs">
                   {log.event_type === 'check_in' ? 'Check In' : 'Check Out'}
                 </Badge>
               </div>
               <div>
                 <span className="text-muted-foreground">Server Time:</span>
-                <p className="font-medium">{format(new Date(log.server_time), 'PPpp')}</p>
+                <p className="font-medium text-xs sm:text-sm">{format(new Date(log.server_time), 'PPpp')}</p>
               </div>
               {log.device_time && (
                 <div>
                   <span className="text-muted-foreground">Device Time:</span>
-                  <p className="font-medium">{format(new Date(log.device_time), 'PPpp')}</p>
+                  <p className="font-medium text-xs sm:text-sm">{format(new Date(log.device_time), 'PPpp')}</p>
                 </div>
               )}
               <div>
@@ -81,17 +81,17 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
             <>
               <Separator />
               <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+                  <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
                   Location
                 </h3>
                 <div className="space-y-2">
-                  <div className="text-sm">
+                  <div className="text-xs sm:text-sm">
                     <span className="text-muted-foreground">Coordinates:</span>
-                    <p className="font-mono">{log.latitude}, {log.longitude}</p>
+                    <p className="font-mono text-xs">{log.latitude}, {log.longitude}</p>
                   </div>
                   {log.timezone && (
-                    <div className="text-sm">
+                    <div className="text-xs sm:text-sm">
                       <span className="text-muted-foreground">Timezone:</span>
                       <p>{log.timezone}</p>
                     </div>
@@ -101,7 +101,7 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
                       href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline text-sm"
+                      className="text-primary hover:underline text-xs sm:text-sm"
                     >
                       View on Google Maps →
                     </a>
@@ -116,8 +116,8 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
             <>
               <Separator />
               <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Camera className="h-4 w-4" />
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+                  <Camera className="h-3 w-3 sm:h-4 sm:w-4" />
                   Photo
                 </h3>
                 <img
@@ -134,12 +134,12 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
             <>
               <Separator />
               <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Smartphone className="h-4 w-4" />
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+                  <Smartphone className="h-3 w-3 sm:h-4 sm:w-4" />
                   Device Information
                 </h3>
-                <div className="bg-muted p-3 rounded-md">
-                  <pre className="text-xs overflow-x-auto">
+                <div className="bg-muted p-2 sm:p-3 rounded-md">
+                  <pre className="text-[10px] sm:text-xs overflow-x-auto">
                     {JSON.stringify(log.device_info, null, 2)}
                   </pre>
                 </div>
@@ -152,11 +152,11 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
             <>
               <Separator />
               <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-4 w-4" />
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-destructive text-sm sm:text-base">
+                  <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
                   Flag Reason
                 </h3>
-                <p className="text-sm bg-destructive/10 p-3 rounded-md">{log.flag_reason}</p>
+                <p className="text-xs sm:text-sm bg-destructive/10 p-2 sm:p-3 rounded-md">{log.flag_reason}</p>
               </div>
             </>
           )}

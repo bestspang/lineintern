@@ -261,20 +261,20 @@ export default function Attendance() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-950 dark:to-emerald-950 p-4">
         <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <CheckCircle className="h-6 w-6" />
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400 text-lg sm:text-xl">
+              <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" />
               Success!
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Your attendance has been recorded
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                <span className="text-xs sm:text-sm">
                   {new Date(submitResult.log.server_time).toLocaleString('th-TH', {
                     timeZone: 'Asia/Bangkok'
                   })}
@@ -283,14 +283,14 @@ export default function Attendance() {
               
               {submitResult.log.is_flagged && (
                 <Alert variant="destructive">
-                  <AlertDescription>
+                  <AlertDescription className="text-xs sm:text-sm">
                     ⚠️ {submitResult.log.flag_reason}
                   </AlertDescription>
                 </Alert>
               )}
             </div>
 
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               You can close this page now. A confirmation has been sent to your LINE.
             </p>
           </CardContent>
@@ -305,27 +305,27 @@ export default function Attendance() {
     (!tokenData?.settings?.require_location || location);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-4 pb-20">
-      <div className="max-w-2xl mx-auto space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-3 sm:p-4 pb-16 sm:pb-20">
+      <div className="max-w-2xl mx-auto space-y-3 sm:space-y-4">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building className="h-5 w-5" />
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Building className="h-4 w-4 sm:h-5 sm:w-5" />
               {actionText}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Complete the steps below to record your attendance
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{tokenData?.employee?.full_name}</span>
+                <User className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                <span className="font-medium text-sm sm:text-base">{tokenData?.employee?.full_name}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Building className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{tokenData?.branch?.name || 'N/A'}</span>
+                <Building className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                <span className="text-xs sm:text-sm">{tokenData?.branch?.name || 'N/A'}</span>
               </div>
             </div>
           </CardContent>
@@ -334,29 +334,29 @@ export default function Attendance() {
         {/* Photo Section */}
         {tokenData?.settings?.require_photo && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Camera className="h-4 w-4" />
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                <Camera className="h-3 w-3 sm:h-4 sm:w-4" />
                 Photo {tokenData?.settings?.require_photo && <span className="text-destructive">*</span>}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
               {!photo && !cameraActive && (
-                <Button onClick={startCamera} className="w-full">
-                  <Camera className="h-4 w-4 mr-2" />
+                <Button onClick={startCamera} className="w-full text-sm sm:text-base h-9 sm:h-10">
+                  <Camera className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                   Take Photo
                 </Button>
               )}
 
               {cameraActive && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <video 
                     ref={videoRef} 
                     autoPlay 
                     playsInline
                     className="w-full rounded-lg"
                   />
-                  <Button onClick={capturePhoto} className="w-full">
+                  <Button onClick={capturePhoto} className="w-full text-sm sm:text-base h-9 sm:h-10">
                     Capture
                   </Button>
                 </div>
@@ -372,7 +372,7 @@ export default function Attendance() {
                       startCamera();
                     }} 
                     variant="outline" 
-                    className="w-full"
+                    className="w-full text-sm sm:text-base h-9 sm:h-10"
                   >
                     Retake Photo
                   </Button>
@@ -387,24 +387,24 @@ export default function Attendance() {
         {/* Location Section */}
         {tokenData?.settings?.require_location && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
                 Location {tokenData?.settings?.require_location && <span className="text-destructive">*</span>}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
               {!location && (
-                <Button onClick={requestLocation} variant="outline" className="w-full">
-                  <MapPin className="h-4 w-4 mr-2" />
+                <Button onClick={requestLocation} variant="outline" className="w-full text-sm sm:text-base h-9 sm:h-10">
+                  <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                   Get Location
                 </Button>
               )}
 
               {location && (
                 <Alert>
-                  <MapPin className="h-4 w-4" />
-                  <AlertDescription>
+                  <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <AlertDescription className="text-xs sm:text-sm">
                     Location captured: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
                   </AlertDescription>
                 </Alert>
@@ -412,7 +412,7 @@ export default function Attendance() {
 
               {locationError && (
                 <Alert variant="destructive">
-                  <AlertDescription>{locationError}</AlertDescription>
+                  <AlertDescription className="text-xs sm:text-sm">{locationError}</AlertDescription>
                 </Alert>
               )}
             </CardContent>
@@ -423,7 +423,7 @@ export default function Attendance() {
         <Button 
           onClick={handleSubmit} 
           disabled={!canSubmit || submitting}
-          className="w-full h-12 text-lg"
+          className="w-full h-11 sm:h-12 text-base sm:text-lg"
           size="lg"
         >
           {submitting ? (
@@ -436,7 +436,7 @@ export default function Attendance() {
           )}
         </Button>
 
-        <p className="text-xs text-center text-muted-foreground">
+        <p className="text-[10px] sm:text-xs text-center text-muted-foreground">
           This link expires at {new Date(tokenData?.token?.expires_at).toLocaleTimeString('th-TH', {
             timeZone: 'Asia/Bangkok',
             hour: '2-digit',
