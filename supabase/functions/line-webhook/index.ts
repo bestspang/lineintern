@@ -5897,9 +5897,12 @@ async function handleAttendanceCommand(
     
     // Generate URL based on command type
     const appUrl = Deno.env.get('APP_URL') || 'https://intern.gem.me';
+    console.log('[DEBUG] APP_URL from env:', Deno.env.get('APP_URL'));
+    console.log('[DEBUG] Final appUrl value:', appUrl);
     const pageUrl = type === 'history' 
       ? `${appUrl}/attendance/employee-history?token=${token.id}`
       : `${appUrl}/attendance?t=${token.id}`;
+    console.log('[DEBUG] Generated pageUrl:', pageUrl);
     
     let message = '';
     
