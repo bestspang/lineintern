@@ -122,6 +122,7 @@ export type Database = {
       }
       attendance_logs: {
         Row: {
+          admin_notes: string | null
           branch_id: string | null
           created_at: string | null
           device_info: Json | null
@@ -137,6 +138,7 @@ export type Database = {
           latitude: number | null
           line_message_id: string | null
           longitude: number | null
+          performed_by_admin_id: string | null
           photo_hash: string | null
           photo_url: string | null
           server_time: string
@@ -144,6 +146,7 @@ export type Database = {
           timezone: string | null
         }
         Insert: {
+          admin_notes?: string | null
           branch_id?: string | null
           created_at?: string | null
           device_info?: Json | null
@@ -159,6 +162,7 @@ export type Database = {
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          performed_by_admin_id?: string | null
           photo_hash?: string | null
           photo_url?: string | null
           server_time?: string
@@ -166,6 +170,7 @@ export type Database = {
           timezone?: string | null
         }
         Update: {
+          admin_notes?: string | null
           branch_id?: string | null
           created_at?: string | null
           device_info?: Json | null
@@ -181,6 +186,7 @@ export type Database = {
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          performed_by_admin_id?: string | null
           photo_hash?: string | null
           photo_url?: string | null
           server_time?: string

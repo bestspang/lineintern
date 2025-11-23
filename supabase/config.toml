@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.line-webhook]
 verify_jwt = false
 
+[functions.admin-checkout]
+verify_jwt = false
+
 [functions.cognitive-processor]
 verify_jwt = false
 
