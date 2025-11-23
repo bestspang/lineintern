@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,35 @@ export default function AttendanceReminderLogs() {
   };
 
   const successRate = stats.total > 0 ? ((stats.sent / stats.total) * 100).toFixed(1) : '0';
+
+  // Real-time subscription for new reminders
+  useEffect(() => {
+    const channel = supabase
+      .channel('attendance-reminders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'attendance_reminders'
+        },
+        (payload) => {
+          console.log('New reminder detected:', payload);
+          const newReminder = payload.new as any;
+          
+          toast({
+            title: '🔔 New Reminder Sent',
+            description: `${newReminder.reminder_type === 'check_in' ? 'Check-In' : 'Check-Out'} reminder sent via ${newReminder.notification_type}`,
+            duration: 5000,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   if (isLoading) {
     return (
