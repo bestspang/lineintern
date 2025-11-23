@@ -11,8 +11,11 @@ interface Employee {
   full_name: string;
   line_user_id: string | null;
   announcement_group_line_id: string | null;
+  working_time_type: string; // 'time_based' or 'hours_based'
   shift_start_time: string | null;
   shift_end_time: string | null;
+  hours_per_day: number | null;
+  break_hours: number | null;
   reminder_preferences: {
     check_in_reminder_enabled: boolean;
     check_out_reminder_enabled: boolean;
@@ -68,13 +71,15 @@ Deno.serve(async (req) => {
         check_out_reminder_after_minutes: 15,
       };
 
-      // Skip if no shift times defined
-      if (!employee.shift_start_time || !employee.shift_end_time) {
-        continue;
-      }
+      const workingTimeType = employee.working_time_type || 'time_based';
 
-      // CHECK-IN REMINDER LOGIC
-      if (prefs.check_in_reminder_enabled) {
+      // CHECK-IN REMINDER LOGIC (only for time_based employees)
+      if (workingTimeType === 'time_based' && prefs.check_in_reminder_enabled) {
+        // Skip if no shift start time defined
+        if (!employee.shift_start_time) {
+          continue;
+        }
+
         const shiftStartTime = employee.shift_start_time;
         const gracePeriodMinutes = prefs.grace_period_minutes || 15;
         
@@ -85,7 +90,7 @@ Deno.serve(async (req) => {
         const reminderTime = addMinutes(shiftStart, gracePeriodMinutes);
         const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
 
-        console.log(`[attendance-reminder] Employee ${employee.full_name}: shift_start=${shiftStartTime}, reminder_time=${reminderTimeStr}, current=${currentTime}`);
+        console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_start=${shiftStartTime}, reminder_time=${reminderTimeStr}, current=${currentTime}`);
 
         if (currentTime >= reminderTimeStr) {
           // Check if employee has checked in today
@@ -107,18 +112,54 @@ Deno.serve(async (req) => {
 
       // CHECK-OUT REMINDER LOGIC
       if (prefs.check_out_reminder_enabled) {
-        const shiftEndTime = employee.shift_end_time;
+        let expectedCheckOutTime: Date | null = null;
+
+        if (workingTimeType === 'time_based') {
+          // Time-based: use shift_end_time
+          if (!employee.shift_end_time) {
+            continue;
+          }
+
+          const shiftEndTime = employee.shift_end_time;
+          const [endHour, endMinute] = shiftEndTime.split(':').map(Number);
+          const shiftEnd = new Date(bangkokTime);
+          shiftEnd.setHours(endHour, endMinute, 0, 0);
+          expectedCheckOutTime = shiftEnd;
+
+          console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_end=${shiftEndTime}`);
+        } else if (workingTimeType === 'hours_based') {
+          // Hours-based: calculate from check-in time + hours_per_day + break_hours
+          if (!employee.hours_per_day) {
+            continue;
+          }
+
+          // Get today's check-in time
+          const checkInTime = await getEmployeeCheckInTime(supabase, employee.id, today);
+          
+          if (!checkInTime) {
+            // No check-in yet, skip check-out reminder
+            continue;
+          }
+
+          const hoursPerDay = employee.hours_per_day;
+          const breakHours = employee.break_hours || 0;
+          const totalMinutes = (hoursPerDay + breakHours) * 60;
+          
+          expectedCheckOutTime = addMinutes(new Date(checkInTime), totalMinutes);
+
+          console.log(`[attendance-reminder] Employee ${employee.full_name} (hours_based): check_in=${format(new Date(checkInTime), 'HH:mm:ss')}, hours=${hoursPerDay}, break=${breakHours}, expected_checkout=${format(expectedCheckOutTime, 'HH:mm:ss')}`);
+        }
+
+        if (!expectedCheckOutTime) {
+          continue;
+        }
+
         const reminderAfterMinutes = prefs.check_out_reminder_after_minutes || 15;
-        
-        // Parse shift end time and add reminder delay
-        const [endHour, endMinute] = shiftEndTime.split(':').map(Number);
-        const shiftEnd = new Date(bangkokTime);
-        shiftEnd.setHours(endHour, endMinute, 0, 0);
-        const reminderTime = addMinutes(shiftEnd, reminderAfterMinutes);
+        const reminderTime = addMinutes(expectedCheckOutTime, reminderAfterMinutes);
         const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
 
         if (currentTime >= reminderTimeStr) {
-          // First check if they checked in (don't remind to check out if they never checked in)
+          // First check if they checked in
           const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
           
           if (hasCheckedIn) {
@@ -211,6 +252,30 @@ async function hasEmployeeCheckedOutToday(
   }
 
   return data && data.length > 0;
+}
+
+// Helper function: Get employee's check-in time today (for hours_based calculation)
+async function getEmployeeCheckInTime(
+  supabase: any,
+  employeeId: string,
+  date: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('attendance_logs')
+    .select('server_time')
+    .eq('employee_id', employeeId)
+    .eq('event_type', 'check_in')
+    .gte('server_time', `${date}T00:00:00`)
+    .lte('server_time', `${date}T23:59:59`)
+    .order('server_time', { ascending: true })
+    .limit(1);
+
+  if (error) {
+    console.error('[getEmployeeCheckInTime] Error:', error);
+    return null;
+  }
+
+  return data && data.length > 0 ? data[0].server_time : null;
 }
 
 // Helper function: Check if reminder was sent today
