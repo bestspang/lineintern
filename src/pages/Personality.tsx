@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -139,6 +140,26 @@ export default function Personality() {
     },
     enabled: selectedGroupId !== "all" && !!magicGroups,
   });
+
+  // Fetch all users for name lookup
+  const { data: allUsers } = useQuery({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, display_name, avatar_url');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Create user lookup map
+  const userMap = useMemo(() => {
+    if (!allUsers) return {};
+    return Object.fromEntries(
+      allUsers.map(user => [user.id, user])
+    );
+  }, [allUsers]);
 
   // Reset personality mutation
   const resetPersonalityMutation = useMutation({
@@ -505,20 +526,33 @@ export default function Personality() {
                         {Object.entries(relationshipMap)
                           .sort(([, a], [, b]) => b.familiarity - a.familiarity)
                           .slice(0, 5)
-                          .map(([userId, rel]) => (
-                            <div key={userId} className="flex items-center justify-between">
-                              <span className="text-sm truncate max-w-[200px]">{userId}</span>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {rel.tone}
-                                </Badge>
-                                <Progress value={rel.familiarity} className="h-2 w-20" />
-                                <span className="text-xs text-muted-foreground w-10 text-right">
-                                  {rel.familiarity}%
-                                </span>
+                          .map(([userId, rel]) => {
+                            const user = userMap[userId];
+                            const displayName = user?.display_name || 'Unknown User';
+                            
+                            return (
+                              <div key={userId} className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 truncate max-w-[200px]">
+                                  {user?.avatar_url && (
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={user.avatar_url} />
+                                      <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                  )}
+                                  <span className="text-sm truncate">{displayName}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs capitalize">
+                                    {rel.tone}
+                                  </Badge>
+                                  <Progress value={rel.familiarity} className="h-2 w-20" />
+                                  <span className="text-xs text-muted-foreground w-10 text-right">
+                                    {rel.familiarity}%
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">No relationships tracked yet</p>
