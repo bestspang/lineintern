@@ -21,37 +21,37 @@ export function UserProfileCard({ profile }: UserProfileCardProps) {
   
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <Avatar className="w-12 h-12">
+      <CardHeader className="pb-3 p-3 sm:p-6 sm:pb-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Avatar className="w-10 h-10 sm:w-12 sm:h-12 shrink-0">
             <AvatarImage src={profile.user?.avatar_url} />
             <AvatarFallback>
               {profile.user?.display_name?.charAt(0)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <CardTitle className="truncate">{profile.user?.display_name}</CardTitle>
-            <CardDescription>
+            <CardTitle className="truncate text-sm sm:text-base">{profile.user?.display_name}</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
               {profile.observation_count} observations
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       
-      <CardContent>
+      <CardContent className="p-3 sm:p-6">
         <Tabs defaultValue="demographics" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="demographics">
-              <User className="w-4 h-4" />
+          <TabsList className="grid w-full grid-cols-4 h-auto">
+            <TabsTrigger value="demographics" className="text-xs sm:text-sm p-1.5 sm:p-2">
+              <User className="w-3 h-3 sm:w-4 sm:h-4" />
             </TabsTrigger>
-            <TabsTrigger value="personality">
-              <Brain className="w-4 h-4" />
+            <TabsTrigger value="personality" className="text-xs sm:text-sm p-1.5 sm:p-2">
+              <Brain className="w-3 h-3 sm:w-4 sm:h-4" />
             </TabsTrigger>
-            <TabsTrigger value="preferences">
-              <Heart className="w-4 h-4" />
+            <TabsTrigger value="preferences" className="text-xs sm:text-sm p-1.5 sm:p-2">
+              <Heart className="w-3 h-3 sm:w-4 sm:h-4" />
             </TabsTrigger>
-            <TabsTrigger value="behavior">
-              <Clock className="w-4 h-4" />
+            <TabsTrigger value="behavior" className="text-xs sm:text-sm p-1.5 sm:p-2">
+              <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
             </TabsTrigger>
           </TabsList>
           

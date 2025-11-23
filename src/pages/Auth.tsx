@@ -119,41 +119,43 @@ export default function Auth() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">LINE Intern Control Panel</CardTitle>
-          <CardDescription>Internal admin dashboard</CardDescription>
+        <CardHeader className="text-center p-4 sm:p-6">
+          <CardTitle className="text-xl sm:text-2xl">LINE Intern Control Panel</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Internal admin dashboard</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           <Tabs defaultValue="signin">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 h-auto">
+              <TabsTrigger value="signin" className="text-xs sm:text-sm">Sign In</TabsTrigger>
+              <TabsTrigger value="signup" className="text-xs sm:text-sm">Sign Up</TabsTrigger>
             </TabsList>
             
             <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
+              <form onSubmit={handleSignIn} className="space-y-3 sm:space-y-4">
+                <div className="space-y-1 sm:space-y-2">
+                  <Label htmlFor="signin-email" className="text-xs sm:text-sm">Email</Label>
                   <Input
                     id="signin-email"
                     name="email"
                     type="email"
                     placeholder="admin@example.com"
+                    className="text-sm"
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
+                <div className="space-y-1 sm:space-y-2">
+                  <Label htmlFor="signin-password" className="text-xs sm:text-sm">Password</Label>
                   <Input
                     id="signin-password"
                     name="password"
                     type="password"
+                    className="text-sm"
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full text-sm sm:text-base h-9 sm:h-10" disabled={isLoading}>
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>
