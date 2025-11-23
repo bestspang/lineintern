@@ -107,51 +107,52 @@ export default function FaqLogs() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <MessageSquare className="w-8 h-8" />
+        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+          <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8" />
           FAQ Logs
         </h1>
-        <p className="text-muted-foreground">Track and improve AI-powered Q&A interactions</p>
+        <p className="text-sm text-muted-foreground">Track and improve AI-powered Q&A interactions</p>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>FAQ Interaction History</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">FAQ Interaction History</CardTitle>
           <CardDescription>
             <div className="flex gap-2 items-center">
               <Input
                 placeholder="Search questions or answers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-md"
+                className="w-full sm:max-w-md text-sm"
               />
             </div>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 sm:p-6 overflow-x-auto">
           {isLoading ? (
-            <div className="space-y-2">
+            <div className="space-y-2 p-3 sm:p-0">
               {[...Array(5)].map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
           ) : logs && logs.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead>Question</TableHead>
-                  <TableHead>Answer Preview</TableHead>
-                  <TableHead>Language</TableHead>
-                  <TableHead>Rating</TableHead>
-                  <TableHead>Helpful</TableHead>
-                  <TableHead>Response Time</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="min-w-[800px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs sm:text-sm">Time</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Group</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Question</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Answer Preview</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Language</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Rating</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Helpful</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Response Time</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {logs.map((log) => (
                   <TableRow key={log.id}>
@@ -210,18 +211,19 @@ export default function FaqLogs() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No FAQ logs found</p>
+            <div className="text-center py-8 sm:py-12 text-muted-foreground p-3 sm:p-0">
+              <MessageSquare className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-sm sm:text-base">No FAQ logs found</p>
             </div>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Edit Answer</DialogTitle>
             <DialogDescription>

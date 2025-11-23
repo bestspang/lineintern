@@ -214,14 +214,14 @@ export default function Summaries() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Chat Summaries</h1>
-          <p className="text-muted-foreground">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Chat Summaries</h1>
+          <p className="text-sm text-muted-foreground">
             Intelligent conversation summaries with context enrichment and multi-stage analysis
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-2">
             Total messages: {messageCount} • Last updated: {lastUpdated.toLocaleTimeString()}
           </p>
         </div>
@@ -229,19 +229,19 @@ export default function Summaries() {
 
       {/* Generate New Summary Card */}
       <Card className="border-primary/20 bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             Generate New Summary
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Create an intelligent summary with importance scoring, thread clustering, and context enrichment
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="space-y-4 p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
             <div>
-              <Label>Select Group</Label>
+              <Label className="text-sm">Select Group</Label>
               <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Choose a group" />
@@ -257,7 +257,7 @@ export default function Summaries() {
             </div>
             
             <div>
-              <Label>Message Limit</Label>
+              <Label className="text-sm">Message Limit</Label>
               <Select value={messageLimit} onValueChange={setMessageLimit}>
                 <SelectTrigger>
                   <SelectValue />
@@ -271,11 +271,11 @@ export default function Summaries() {
               </Select>
             </div>
 
-            <div className="flex items-end">
+            <div className="flex items-end sm:col-span-2 md:col-span-1">
               <Button 
                 onClick={generateSummaryNow} 
                 disabled={isGenerating || !selectedGroupId}
-                className="w-full"
+                className="w-full text-sm"
               >
                 {isGenerating ? "Generating..." : "Generate Summary"}
               </Button>
@@ -284,13 +284,13 @@ export default function Summaries() {
 
           {/* Stats Display */}
           {lastStats && (
-            <div className="mt-4 p-4 bg-background rounded-lg border space-y-3">
+            <div className="mt-4 p-3 sm:p-4 bg-background rounded-lg border space-y-3">
               <div className="flex items-center gap-2 mb-3">
                 <Brain className="w-4 h-4 text-primary" />
-                <h4 className="font-semibold text-sm">Last Generation Stats</h4>
+                <h4 className="font-semibold text-xs sm:text-sm">Last Generation Stats</h4>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 text-xs sm:text-sm">
                 <div>
                   <div className="text-muted-foreground text-xs">Total Messages</div>
                   <div className="font-bold">{lastStats.total_messages}</div>
@@ -309,7 +309,7 @@ export default function Summaries() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-sm pt-2 border-t">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm pt-2 border-t">
                 <div>
                   <div className="text-muted-foreground text-xs">Decisions</div>
                   <div className="font-bold text-orange-600">{lastStats.decisions}</div>

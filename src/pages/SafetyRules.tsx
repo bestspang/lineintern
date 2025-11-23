@@ -101,17 +101,17 @@ export default function SafetyRules() {
   };
 
   return (
-    <div className="space-y-6 max-w-full px-4 sm:px-6">
+    <div className="space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Detection Rules</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">Detection Rules</CardTitle>
           <CardDescription>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+              <span className="text-xs sm:text-sm text-muted-foreground">
                 Customize patterns for spam, scams, and toxic content detection
               </span>
               <Button
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto shrink-0 text-sm"
                 onClick={() => {
                   setEditingRule({
                     name: '',

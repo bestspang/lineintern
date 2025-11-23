@@ -197,28 +197,28 @@ export default function Commands() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Terminal className="w-8 h-8" />
+        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+          <Terminal className="w-6 h-6 sm:w-8 sm:h-8" />
           Command Management
         </h1>
-        <p className="text-muted-foreground">จัดการคำสั่งและ triggers ของบอท</p>
+        <p className="text-sm text-muted-foreground">จัดการคำสั่งและ triggers ของบอท</p>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="p-3 sm:p-6 pt-4 sm:pt-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 text-xs sm:text-sm">
               <TabsTrigger value="commands">คำสั่งหลัก</TabsTrigger>
               <TabsTrigger value="aliases">Aliases</TabsTrigger>
-              <TabsTrigger value="triggers">Bot Triggers</TabsTrigger>
-              <TabsTrigger value="test">ทดสอบคำสั่ง</TabsTrigger>
+              <TabsTrigger value="triggers">Triggers</TabsTrigger>
+              <TabsTrigger value="test">ทดสอบ</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="commands" className="space-y-4 mt-6">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">
+            <TabsContent value="commands" className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   จัดการคำสั่งหลักของบอท เปิด/ปิด และกำหนดพฤติกรรม
                 </p>
                 <Button
@@ -240,20 +240,22 @@ export default function Commands() {
                     });
                     setIsCommandDialogOpen(true);
                   }}
+                  className="w-full sm:w-auto shrink-0 text-sm"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   เพิ่มคำสั่งใหม่
                 </Button>
               </div>
 
-              <div className="rounded-md border bg-card">
-                <Table>
+              <div className="rounded-md border bg-card overflow-x-auto -mx-3 sm:mx-0">
+                <div className="min-w-[700px]">
+                  <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[55%] min-w-[220px]">คำสั่ง</TableHead>
-                      <TableHead className="w-[25%] min-w-[160px]">คำอธิบาย</TableHead>
-                      <TableHead className="w-[10%]">สถานะ</TableHead>
-                      <TableHead className="w-[10%] text-right">Actions</TableHead>
+                    <TableHead className="w-[50%] sm:w-[55%] min-w-[180px] text-xs sm:text-sm">คำสั่ง</TableHead>
+                    <TableHead className="w-[50%] sm:w-[25%] min-w-[120px] text-xs sm:text-sm hidden md:table-cell">คำอธิบาย</TableHead>
+                    <TableHead className="w-[50%] sm:w-[10%] text-xs sm:text-sm">สถานะ</TableHead>
+                    <TableHead className="w-[50%] sm:w-[10%] text-right text-xs sm:text-sm">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -261,70 +263,70 @@ export default function Commands() {
                       const Icon = iconMap[cmd.icon_name || 'MessageSquare'] || MessageSquare;
                       return (
                         <TableRow key={cmd.id}>
-                          <TableCell>
-                            <div className="flex items-start gap-3 min-w-0">
-                              <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                              <div className="space-y-1 min-w-0">
-                                <code className="bg-muted px-2 py-0.5 rounded text-xs inline-block">
+                          <TableCell className="py-2">
+                            <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                              <Icon className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 flex-shrink-0" />
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <code className="bg-muted px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs inline-block">
                                   {cmd.command_key}
                                 </code>
-                                <div className="text-sm font-medium truncate">
+                                <div className="text-xs sm:text-sm font-medium truncate">
                                   {cmd.display_name_en}
                                 </div>
                                 {cmd.display_name_th && (
-                                  <div className="text-xs text-muted-foreground truncate">
+                                  <div className="text-[10px] sm:text-xs text-muted-foreground truncate">
                                     {cmd.display_name_th}
                                   </div>
                                 )}
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="align-top">
+                          <TableCell className="align-top py-2 hidden md:table-cell">
                             <div className="space-y-1 max-w-md">
-                              <p className="text-sm line-clamp-2">{cmd.description_en}</p>
+                              <p className="text-xs sm:text-sm line-clamp-2">{cmd.description_en}</p>
                               {cmd.description_th && (
-                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-2">
                                   {cmd.description_th}
                                 </p>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="align-top">
-                            <div className="flex flex-col gap-1 text-xs">
-                              <Badge variant={cmd.is_enabled ? 'default' : 'secondary'} className="w-fit">
-                                {cmd.is_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                          <TableCell className="align-top py-2">
+                            <div className="flex flex-col gap-1 text-[10px] sm:text-xs">
+                              <Badge variant={cmd.is_enabled ? 'default' : 'secondary'} className="w-fit h-4 sm:h-5 text-[10px] sm:text-xs">
+                                {cmd.is_enabled ? 'เปิด' : 'ปิด'}
                               </Badge>
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex flex-wrap gap-1 hidden sm:flex">
                                 {cmd.require_mention_in_group && (
-                                  <Badge variant="outline" className="text-[10px]">
-                                    ต้อง @mention
+                                  <Badge variant="outline" className="text-[9px] sm:text-[10px] h-4">
+                                    @mention
                                   </Badge>
                                 )}
-                                {cmd.available_in_dm && <span>✓ DM</span>}
-                                {cmd.available_in_group && <span>✓ Group</span>}
+                                {cmd.available_in_dm && <span className="text-[10px]">✓ DM</span>}
+                                {cmd.available_in_group && <span className="text-[10px]">✓ Group</span>}
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right align-top">
-                            <div className="flex justify-end gap-1">
+                          <TableCell className="text-right align-top py-2">
+                            <div className="flex justify-end gap-0.5">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 w-7 p-0"
+                                className="h-6 w-6 p-0"
                                 onClick={() => {
                                   setEditingCommand(cmd);
                                   setIsCommandDialogOpen(true);
                                 }}
                               >
-                                <Edit className="w-3.5 h-3.5" />
+                                <Edit className="w-3 h-3" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 w-7 p-0"
+                                className="h-6 w-6 p-0"
                                 onClick={() => deleteCommandMutation.mutate(cmd.id)}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
                           </TableCell>
@@ -333,11 +335,12 @@ export default function Commands() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="aliases" className="space-y-4 mt-6">
-              <div className="flex justify-between items-center">
+            <TabsContent value="aliases" className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                 <p className="text-sm text-muted-foreground">
                   กำหนด aliases หลายตัวสำหรับแต่ละคำสั่ง รองรับหลายภาษา
                 </p>

@@ -59,24 +59,24 @@ export default function Users() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Users</h1>
-        <p className="text-muted-foreground">LINE bot users across all groups</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Users</h1>
+        <p className="text-sm text-muted-foreground">LINE bot users across all groups</p>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>All Users</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">All Users</CardTitle>
           <CardDescription>
-            <div className="flex justify-between items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-3 w-3 sm:h-4 sm:w-4" />
                 <Input
                   placeholder="Search by name or LINE User ID..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10"
+                  className="pl-8 sm:pl-10 text-sm"
                 />
               </div>
 
@@ -84,19 +84,21 @@ export default function Users() {
                 onClick={() => fixNamesMutation.mutate()}
                 disabled={fixNamesMutation.isPending}
                 variant="outline"
+                className="w-full sm:w-auto shrink-0 text-sm"
               >
                 <RefreshCw
                   className={cn(
-                    'h-4 w-4 mr-2',
+                    'h-3 w-3 sm:h-4 sm:w-4 mr-2',
                     fixNamesMutation.isPending && 'animate-spin',
                   )}
                 />
-                Fix Display Names
+                <span className="hidden sm:inline">Fix Display Names</span>
+                <span className="sm:hidden">Fix Names</span>
               </Button>
             </div>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
@@ -108,9 +110,9 @@ export default function Users() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[60%] min-w-[240px]">User</TableHead>
-                    <TableHead className="w-[20%]">Language</TableHead>
-                    <TableHead className="w-[20%] text-right">Last Seen</TableHead>
+                    <TableHead className="w-[60%] sm:w-[60%] min-w-[180px] text-xs sm:text-sm">User</TableHead>
+                    <TableHead className="w-[40%] sm:w-[20%] text-xs sm:text-sm hidden sm:table-cell">Language</TableHead>
+                    <TableHead className="w-[40%] sm:w-[20%] text-right text-xs sm:text-sm">Last Seen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -120,34 +122,37 @@ export default function Users() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/users/${user.id}`)}
                     >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8 flex-shrink-0">
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                          <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
                             <AvatarImage src={user.avatar_url || undefined} />
-                            <AvatarFallback>
+                            <AvatarFallback className="text-xs sm:text-sm">
                               {user.display_name.substring(0, 2).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="min-w-0 space-y-1">
+                          <div className="min-w-0 space-y-0.5 flex-1">
                             <p
-                              className="font-medium truncate"
+                              className="text-xs sm:text-sm font-medium truncate"
                               title={user.display_name}
                             >
                               {user.display_name}
                             </p>
                             <p
-                              className="font-mono text-[11px] text-muted-foreground truncate"
+                              className="font-mono text-[9px] sm:text-[11px] text-muted-foreground truncate"
                               title={user.line_user_id}
                             >
                               {user.line_user_id}
                             </p>
+                            <p className="sm:hidden text-[10px] text-muted-foreground">
+                              {user.primary_language || 'auto'}
+                            </p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="align-top">
-                        {user.primary_language || 'auto'}
+                      <TableCell className="align-top py-2 hidden sm:table-cell">
+                        <span className="text-xs sm:text-sm">{user.primary_language || 'auto'}</span>
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground align-top whitespace-nowrap">
+                      <TableCell className="text-right text-[10px] sm:text-xs text-muted-foreground align-top whitespace-nowrap py-2">
                         {user.last_seen_at
                           ? formatDistanceToNow(new Date(user.last_seen_at), {
                               addSuffix: true,
@@ -160,8 +165,8 @@ export default function Users() {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No users found</p>
+            <div className="text-center py-8 sm:py-12 text-muted-foreground">
+              <p className="text-sm">No users found</p>
             </div>
           )}
         </CardContent>

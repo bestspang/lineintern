@@ -15,23 +15,24 @@ export default function SettingsLayout() {
   ];
 
   return (
-    <div className="space-y-6 max-w-full px-4 sm:px-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage bot configuration and monitoring</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground">Manage bot configuration and monitoring</p>
       </div>
 
       <Tabs value={location.pathname} className="w-full">
-        <TabsList className="w-full flex flex-wrap gap-2 mb-6">
+        <TabsList className="w-full flex flex-wrap gap-1.5 sm:gap-2 mb-4 sm:mb-6">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.path} value={tab.path} asChild>
               <NavLink 
                 to={tab.path} 
                 end={tab.path === '/settings'}
-                className="flex items-center gap-2 whitespace-nowrap w-full sm:w-auto data-[state=active]:bg-background data-[state=active]:text-foreground"
+                className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm w-full sm:w-auto data-[state=active]:bg-background data-[state=active]:text-foreground px-2 sm:px-3"
               >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
+                <tab.icon className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
               </NavLink>
             </TabsTrigger>
           ))}
