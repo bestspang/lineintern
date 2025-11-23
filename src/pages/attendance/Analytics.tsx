@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3 } from 'lucide-react';
+import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import LiveAttendanceStatus from '@/components/attendance/LiveAttendanceStatus';
 
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
@@ -241,13 +245,22 @@ export default function AttendanceAnalytics() {
         </Card>
       </div>
 
-      <Tabs defaultValue="trends" className="space-y-4">
+      <Tabs defaultValue="live" className="space-y-4">
         <TabsList className="w-full justify-start">
+          <TabsTrigger value="live" className="text-xs sm:text-sm">
+            <Activity className="h-3 w-3 mr-1" />
+            Live Status
+          </TabsTrigger>
           <TabsTrigger value="trends" className="text-xs sm:text-sm">Trends</TabsTrigger>
           <TabsTrigger value="hours" className="text-xs sm:text-sm hidden sm:inline-flex">Peak Hours</TabsTrigger>
           <TabsTrigger value="late" className="text-xs sm:text-sm">Late</TabsTrigger>
           <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">Branches</TabsTrigger>
         </TabsList>
+
+        {/* Live Status Tab */}
+        <TabsContent value="live" className="space-y-4">
+          <LiveAttendanceStatus />
+        </TabsContent>
 
         {/* Daily Trends */}
         <TabsContent value="trends" className="space-y-4">
