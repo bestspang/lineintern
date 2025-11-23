@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Settings as SettingsIcon, Save } from 'lucide-react';
+import { Loader2, Settings as SettingsIcon, Save, Building2 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 export default function AttendanceSettings() {
   const { toast } = useToast();
@@ -31,6 +32,32 @@ export default function AttendanceSettings() {
         .select('*')
         .eq('scope', 'global')
         .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: branches, isLoading: isLoadingBranches } = useQuery({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: branchSettings, isLoading: isLoadingBranchSettings } = useQuery({
+    queryKey: ['branch-settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attendance_settings')
+        .select('*')
+        .eq('scope', 'branch');
       
       if (error) throw error;
       return data;
@@ -81,11 +108,48 @@ export default function AttendanceSettings() {
     }
   });
 
+  const toggleBranchPhotoRequirement = useMutation({
+    mutationFn: async ({ branchId, requirePhoto }: { branchId: string, requirePhoto: boolean }) => {
+      const { error } = await supabase
+        .from('attendance_settings')
+        .upsert({
+          scope: 'branch',
+          branch_id: branchId,
+          require_photo: requirePhoto,
+          require_location: true,
+          enable_attendance: true,
+          token_validity_minutes: 10,
+          time_zone: 'Asia/Bangkok'
+        }, { onConflict: 'scope, branch_id, employee_id' });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branch-settings'] });
+      toast({
+        title: 'Success',
+        description: 'Branch settings updated successfully',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+
   const handleSave = () => {
     saveMutation.mutate(formData);
   };
 
-  if (isLoading) {
+  const getBranchPhotoRequirement = (branchId: string) => {
+    const setting = branchSettings?.find(s => s.branch_id === branchId);
+    return setting?.require_photo ?? false;
+  };
+
+  if (isLoading || isLoadingBranches || isLoadingBranchSettings) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -207,6 +271,71 @@ export default function AttendanceSettings() {
             <Save className="h-4 w-4 mr-2" />
             {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
+            Branch-Specific Photo Requirements
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            Override photo requirements for specific branches
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {branches && branches.length > 0 ? (
+            <div className="space-y-3">
+              {branches.map((branch) => {
+                const requiresPhoto = getBranchPhotoRequirement(branch.id);
+                return (
+                  <div key={branch.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{branch.name}</h4>
+                        {requiresPhoto && (
+                          <Badge variant="secondary" className="text-xs">
+                            Photo Required
+                          </Badge>
+                        )}
+                      </div>
+                      {branch.address && (
+                        <p className="text-sm text-muted-foreground">{branch.address}</p>
+                      )}
+                    </div>
+                    <Switch
+                      checked={requiresPhoto}
+                      onCheckedChange={(checked) => 
+                        toggleBranchPhotoRequirement.mutate({ 
+                          branchId: branch.id, 
+                          requirePhoto: checked 
+                        })
+                      }
+                      disabled={toggleBranchPhotoRequirement.isPending}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Building2 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No branches found. Create a branch first.</p>
+            </div>
+          )}
+          
+          <Separator className="my-4" />
+          
+          <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+            <h4 className="font-medium text-sm">How it works:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Enable photo requirement per branch using the toggle</li>
+              <li>Branch settings override global settings</li>
+              <li>Employees in enabled branches must take a selfie when checking in/out</li>
+              <li>Other branches follow global settings</li>
+            </ul>
+          </div>
         </CardContent>
       </Card>
     </div>
