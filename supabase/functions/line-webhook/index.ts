@@ -6391,7 +6391,20 @@ async function handleMessageEvent(event: LineEvent) {
 
   // PASSIVE LEARNING: Trigger memory writer for ALL messages (even without @ or /)
   try {
-    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, thread=${insertedMessage?.threadId}, message="${event.message.text.substring(0, 50)}..."`);
+    // Fetch recent messages for context
+    const { data: recentMsgs } = await supabase
+      .from('messages')
+      .select('text, user_id, sent_at')
+      .eq('group_id', group.id)
+      .order('sent_at', { ascending: false })
+      .limit(20);
+
+    const recentMessagesText = recentMsgs
+      ?.map(m => m.text)
+      .reverse()
+      .join('\n') || '';
+
+    console.log(`[Memory Writer] Invoking for user=${user.id}, group=${group.id}, thread=${insertedMessage?.threadId}, message="${event.message.text.substring(0, 50)}...", with ${recentMsgs?.length || 0} recent messages`);
     const memoryResult = await supabase.functions.invoke("memory-writer", {
       body: {
         userId: user.id,
@@ -6400,6 +6413,7 @@ async function handleMessageEvent(event: LineEvent) {
         messageId: event.message.id,
         threadId: insertedMessage?.threadId || null,
         isDM,
+        recentMessages: recentMessagesText,
       },
     });
     
