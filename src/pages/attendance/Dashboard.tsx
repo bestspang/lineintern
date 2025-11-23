@@ -1,11 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, differenceInMinutes } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { useToast } from '@/hooks/use-toast';
+import { useAdminRole } from '@/hooks/useAdminRole';
 
 interface EmployeeStatus {
   id: string;
@@ -21,7 +28,56 @@ interface EmployeeStatus {
 }
 
 export default function AttendanceDashboard() {
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeStatus | null>(null);
+  const [checkoutNotes, setCheckoutNotes] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { toast } = useToast();
+  const { isAdmin } = useAdminRole();
   const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Admin check-out mutation
+  const adminCheckout = useMutation({
+    mutationFn: async ({ employeeId, notes }: { employeeId: string; notes?: string }) => {
+      const { data, error } = await supabase.functions.invoke('admin-checkout', {
+        body: { employee_id: employeeId, notes },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to check out employee');
+      
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Employee checked out successfully',
+      });
+      setIsDialogOpen(false);
+      setSelectedEmployee(null);
+      setCheckoutNotes('');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to check out employee',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCheckoutClick = (employee: EmployeeStatus) => {
+    setSelectedEmployee(employee);
+    setIsDialogOpen(true);
+  };
+
+  const handleConfirmCheckout = () => {
+    if (selectedEmployee) {
+      adminCheckout.mutate({
+        employeeId: selectedEmployee.id,
+        notes: checkoutNotes || undefined,
+      });
+    }
+  };
 
   // Fetch attendance settings for grace period
   const { data: attendanceSettings } = useQuery({
@@ -555,6 +611,126 @@ export default function AttendanceDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Employee Status - Working Employees */}
+      {isAdmin && employeeStatuses.filter((e) => e.status === 'working').length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              พนักงานที่กำลังทำงาน ({employeeStatuses.filter((e) => e.status === 'working').length})
+            </CardTitle>
+            <CardDescription>Admin: Click to check out employees</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {employeeStatuses
+                .filter((e) => e.status === 'working')
+                .map((employee) => (
+                  <div
+                    key={employee.id}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                          {employee.full_name.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm truncate">{employee.full_name}</p>
+                          <Badge variant="outline" className="text-xs">{employee.code}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>🏢 {employee.branch_name}</span>
+                          {employee.check_in_time && (
+                            <>
+                              <span>•</span>
+                              <span>📥 {format(new Date(employee.check_in_time), 'HH:mm')}</span>
+                              <span>•</span>
+                              <span>⏱️ {Math.floor(employee.minutes_worked / 60)}h {employee.minutes_worked % 60}m</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCheckoutClick(employee)}
+                      disabled={adminCheckout.isPending}
+                    >
+                      <LogOut className="h-4 w-4 mr-1" />
+                      Check Out
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Check-out Confirmation Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Check-Out</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to check out this employee?
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedEmployee && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Employee:</span>
+                  <span className="font-semibold">{selectedEmployee.full_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Code:</span>
+                  <Badge variant="outline">{selectedEmployee.code}</Badge>
+                </div>
+                {selectedEmployee.check_in_time && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Check-in Time:</span>
+                      <span className="text-sm">{format(new Date(selectedEmployee.check_in_time), 'HH:mm')}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Hours Worked:</span>
+                      <span className="text-sm font-semibold">
+                        {Math.floor(selectedEmployee.minutes_worked / 60)}h {selectedEmployee.minutes_worked % 60}m
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (Optional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Reason for admin checkout..."
+                  value={checkoutNotes}
+                  onChange={(e) => setCheckoutNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={adminCheckout.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmCheckout} disabled={adminCheckout.isPending}>
+              {adminCheckout.isPending ? 'Checking out...' : 'Confirm Check-Out'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

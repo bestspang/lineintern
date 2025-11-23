@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Clock, Users, TrendingUp, Calendar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Clock, Users, TrendingUp, Calendar, LogOut } from 'lucide-react';
 import { format, addMinutes, differenceInMinutes } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { useAdminRole } from '@/hooks/useAdminRole';
 
 interface CheckedInEmployee {
   employee_id: string;
@@ -23,6 +29,11 @@ interface CheckedInEmployee {
 
 export default function LiveTracking() {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedEmployee, setSelectedEmployee] = useState<CheckedInEmployee | null>(null);
+  const [checkoutNotes, setCheckoutNotes] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { toast } = useToast();
+  const { isAdmin } = useAdminRole();
 
   // Update current time every minute
   useEffect(() => {
@@ -130,6 +141,51 @@ export default function LiveTracking() {
     },
     refetchInterval: 60000, // Refetch every minute
   });
+
+  // Admin check-out mutation
+  const adminCheckout = useMutation({
+    mutationFn: async ({ employeeId, notes }: { employeeId: string; notes?: string }) => {
+      const { data, error } = await supabase.functions.invoke('admin-checkout', {
+        body: { employee_id: employeeId, notes },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to check out employee');
+      
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Employee checked out successfully',
+      });
+      setIsDialogOpen(false);
+      setSelectedEmployee(null);
+      setCheckoutNotes('');
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to check out employee',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCheckoutClick = (employee: CheckedInEmployee) => {
+    setSelectedEmployee(employee);
+    setIsDialogOpen(true);
+  };
+
+  const handleConfirmCheckout = () => {
+    if (selectedEmployee) {
+      adminCheckout.mutate({
+        employeeId: selectedEmployee.employee_id,
+        notes: checkoutNotes || undefined,
+      });
+    }
+  };
 
   // Real-time subscription for attendance_logs
   useEffect(() => {
@@ -295,23 +351,36 @@ export default function LiveTracking() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-2">
-                      {getStatusBadge(employee.time_until_checkout)}
-                      <div className="text-right">
-                        <div className="text-sm font-semibold">
-                          {format(new Date(employee.expected_check_out), 'HH:mm')}
-                        </div>
-                        <div className={`text-xs ${
-                          employee.time_until_checkout < 0 
-                            ? 'text-destructive font-semibold'
-                            : employee.time_until_checkout <= 60
-                            ? 'text-orange-500 font-semibold'
-                            : 'text-muted-foreground'
-                        }`}>
-                          {employee.time_until_checkout < 0 ? 'OT ' : ''}
-                          {formatTimeRemaining(employee.time_until_checkout)}
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-end gap-2">
+                        {getStatusBadge(employee.time_until_checkout)}
+                        <div className="text-right">
+                          <div className="text-sm font-semibold">
+                            {format(new Date(employee.expected_check_out), 'HH:mm')}
+                          </div>
+                          <div className={`text-xs ${
+                            employee.time_until_checkout < 0 
+                              ? 'text-destructive font-semibold'
+                              : employee.time_until_checkout <= 60
+                              ? 'text-orange-500 font-semibold'
+                              : 'text-muted-foreground'
+                          }`}>
+                            {employee.time_until_checkout < 0 ? 'OT ' : ''}
+                            {formatTimeRemaining(employee.time_until_checkout)}
+                          </div>
                         </div>
                       </div>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCheckoutClick(employee)}
+                          disabled={adminCheckout.isPending}
+                        >
+                          <LogOut className="h-4 w-4 mr-1" />
+                          Check Out
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -324,6 +393,63 @@ export default function LiveTracking() {
           )}
         </CardContent>
       </Card>
+
+      {/* Check-out Confirmation Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Check-Out</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to check out this employee?
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedEmployee && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Employee:</span>
+                  <span className="font-semibold">{selectedEmployee.employee_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Code:</span>
+                  <Badge variant="outline">{selectedEmployee.employee_code}</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Check-in Time:</span>
+                  <span className="text-sm">{format(new Date(selectedEmployee.check_in_time), 'HH:mm')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Hours Worked:</span>
+                  <span className="text-sm font-semibold">
+                    {formatTimeRemaining(differenceInMinutes(new Date(), new Date(selectedEmployee.check_in_time)))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (Optional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Reason for admin checkout..."
+                  value={checkoutNotes}
+                  onChange={(e) => setCheckoutNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={adminCheckout.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmCheckout} disabled={adminCheckout.isPending}>
+              {adminCheckout.isPending ? 'Checking out...' : 'Confirm Check-Out'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
