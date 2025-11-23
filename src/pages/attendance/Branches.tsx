@@ -43,6 +43,20 @@ export default function AttendanceBranches() {
     }
   });
 
+  const { data: groups } = useQuery({
+    queryKey: ['groups'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, line_group_id, display_name')
+        .eq('status', 'active')
+        .order('display_name');
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
       const payload = {
@@ -249,13 +263,23 @@ export default function AttendanceBranches() {
                   </div>
 
                   <div>
-                    <Label htmlFor="line_group_id">LINE Group ID</Label>
-                    <Input
-                      id="line_group_id"
-                      value={formData.line_group_id}
-                      onChange={(e) => setFormData({ ...formData, line_group_id: e.target.value })}
-                      placeholder="C1234567890abcdef"
-                    />
+                    <Label htmlFor="line_group_id">LINE Group</Label>
+                    <Select 
+                      value={formData.line_group_id} 
+                      onValueChange={(value) => setFormData({ ...formData, line_group_id: value })}
+                    >
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Select a LINE group" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        <SelectItem value="">None</SelectItem>
+                        {groups?.map((group) => (
+                          <SelectItem key={group.id} value={group.line_group_id}>
+                            {group.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="flex items-center space-x-2">
