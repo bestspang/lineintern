@@ -140,7 +140,7 @@ export default function SafetyRules() {
               ))}
             </div>
           ) : rules && rules.length > 0 ? (
-            <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="overflow-x-auto">
               <div className="inline-block min-w-full align-middle">
                 <div className="overflow-hidden rounded-md border bg-card">
                   <Table>
@@ -149,13 +149,13 @@ export default function SafetyRules() {
                         <TableHead className="min-w-[80px] text-xs sm:text-sm">Status</TableHead>
                         <TableHead className="min-w-[160px] text-xs sm:text-sm">Name</TableHead>
                         <TableHead className="min-w-[100px] text-xs sm:text-sm">Type</TableHead>
-                        <TableHead className="min-w-[220px] text-xs sm:text-sm">Pattern</TableHead>
+                        <TableHead className="min-w-[180px] text-xs sm:text-sm">Pattern</TableHead>
                         <TableHead className="min-w-[90px] text-xs sm:text-sm">Severity</TableHead>
                         <TableHead className="min-w-[100px] text-xs sm:text-sm">Action</TableHead>
                         <TableHead className="min-w-[90px] text-xs sm:text-sm">Scope</TableHead>
                         <TableHead className="min-w-[80px] text-xs sm:text-sm text-center">Matches</TableHead>
-                        <TableHead className="min-w-[140px] text-xs sm:text-sm">Last Matched</TableHead>
-                        <TableHead className="min-w-[100px] text-xs sm:text-sm text-right">Actions</TableHead>
+                        <TableHead className="min-w-[120px] text-xs sm:text-sm">Last Matched</TableHead>
+                        <TableHead className="min-w-[80px] text-xs sm:text-sm text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
