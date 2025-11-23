@@ -246,83 +246,94 @@ export default function Commands() {
                 </Button>
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ไอคอน</TableHead>
-                    <TableHead>คำสั่ง</TableHead>
-                    <TableHead>ชื่อ (EN / TH)</TableHead>
-                    <TableHead>คำอธิบาย</TableHead>
-                    <TableHead>สถานะ</TableHead>
-                    <TableHead>ตัวเลือก</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {commands?.map((cmd) => {
-                    const Icon = iconMap[cmd.icon_name || 'MessageSquare'] || MessageSquare;
-                    return (
-                      <TableRow key={cmd.id}>
-                        <TableCell>
-                          <Icon className="w-5 h-5" />
-                        </TableCell>
-                        <TableCell>
-                          <code className="bg-muted px-2 py-1 rounded">{cmd.command_key}</code>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="font-medium">{cmd.display_name_en}</div>
-                            <div className="text-sm text-muted-foreground">{cmd.display_name_th}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-xs">
-                          <div className="space-y-1">
-                            <div className="text-sm">{cmd.description_en}</div>
-                            <div className="text-xs text-muted-foreground">{cmd.description_th}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={cmd.is_enabled ? 'default' : 'secondary'}>
-                            {cmd.is_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1 text-xs">
-                            {cmd.require_mention_in_group && (
-                              <Badge variant="outline" className="text-xs">
-                                ต้อง @mention
+              <div className="rounded-md border bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[55%] min-w-[220px]">คำสั่ง</TableHead>
+                      <TableHead className="w-[25%] min-w-[160px]">คำอธิบาย</TableHead>
+                      <TableHead className="w-[10%]">สถานะ</TableHead>
+                      <TableHead className="w-[10%] text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {commands?.map((cmd) => {
+                      const Icon = iconMap[cmd.icon_name || 'MessageSquare'] || MessageSquare;
+                      return (
+                        <TableRow key={cmd.id}>
+                          <TableCell>
+                            <div className="flex items-start gap-3 min-w-0">
+                              <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                              <div className="space-y-1 min-w-0">
+                                <code className="bg-muted px-2 py-0.5 rounded text-xs inline-block">
+                                  {cmd.command_key}
+                                </code>
+                                <div className="text-sm font-medium truncate">
+                                  {cmd.display_name_en}
+                                </div>
+                                {cmd.display_name_th && (
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {cmd.display_name_th}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1 max-w-md">
+                              <p className="text-sm line-clamp-2">{cmd.description_en}</p>
+                              {cmd.description_th && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  {cmd.description_th}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="flex flex-col gap-1 text-xs">
+                              <Badge variant={cmd.is_enabled ? 'default' : 'secondary'} className="w-fit">
+                                {cmd.is_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
                               </Badge>
-                            )}
-                            {cmd.available_in_dm && <span>✓ DM</span>}
-                            {cmd.available_in_group && <span>✓ Group</span>}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingCommand(cmd);
-                                setIsCommandDialogOpen(true);
-                              }}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => deleteCommandMutation.mutate(cmd.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                              <div className="flex flex-wrap gap-1">
+                                {cmd.require_mention_in_group && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    ต้อง @mention
+                                  </Badge>
+                                )}
+                                {cmd.available_in_dm && <span>✓ DM</span>}
+                                {cmd.available_in_group && <span>✓ Group</span>}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right align-top">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => {
+                                  setEditingCommand(cmd);
+                                  setIsCommandDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => deleteCommandMutation.mutate(cmd.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             <TabsContent value="aliases" className="space-y-4 mt-6">
@@ -356,71 +367,72 @@ export default function Commands() {
                 </Button>
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>คำสั่ง</TableHead>
-                    <TableHead>Alias</TableHead>
-                    <TableHead>ภาษา</TableHead>
-                    <TableHead>Primary</TableHead>
-                    <TableHead>ตัวเลือก</TableHead>
-                    <TableHead>การใช้งาน</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {aliases?.map((alias) => (
-                    <TableRow key={alias.id}>
-                      <TableCell>
-                        <code className="bg-muted px-2 py-1 rounded">
-                          {alias.command?.command_key}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <code className="bg-primary/10 px-2 py-1 rounded font-medium">
-                          {alias.alias_text}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{alias.language}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {alias.is_primary && <Badge>Primary</Badge>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1 text-xs">
-                          {alias.is_prefix && <span>Prefix</span>}
-                          {alias.case_sensitive && <span>Case-sensitive</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        ใช้ {alias.usage_count} ครั้ง
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingAlias(alias);
-                              setIsAliasDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deleteAliasMutation.mutate(alias.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="rounded-md border bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[45%] min-w-[200px]">Alias</TableHead>
+                      <TableHead className="w-[25%] min-w-[140px]">ภาษา / ตัวเลือก</TableHead>
+                      <TableHead className="w-[20%]">การใช้งาน</TableHead>
+                      <TableHead className="w-[10%] text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {aliases?.map((alias) => (
+                      <TableRow key={alias.id}>
+                        <TableCell>
+                          <div className="space-y-1 min-w-0">
+                            <code className="bg-muted px-2 py-0.5 rounded text-xs inline-block">
+                              {alias.command?.command_key}
+                            </code>
+                            <div>
+                              <code className="bg-primary/10 px-2 py-0.5 rounded font-medium text-xs inline-block">
+                                {alias.alias_text}
+                              </code>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <Badge variant="outline" className="w-fit">{alias.language}</Badge>
+                            <div className="flex flex-wrap gap-1">
+                              {alias.is_primary && <Badge className="text-[10px]">Primary</Badge>}
+                              {alias.is_prefix && <span>Prefix</span>}
+                              {alias.case_sensitive && <span>Case-sensitive</span>}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground align-top">
+                          ใช้ {alias.usage_count} ครั้ง
+                        </TableCell>
+                        <TableCell className="text-right align-top">
+                          <div className="flex gap-1 justify-end">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                setEditingAlias(alias);
+                                setIsAliasDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => deleteAliasMutation.mutate(alias.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             <TabsContent value="triggers" className="space-y-4 mt-6">
@@ -455,70 +467,72 @@ export default function Commands() {
                 </Button>
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Trigger</TableHead>
-                    <TableHead>ประเภท</TableHead>
-                    <TableHead>ภาษา</TableHead>
-                    <TableHead>Primary</TableHead>
-                    <TableHead>Match Type</TableHead>
-                    <TableHead>สถานะ</TableHead>
-                    <TableHead>การใช้งาน</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {triggers?.map((trigger) => (
-                    <TableRow key={trigger.id}>
-                      <TableCell>
-                        <code className="bg-primary/10 px-2 py-1 rounded font-medium">
-                          {trigger.trigger_text}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{trigger.trigger_type}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{trigger.language}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {trigger.is_primary && <Badge>Primary</Badge>}
-                      </TableCell>
-                      <TableCell className="text-sm">{trigger.match_type}</TableCell>
-                      <TableCell>
-                        <Badge variant={trigger.is_enabled ? 'default' : 'secondary'}>
-                          {trigger.is_enabled ? 'เปิด' : 'ปิด'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        ใช้ {trigger.usage_count} ครั้ง
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingTrigger(trigger);
-                              setIsTriggerDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deleteTriggerMutation.mutate(trigger.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="rounded-md border bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[50%] min-w-[220px]">Trigger</TableHead>
+                      <TableHead className="w-[30%] min-w-[160px]">รายละเอียด</TableHead>
+                      <TableHead className="w-[10%]">สถานะ</TableHead>
+                      <TableHead className="w-[10%] text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {triggers?.map((trigger) => (
+                      <TableRow key={trigger.id}>
+                        <TableCell>
+                          <div className="space-y-1 min-w-0">
+                            <code className="bg-primary/10 px-2 py-0.5 rounded font-medium text-xs inline-block">
+                              {trigger.trigger_text}
+                            </code>
+                            <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                              <Badge variant="outline" className="text-[10px]">{trigger.trigger_type}</Badge>
+                              <Badge variant="outline" className="text-[10px]">{trigger.language}</Badge>
+                              {trigger.is_primary && <Badge className="text-[10px]">Primary</Badge>}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span>Match: {trigger.match_type}</span>
+                            <span>
+                              ใช้ {trigger.usage_count} ครั้ง
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Badge variant={trigger.is_enabled ? 'default' : 'secondary'}>
+                            {trigger.is_enabled ? 'เปิด' : 'ปิด'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right align-top">
+                          <div className="flex gap-1 justify-end">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                setEditingTrigger(trigger);
+                                setIsTriggerDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => deleteTriggerMutation.mutate(trigger.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             <TabsContent value="test" className="space-y-6 mt-6">
