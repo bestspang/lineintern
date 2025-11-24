@@ -9,19 +9,64 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 
 export default function AttendanceSummaries() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [checkinType, setCheckinType] = useState<string>('all'); // all, onsite, remote
 
   // Fetch branches
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: async () => {
       const { data, error } = await supabase.from('branches').select('*');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch attendance logs for remote check-in stats
+  const { data: attendanceLogs, isLoading: loadingLogs } = useQuery({
+    queryKey: ['attendance-logs-summary', dateRange, selectedBranch, checkinType],
+    queryFn: async () => {
+      let query = supabase
+        .from('attendance_logs')
+        .select(`
+          id,
+          server_time,
+          is_remote_checkin,
+          event_type,
+          employee_id,
+          employees (
+            full_name,
+            code,
+            branch_id,
+            branches (name)
+          )
+        `)
+        .order('server_time', { ascending: false });
+
+      if (dateRange?.from && dateRange?.to) {
+        query = query.gte('server_time', dateRange.from.toISOString())
+                     .lte('server_time', dateRange.to.toISOString());
+      } else {
+        query = query.gte('server_time', subDays(new Date(), 30).toISOString());
+      }
+
+      if (selectedBranch !== 'all') {
+        query = query.eq('employees.branch_id', selectedBranch);
+      }
+
+      if (checkinType === 'onsite') {
+        query = query.eq('is_remote_checkin', false);
+      } else if (checkinType === 'remote') {
+        query = query.eq('is_remote_checkin', true);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     }
@@ -63,6 +108,7 @@ export default function AttendanceSummaries() {
           id,
           server_time,
           overtime_hours,
+          is_remote_checkin,
           employee_id,
           employees (
             id,
@@ -155,6 +201,18 @@ export default function AttendanceSummaries() {
     };
   }, [earlyLeaveRequests]);
 
+  // Calculate remote check-in statistics
+  const remoteCheckinStats = useMemo(() => {
+    if (!attendanceLogs) return { total: 0, remote: 0, onsite: 0, remotePercentage: 0 };
+    
+    const total = attendanceLogs.length;
+    const remote = attendanceLogs.filter(log => log.is_remote_checkin).length;
+    const onsite = total - remote;
+    const remotePercentage = total > 0 ? (remote / total) * 100 : 0;
+
+    return { total, remote, onsite, remotePercentage };
+  }, [attendanceLogs]);
+
   // Helper functions
   const calculateOTPay = (salary: number, otRate: number, hoursPerDay: number, otHours: number) => {
     if (!salary || salary === 0) return 0;
@@ -181,20 +239,22 @@ export default function AttendanceSummaries() {
   const resetFilters = () => {
     setDateRange(undefined);
     setSelectedBranch('all');
+    setCheckinType('all');
   };
 
   const exportOTToCSV = () => {
     if (!otLogs) return;
     
     const csv = [
-      ['Employee', 'Branch', 'Date', 'OT Hours', 'OT Rate', 'OT Pay (THB)'],
+      ['Employee', 'Branch', 'Date', 'OT Hours', 'OT Rate', 'OT Pay (THB)', 'Remote Check-in'],
       ...otLogs.map(log => [
         log.employees?.full_name || '-',
         log.employees?.branches?.name || '-',
         format(new Date(log.server_time), 'yyyy-MM-dd'),
         log.overtime_hours?.toFixed(2) || '0',
         (log.employees?.ot_rate_multiplier || 1.5).toFixed(1) + 'x',
-        log.ot_pay.toFixed(2)
+        log.ot_pay.toFixed(2),
+        log.is_remote_checkin ? 'Yes' : 'No'
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -211,15 +271,24 @@ export default function AttendanceSummaries() {
     if (!earlyLeaveRequests) return;
     
     const csv = [
-      ['Employee', 'Branch', 'Date', 'Leave Type', 'Reason', 'Status'],
-      ...earlyLeaveRequests.map(req => [
-        req.employees?.full_name || '-',
-        req.employees?.branches?.name || '-',
-        req.request_date,
-        req.leave_type || '-',
-        req.leave_reason || '-',
-        req.status
-      ])
+      ['Employee', 'Branch', 'Date', 'Leave Type', 'Reason', 'Status', 'Remote Check-in'],
+      ...earlyLeaveRequests.map(req => {
+        // Find associated attendance log to check if it was remote
+        const associatedLog = attendanceLogs?.find(log => 
+          log.employee_id === req.employee_id && 
+          format(new Date(log.server_time), 'yyyy-MM-dd') === req.request_date
+        );
+        
+        return [
+          req.employees?.full_name || '-',
+          req.employees?.branches?.name || '-',
+          req.request_date,
+          req.leave_type || '-',
+          req.leave_reason || '-',
+          req.status,
+          associatedLog?.is_remote_checkin ? 'Yes' : 'No'
+        ];
+      })
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -231,7 +300,7 @@ export default function AttendanceSummaries() {
     window.URL.revokeObjectURL(url);
   };
 
-  const isLoading = loadingDaily || loadingOT || loadingEarlyLeave;
+  const isLoading = loadingDaily || loadingOT || loadingEarlyLeave || loadingLogs;
 
   if (isLoading) {
     return (
@@ -290,6 +359,18 @@ export default function AttendanceSummaries() {
             </SelectContent>
           </Select>
 
+          {/* Check-in Type Filter */}
+          <Select value={checkinType} onValueChange={setCheckinType}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Check-in Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Check-ins</SelectItem>
+              <SelectItem value="onsite">🏢 On-site Only</SelectItem>
+              <SelectItem value="remote">🌐 Remote Only</SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Quick Filters */}
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setQuickFilter('today')}>
@@ -304,7 +385,7 @@ export default function AttendanceSummaries() {
           </div>
 
           {/* Reset */}
-          {(dateRange || selectedBranch !== 'all') && (
+          {(dateRange || selectedBranch !== 'all' || checkinType !== 'all') && (
             <Button variant="ghost" size="sm" onClick={resetFilters}>
               <X className="h-4 w-4 mr-1" />
               Clear
@@ -332,6 +413,60 @@ export default function AttendanceSummaries() {
 
         {/* Tab 1: Daily Attendance */}
         <TabsContent value="daily" className="space-y-4">
+          {/* Remote Check-in Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total Check-ins</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {remoteCheckinStats.total}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>🌐 Remote Check-ins</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  {remoteCheckinStats.remote}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {remoteCheckinStats.remotePercentage.toFixed(1)}% of total
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>🏢 On-site Check-ins</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {remoteCheckinStats.onsite}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {(100 - remoteCheckinStats.remotePercentage).toFixed(1)}% of total
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Remote Ratio</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {remoteCheckinStats.remotePercentage.toFixed(0)}%
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {remoteCheckinStats.remote} / {remoteCheckinStats.total}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>Daily Attendance Summaries</CardTitle>
@@ -443,6 +578,7 @@ export default function AttendanceSummaries() {
                       <TableHead className="text-right">OT Hours</TableHead>
                       <TableHead className="text-right">OT Rate</TableHead>
                       <TableHead className="text-right">OT Pay (THB)</TableHead>
+                      <TableHead>Type</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -464,6 +600,13 @@ export default function AttendanceSummaries() {
                         </TableCell>
                         <TableCell className="text-right font-medium text-green-600">
                           ฿{log.ot_pay.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell>
+                          {log.is_remote_checkin && (
+                            <Badge variant="outline" className="text-blue-600 border-blue-600">
+                              🌐 Remote
+                            </Badge>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
