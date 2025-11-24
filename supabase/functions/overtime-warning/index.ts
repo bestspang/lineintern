@@ -1,0 +1,269 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    console.log('[overtime-warning] Starting OT warning check...');
+
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+
+    // Get all employees who are currently checked in
+    const { data: currentlyCheckedIn, error: fetchError } = await supabase
+      .from('attendance_logs')
+      .select(`
+        employee_id,
+        server_time,
+        employees (
+          id,
+          full_name,
+          code,
+          line_user_id,
+          max_work_hours_per_day,
+          ot_warning_minutes,
+          auto_ot_enabled,
+          hours_per_day,
+          working_time_type,
+          shift_end_time
+        )
+      `)
+      .eq('event_type', 'check_in')
+      .gte('server_time', `${today}T00:00:00`)
+      .order('server_time', { ascending: false });
+
+    if (fetchError) {
+      console.error('[overtime-warning] Error fetching checked in employees:', fetchError);
+      throw fetchError;
+    }
+
+    if (!currentlyCheckedIn || currentlyCheckedIn.length === 0) {
+      console.log('[overtime-warning] No employees currently checked in');
+      return new Response(
+        JSON.stringify({ success: true, warnings_sent: 0, message: 'No employees checked in' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Group by employee and get latest check-in
+    const employeeCheckIns = new Map();
+    for (const log of currentlyCheckedIn) {
+      const empId = log.employee_id;
+      if (!employeeCheckIns.has(empId) || new Date(log.server_time) > new Date(employeeCheckIns.get(empId).server_time)) {
+        employeeCheckIns.set(empId, log);
+      }
+    }
+
+    // Check each employee for checkout status and work hours
+    let warningsSent = 0;
+    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+
+    for (const [empId, checkInLog] of employeeCheckIns) {
+      const employee = checkInLog.employees;
+      if (!employee || !employee.line_user_id) continue;
+
+      // Check if they have checked out after this check-in
+      const { data: checkOuts } = await supabase
+        .from('attendance_logs')
+        .select('server_time')
+        .eq('employee_id', empId)
+        .eq('event_type', 'check_out')
+        .gt('server_time', checkInLog.server_time)
+        .gte('server_time', `${today}T00:00:00`)
+        .order('server_time', { ascending: false })
+        .limit(1);
+
+      // If already checked out, skip
+      if (checkOuts && checkOuts.length > 0) {
+        continue;
+      }
+
+      // Calculate work hours so far
+      const checkInTime = new Date(checkInLog.server_time);
+      const hoursWorked = (bangkokTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+
+      // Get max work hours (use employee setting or default to 8)
+      const maxWorkHours = employee.max_work_hours_per_day || 8;
+      const warningMinutes = employee.ot_warning_minutes || 15;
+      const warningThresholdHours = maxWorkHours - (warningMinutes / 60);
+
+      console.log(`[overtime-warning] Employee ${employee.full_name}: worked ${hoursWorked.toFixed(2)}h, max ${maxWorkHours}h, warning at ${warningThresholdHours.toFixed(2)}h`);
+
+      // Check if approaching max hours (within warning threshold)
+      if (hoursWorked >= warningThresholdHours && hoursWorked < maxWorkHours) {
+        // Check if we already sent warning today
+        const { data: existingWarnings } = await supabase
+          .from('attendance_reminders')
+          .select('id')
+          .eq('employee_id', empId)
+          .eq('reminder_type', 'ot_warning')
+          .eq('reminder_date', today)
+          .eq('status', 'sent');
+
+        if (existingWarnings && existingWarnings.length > 0) {
+          console.log(`[overtime-warning] Warning already sent to ${employee.full_name} today`);
+          continue;
+        }
+
+        const minutesLeft = Math.round((maxWorkHours - hoursWorked) * 60);
+        const overtimeStart = new Date(checkInTime.getTime() + maxWorkHours * 60 * 60 * 1000);
+        const overtimeStartTime = overtimeStart.toLocaleTimeString('th-TH', {
+          timeZone: 'Asia/Bangkok',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        let message = `⚠️ แจ้งเตือน: ใกล้ครบเวลาทำงาน\n\n`;
+        message += `👤 คุณ ${employee.full_name}\n`;
+        message += `⏰ คุณทำงานมาแล้ว ${hoursWorked.toFixed(1)} ชั่วโมง\n`;
+        message += `⏳ อีก ${minutesLeft} นาที จะครบเวลาทำงานปกติ (${maxWorkHours} ชม.)\n\n`;
+
+        if (employee.auto_ot_enabled) {
+          message += `✅ OT อัตโนมัติ: เปิดใช้งาน\n`;
+          message += `หลังเวลา ${overtimeStartTime} จะนับเป็น OT อัตโนมัติ\n\n`;
+          message += `💡 หากเลิกงานแล้ว อย่าลืม Check Out นะครับ!`;
+        } else {
+          message += `❌ OT อัตโนมัติ: ปิดใช้งาน\n`;
+          message += `หากต้องการทำ OT กรุณาแจ้งหัวหน้าเพื่อขออนุมัติก่อน\n`;
+          message += `ไม่เช่นนั้นระบบจะ Check Out อัตโนมัติเมื่อถึงเวลา\n\n`;
+          message += `💬 พิมพ์ "/ot [เหตุผล]" เพื่อขออนุมัติ OT`;
+        }
+
+        // Send LINE notification
+        const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${lineAccessToken}`
+          },
+          body: JSON.stringify({
+            to: employee.line_user_id,
+            messages: [{
+              type: 'text',
+              text: message
+            }]
+          })
+        });
+
+        if (!lineResponse.ok) {
+          console.error(`[overtime-warning] Failed to send LINE message to ${employee.full_name}`);
+          continue;
+        }
+
+        // Log the reminder
+        await supabase
+          .from('attendance_reminders')
+          .insert({
+            employee_id: empId,
+            reminder_type: 'ot_warning',
+            reminder_date: today,
+            scheduled_time: bangkokTime.toISOString(),
+            notification_type: 'private',
+            status: 'sent',
+            sent_at: bangkokTime.toISOString()
+          });
+
+        warningsSent++;
+        console.log(`[overtime-warning] Warning sent to ${employee.full_name}`);
+      }
+      
+      // Check if already exceeded max hours (send urgent warning)
+      else if (hoursWorked >= maxWorkHours) {
+        // Check if we already sent overtime exceeded warning today
+        const { data: existingExceeded } = await supabase
+          .from('attendance_reminders')
+          .select('id')
+          .eq('employee_id', empId)
+          .eq('reminder_type', 'ot_exceeded')
+          .eq('reminder_date', today)
+          .eq('status', 'sent');
+
+        if (existingExceeded && existingExceeded.length > 0) {
+          continue;
+        }
+
+        const overtimeHours = (hoursWorked - maxWorkHours).toFixed(1);
+        
+        let message = `🚨 แจ้งเตือนด่วน: เกินเวลาทำงานแล้ว!\n\n`;
+        message += `👤 คุณ ${employee.full_name}\n`;
+        message += `⏰ คุณทำงานมาแล้ว ${hoursWorked.toFixed(1)} ชั่วโมง\n`;
+        message += `⚠️ เกินเวลาทำงานปกติไปแล้ว ${overtimeHours} ชั่วโมง\n\n`;
+
+        if (employee.auto_ot_enabled) {
+          message += `✅ เวลาเกินจะนับเป็น OT อัตโนมัติ\n`;
+          message += `💰 OT: ${overtimeHours} ชั่วโมง\n\n`;
+          message += `หากเลิกงานแล้ว กรุณา Check Out ด่วน!`;
+        } else {
+          message += `❌ ไม่ได้รับอนุมัติ OT\n`;
+          message += `กรุณา Check Out หรือแจ้งหัวหน้าเพื่อขออนุมัติ OT\n\n`;
+          message += `⚠️ หากไม่ได้อนุมัติ เวลาเกินอาจไม่ได้รับค่าตอบแทน`;
+        }
+
+        // Send urgent LINE notification
+        await fetch('https://api.line.me/v2/bot/message/push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${lineAccessToken}`
+          },
+          body: JSON.stringify({
+            to: employee.line_user_id,
+            messages: [{
+              type: 'text',
+              text: message
+            }]
+          })
+        });
+
+        // Log the reminder
+        await supabase
+          .from('attendance_reminders')
+          .insert({
+            employee_id: empId,
+            reminder_type: 'ot_exceeded',
+            reminder_date: today,
+            scheduled_time: bangkokTime.toISOString(),
+            notification_type: 'private',
+            status: 'sent',
+            sent_at: bangkokTime.toISOString()
+          });
+
+        warningsSent++;
+        console.log(`[overtime-warning] Overtime exceeded warning sent to ${employee.full_name}`);
+      }
+    }
+
+    console.log(`[overtime-warning] Completed: ${warningsSent} warnings sent`);
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        warnings_sent: warningsSent,
+        checked_employees: employeeCheckIns.size
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('[overtime-warning] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});

@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.attendance-daily-summary]
 verify_jwt = false
+
+[functions.overtime-warning]
+verify_jwt = false
+
+[functions.auto-checkout-midnight]
+verify_jwt = false
