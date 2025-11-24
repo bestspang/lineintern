@@ -41,6 +41,12 @@ export default function Attendance() {
   const [earlyLeaveReason, setEarlyLeaveReason] = useState<string>('');
   const [earlyLeaveSubmitting, setEarlyLeaveSubmitting] = useState(false);
 
+  // OT request state
+  const [showOTRequestDialog, setShowOTRequestDialog] = useState(false);
+  const [otReason, setOTReason] = useState<string>('');
+  const [estimatedEndTime, setEstimatedEndTime] = useState<string>('');
+  const [otRequestSubmitting, setOTRequestSubmitting] = useState(false);
+
   useEffect(() => {
     const token = searchParams.get('t');
     if (!token) {
@@ -254,6 +260,76 @@ export default function Attendance() {
     }
   };
 
+  const handleOTRequest = async () => {
+    if (!otReason.trim() || !estimatedEndTime) {
+      toast({
+        title: 'กรอกข้อมูลให้ครบ',
+        description: 'กรุณากรอกเหตุผลและเวลาที่คาดว่าจะเลิกงาน',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setOTRequestSubmitting(true);
+
+      // Calculate estimated hours from current time to end time
+      const now = new Date();
+      const [hours, minutes] = estimatedEndTime.split(':').map(Number);
+      const endTime = new Date();
+      endTime.setHours(hours, minutes, 0, 0);
+      
+      // If end time is before now, assume next day
+      if (endTime < now) {
+        endTime.setDate(endTime.getDate() + 1);
+      }
+
+      const estimatedHours = Math.max(0, (endTime.getTime() - now.getTime()) / (1000 * 60 * 60));
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/overtime-request`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            employee_id: tokenData.employee.id,
+            reason: otReason,
+            estimated_hours: parseFloat(estimatedHours.toFixed(1)),
+            request_method: 'webapp'
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to submit OT request');
+      }
+
+      setShowOTRequestDialog(false);
+      setOTReason('');
+      setEstimatedEndTime('');
+
+      toast({
+        title: 'ส่งคำขอ OT สำเร็จ',
+        description: 'รอการอนุมัติจากหัวหน้า'
+      });
+
+    } catch (err) {
+      console.error('OT request error:', err);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to submit OT request',
+        variant: 'destructive'
+      });
+    } finally {
+      setOTRequestSubmitting(false);
+    }
+  };
+
   const handleEarlyLeaveRequest = async () => {
     if (!earlyLeaveType || !earlyLeaveReason.trim()) {
       toast({
@@ -415,6 +491,19 @@ export default function Attendance() {
     (!tokenData?.settings?.require_photo || photo) &&
     (!tokenData?.settings?.require_location || location);
 
+  // Check if employee can request OT (checked in and past shift end time)
+  const canRequestOT = tokenData?.token?.type === 'check_in' && (() => {
+    const now = new Date();
+    const shiftEndTime = tokenData?.employee?.shift_end_time;
+    if (shiftEndTime) {
+      const [hour, min] = shiftEndTime.split(':').map(Number);
+      const endTime = new Date();
+      endTime.setHours(hour, min, 0, 0);
+      return now > endTime; // Past shift end time
+    }
+    return false;
+  })();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-3 sm:p-4 pb-16 sm:pb-20">
       <div className="max-w-2xl mx-auto space-y-3 sm:space-y-4">
@@ -441,6 +530,32 @@ export default function Attendance() {
             </div>
           </CardContent>
         </Card>
+
+        {/* OT Request Alert (if past shift end time and checked in) */}
+        {canRequestOT && (
+          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+            <Clock className="h-4 w-4 text-blue-600" />
+            <AlertDescription>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="font-semibold text-blue-900 dark:text-blue-100">
+                    ⏰ คุณทำงานเกินเวลาแล้ว
+                  </div>
+                  <div className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                    ต้องการขออนุมัติ OT หรือไม่?
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setShowOTRequestDialog(true)}
+                  className="shrink-0"
+                >
+                  ขออนุมัติ OT
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Hours-Based Time Restriction Alert */}
         {tokenData?.employee?.working_time_type === 'hours_based' && 
@@ -673,6 +788,87 @@ export default function Attendance() {
                 </>
               ) : (
                 'ส่งคำขอ'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* OT Request Dialog */}
+      <Dialog open={showOTRequestDialog} onOpenChange={setShowOTRequestDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-blue-500" />
+              ขออนุมัติ OT
+            </DialogTitle>
+            <DialogDescription>
+              กรุณากรอกรายละเอียดเพื่อขออนุมัติทำงานล่วงเวลา
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="ot-reason">เหตุผล *</Label>
+              <Textarea
+                id="ot-reason"
+                placeholder="เช่น: งานยังไม่เสร็จ, มีงานด่วน, ต้องติดตามลูกค้า..."
+                value={otReason}
+                onChange={(e) => setOTReason(e.target.value)}
+                className="min-h-[100px]"
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                {otReason.length}/500 ตัวอักษร
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="estimated-time">คาดว่าจะเลิกงานเมื่อไหร่ *</Label>
+              <input
+                id="estimated-time"
+                type="time"
+                value={estimatedEndTime}
+                onChange={(e) => setEstimatedEndTime(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p className="text-xs text-muted-foreground">
+                เลือกเวลาที่คาดว่าจะเลิกงาน
+              </p>
+            </div>
+
+            <Alert>
+              <AlertDescription className="text-xs">
+                คำขอจะถูกส่งไปยังหัวหน้าเพื่อพิจารณา คุณจะได้รับการแจ้งเตือนเมื่อมีการอนุมัติ
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowOTRequestDialog(false);
+                setOTReason('');
+                setEstimatedEndTime('');
+              }}
+              disabled={otRequestSubmitting}
+              className="flex-1"
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleOTRequest}
+              disabled={otRequestSubmitting || !otReason.trim() || !estimatedEndTime}
+              className="flex-1"
+            >
+              {otRequestSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  กำลังส่ง...
+                </>
+              ) : (
+                'ส่งคำขอ OT'
               )}
             </Button>
           </div>
