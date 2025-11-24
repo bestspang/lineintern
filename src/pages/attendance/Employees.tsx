@@ -966,20 +966,6 @@ export default function AttendanceEmployees() {
 
                   <div className="flex items-center space-x-2 border-t pt-4">
                     <Switch
-                      id="allow_remote_checkin"
-                      checked={formData.allow_remote_checkin}
-                      onCheckedChange={(checked) => setFormData({ ...formData, allow_remote_checkin: checked })}
-                    />
-                    <div className="flex-1">
-                      <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
-                      <p className="text-xs text-muted-foreground">
-                        พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2 border-t pt-4">
-                    <Switch
                       id="is_active"
                       checked={formData.is_active}
                       onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
