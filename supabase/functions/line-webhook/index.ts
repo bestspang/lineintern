@@ -1127,6 +1127,7 @@ interface EarlyLeaveApprovalResult {
   detected: boolean;
   action?: 'approve' | 'reject';
   message: string;
+  quickReply?: any;
 }
 
 async function detectAndHandleEarlyLeaveApproval(
@@ -1167,7 +1168,7 @@ async function detectAndHandleEarlyLeaveApproval(
     // First check if this is an early leave request
     const { data: earlyLeaveRequest } = await supabase
       .from('early_leave_requests')
-      .select('id, status')
+      .select('id, status, employee_id')
       .eq('id', matchedRequestId)
       .maybeSingle();
 
@@ -1178,35 +1179,201 @@ async function detectAndHandleEarlyLeaveApproval(
       return { detected: true, message: msg };
     }
 
-    // Call early-leave-approval edge function
-    const { data, error } = await supabase.functions.invoke('early-leave-approval', {
-      body: {
-        request_id: matchedRequestId,
-        admin_id: adminUserId,
-        action: isApprove ? 'approve' : 'reject',
-        decision_method: 'line'
-      }
-    });
+    // If REJECTION, process immediately
+    if (!isApprove) {
+      const { data, error } = await supabase.functions.invoke('early-leave-approval', {
+        body: {
+          request_id: matchedRequestId,
+          admin_id: adminUserId,
+          action: 'reject',
+          decision_method: 'line'
+        }
+      });
 
-    if (error) {
-      console.error('[detectAndHandleEarlyLeaveApproval] Error calling approval function:', error);
+      if (error) {
+        console.error('[detectAndHandleEarlyLeaveApproval] Error calling approval function:', error);
+        const msg = locale === 'th'
+          ? `❌ เกิดข้อผิดพลาด: ${error.message}`
+          : `❌ Error: ${error.message}`;
+        return { detected: true, action: 'reject', message: msg };
+      }
+
       const msg = locale === 'th'
-        ? `❌ เกิดข้อผิดพลาด: ${error.message}`
-        : `❌ Error: ${error.message}`;
-      return { detected: true, action: isApprove ? 'approve' : 'reject', message: msg };
+        ? '❌ ปฏิเสธคำขอออกก่อนเวลาแล้ว'
+        : '❌ Early leave request rejected';
+
+      return { detected: true, action: 'reject', message: msg };
     }
 
+    // If APPROVAL, store pending approval and ask for leave type
+    console.log(`[detectAndHandleEarlyLeaveApproval] Storing pending approval for type selection`);
+    
+    // Store in memory_items for 5 minutes
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 5);
+    
+    await supabase
+      .from('memory_items')
+      .insert({
+        scope: 'user',
+        user_id: adminUserId,
+        category: 'pending_early_leave_approval',
+        title: `Pending approval: ${matchedRequestId}`,
+        content: JSON.stringify({
+          request_id: matchedRequestId,
+          employee_id: earlyLeaveRequest.employee_id,
+          admin_user_id: adminUserId,
+          expires_at: expiresAt.toISOString()
+        }),
+        source_type: 'command',
+        importance_score: 1.0,
+        keywords: ['pending_approval', 'early_leave', matchedRequestId]
+      });
+    
+    // Return quick reply with leave type options
     const msg = locale === 'th'
-      ? (isApprove ? '✅ อนุมัติคำขอออกก่อนเวลาเรียบร้อยแล้ว' : '❌ ปฏิเสธคำขอออกก่อนเวลาแล้ว')
-      : (isApprove ? '✅ Early leave request approved' : '❌ Early leave request rejected');
-
+      ? '✅ กรุณาเลือกประเภทการลา:'
+      : '✅ Please select leave type:';
+    
     return {
       detected: true,
-      action: isApprove ? 'approve' : 'reject',
-      message: msg
+      action: 'approve',
+      message: msg,
+      quickReply: {
+        items: [
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: locale === 'th' ? '🤒 ลาป่วย' : '🤒 Sick Leave',
+              text: 'sick'
+            }
+          },
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: locale === 'th' ? '📋 ลากิจ' : '📋 Personal Leave',
+              text: 'personal'
+            }
+          },
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: locale === 'th' ? '🏖️ พักร้อน' : '🏖️ Vacation',
+              text: 'vacation'
+            }
+          },
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: locale === 'th' ? '🚨 ฉุกเฉิน' : '🚨 Emergency',
+              text: 'emergency'
+            }
+          }
+        ]
+      }
     };
   } catch (error) {
     console.error('[detectAndHandleEarlyLeaveApproval] Unexpected error:', error);
+    const msg = locale === 'th'
+      ? '❌ เกิดข้อผิดพลาดในการอนุมัติ'
+      : '❌ Failed to process approval';
+    return { detected: true, message: msg };
+  }
+}
+
+// Handle early leave type selection after approval
+async function handleEarlyLeaveTypeSelection(
+  text: string,
+  userId: string,
+  locale: 'th' | 'en'
+): Promise<{ detected: boolean; message: string }> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Check if this is a leave type selection
+  const leaveTypes = ['sick', 'personal', 'vacation', 'emergency'];
+  
+  if (!leaveTypes.includes(lowerText)) {
+    return { detected: false, message: '' };
+  }
+  
+  console.log(`[handleEarlyLeaveTypeSelection] Detected leave type selection: ${lowerText}`);
+  
+  try {
+    // Find pending approval in memory
+    const { data: pendingMemory } = await supabase
+      .from('memory_items')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('category', 'pending_early_leave_approval')
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (!pendingMemory) {
+      console.log('[handleEarlyLeaveTypeSelection] No pending approval found');
+      return { detected: false, message: '' };
+    }
+    
+    const pendingData = JSON.parse(pendingMemory.content);
+    
+    // Check if expired
+    if (new Date(pendingData.expires_at) < new Date()) {
+      console.log('[handleEarlyLeaveTypeSelection] Pending approval expired');
+      await supabase
+        .from('memory_items')
+        .update({ is_deleted: true })
+        .eq('id', pendingMemory.id);
+      
+      const msg = locale === 'th'
+        ? '❌ คำขออนุมัติหมดเวลาแล้ว กรุณาทำรายการใหม่'
+        : '❌ Approval request expired, please try again';
+      return { detected: true, message: msg };
+    }
+    
+    // Call early-leave-approval with leave type
+    const { data, error } = await supabase.functions.invoke('early-leave-approval', {
+      body: {
+        request_id: pendingData.request_id,
+        admin_id: userId,
+        action: 'approve',
+        decision_method: 'line',
+        leave_type: lowerText
+      }
+    });
+    
+    // Delete the pending memory
+    await supabase
+      .from('memory_items')
+      .update({ is_deleted: true })
+      .eq('id', pendingMemory.id);
+    
+    if (error) {
+      console.error('[handleEarlyLeaveTypeSelection] Error calling approval function:', error);
+      const msg = locale === 'th'
+        ? `❌ เกิดข้อผิดพลาด: ${error.message}`
+        : `❌ Error: ${error.message}`;
+      return { detected: true, message: msg };
+    }
+    
+    const leaveTypeLabels: { [key: string]: string } = {
+      sick: locale === 'th' ? 'ลาป่วย' : 'Sick Leave',
+      personal: locale === 'th' ? 'ลากิจ' : 'Personal Leave',
+      vacation: locale === 'th' ? 'พักร้อน' : 'Vacation',
+      emergency: locale === 'th' ? 'ฉุกเฉิน' : 'Emergency'
+    };
+    
+    const msg = locale === 'th'
+      ? `✅ อนุมัติคำขอออกก่อนเวลาเป็น '${leaveTypeLabels[lowerText]}' เรียบร้อยแล้ว`
+      : `✅ Early leave request approved as '${leaveTypeLabels[lowerText]}'`;
+    
+    return { detected: true, message: msg };
+  } catch (error) {
+    console.error('[handleEarlyLeaveTypeSelection] Unexpected error:', error);
     const msg = locale === 'th'
       ? '❌ เกิดข้อผิดพลาดในการอนุมัติ'
       : '❌ Failed to process approval';
@@ -6730,11 +6897,28 @@ async function handleMessageEvent(event: LineEvent) {
     if (earlyLeaveResult.detected) {
       console.log(`[handleMessageEvent] Detected early leave approval action: ${earlyLeaveResult.action}`);
       try {
-        await replyToLine(event.replyToken, earlyLeaveResult.message);
+        await replyToLine(event.replyToken, earlyLeaveResult.message, earlyLeaveResult.quickReply);
         console.log('[handleMessageEvent] Sent early leave approval confirmation');
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending early leave approval confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.675: Early Leave Type Selection (admin only)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const typeSelectionResult = await handleEarlyLeaveTypeSelection(event.message.text, user.id, locale);
+    
+    if (typeSelectionResult.detected) {
+      console.log(`[handleMessageEvent] Detected early leave type selection`);
+      try {
+        await replyToLine(event.replyToken, typeSelectionResult.message);
+        console.log('[handleMessageEvent] Sent early leave type selection confirmation');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending early leave type selection confirmation:', error);
       }
     }
   }

@@ -13,6 +13,7 @@ interface ApprovalRequest {
   action: 'approve' | 'reject';
   decision_method: 'line' | 'webapp';
   notes?: string;
+  leave_type?: string;
 }
 
 serve(async (req) => {
@@ -26,7 +27,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { request_id, admin_id, admin_line_user_id, action, decision_method, notes }: ApprovalRequest = await req.json();
+    const { request_id, admin_id, admin_line_user_id, action, decision_method, notes, leave_type }: ApprovalRequest = await req.json();
 
     // Input validation
     if (!request_id || typeof request_id !== 'string') {
@@ -107,14 +108,21 @@ serve(async (req) => {
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
     // Update leave request
+    const updateData: any = {
+      status: newStatus,
+      approved_by_admin_id: actualAdminId,
+      approved_at: now.toISOString(),
+      rejection_reason: action === 'reject' ? (notes || 'ไม่อนุมัติ') : null
+    };
+    
+    // Add leave_type if provided (for approvals)
+    if (action === 'approve' && leave_type) {
+      updateData.leave_type = leave_type;
+    }
+    
     const { error: updateError } = await supabase
       .from('early_leave_requests')
-      .update({
-        status: newStatus,
-        approved_by_admin_id: actualAdminId,
-        approved_at: now.toISOString(),
-        rejection_reason: action === 'reject' ? (notes || 'ไม่อนุมัติ') : null
-      })
+      .update(updateData)
       .eq('id', request_id);
 
     if (updateError) {
