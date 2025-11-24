@@ -927,6 +927,182 @@ async function detectAndHandleReminderPreference(
 }
 
 // =============================
+// OT APPROVAL DETECTION
+// =============================
+
+interface OTApprovalResult {
+  detected: boolean;
+  action?: 'approve' | 'reject';
+  message: string;
+}
+
+async function detectAndHandleOTApproval(
+  text: string,
+  adminUserId: string,
+  locale: 'th' | 'en'
+): Promise<OTApprovalResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for OT approval commands
+  // Thai: "อนุมัติ OT {id}", "ไม่อนุมัติ OT {id}"
+  // English: "approve OT {id}", "reject OT {id}"
+  
+  const approvalPatterns = [
+    /(?:อนุมัติ|approve)\s+(?:ot|โอที)\s+([a-f0-9-]{36})/gi,
+    /(?:ไม่อนุมัติ|ไม่อนุมัติ|reject)\s+(?:ot|โอที)\s+([a-f0-9-]{36})/gi,
+  ];
+
+  let matchedRequestId: string | null = null;
+  let isApprove = false;
+
+  for (const pattern of approvalPatterns) {
+    const match = pattern.exec(text);
+    if (match) {
+      matchedRequestId = match[1];
+      isApprove = /(?:อนุมัติ|approve)/i.test(match[0]);
+      break;
+    }
+  }
+
+  if (!matchedRequestId) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[detectAndHandleOTApproval] Detected ${isApprove ? 'approval' : 'rejection'} for request ${matchedRequestId}`);
+
+  try {
+    // Call overtime-approval edge function
+    const { data, error } = await supabase.functions.invoke('overtime-approval', {
+      body: {
+        request_id: matchedRequestId,
+        admin_id: adminUserId,
+        action: isApprove ? 'approve' : 'reject',
+        decision_method: 'line'
+      }
+    });
+
+    if (error) {
+      console.error('[detectAndHandleOTApproval] Error calling approval function:', error);
+      const msg = locale === 'th'
+        ? `❌ เกิดข้อผิดพลาด: ${error.message}`
+        : `❌ Error: ${error.message}`;
+      return { detected: true, action: isApprove ? 'approve' : 'reject', message: msg };
+    }
+
+    const msg = locale === 'th'
+      ? (isApprove ? '✅ อนุมัติคำขอ OT เรียบร้อยแล้ว' : '❌ ปฏิเสธคำขอ OT แล้ว')
+      : (isApprove ? '✅ OT request approved' : '❌ OT request rejected');
+
+    return {
+      detected: true,
+      action: isApprove ? 'approve' : 'reject',
+      message: msg
+    };
+  } catch (error) {
+    console.error('[detectAndHandleOTApproval] Unexpected error:', error);
+    const msg = locale === 'th'
+      ? '❌ เกิดข้อผิดพลาดในการอนุมัติ'
+      : '❌ Failed to process approval';
+    return { detected: true, message: msg };
+  }
+}
+
+// =============================
+// EARLY LEAVE APPROVAL DETECTION
+// =============================
+
+interface EarlyLeaveApprovalResult {
+  detected: boolean;
+  action?: 'approve' | 'reject';
+  message: string;
+}
+
+async function detectAndHandleEarlyLeaveApproval(
+  text: string,
+  adminUserId: string,
+  locale: 'th' | 'en'
+): Promise<EarlyLeaveApprovalResult> {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Pattern matching for early leave approval commands
+  // Thai: "อนุมัติ {id}", "ไม่อนุมัติ {id}"
+  // English: "approve {id}", "reject {id}"
+  
+  const approvalPatterns = [
+    /^(?:อนุมัติ|approve)\s+([a-f0-9-]{36})$/gi,
+    /^(?:ไม่อนุมัติ|ไม่อนุมัติ|reject)\s+([a-f0-9-]{36})$/gi,
+  ];
+
+  let matchedRequestId: string | null = null;
+  let isApprove = false;
+
+  for (const pattern of approvalPatterns) {
+    const match = pattern.exec(text);
+    if (match) {
+      matchedRequestId = match[1];
+      isApprove = /^(?:อนุมัติ|approve)/i.test(match[0]);
+      break;
+    }
+  }
+
+  if (!matchedRequestId) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[detectAndHandleEarlyLeaveApproval] Detected ${isApprove ? 'approval' : 'rejection'} for request ${matchedRequestId}`);
+
+  try {
+    // First check if this is an early leave request
+    const { data: earlyLeaveRequest } = await supabase
+      .from('early_leave_requests')
+      .select('id, status')
+      .eq('id', matchedRequestId)
+      .maybeSingle();
+
+    if (!earlyLeaveRequest) {
+      const msg = locale === 'th'
+        ? '❌ ไม่พบคำขอนี้'
+        : '❌ Request not found';
+      return { detected: true, message: msg };
+    }
+
+    // Call early-leave-approval edge function
+    const { data, error } = await supabase.functions.invoke('early-leave-approval', {
+      body: {
+        request_id: matchedRequestId,
+        admin_id: adminUserId,
+        action: isApprove ? 'approve' : 'reject',
+        decision_method: 'line'
+      }
+    });
+
+    if (error) {
+      console.error('[detectAndHandleEarlyLeaveApproval] Error calling approval function:', error);
+      const msg = locale === 'th'
+        ? `❌ เกิดข้อผิดพลาด: ${error.message}`
+        : `❌ Error: ${error.message}`;
+      return { detected: true, action: isApprove ? 'approve' : 'reject', message: msg };
+    }
+
+    const msg = locale === 'th'
+      ? (isApprove ? '✅ อนุมัติคำขอออกก่อนเวลาเรียบร้อยแล้ว' : '❌ ปฏิเสธคำขอออกก่อนเวลาแล้ว')
+      : (isApprove ? '✅ Early leave request approved' : '❌ Early leave request rejected');
+
+    return {
+      detected: true,
+      action: isApprove ? 'approve' : 'reject',
+      message: msg
+    };
+  } catch (error) {
+    console.error('[detectAndHandleEarlyLeaveApproval] Unexpected error:', error);
+    const msg = locale === 'th'
+      ? '❌ เกิดข้อผิดพลาดในการอนุมัติ'
+      : '❌ Failed to process approval';
+    return { detected: true, message: msg };
+  }
+}
+
+// =============================
 // LIST PENDING REMINDERS
 // =============================
 
@@ -6358,6 +6534,40 @@ async function handleMessageEvent(event: LineEvent) {
         return; // Don't continue to AI response since we already replied
       } catch (error) {
         console.error('[handleMessageEvent] Error sending pending approval result:', error);
+      }
+    }
+  }
+
+  // PHASE 2.66: OT Approval Detection (admin only)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const otApprovalResult = await detectAndHandleOTApproval(event.message.text, user.id, locale);
+    
+    if (otApprovalResult.detected) {
+      console.log(`[handleMessageEvent] Detected OT approval action: ${otApprovalResult.action}`);
+      try {
+        await replyToLine(event.replyToken, otApprovalResult.message);
+        console.log('[handleMessageEvent] Sent OT approval confirmation');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending OT approval confirmation:', error);
+      }
+    }
+  }
+
+  // PHASE 2.67: Early Leave Approval Detection (admin only)
+  if (!isDM) {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const earlyLeaveResult = await detectAndHandleEarlyLeaveApproval(event.message.text, user.id, locale);
+    
+    if (earlyLeaveResult.detected) {
+      console.log(`[handleMessageEvent] Detected early leave approval action: ${earlyLeaveResult.action}`);
+      try {
+        await replyToLine(event.replyToken, earlyLeaveResult.message);
+        console.log('[handleMessageEvent] Sent early leave approval confirmation');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending early leave approval confirmation:', error);
       }
     }
   }
