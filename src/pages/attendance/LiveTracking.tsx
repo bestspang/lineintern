@@ -44,6 +44,28 @@ export default function LiveTracking() {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch approved OT requests for today
+  const { data: approvedOTRequests } = useQuery({
+    queryKey: ['approved-ot-requests-today'],
+    queryFn: async () => {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const { data, error } = await supabase
+        .from('overtime_requests')
+        .select('employee_id, estimated_hours, reason')
+        .eq('status', 'approved')
+        .eq('request_date', today);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 60000,
+  });
+
+  // Create a map for quick lookup
+  const otApprovedMap = new Map(
+    approvedOTRequests?.map(req => [req.employee_id, req]) || []
+  );
+
   const { data: checkedInEmployees, refetch } = useQuery({
     queryKey: ['checked-in-employees'],
     queryFn: async () => {
@@ -244,9 +266,20 @@ export default function LiveTracking() {
     overtime: checkedInEmployees?.filter(e => e.time_until_checkout < 0).length || 0,
   };
 
-  const getStatusBadge = (minutesUntilCheckout: number) => {
-    if (minutesUntilCheckout < 0) {
-      return <Badge variant="destructive">Overtime</Badge>;
+  const getStatusBadge = (minutesUntilCheckout: number, employeeId: string) => {
+    const hasApprovedOT = otApprovedMap.has(employeeId);
+    
+    if (hasApprovedOT && minutesUntilCheckout < 0) {
+      return (
+        <div className="flex gap-2 flex-wrap">
+          <Badge className="bg-green-500 hover:bg-green-600">✅ OT Approved</Badge>
+          <Badge variant="destructive">Working OT</Badge>
+        </div>
+      );
+    } else if (hasApprovedOT) {
+      return <Badge className="bg-green-500 hover:bg-green-600">✅ OT Approved</Badge>;
+    } else if (minutesUntilCheckout < 0) {
+      return <Badge variant="destructive">⚠️ Overtime (Unapproved)</Badge>;
     } else if (minutesUntilCheckout <= 60) {
       return <Badge className="bg-orange-500">Leaving Soon</Badge>;
     } else {
@@ -381,7 +414,7 @@ export default function LiveTracking() {
 
                     <div className="flex items-center gap-3">
                       <div className="flex flex-col items-end gap-2">
-                        {getStatusBadge(employee.time_until_checkout)}
+                        {getStatusBadge(employee.time_until_checkout, employee.employee_id)}
                         <div className="text-right">
                           <div className="text-sm font-semibold">
                             {format(new Date(employee.expected_check_out), 'HH:mm')}
