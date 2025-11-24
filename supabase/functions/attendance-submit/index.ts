@@ -17,6 +17,90 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Check if this is a JSON request (check_only mode)
+    const contentType = req.headers.get('content-type') || '';
+    
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      const tokenId = body.token;
+      
+      // Handle check_only mode for early leave detection
+      if (body.check_only) {
+        // Validate token
+        const { data: token, error: tokenError } = await supabase
+          .from('attendance_tokens')
+          .select(`
+            *,
+            employee:employees(
+              id,
+              working_time_type,
+              hours_per_day,
+              shift_start_time,
+              shift_end_time
+            )
+          `)
+          .eq('id', tokenId)
+          .eq('status', 'pending')
+          .eq('type', 'check_out')
+          .single();
+
+        if (tokenError || !token) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Invalid token' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Get today's check-in
+        const today = new Date().toISOString().split('T')[0];
+        const { data: checkIns } = await supabase
+          .from('attendance_logs')
+          .select('server_time')
+          .eq('employee_id', token.employee.id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', `${today}T00:00:00`)
+          .order('server_time', { ascending: false })
+          .limit(1);
+
+        if (!checkIns || checkIns.length === 0) {
+          return new Response(
+            JSON.stringify({ success: true, hours_insufficient: false }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const checkInTime = new Date(checkIns[0].server_time);
+        const now = new Date();
+        const hoursWorked = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+
+        // Calculate required hours
+        let requiredHours = 8; // Default
+        if (token.employee.working_time_type === 'hours_based' && token.employee.hours_per_day) {
+          requiredHours = token.employee.hours_per_day;
+        } else if (token.employee.working_time_type === 'time_based') {
+          // Calculate from shift times
+          if (token.employee.shift_start_time && token.employee.shift_end_time) {
+            const [startHours, startMinutes] = token.employee.shift_start_time.split(':').map(Number);
+            const [endHours, endMinutes] = token.employee.shift_end_time.split(':').map(Number);
+            requiredHours = (endHours * 60 + endMinutes - startHours * 60 - startMinutes) / 60;
+          }
+        }
+
+        const hoursInsufficient = hoursWorked < requiredHours;
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            hours_insufficient: hoursInsufficient,
+            hours_worked: hoursWorked,
+            required_hours: requiredHours
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Normal FormData flow
     const formData = await req.formData();
     const tokenId = formData.get('token') as string;
     const latitude = parseFloat(formData.get('latitude') as string);
