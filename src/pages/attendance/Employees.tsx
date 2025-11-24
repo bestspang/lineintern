@@ -44,6 +44,7 @@ export default function AttendanceEmployees() {
     salary_per_month: null,
     ot_rate_multiplier: 1.5,
     auto_ot_enabled: false,
+    allow_remote_checkin: false,
     reminder_preferences: {
       check_in_reminder_enabled: true,
       check_out_reminder_enabled: true,
@@ -156,6 +157,7 @@ export default function AttendanceEmployees() {
       salary_per_month: null,
       ot_rate_multiplier: 1.5,
       auto_ot_enabled: false,
+      allow_remote_checkin: false,
       reminder_preferences: {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -188,6 +190,7 @@ export default function AttendanceEmployees() {
       salary_per_month: employee.salary_per_month || null,
       ot_rate_multiplier: employee.ot_rate_multiplier || 1.5,
       auto_ot_enabled: employee.auto_ot_enabled || false,
+      allow_remote_checkin: employee.allow_remote_checkin || false,
       reminder_preferences: employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -947,6 +950,34 @@ export default function AttendanceEmployees() {
                     </div>
                   </div>
 
+                   <div className="flex items-center space-x-2 border-t pt-4">
+                    <Switch
+                      id="allow_remote_checkin"
+                      checked={formData.allow_remote_checkin}
+                      onCheckedChange={(checked) => setFormData({ ...formData, allow_remote_checkin: checked })}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
+                      <p className="text-xs text-muted-foreground">
+                        พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 border-t pt-4">
+                    <Switch
+                      id="allow_remote_checkin"
+                      checked={formData.allow_remote_checkin}
+                      onCheckedChange={(checked) => setFormData({ ...formData, allow_remote_checkin: checked })}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
+                      <p className="text-xs text-muted-foreground">
+                        พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="flex items-center space-x-2 border-t pt-4">
                     <Switch
                       id="is_active"
@@ -1046,9 +1077,16 @@ export default function AttendanceEmployees() {
                     )}
                   </TableCell>
                   <TableCell className="py-2">
-                    <Badge variant={employee.is_active ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                      {employee.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={employee.is_active ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                        {employee.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {employee.allow_remote_checkin && (
+                        <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                          🌐 Remote
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right py-2">
                      <div className="flex justify-end gap-1">

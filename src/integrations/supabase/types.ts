@@ -182,6 +182,7 @@ export type Database = {
           id: string
           is_flagged: boolean | null
           is_overtime: boolean | null
+          is_remote_checkin: boolean | null
           latitude: number | null
           line_message_id: string | null
           longitude: number | null
@@ -211,6 +212,7 @@ export type Database = {
           id?: string
           is_flagged?: boolean | null
           is_overtime?: boolean | null
+          is_remote_checkin?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
@@ -240,6 +242,7 @@ export type Database = {
           id?: string
           is_flagged?: boolean | null
           is_overtime?: boolean | null
+          is_remote_checkin?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
@@ -922,6 +925,7 @@ export type Database = {
       }
       employees: {
         Row: {
+          allow_remote_checkin: boolean | null
           allowed_work_end_time: string | null
           allowed_work_start_time: string | null
           announcement_group_line_id: string | null
@@ -947,6 +951,7 @@ export type Database = {
           working_time_type: string | null
         }
         Insert: {
+          allow_remote_checkin?: boolean | null
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
@@ -972,6 +977,7 @@ export type Database = {
           working_time_type?: string | null
         }
         Update: {
+          allow_remote_checkin?: boolean | null
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null

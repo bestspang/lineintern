@@ -25,6 +25,7 @@ interface CheckedInEmployee {
   break_hours: number | null;
   expected_check_out: string;
   time_until_checkout: number;
+  is_remote_checkin: boolean;
 }
 
 export default function LiveTracking() {
@@ -77,6 +78,7 @@ export default function LiveTracking() {
         .select(`
           employee_id,
           server_time,
+          is_remote_checkin,
           employees (
             id,
             code,
@@ -184,6 +186,7 @@ export default function LiveTracking() {
           break_hours: employee.break_hours,
           expected_check_out: expectedCheckOut.toISOString(),
           time_until_checkout: timeUntilCheckout,
+          is_remote_checkin: checkIn.is_remote_checkin || false,
         };
       });
 
@@ -387,13 +390,18 @@ export default function LiveTracking() {
                       </Avatar>
                       
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm sm:text-base truncate">
                             {employee.employee_name}
                           </p>
                           <Badge variant="outline" className="text-xs">
                             {employee.employee_code}
                           </Badge>
+                          {employee.is_remote_checkin && (
+                            <Badge variant="outline" className="text-xs">
+                              🌐 Remote
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-muted-foreground">
                           <span>🏢 {employee.branch_name}</span>

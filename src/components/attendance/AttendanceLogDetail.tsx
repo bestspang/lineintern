@@ -19,12 +19,19 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
         <DialogHeader>
           <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-base sm:text-lg">
             <span>Attendance Detail</span>
-            {log.is_flagged && (
-              <Badge variant="destructive" className="flex items-center gap-1 h-5 sm:h-6 text-xs">
-                <AlertTriangle className="h-3 w-3" />
-                Flagged
-              </Badge>
-            )}
+            <div className="flex gap-1">
+              {log.is_flagged && (
+                <Badge variant="destructive" className="flex items-center gap-1 h-5 sm:h-6 text-xs">
+                  <AlertTriangle className="h-3 w-3" />
+                  Flagged
+                </Badge>
+              )}
+              {log.is_remote_checkin && (
+                <Badge variant="outline" className="h-5 sm:h-6 text-xs">
+                  🌐 Remote
+                </Badge>
+              )}
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -83,13 +90,20 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
                   <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
-                  Location
+                  Location {log.is_remote_checkin && <Badge variant="outline" className="text-xs">🌐 Remote</Badge>}
                 </h3>
                 <div className="space-y-2">
                   <div className="text-xs sm:text-sm">
                     <span className="text-muted-foreground">Coordinates:</span>
                     <p className="font-mono text-xs">{log.latitude}, {log.longitude}</p>
                   </div>
+                  {log.is_remote_checkin && (
+                    <div className="bg-blue-50 dark:bg-blue-950/20 p-2 rounded text-xs">
+                      <p className="text-blue-700 dark:text-blue-300">
+                        ✓ Check-in นี้ทำจากที่ไหนก็ได้ (Remote) - ไม่ตรวจสอบพื้นที่
+                      </p>
+                    </div>
+                  )}
                   {log.timezone && (
                     <div className="text-xs sm:text-sm">
                       <span className="text-muted-foreground">Timezone:</span>

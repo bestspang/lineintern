@@ -196,9 +196,16 @@ export default function AttendanceLogs() {
                   <TableRow key={log.id}>
                     <TableCell className="font-medium text-sm py-2">{log.employee?.full_name}</TableCell>
                     <TableCell className="py-2">
-                      <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                        {log.event_type === 'check_in' ? 'In' : 'Out'}
-                      </Badge>
+                      <div className="flex gap-1">
+                        <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                          {log.event_type === 'check_in' ? 'In' : 'Out'}
+                        </Badge>
+                        {log.is_remote_checkin && (
+                          <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                            🌐
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-sm py-2">{log.branch?.name || '-'}</TableCell>
                     <TableCell className="text-xs sm:text-sm py-2 whitespace-nowrap">
