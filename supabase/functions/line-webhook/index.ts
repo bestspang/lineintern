@@ -6206,6 +6206,61 @@ async function handleAttendanceCommand(
       return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
     }
     
+    // TIME VALIDATION: Check if current time is within allowed work hours (skip for history)
+    if (type !== 'history' && employee.allowed_work_start_time && employee.allowed_work_end_time) {
+      const bangkokTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const currentHour = bangkokTime.getHours();
+      const currentMinute = bangkokTime.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      
+      // Parse allowed times (format: "HH:MM:SS" or "HH:MM")
+      const [startHour, startMinute] = employee.allowed_work_start_time.split(':').map(Number);
+      const [endHour, endMinute] = employee.allowed_work_end_time.split(':').map(Number);
+      const startTimeInMinutes = startHour * 60 + startMinute;
+      const endTimeInMinutes = endHour * 60 + endMinute;
+      
+      const isWithinWorkHours = currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+      
+      if (!isWithinWorkHours) {
+        console.log(`[handleAttendanceCommand] Time validation failed: current=${currentHour}:${currentMinute}, allowed=${employee.allowed_work_start_time}-${employee.allowed_work_end_time}`);
+        
+        const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+        const startTimeStr = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
+        const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+        
+        let message = '';
+        if (type === 'check_in') {
+          if (currentTimeInMinutes < startTimeInMinutes) {
+            // Too early
+            message = locale === 'th'
+              ? `⏰ ยังไม่ถึงเวลาเข้างาน\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลาเข้างาน: ${startTimeStr} - ${endTimeStr}\n\nกรุณาลองใหม่ในเวลาที่เหมาะสม\n\n---\n\n⏰ Not yet time to check in\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during allowed hours`
+              : `⏰ Not yet time to check in\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during allowed hours`;
+          } else {
+            // Too late
+            message = locale === 'th'
+              ? `⏰ เลยเวลาเข้างานแล้ว\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลาเข้างาน: ${startTimeStr} - ${endTimeStr}\n\nหากต้องการ OT กรุณาติดต่อผู้จัดการ\n\n---\n\n⏰ Past check-in hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nFor overtime, please contact your manager`
+              : `⏰ Past check-in hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nFor overtime, please contact your manager`;
+          }
+        } else if (type === 'check_out') {
+          if (currentTimeInMinutes < startTimeInMinutes) {
+            // Too early (before work even starts)
+            message = locale === 'th'
+              ? `⏰ ยังไม่ถึงเวลางาน\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลางาน: ${startTimeStr} - ${endTimeStr}\n\nกรุณาลองใหม่ในเวลางาน\n\n---\n\n⏰ Not yet work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during work hours`
+              : `⏰ Not yet work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during work hours`;
+          } else {
+            // After hours - suggest OT request
+            message = locale === 'th'
+              ? `⏰ เลยเวลางานแล้ว\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลางาน: ${startTimeStr} - ${endTimeStr}\n\n💡 หากต้องการทำงานต่อ:\nพิมพ์: /ot [เหตุผล]\nตัวอย่าง: /ot งานยังไม่เสร็จ\n\n---\n\n⏰ Past work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\n💡 To continue working:\nType: /ot [reason]\nExample: /ot unfinished tasks`
+              : `⏰ Past work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\n💡 To continue working:\nType: /ot [reason]\nExample: /ot unfinished tasks`;
+          }
+        }
+        
+        return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+      }
+      
+      console.log(`[handleAttendanceCommand] Time validation passed: within work hours`);
+    }
+    
     // Create attendance token
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + (effectiveSettings.token_validity_minutes || 10));
