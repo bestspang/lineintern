@@ -23,6 +23,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
+import LocationHeatmap from '@/components/attendance/LocationHeatmap';
 import { 
   LineChart, 
   Line, 
@@ -182,6 +183,42 @@ export default function EmployeeDetail() {
     }
   });
 
+  // Fetch location data for heatmap (last 90 days)
+  const { data: locationData } = useQuery({
+    queryKey: ['employee-locations', id],
+    queryFn: async () => {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      const { data, error } = await supabase
+        .from('attendance_logs')
+        .select(`
+          latitude,
+          longitude,
+          server_time,
+          event_type,
+          is_remote_checkin,
+          branch:branches(name)
+        `)
+        .eq('employee_id', id)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .gte('server_time', ninetyDaysAgo.toISOString())
+        .order('server_time', { ascending: false });
+
+      if (error) throw error;
+      
+      return data.map(log => ({
+        latitude: log.latitude!,
+        longitude: log.longitude!,
+        timestamp: log.server_time,
+        eventType: log.event_type,
+        branchName: log.branch?.name,
+        isRemote: log.is_remote_checkin || false
+      }));
+    }
+  });
+
   if (employeeLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -324,6 +361,15 @@ export default function EmployeeDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Location Heatmap */}
+      {locationData && locationData.length > 0 && (
+        <LocationHeatmap
+          employeeId={id!}
+          employeeName={employee.full_name}
+          locations={locationData}
+        />
+      )}
 
       {/* Charts */}
       <Card>
