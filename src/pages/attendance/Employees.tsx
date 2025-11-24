@@ -15,7 +15,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, Clock } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, Clock, History, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
@@ -945,7 +945,7 @@ export default function AttendanceEmployees() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right py-2">
-                    <div className="flex justify-end gap-1">
+                     <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -953,6 +953,28 @@ export default function AttendanceEmployees() {
                         onClick={() => handleEdit(employee)}
                       >
                         <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/attendance/employees/${employee.id}/history`);
+                        }}
+                      >
+                        <History className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/attendance/employees/${employee.id}/settings`);
+                        }}
+                      >
+                        <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Button
                         variant="ghost"

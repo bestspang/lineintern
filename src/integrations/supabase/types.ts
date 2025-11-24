@@ -120,13 +120,59 @@ export type Database = {
         }
         Relationships: []
       }
+      approval_logs: {
+        Row: {
+          action: string
+          admin_id: string | null
+          created_at: string | null
+          decision_method: string | null
+          employee_id: string
+          id: string
+          notes: string | null
+          request_id: string
+          request_type: string
+        }
+        Insert: {
+          action: string
+          admin_id?: string | null
+          created_at?: string | null
+          decision_method?: string | null
+          employee_id: string
+          id?: string
+          notes?: string | null
+          request_id: string
+          request_type: string
+        }
+        Update: {
+          action?: string
+          admin_id?: string | null
+          created_at?: string | null
+          decision_method?: string | null
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          request_id?: string
+          request_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_logs: {
         Row: {
           admin_notes: string | null
+          approval_status: string | null
           branch_id: string | null
           created_at: string | null
           device_info: Json | null
           device_time: string | null
+          early_leave_request_id: string | null
           employee_id: string
           event_type: string
           exif_data: Json | null
@@ -135,9 +181,12 @@ export type Database = {
           fraud_score: number | null
           id: string
           is_flagged: boolean | null
+          is_overtime: boolean | null
           latitude: number | null
           line_message_id: string | null
           longitude: number | null
+          overtime_hours: number | null
+          overtime_request_id: string | null
           performed_by_admin_id: string | null
           photo_hash: string | null
           photo_url: string | null
@@ -147,10 +196,12 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          approval_status?: string | null
           branch_id?: string | null
           created_at?: string | null
           device_info?: Json | null
           device_time?: string | null
+          early_leave_request_id?: string | null
           employee_id: string
           event_type: string
           exif_data?: Json | null
@@ -159,9 +210,12 @@ export type Database = {
           fraud_score?: number | null
           id?: string
           is_flagged?: boolean | null
+          is_overtime?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          overtime_hours?: number | null
+          overtime_request_id?: string | null
           performed_by_admin_id?: string | null
           photo_hash?: string | null
           photo_url?: string | null
@@ -171,10 +225,12 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          approval_status?: string | null
           branch_id?: string | null
           created_at?: string | null
           device_info?: Json | null
           device_time?: string | null
+          early_leave_request_id?: string | null
           employee_id?: string
           event_type?: string
           exif_data?: Json | null
@@ -183,9 +239,12 @@ export type Database = {
           fraud_score?: number | null
           id?: string
           is_flagged?: boolean | null
+          is_overtime?: boolean | null
           latitude?: number | null
           line_message_id?: string | null
           longitude?: number | null
+          overtime_hours?: number | null
+          overtime_request_id?: string | null
           performed_by_admin_id?: string | null
           photo_hash?: string | null
           photo_url?: string | null
@@ -206,6 +265,20 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_early_leave_request"
+            columns: ["early_leave_request_id"]
+            isOneToOne: false
+            referencedRelation: "early_leave_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_overtime_request"
+            columns: ["overtime_request_id"]
+            isOneToOne: false
+            referencedRelation: "overtime_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -772,11 +845,87 @@ export type Database = {
           },
         ]
       }
+      early_leave_requests: {
+        Row: {
+          actual_work_hours: number | null
+          approved_at: string | null
+          approved_by_admin_id: string | null
+          attendance_log_id: string | null
+          created_at: string | null
+          employee_id: string
+          id: string
+          leave_reason: string
+          leave_type: string | null
+          line_message_id: string | null
+          rejection_reason: string | null
+          request_date: string
+          requested_at: string
+          required_work_hours: number | null
+          status: string
+          timeout_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          actual_work_hours?: number | null
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          attendance_log_id?: string | null
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          leave_reason: string
+          leave_type?: string | null
+          line_message_id?: string | null
+          rejection_reason?: string | null
+          request_date: string
+          requested_at?: string
+          required_work_hours?: number | null
+          status?: string
+          timeout_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          actual_work_hours?: number | null
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          attendance_log_id?: string | null
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          leave_reason?: string
+          leave_type?: string | null
+          line_message_id?: string | null
+          rejection_reason?: string | null
+          request_date?: string
+          requested_at?: string
+          required_work_hours?: number | null
+          status?: string
+          timeout_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "early_leave_requests_attendance_log_id_fkey"
+            columns: ["attendance_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "early_leave_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           allowed_work_end_time: string | null
           allowed_work_start_time: string | null
           announcement_group_line_id: string | null
+          auto_ot_enabled: boolean | null
           branch_id: string | null
           break_hours: number | null
           code: string
@@ -786,8 +935,12 @@ export type Database = {
           id: string
           is_active: boolean | null
           line_user_id: string | null
+          max_work_hours_per_day: number | null
+          ot_rate_multiplier: number | null
+          ot_warning_minutes: number | null
           reminder_preferences: Json | null
           role: string | null
+          salary_per_month: number | null
           shift_end_time: string | null
           shift_start_time: string | null
           updated_at: string | null
@@ -797,6 +950,7 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auto_ot_enabled?: boolean | null
           branch_id?: string | null
           break_hours?: number | null
           code: string
@@ -806,8 +960,12 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
+          max_work_hours_per_day?: number | null
+          ot_rate_multiplier?: number | null
+          ot_warning_minutes?: number | null
           reminder_preferences?: Json | null
           role?: string | null
+          salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
           updated_at?: string | null
@@ -817,6 +975,7 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auto_ot_enabled?: boolean | null
           branch_id?: string | null
           break_hours?: number | null
           code?: string
@@ -826,8 +985,12 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           line_user_id?: string | null
+          max_work_hours_per_day?: number | null
+          ot_rate_multiplier?: number | null
+          ot_warning_minutes?: number | null
           reminder_preferences?: Json | null
           role?: string | null
+          salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
           updated_at?: string | null
@@ -1320,6 +1483,62 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      overtime_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by_admin_id: string | null
+          created_at: string | null
+          employee_id: string
+          estimated_hours: number
+          id: string
+          line_message_id: string | null
+          reason: string
+          rejection_reason: string | null
+          request_date: string
+          requested_at: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id: string
+          estimated_hours: number
+          id?: string
+          line_message_id?: string | null
+          reason: string
+          rejection_reason?: string | null
+          request_date: string
+          requested_at?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id?: string
+          estimated_hours?: number
+          id?: string
+          line_message_id?: string | null
+          reason?: string
+          rejection_reason?: string | null
+          request_date?: string
+          requested_at?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overtime_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -2008,6 +2227,14 @@ export type Database = {
         Args: { lat1: number; lat2: number; lon1: number; lon2: number }
         Returns: number
       }
+      can_employee_check_in: {
+        Args: { p_employee_id: string }
+        Returns: boolean
+      }
+      can_employee_check_out: {
+        Args: { p_employee_id: string }
+        Returns: boolean
+      }
       detect_duplicate_photos: {
         Args: {
           p_employee_id: string
@@ -2117,6 +2344,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_work_hours_today: { Args: { p_employee_id: string }; Returns: number }
       get_working_memory_context: {
         Args: { p_group_id: string; p_limit?: number; p_thread_id?: string }
         Returns: {

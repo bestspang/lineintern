@@ -41,6 +41,7 @@ import AttendanceAnalytics from "./pages/attendance/Analytics";
 import AttendancePhotos from "./pages/attendance/Photos";
 import AttendanceFraudDetection from "./pages/attendance/FraudDetection";
 import EmployeeHistory from "./pages/attendance/EmployeeHistory";
+import EmployeeSettings from "./pages/attendance/EmployeeSettings";
 import AttendanceReminderLogs from "./pages/attendance/ReminderLogs";
 import AttendanceLiveTracking from "./pages/attendance/LiveTracking";
 import AttendanceDashboard from "./pages/attendance/Dashboard";
@@ -80,6 +81,8 @@ const App = () => (
                     <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />
                     <Route path="/attendance/employees" element={<AttendanceEmployees />} />
                     <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
+                    <Route path="/attendance/employees/:id/history" element={<EmployeeHistory />} />
+                    <Route path="/attendance/employees/:id/settings" element={<EmployeeSettings />} />
                     <Route path="/attendance/branches" element={<AttendanceBranches />} />
                     <Route path="/attendance/logs" element={<AttendanceLogs />} />
                     <Route path="/attendance/photos" element={<AttendancePhotos />} />

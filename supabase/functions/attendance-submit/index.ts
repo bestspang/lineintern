@@ -43,6 +43,11 @@ serve(async (req) => {
         *,
         employee:employees(
           *,
+          salary_per_month,
+          ot_rate_multiplier,
+          auto_ot_enabled,
+          max_work_hours_per_day,
+          ot_warning_minutes,
           branch:branches(*)
         )
       `)
@@ -55,6 +60,37 @@ serve(async (req) => {
         JSON.stringify({ success: false, error: 'Invalid or expired token' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // VALIDATION: Check if employee can perform this action
+    if (token.type === 'check_in') {
+      const { data: canCheckIn } = await supabase.rpc('can_employee_check_in', {
+        p_employee_id: token.employee.id
+      });
+      
+      if (!canCheckIn) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'ไม่สามารถเช็คอินได้ กรุณาเช็คเอาท์ก่อน\n\nYou cannot check in. Please check out first.',
+            code: 'ALREADY_CHECKED_IN'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (token.type === 'check_out') {
+      const { data: canCheckOut } = await supabase.rpc('can_employee_check_out', {
+        p_employee_id: token.employee.id
+      });
+      
+      if (!canCheckOut) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'ไม่สามารถเช็คเอาท์ได้ กรุณาเช็คอินก่อน\n\nYou cannot check out. Please check in first.',
+            code: 'NOT_CHECKED_IN'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Get settings
