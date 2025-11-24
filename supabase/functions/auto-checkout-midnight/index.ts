@@ -127,6 +127,17 @@ serve(async (req) => {
       const maxWorkHours = employee.max_work_hours_per_day || 8;
       const overtimeHours = Math.max(0, hoursWorked - maxWorkHours);
 
+      // Calculate OT pay (for information only - not approved)
+      let otPayAmount = 0;
+      if (overtimeHours > 0 && employee.salary_per_month && employee.salary_per_month > 0) {
+        const hoursPerDay = employee.hours_per_day || 8;
+        const dailyRate = employee.salary_per_month / 30;
+        const hourlyRate = dailyRate / hoursPerDay;
+        const otMultiplier = employee.ot_rate_multiplier || 1.5;
+        const otRate = hourlyRate * otMultiplier;
+        otPayAmount = otRate * overtimeHours;
+      }
+
       // Perform auto checkout
       const { data: checkoutLog, error: checkoutError } = await supabase
         .from('attendance_logs')
@@ -138,8 +149,8 @@ serve(async (req) => {
           device_time: midnightTime.toISOString(),
           timezone: 'Asia/Bangkok',
           source: 'auto_checkout',
-          overtime_hours: overtimeHours,
-          is_overtime: overtimeHours > 0,
+          overtime_hours: 0, // No OT counted without approval
+          is_overtime: false, // Not approved
           device_info: { auto_checkout: true, reason: 'midnight_timeout' }
         })
         .select()
@@ -161,11 +172,18 @@ serve(async (req) => {
         message += `📊 รวมเวลาทำงาน: ${hoursWorked.toFixed(1)} ชั่วโมง\n\n`;
         
         if (overtimeHours > 0) {
-          message += `⚠️ ทำงานเกินเวลา: ${overtimeHours.toFixed(1)} ชั่วโมง\n`;
-          message += `❌ ไม่ได้รับอนุมัติ OT - อาจไม่ได้รับค่าตอบแทน\n\n`;
+          message += `⚠️ ทำงานเกิน: ${overtimeHours.toFixed(1)} ชั่วโมง\n`;
+          message += `❌ ไม่ได้รับอนุมัติ OT ล่วงหน้า\n`;
+          
+          if (otPayAmount > 0) {
+            message += `💸 มูลค่า OT ที่อาจสูญเสีย: ~${otPayAmount.toFixed(2)} บาท\n`;
+          }
+          
+          message += `\n⚠️ หากต้องการทำ OT กรุณาขออนุมัติก่อน\n`;
+          message += `ใช้คำสั่ง: /ot [เหตุผล]\n`;
         }
         
-        message += `💡 เนื่องจากคุณไม่ได้ Check Out\n`;
+        message += `\n💡 เนื่องจากคุณไม่ได้ Check Out\n`;
         message += `ระบบได้ทำการ Check Out ให้อัตโนมัติเมื่อเที่ยงคืน\n\n`;
         message += `หากมีข้อสงสัย กรุณาติดต่อหัวหน้างาน`;
 
