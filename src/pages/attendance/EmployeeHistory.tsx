@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,34 +9,85 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function EmployeeHistory() {
   const [searchParams] = useSearchParams();
+  const { id: employeeId } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
     const tokenId = searchParams.get('token');
-    if (!tokenId) {
-      setError('Invalid access link');
-      setLoading(false);
-      return;
-    }
-
+    
     const fetchHistory = async () => {
       try {
-        const { data: result, error: err } = await supabase.functions.invoke(
-          'attendance-employee-history',
-          {
-            body: { tokenId },
+        // Token-based access (from LINE notifications)
+        if (tokenId) {
+          const { data: result, error: err } = await supabase.functions.invoke(
+            'attendance-employee-history',
+            {
+              body: { tokenId },
+            }
+          );
+
+          if (err) throw err;
+          if (!result.valid) {
+            setError(result.error || 'Invalid token');
+            return;
           }
-        );
 
-        if (err) throw err;
-        if (!result.valid) {
-          setError(result.error || 'Invalid token');
-          return;
+          setData(result);
+        } 
+        // ID-based access (from admin dashboard)
+        else if (employeeId) {
+          // Fetch employee data
+          const { data: employee, error: empErr } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('id', employeeId)
+            .single();
+
+          if (empErr) throw empErr;
+
+          // Fetch attendance logs from last 30 days
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          const { data: logs, error: logsErr } = await supabase
+            .from('attendance_logs')
+            .select('*, branch:branches(name)')
+            .eq('employee_id', employeeId)
+            .gte('server_time', thirtyDaysAgo.toISOString())
+            .order('server_time', { ascending: false });
+
+          if (logsErr) throw logsErr;
+
+          // Calculate statistics
+          const checkIns = logs.filter(l => l.event_type === 'check_in');
+          const uniqueDays = new Set(checkIns.map(l => l.server_time.split('T')[0])).size;
+          const lateCount = checkIns.filter(l => l.is_flagged).length;
+          
+          const avgTime = checkIns.length > 0
+            ? checkIns.reduce((sum, log) => {
+                const time = new Date(log.server_time);
+                return sum + time.getHours() * 60 + time.getMinutes();
+              }, 0) / checkIns.length
+            : 0;
+          
+          const avgHours = Math.floor(avgTime / 60);
+          const avgMinutes = Math.floor(avgTime % 60);
+
+          setData({
+            employee,
+            logs,
+            statistics: {
+              totalDays: uniqueDays,
+              totalCheckIns: checkIns.length,
+              lateCount,
+              averageCheckInTime: `${String(avgHours).padStart(2, '0')}:${String(avgMinutes).padStart(2, '0')}`
+            }
+          });
+        } else {
+          setError('Invalid access link');
         }
-
-        setData(result);
       } catch (err: any) {
         console.error('Error fetching history:', err);
         setError(err.message || 'Failed to load attendance history');
@@ -46,7 +97,7 @@ export default function EmployeeHistory() {
     };
 
     fetchHistory();
-  }, [searchParams]);
+  }, [searchParams, employeeId]);
 
   if (loading) {
     return (
