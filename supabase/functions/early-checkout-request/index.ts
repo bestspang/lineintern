@@ -146,6 +146,26 @@ serve(async (req) => {
       );
     }
 
+    // Check for OT request conflict
+    const { data: otConflict } = await supabase
+      .from('overtime_requests')
+      .select('id, status, estimated_hours')
+      .eq('employee_id', employee_id)
+      .eq('request_date', today)
+      .in('status', ['pending', 'approved'])
+      .maybeSingle();
+
+    if (otConflict) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `⚠️ ไม่สามารถขอออกงานก่อนเวลาได้\n\nมีคำขอ OT (${otConflict.estimated_hours} ชม.) วันนี้แล้ว\n\nCannot request early leave on the same day as OT request.`,
+          conflict_request_id: otConflict.id
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Create early leave request
     const { data: leaveRequest, error: insertError } = await supabase
       .from('early_leave_requests')
