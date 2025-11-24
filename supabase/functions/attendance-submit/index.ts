@@ -318,8 +318,15 @@ serve(async (req) => {
       }
     }
 
-    // Check geofence if branch has location (STRICT MODE - Block if outside)
-    if (token.employee.branch && token.employee.branch.latitude && token.employee.branch.longitude) {
+    // Check geofence if branch has location
+    let isRemoteCheckin = false;
+    
+    // Skip geofence validation if employee is allowed remote check-in
+    if (token.employee.allow_remote_checkin) {
+      isRemoteCheckin = true;
+      console.log(`Remote check-in allowed for employee ${token.employee.id}`);
+    } else if (token.employee.branch && token.employee.branch.latitude && token.employee.branch.longitude) {
+      // STRICT MODE - Block if outside geofence when remote is NOT allowed
       if (latitude && longitude) {
         const { data: distance } = await supabase
           .rpc('calculate_distance_meters', {
@@ -409,6 +416,7 @@ serve(async (req) => {
     let overtimeHours = 0;
     let isOvertime = false;
     let overtimeRequestId: string | null = null;
+    let earlyLeaveRequestId: string | null = null;
     let otPayAmount = 0;
 
     if (token.type === 'check_out') {
@@ -481,7 +489,7 @@ serve(async (req) => {
     }
 
     // Insert attendance log
-    const { data: log, error: logError } = await supabase
+    const { data: logData, error: logError } = await supabase
       .from('attendance_logs')
       .insert({
         employee_id: token.employee.id,
@@ -492,18 +500,20 @@ serve(async (req) => {
         timezone: timezone,
         latitude: latitude,
         longitude: longitude,
-        photo_url: photoPath,
+        photo_url: photoUrl,
         photo_hash: photoHash,
         exif_data: exifData,
         fraud_score: fraudScore,
         fraud_reasons: fraudReasons,
         device_info: JSON.parse(deviceInfo || '{}'),
-        source: 'webapp',
+        source: 'line',
         is_flagged: isFlagged,
         flag_reason: flagReasons.join('; '),
         overtime_hours: overtimeHours,
         is_overtime: isOvertime,
-        overtime_request_id: overtimeRequestId
+        overtime_request_id: overtimeRequestId,
+        early_leave_request_id: earlyLeaveRequestId,
+        is_remote_checkin: isRemoteCheckin,
       })
       .select()
       .single();
@@ -526,6 +536,18 @@ serve(async (req) => {
     });
 
     const flagWarning = isFlagged ? `\n\n⚠️ คำเตือน: ${flagReasons.join(', ')}` : '';
+    
+    // Remote check-in info
+    let remoteInfo = '';
+    let remoteInfoEn = '';
+    if (isRemoteCheckin) {
+      remoteInfo = `\n\n🌐 Remote Check-in`;
+      remoteInfoEn = `\n\n🌐 Remote Check-in`;
+      if (latitude && longitude) {
+        remoteInfo += `\n📍 Location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        remoteInfoEn += `\n📍 Location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      }
+    }
     
     // OT info for checkout messages
     let otInfo = '';
@@ -621,11 +643,12 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         log: {
-          id: log.id,
-          event_type: log.event_type,
-          server_time: log.server_time,
-          is_flagged: log.is_flagged,
-          flag_reason: log.flag_reason
+          id: logData?.id,
+          event_type: logData?.event_type,
+          server_time: logData?.server_time,
+          is_flagged: logData?.is_flagged,
+          flag_reason: logData?.flag_reason,
+          is_remote_checkin: logData?.is_remote_checkin,
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
