@@ -75,5 +75,8 @@ verify_jwt = false
 [functions.overtime-approval]
 verify_jwt = false
 
+[functions.request-timeout-checker]
+verify_jwt = false
+
 [functions.attendance-employee-history]
 verify_jwt = false

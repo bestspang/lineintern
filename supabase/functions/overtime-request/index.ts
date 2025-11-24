@@ -78,6 +78,44 @@ serve(async (req) => {
       });
     }
 
+    // Check for already approved OT today (prevent multiple OT same day)
+    const { data: approvedOT } = await supabase
+      .from('overtime_requests')
+      .select('id, estimated_hours')
+      .eq('employee_id', body.employee_id)
+      .eq('request_date', requestDate)
+      .eq('status', 'approved')
+      .maybeSingle();
+
+    if (approvedOT) {
+      return new Response(JSON.stringify({ 
+        error: `⚠️ มีคำขอ OT ที่อนุมัติแล้ววันนี้ (${approvedOT.estimated_hours} ชม.)\n\nYou already have approved OT for today. Multiple OT requests same day not allowed.`,
+        existing_request_id: approvedOT.id
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Check for early leave request conflict
+    const { data: earlyLeaveConflict } = await supabase
+      .from('early_leave_requests')
+      .select('id, status, leave_type')
+      .eq('employee_id', body.employee_id)
+      .eq('request_date', requestDate)
+      .in('status', ['pending', 'approved'])
+      .maybeSingle();
+
+    if (earlyLeaveConflict) {
+      return new Response(JSON.stringify({ 
+        error: `⚠️ ไม่สามารถขอ OT ได้\n\nมีคำขอออกงานก่อนเวลา (${earlyLeaveConflict.leave_type}) วันนี้แล้ว\n\nCannot request OT on the same day as early leave request.`,
+        conflict_request_id: earlyLeaveConflict.id
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // Create OT request
     const { data: otRequest, error: insertError } = await supabase
       .from('overtime_requests')
