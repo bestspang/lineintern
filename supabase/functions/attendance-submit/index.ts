@@ -6,6 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to create Google Maps link
+function createGoogleMapsLink(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -544,8 +549,9 @@ serve(async (req) => {
       remoteInfo = `\n\n🌐 Remote Check-in`;
       remoteInfoEn = `\n\n🌐 Remote Check-in`;
       if (latitude && longitude) {
-        remoteInfo += `\n📍 Location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-        remoteInfoEn += `\n📍 Location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        const mapsLink = createGoogleMapsLink(latitude, longitude);
+        remoteInfo += `\n🗺️ ตำแหน่ง:\n${mapsLink}`;
+        remoteInfoEn += `\n🗺️ Location:\n${mapsLink}`;
       }
     }
     
@@ -611,7 +617,7 @@ serve(async (req) => {
         to: token.employee.line_user_id,
         messages: [{
           type: 'text',
-          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${otInfo}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${otInfoEn}${flagWarning}${nextActionHintEn}`,
+          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${remoteInfo}${otInfo}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${remoteInfoEn}${otInfoEn}${flagWarning}${nextActionHintEn}`,
           quickReply: quickReply
         }]
       })
@@ -623,6 +629,23 @@ serve(async (req) => {
 
     if (announcementGroupId) {
       const flagIcon = isFlagged ? '⚠️ ' : '';
+      const remoteIcon = isRemoteCheckin ? '🌐 ' : '';
+      let groupMessage = `${flagIcon}${remoteIcon}คุณ ${token.employee.full_name} ${actionText}${isRemoteCheckin ? ' (Remote)' : ''} เวลา ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}`;
+      
+      // Add Google Maps link for remote check-ins
+      if (isRemoteCheckin && latitude && longitude) {
+        const mapsLink = createGoogleMapsLink(latitude, longitude);
+        groupMessage += `\n🗺️ ตำแหน่ง:\n${mapsLink}`;
+      }
+      
+      if (otInfo) {
+        groupMessage += `\n⏰ OT: ${overtimeHours.toFixed(2)} ชม.`;
+      }
+      
+      if (flagWarning) {
+        groupMessage += flagWarning;
+      }
+      
       await fetch(`https://api.line.me/v2/bot/message/push`, {
         method: 'POST',
         headers: {
@@ -633,7 +656,7 @@ serve(async (req) => {
           to: announcementGroupId,
           messages: [{
             type: 'text',
-            text: `${flagIcon}คุณ ${token.employee.full_name} ${actionText}เวลา ${timeStr} ที่${token.employee.branch?.name || 'ไม่ระบุ'}${otInfo ? `\n⏰ OT: ${overtimeHours.toFixed(2)} ชม.` : ''}${flagWarning}`
+            text: groupMessage
           }]
         })
       });
