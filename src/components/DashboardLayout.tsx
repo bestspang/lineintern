@@ -98,6 +98,7 @@ const navigationGroups = [
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
       { title: 'Photos', url: '/attendance/photos', icon: Camera },
       { title: 'Fraud Detection', url: '/attendance/fraud-detection', icon: Shield },
+      { title: 'Overtime Management', url: '/attendance/overtime', icon: Clock },
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
       { title: 'Reminder Logs', url: '/attendance/reminder-logs', icon: Bell },
       { title: 'Settings', url: '/attendance/settings', icon: Settings },

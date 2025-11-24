@@ -45,6 +45,7 @@ import EmployeeSettings from "./pages/attendance/EmployeeSettings";
 import AttendanceReminderLogs from "./pages/attendance/ReminderLogs";
 import AttendanceLiveTracking from "./pages/attendance/LiveTracking";
 import AttendanceDashboard from "./pages/attendance/Dashboard";
+import OvertimeManagement from "./pages/attendance/OvertimeManagement";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +91,7 @@ const App = () => (
                     <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
                     <Route path="/attendance/reminder-logs" element={<AttendanceReminderLogs />} />
                     <Route path="/attendance/live-tracking" element={<AttendanceLiveTracking />} />
+                    <Route path="/attendance/overtime" element={<OvertimeManagement />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/settings" element={<SettingsLayout />}>
