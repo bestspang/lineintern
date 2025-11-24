@@ -8,9 +8,10 @@ const corsHeaders = {
 
 interface OvertimeRequest {
   employee_id: string;
-  estimated_hours: number;
+  estimated_hours?: number;
   reason: string;
   request_date?: string;
+  request_method?: 'line' | 'webapp';
 }
 
 serve(async (req) => {
@@ -30,14 +31,17 @@ serve(async (req) => {
     console.log('[overtime-request] Received request:', body);
 
     // Validation
-    if (!body.employee_id || !body.estimated_hours || !body.reason) {
+    if (!body.employee_id || !body.reason) {
       return new Response(JSON.stringify({ 
-        error: 'Missing required fields: employee_id, estimated_hours, reason' 
+        error: 'Missing required fields: employee_id, reason' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // Default estimated_hours to 2 if not provided (from LINE)
+    const estimatedHours = body.estimated_hours || 2;
 
     // Get employee details
     const { data: employee, error: empError } = await supabase
@@ -80,7 +84,7 @@ serve(async (req) => {
       .insert({
         employee_id: body.employee_id,
         request_date: requestDate,
-        estimated_hours: body.estimated_hours,
+        estimated_hours: estimatedHours,
         reason: body.reason,
         status: 'pending'
       })
@@ -107,7 +111,7 @@ serve(async (req) => {
     const message = `🔔 คำขออนุมัติ OT\n\n` +
       `👤 พนักงาน: ${employee.full_name} (${employee.code})\n` +
       `📅 วันที่: ${requestDate}\n` +
-      `⏰ OT ที่ขอ: ${body.estimated_hours} ชั่วโมง\n` +
+      `⏰ OT ที่ขอ: ${estimatedHours} ชั่วโมง\n` +
       `📝 เหตุผล: ${body.reason}\n\n` +
       `พิมพ์ "อนุมัติ OT ${otRequest.id}" หรือ "ไม่อนุมัติ OT ${otRequest.id}"`;
 
@@ -182,7 +186,7 @@ serve(async (req) => {
     // Confirm to employee
     const confirmMessage = `✅ ส่งคำขอ OT เรียบร้อยแล้ว\n\n` +
       `📅 วันที่: ${requestDate}\n` +
-      `⏰ จำนวน: ${body.estimated_hours} ชั่วโมง\n` +
+      `⏰ จำนวน: ${estimatedHours} ชั่วโมง\n` +
       `📝 เหตุผล: ${body.reason}\n\n` +
       `รอการอนุมัติจาก Admin...`;
 
@@ -217,6 +221,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ 
       success: true,
+      request_id: otRequest.id,
       request: otRequest
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
