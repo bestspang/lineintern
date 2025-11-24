@@ -62,3 +62,9 @@ verify_jwt = false
 
 [functions.auto-checkout-midnight]
 verify_jwt = false
+
+[functions.early-checkout-request]
+verify_jwt = false
+
+[functions.early-leave-approval]
+verify_jwt = false
