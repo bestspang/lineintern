@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Clock, CheckCircle, XCircle, AlertTriangle, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function EarlyLeaveRequests() {
   const queryClient = useQueryClient();
@@ -19,6 +20,10 @@ export default function EarlyLeaveRequests() {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject'>('approve');
   const [approvalNotes, setApprovalNotes] = useState('');
+  
+  // Bulk selection state
+  const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
+  const [isBulkMode, setIsBulkMode] = useState(false);
 
   // Fetch early leave requests
   const { data: requests, isLoading } = useQuery({
@@ -73,6 +78,52 @@ export default function EarlyLeaveRequests() {
     },
   });
 
+  // Bulk approve/reject mutation
+  const bulkApproveMutation = useMutation({
+    mutationFn: async ({ requestIds, action, notes }: { 
+      requestIds: string[]; 
+      action: 'approve' | 'reject';
+      notes?: string;
+    }) => {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) throw new Error('Not authenticated');
+
+      const results = await Promise.allSettled(
+        requestIds.map(requestId =>
+          supabase.functions.invoke('early-leave-approval', {
+            body: {
+              request_id: requestId,
+              admin_id: session.session.user.id,
+              action,
+              decision_method: 'webapp',
+              notes: notes || undefined
+            }
+          })
+        )
+      );
+
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        throw new Error(`${failed.length} คำขอล้มเหลว / ${failed.length} requests failed`);
+      }
+
+      return results;
+    },
+    onSuccess: (_, variables) => {
+      const actionText = variables.action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ';
+      toast.success(`${actionText} ${variables.requestIds.length} คำขอเรียบร้อยแล้ว / ${variables.requestIds.length} requests processed`);
+      queryClient.invalidateQueries({ queryKey: ["early-leave-requests"] });
+      setSelectedRequests(new Set());
+      setIsBulkMode(false);
+      setApprovalDialogOpen(false);
+      setApprovalNotes('');
+      setSelectedRequest(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'เกิดข้อผิดพลาดในการดำเนินการแบบกลุ่ม / Bulk action error');
+    }
+  });
+
   const handleApprovalClick = (request: any, action: 'approve' | 'reject') => {
     setSelectedRequest(request);
     setApprovalAction(action);
@@ -87,11 +138,51 @@ export default function EarlyLeaveRequests() {
       return;
     }
 
-    approvalMutation.mutate({
-      request_id: selectedRequest.id,
-      action: approvalAction,
-      notes: approvalNotes.trim() || undefined
-    });
+    if (isBulkMode && selectedRequests.size > 0) {
+      // Bulk action
+      bulkApproveMutation.mutate({
+        requestIds: Array.from(selectedRequests),
+        action: approvalAction,
+        notes: approvalNotes.trim() || undefined
+      });
+    } else {
+      // Single action
+      approvalMutation.mutate({
+        request_id: selectedRequest.id,
+        action: approvalAction,
+        notes: approvalNotes.trim() || undefined
+      });
+    }
+  };
+
+  const handleBulkAction = (action: 'approve' | 'reject') => {
+    if (selectedRequests.size === 0) {
+      toast.error('กรุณาเลือกคำขออย่างน้อย 1 รายการ / Please select at least 1 request');
+      return;
+    }
+    setApprovalAction(action);
+    setSelectedRequest({ id: 'bulk', employees: { full_name: `${selectedRequests.size} requests` } });
+    setApprovalDialogOpen(true);
+  };
+
+  const toggleSelection = (requestId: string) => {
+    const newSelection = new Set(selectedRequests);
+    if (newSelection.has(requestId)) {
+      newSelection.delete(requestId);
+    } else {
+      newSelection.add(requestId);
+    }
+    setSelectedRequests(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    const pendingIds = pendingRequests.map(r => r.id);
+    
+    if (selectedRequests.size === pendingIds.length) {
+      setSelectedRequests(new Set());
+    } else {
+      setSelectedRequests(new Set(pendingIds));
+    }
   };
 
   const getLeaveTypeEmoji = (type: string) => {
@@ -163,15 +254,71 @@ export default function EarlyLeaveRequests() {
         <TabsContent value="pending">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                คำขอที่รออนุมัติ
-              </CardTitle>
-              <CardDescription>
-                คำขอออกงานก่อนเวลาที่รอการพิจารณา
-              </CardDescription>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    คำขอที่รออนุมัติ
+                  </CardTitle>
+                  <CardDescription>
+                    คำขอออกงานก่อนเวลาที่รอการพิจารณา
+                  </CardDescription>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {/* Bulk Mode Toggle */}
+                  <Button
+                    variant={isBulkMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setIsBulkMode(!isBulkMode);
+                      setSelectedRequests(new Set());
+                    }}
+                  >
+                    {isBulkMode ? '✓ Bulk Mode' : 'Bulk Mode'}
+                  </Button>
+
+                  {/* Bulk Actions */}
+                  {isBulkMode && selectedRequests.size > 0 && (
+                    <>
+                      <Badge variant="secondary">{selectedRequests.size} selected</Badge>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleBulkAction('approve')}
+                        disabled={bulkApproveMutation.isPending}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        อนุมัติทั้งหมด
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleBulkAction('reject')}
+                        disabled={bulkApproveMutation.isPending}
+                      >
+                        <XCircle className="w-4 h-4 mr-1" />
+                        ไม่อนุมัติทั้งหมด
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
+              {/* Select All Checkbox (only in bulk mode) */}
+              {isBulkMode && pendingRequests.length > 0 && (
+                <div className="mb-4 p-3 bg-muted rounded-lg flex items-center gap-2">
+                  <Checkbox
+                    checked={selectedRequests.size === pendingRequests.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                  <span className="text-sm font-medium">
+                    เลือกทั้งหมด / Select All ({pendingRequests.length})
+                  </span>
+                </div>
+              )}
+
               {pendingRequests.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   ไม่มีคำขอที่รออนุมัติ
@@ -181,6 +328,7 @@ export default function EarlyLeaveRequests() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        {isBulkMode && <TableHead className="w-12"></TableHead>}
                         <TableHead>พนักงาน</TableHead>
                         <TableHead>ประเภท</TableHead>
                         <TableHead>เหตุผล</TableHead>
@@ -191,9 +339,21 @@ export default function EarlyLeaveRequests() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pendingRequests.map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell>
+                      {pendingRequests.map((request) => {
+                        const isSelected = selectedRequests.has(request.id);
+                        
+                        return (
+                          <TableRow key={request.id}>
+                            {/* Checkbox column for bulk mode */}
+                            {isBulkMode && (
+                              <TableCell>
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => toggleSelection(request.id)}
+                                />
+                              </TableCell>
+                            )}
+                            <TableCell>
                             <div>
                               <div className="font-medium">
                                 {request.employees?.full_name}
@@ -222,30 +382,33 @@ export default function EarlyLeaveRequests() {
                           <TableCell>
                             {new Date(request.requested_at).toLocaleString('th-TH')}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => handleApprovalClick(request, 'approve')}
-                                disabled={approvalMutation.isPending}
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                อนุมัติ
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleApprovalClick(request, 'reject')}
-                                disabled={approvalMutation.isPending}
-                              >
-                                <XCircle className="h-4 w-4 mr-1" />
-                                ไม่อนุมัติ
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            <TableCell className="text-right">
+                              {!isBulkMode && (
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={() => handleApprovalClick(request, 'approve')}
+                                    disabled={approvalMutation.isPending}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    อนุมัติ
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleApprovalClick(request, 'reject')}
+                                    disabled={approvalMutation.isPending}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    ไม่อนุมัติ
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -332,14 +495,26 @@ export default function EarlyLeaveRequests() {
           <DialogHeader>
             <DialogTitle>
               {approvalAction === 'approve' ? '✅ อนุมัติ' : '❌ ไม่อนุมัติ'}คำขอออกงานก่อนเวลา
+              {isBulkMode && selectedRequests.size > 1 && ` (${selectedRequests.size} รายการ)`}
             </DialogTitle>
             <DialogDescription>
               {selectedRequest && (
                 <div className="space-y-2 mt-4">
-                  <p><strong>พนักงาน:</strong> {selectedRequest.employees?.full_name}</p>
-                  <p><strong>ประเภท:</strong> {getLeaveTypeEmoji(selectedRequest.leave_type)} {selectedRequest.leave_type}</p>
-                  <p><strong>เหตุผล:</strong> {selectedRequest.leave_reason}</p>
-                  <p><strong>เวลาทำงาน:</strong> {selectedRequest.actual_work_hours?.toFixed(1)} / {selectedRequest.required_work_hours?.toFixed(1)} ชั่วโมง</p>
+                  {isBulkMode && selectedRequests.size > 1 ? (
+                    <>
+                      <p><strong>จำนวน / Count:</strong> {selectedRequests.size} คำขอ / requests</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        คุณกำลังจะ{approvalAction === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ'}คำขอพร้อมกัน {selectedRequests.size} รายการ
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p><strong>พนักงาน:</strong> {selectedRequest.employees?.full_name}</p>
+                      <p><strong>ประเภท:</strong> {getLeaveTypeEmoji(selectedRequest.leave_type)} {selectedRequest.leave_type}</p>
+                      <p><strong>เหตุผล:</strong> {selectedRequest.leave_reason}</p>
+                      <p><strong>เวลาทำงาน:</strong> {selectedRequest.actual_work_hours?.toFixed(1)} / {selectedRequest.required_work_hours?.toFixed(1)} ชั่วโมง</p>
+                    </>
+                  )}
                 </div>
               )}
             </DialogDescription>
@@ -393,9 +568,9 @@ export default function EarlyLeaveRequests() {
             <Button
               variant={approvalAction === 'approve' ? 'default' : 'destructive'}
               onClick={handleApprovalSubmit}
-              disabled={approvalMutation.isPending}
+              disabled={approvalMutation.isPending || bulkApproveMutation.isPending}
             >
-              {approvalMutation.isPending ? 'กำลังดำเนินการ...' : 
+              {(approvalMutation.isPending || bulkApproveMutation.isPending) ? 'กำลังดำเนินการ...' : 
                approvalAction === 'approve' ? 'ยืนยันการอนุมัติ' : 'ยืนยันไม่อนุมัติ'}
             </Button>
           </DialogFooter>
