@@ -1,23 +1,237 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Calendar } from 'lucide-react';
-import { format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp } from 'lucide-react';
+import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 
 export default function AttendanceSummaries() {
-  const { data: summaries, isLoading } = useQuery({
-    queryKey: ['daily-summaries'],
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+
+  // Fetch branches
+  const { data: branches } = useQuery({
+    queryKey: ['branches'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('daily_attendance_summaries')
-        .select('*, branch:branches(name)')
-        .order('summary_date', { ascending: false })
-        .limit(30);
-      
+      const { data, error } = await supabase.from('branches').select('*');
       if (error) throw error;
       return data;
     }
   });
+
+  // Fetch daily summaries
+  const { data: dailySummaries, isLoading: loadingDaily } = useQuery({
+    queryKey: ['daily-summaries', dateRange, selectedBranch],
+    queryFn: async () => {
+      let query = supabase
+        .from('daily_attendance_summaries')
+        .select('*, branch:branches(name)')
+        .order('summary_date', { ascending: false });
+      
+      if (dateRange?.from && dateRange?.to) {
+        query = query.gte('summary_date', format(dateRange.from, 'yyyy-MM-dd'))
+                     .lte('summary_date', format(dateRange.to, 'yyyy-MM-dd'));
+      } else {
+        query = query.limit(30);
+      }
+
+      if (selectedBranch !== 'all') {
+        query = query.eq('branch_id', selectedBranch);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch OT summary
+  const { data: otLogs, isLoading: loadingOT } = useQuery({
+    queryKey: ['ot-summary', dateRange, selectedBranch],
+    queryFn: async () => {
+      let query = supabase
+        .from('attendance_logs')
+        .select(`
+          id,
+          server_time,
+          overtime_hours,
+          employee_id,
+          employees (
+            id,
+            full_name,
+            code,
+            salary_per_month,
+            ot_rate_multiplier,
+            hours_per_day,
+            branch_id,
+            branches (name)
+          )
+        `)
+        .eq('is_overtime', true)
+        .order('server_time', { ascending: false });
+
+      if (dateRange?.from && dateRange?.to) {
+        query = query.gte('server_time', dateRange.from.toISOString())
+                     .lte('server_time', dateRange.to.toISOString());
+      } else {
+        query = query.gte('server_time', subDays(new Date(), 30).toISOString());
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      // Calculate OT pay for each log
+      return data.map(log => ({
+        ...log,
+        ot_pay: calculateOTPay(
+          log.employees?.salary_per_month || 0,
+          log.employees?.ot_rate_multiplier || 1.5,
+          log.employees?.hours_per_day || 8,
+          log.overtime_hours || 0
+        )
+      }));
+    }
+  });
+
+  // Fetch early leave summary
+  const { data: earlyLeaveRequests, isLoading: loadingEarlyLeave } = useQuery({
+    queryKey: ['early-leave-summary', dateRange, selectedBranch],
+    queryFn: async () => {
+      let query = supabase
+        .from('early_leave_requests')
+        .select(`
+          *,
+          employees (
+            full_name,
+            code,
+            branch_id,
+            branches (name)
+          )
+        `)
+        .order('requested_at', { ascending: false });
+
+      if (dateRange?.from && dateRange?.to) {
+        query = query.gte('request_date', format(dateRange.from, 'yyyy-MM-dd'))
+                     .lte('request_date', format(dateRange.to, 'yyyy-MM-dd'));
+      } else {
+        query = query.gte('request_date', format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Calculate OT statistics
+  const otStats = useMemo(() => {
+    if (!otLogs) return { totalHours: 0, totalPay: 0, avgHours: 0, uniqueEmployees: 0 };
+    
+    const totalHours = otLogs.reduce((sum, log) => sum + (log.overtime_hours || 0), 0);
+    const totalPay = otLogs.reduce((sum, log) => sum + log.ot_pay, 0);
+    const uniqueEmployees = new Set(otLogs.map(log => log.employee_id)).size;
+    const avgHours = uniqueEmployees > 0 ? totalHours / uniqueEmployees : 0;
+
+    return { totalHours, totalPay, avgHours, uniqueEmployees };
+  }, [otLogs]);
+
+  // Calculate early leave statistics
+  const earlyLeaveStats = useMemo(() => {
+    if (!earlyLeaveRequests) return { total: 0, approved: 0, rejected: 0, pending: 0 };
+    
+    return {
+      total: earlyLeaveRequests.length,
+      approved: earlyLeaveRequests.filter(r => r.status === 'approved').length,
+      rejected: earlyLeaveRequests.filter(r => r.status === 'rejected').length,
+      pending: earlyLeaveRequests.filter(r => r.status === 'pending').length,
+    };
+  }, [earlyLeaveRequests]);
+
+  // Helper functions
+  const calculateOTPay = (salary: number, otRate: number, hoursPerDay: number, otHours: number) => {
+    if (!salary || salary === 0) return 0;
+    const dailyRate = salary / 30;
+    const hourlyRate = dailyRate / hoursPerDay;
+    return hourlyRate * otRate * otHours;
+  };
+
+  const setQuickFilter = (filter: string) => {
+    const today = new Date();
+    switch (filter) {
+      case 'today':
+        setDateRange({ from: today, to: today });
+        break;
+      case 'week':
+        setDateRange({ from: startOfWeek(today, { weekStartsOn: 1 }), to: today });
+        break;
+      case 'month':
+        setDateRange({ from: startOfMonth(today), to: endOfMonth(today) });
+        break;
+    }
+  };
+
+  const resetFilters = () => {
+    setDateRange(undefined);
+    setSelectedBranch('all');
+  };
+
+  const exportOTToCSV = () => {
+    if (!otLogs) return;
+    
+    const csv = [
+      ['Employee', 'Branch', 'Date', 'OT Hours', 'OT Rate', 'OT Pay (THB)'],
+      ...otLogs.map(log => [
+        log.employees?.full_name || '-',
+        log.employees?.branches?.name || '-',
+        format(new Date(log.server_time), 'yyyy-MM-dd'),
+        log.overtime_hours?.toFixed(2) || '0',
+        (log.employees?.ot_rate_multiplier || 1.5).toFixed(1) + 'x',
+        log.ot_pay.toFixed(2)
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ot-summary-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportEarlyLeaveToCSV = () => {
+    if (!earlyLeaveRequests) return;
+    
+    const csv = [
+      ['Employee', 'Branch', 'Date', 'Leave Type', 'Reason', 'Status'],
+      ...earlyLeaveRequests.map(req => [
+        req.employees?.full_name || '-',
+        req.employees?.branches?.name || '-',
+        req.request_date,
+        req.leave_type || '-',
+        req.leave_reason || '-',
+        req.status
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `early-leave-summary-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const isLoading = loadingDaily || loadingOT || loadingEarlyLeave;
 
   if (isLoading) {
     return (
@@ -29,39 +243,358 @@ export default function AttendanceSummaries() {
 
   return (
     <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Reports & Summaries</h1>
+        <p className="text-muted-foreground">
+          Comprehensive attendance, overtime, and early leave reports
+        </p>
+      </div>
+
+      {/* Filters */}
       <Card>
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
-            Daily Summaries
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            View daily attendance summaries sent to LINE groups
-          </CardDescription>
+        <CardHeader>
+          <CardTitle className="text-lg">Filters</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
-          {summaries?.map((summary) => (
-            <Card key={summary.id}>
-              <CardHeader className="p-3 sm:p-6">
-                <CardTitle className="text-sm sm:text-base">
-                  {summary.branch?.name} - {format(new Date(summary.summary_date), 'MMM dd, yyyy')}
-                </CardTitle>
-                <CardDescription className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs sm:text-sm">
-                  <div>Checked In: {summary.checked_in}/{summary.total_employees}</div>
-                  <div>Checked Out: {summary.checked_out}/{summary.total_employees}</div>
-                  <div>Late: {summary.late_count}</div>
-                  <div>Flagged: {summary.flagged_count}</div>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-4 rounded-md">
-                  {summary.summary_text}
-                </pre>
-              </CardContent>
-            </Card>
-          ))}
+        <CardContent className="flex flex-wrap gap-3">
+          {/* Date Range Picker */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="justify-start text-left font-normal">
+                <Calendar className="mr-2 h-4 w-4" />
+                {dateRange?.from && dateRange?.to ? 
+                  `${format(dateRange.from, 'MMM dd')} - ${format(dateRange.to, 'MMM dd')}` 
+                  : 'Select Date Range'
+                }
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="range"
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* Branch Selector */}
+          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="All Branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              {branches?.map(b => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Quick Filters */}
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setQuickFilter('today')}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setQuickFilter('week')}>
+              This Week
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setQuickFilter('month')}>
+              This Month
+            </Button>
+          </div>
+
+          {/* Reset */}
+          {(dateRange || selectedBranch !== 'all') && (
+            <Button variant="ghost" size="sm" onClick={resetFilters}>
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
         </CardContent>
       </Card>
+
+      {/* Tabs */}
+      <Tabs defaultValue="daily" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="daily">
+            <Calendar className="h-4 w-4 mr-2" />
+            Daily Attendance
+          </TabsTrigger>
+          <TabsTrigger value="overtime">
+            <Clock className="h-4 w-4 mr-2" />
+            OT Summary ({otLogs?.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="early-leave">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Early Leave ({earlyLeaveRequests?.length || 0})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Tab 1: Daily Attendance */}
+        <TabsContent value="daily" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Daily Attendance Summaries</CardTitle>
+              <CardDescription>
+                Automated daily summaries sent to LINE groups
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {dailySummaries?.map((summary) => (
+                <Card key={summary.id}>
+                  <CardHeader className="p-4">
+                    <CardTitle className="text-base">
+                      {summary.branch?.name} - {format(new Date(summary.summary_date), 'MMM dd, yyyy')}
+                    </CardTitle>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-muted-foreground">
+                      <div>✅ Checked In: {summary.checked_in}/{summary.total_employees}</div>
+                      <div>🏁 Checked Out: {summary.checked_out}/{summary.total_employees}</div>
+                      <div>⏰ Late: {summary.late_count}</div>
+                      <div>🚩 Flagged: {summary.flagged_count}</div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-3 rounded-md">
+                      {summary.summary_text}
+                    </pre>
+                  </CardContent>
+                </Card>
+              ))}
+              {!dailySummaries?.length && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No daily summaries found for selected period
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 2: OT Summary */}
+        <TabsContent value="overtime" className="space-y-4">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total OT Hours</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-muted-foreground" />
+                  {otStats.totalHours.toFixed(1)} hrs
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total OT Pay</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold flex items-center gap-2 text-green-600">
+                  <DollarSign className="h-5 w-5" />
+                  ฿{otStats.totalPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Unique Employees</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                  {otStats.uniqueEmployees}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Avg OT/Employee</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {otStats.avgHours.toFixed(1)} hrs
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* OT Table */}
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>OT Detail Report</CardTitle>
+                  <CardDescription>Overtime hours and payments breakdown</CardDescription>
+                </div>
+                <Button onClick={exportOTToCSV} size="sm">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">OT Hours</TableHead>
+                      <TableHead className="text-right">OT Rate</TableHead>
+                      <TableHead className="text-right">OT Pay (THB)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {otLogs?.map(log => (
+                      <TableRow key={log.id}>
+                        <TableCell>
+                          <div className="font-medium">{log.employees?.full_name}</div>
+                          <div className="text-sm text-muted-foreground">{log.employees?.code}</div>
+                        </TableCell>
+                        <TableCell>{log.employees?.branches?.name || '-'}</TableCell>
+                        <TableCell>{format(new Date(log.server_time), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="secondary">
+                            {log.overtime_hours?.toFixed(1) || '0'} hrs
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {(log.employees?.ot_rate_multiplier || 1.5).toFixed(1)}x
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-green-600">
+                          ฿{log.ot_pay.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {!otLogs?.length && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No overtime records found for selected period
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 3: Early Leave Summary */}
+        <TabsContent value="early-leave" className="space-y-4">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total Requests</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {earlyLeaveStats.total}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Approved</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">
+                  {earlyLeaveStats.approved}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Rejected</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">
+                  {earlyLeaveStats.rejected}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Pending</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-600">
+                  {earlyLeaveStats.pending}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Early Leave Table */}
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Early Leave Detail Report</CardTitle>
+                  <CardDescription>Early checkout requests and approvals</CardDescription>
+                </div>
+                <Button onClick={exportEarlyLeaveToCSV} size="sm">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {earlyLeaveRequests?.map(request => (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          <div className="font-medium">{request.employees?.full_name}</div>
+                          <div className="text-sm text-muted-foreground">{request.employees?.code}</div>
+                        </TableCell>
+                        <TableCell>{request.employees?.branches?.name || '-'}</TableCell>
+                        <TableCell>{format(new Date(request.request_date), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell>
+                          {request.leave_type ? (
+                            <Badge variant="outline">
+                              {request.leave_type === 'sick' && '🤒 Sick'}
+                              {request.leave_type === 'personal' && '📝 Personal'}
+                              {request.leave_type === 'vacation' && '🏖️ Vacation'}
+                              {request.leave_type === 'emergency' && '🚨 Emergency'}
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{request.leave_reason}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            request.status === 'approved' ? 'default' :
+                            request.status === 'rejected' ? 'destructive' : 
+                            'secondary'
+                          }>
+                            {request.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {!earlyLeaveRequests?.length && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No early leave requests found for selected period
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

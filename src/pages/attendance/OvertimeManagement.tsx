@@ -118,11 +118,31 @@ export default function OvertimeManagement() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Overtime Management</h1>
+        <h1 className="text-3xl font-bold">Overtime System Testing</h1>
         <p className="text-muted-foreground">
-          Monitor and manage overtime warnings and auto-checkout system
+          Test and debug overtime warnings and auto-checkout system
         </p>
       </div>
+
+      {/* Info Banner */}
+      <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+        <CardContent className="pt-6">
+          <div className="flex gap-3">
+            <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-medium text-blue-900 dark:text-blue-100">
+                Testing Tools Only
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                This page is for testing OT system functions. For managing OT requests, go to{' '}
+                <a href="/attendance/overtime-requests" className="underline font-medium">
+                  OT Requests page
+                </a>.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Control Panel */}
       <Card>
