@@ -59,7 +59,7 @@ export default function Auth() {
       toast({
         variant: 'destructive',
         title: 'Validation failed',
-        description: result.error.errors[0].message,
+        description: result.error.issues[0].message,
       });
       setIsLoading(false);
       return;
@@ -94,7 +94,7 @@ export default function Auth() {
       toast({
         variant: 'destructive',
         title: 'Validation failed',
-        description: result.error.errors[0].message,
+        description: result.error.issues[0].message,
       });
       setIsLoading(false);
       return;
