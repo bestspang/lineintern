@@ -405,6 +405,81 @@ serve(async (req) => {
       .update({ status: 'used', used_at: new Date().toISOString() })
       .eq('id', tokenId);
 
+    // OT Calculation Logic for Checkout
+    let overtimeHours = 0;
+    let isOvertime = false;
+    let overtimeRequestId: string | null = null;
+    let otPayAmount = 0;
+
+    if (token.type === 'check_out') {
+      // Get today's check-in to calculate work hours
+      const today = new Date().toISOString().split('T')[0];
+      const { data: checkIns } = await supabase
+        .from('attendance_logs')
+        .select('server_time')
+        .eq('employee_id', token.employee.id)
+        .eq('event_type', 'check_in')
+        .gte('server_time', `${today}T00:00:00`)
+        .order('server_time', { ascending: false })
+        .limit(1);
+
+      if (checkIns && checkIns.length > 0) {
+        const checkInTime = new Date(checkIns[0].server_time);
+        const checkOutTime = new Date();
+        const totalWorkHours = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+
+        // Calculate required work hours
+        let requiredHours = 8; // Default
+        if (token.employee.working_time_type === 'hours_based' && token.employee.hours_per_day) {
+          requiredHours = token.employee.hours_per_day;
+        } else if (token.employee.working_time_type === 'time_based') {
+          // Calculate from shift times
+          if (token.employee.shift_start_time && token.employee.shift_end_time) {
+            const [startHours, startMinutes] = token.employee.shift_start_time.split(':').map(Number);
+            const [endHours, endMinutes] = token.employee.shift_end_time.split(':').map(Number);
+            requiredHours = (endHours * 60 + endMinutes - startHours * 60 - startMinutes) / 60;
+          }
+        }
+
+        // Check for approved OT request for today
+        const { data: approvedOT } = await supabase
+          .from('overtime_requests')
+          .select('id, estimated_hours')
+          .eq('employee_id', token.employee.id)
+          .eq('request_date', today)
+          .eq('status', 'approved')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        // Calculate overtime if OT is approved OR if auto_ot is enabled
+        if ((approvedOT && approvedOT.length > 0) || token.employee.auto_ot_enabled) {
+          if (totalWorkHours > requiredHours) {
+            overtimeHours = totalWorkHours - requiredHours;
+            isOvertime = true;
+            
+            if (approvedOT && approvedOT.length > 0) {
+              overtimeRequestId = approvedOT[0].id;
+            }
+
+            // Calculate OT pay if salary is available
+            if (token.employee.salary_per_month && token.employee.salary_per_month > 0) {
+              const hoursPerDay = token.employee.hours_per_day || 8;
+              const dailyRate = token.employee.salary_per_month / 30;
+              const hourlyRate = dailyRate / hoursPerDay;
+              const otMultiplier = token.employee.ot_rate_multiplier || 1.5;
+              const otRate = hourlyRate * otMultiplier;
+              otPayAmount = otRate * overtimeHours;
+              
+              console.log(`[OT Calculation] ${token.employee.full_name}: ${overtimeHours.toFixed(2)}h OT @ ${otRate.toFixed(2)} THB/h = ${otPayAmount.toFixed(2)} THB`);
+            }
+          }
+        } else {
+          // No OT approval and auto_ot disabled - no overtime counted
+          console.log(`[OT] ${token.employee.full_name}: No OT approval, overtime hours not counted`);
+        }
+      }
+    }
+
     // Insert attendance log
     const { data: log, error: logError } = await supabase
       .from('attendance_logs')
@@ -425,7 +500,10 @@ serve(async (req) => {
         device_info: JSON.parse(deviceInfo || '{}'),
         source: 'webapp',
         is_flagged: isFlagged,
-        flag_reason: flagReasons.join('; ')
+        flag_reason: flagReasons.join('; '),
+        overtime_hours: overtimeHours,
+        is_overtime: isOvertime,
+        overtime_request_id: overtimeRequestId
       })
       .select()
       .single();
@@ -448,6 +526,19 @@ serve(async (req) => {
     });
 
     const flagWarning = isFlagged ? `\n\n⚠️ คำเตือน: ${flagReasons.join(', ')}` : '';
+    
+    // OT info for checkout messages
+    let otInfo = '';
+    let otInfoEn = '';
+    if (token.type === 'check_out' && isOvertime && overtimeHours > 0) {
+      otInfo = `\n\n⏰ ชั่วโมง OT: ${overtimeHours.toFixed(2)} ชม.`;
+      otInfoEn = `\n\n⏰ OT Hours: ${overtimeHours.toFixed(2)} hrs`;
+      
+      if (otPayAmount > 0) {
+        otInfo += `\n💰 ค่า OT (โดยประมาณ): ${otPayAmount.toFixed(2)} บาท`;
+        otInfoEn += `\n💰 OT Pay (estimated): ${otPayAmount.toFixed(2)} THB`;
+      }
+    }
     
     // Suggest next action based on current action
     const nextActionHint = token.type === 'check_in' 
@@ -498,7 +589,7 @@ serve(async (req) => {
         to: token.employee.line_user_id,
         messages: [{
           type: 'text',
-          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${flagWarning}${nextActionHintEn}`,
+          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${otInfo}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${otInfoEn}${flagWarning}${nextActionHintEn}`,
           quickReply: quickReply
         }]
       })
@@ -520,7 +611,7 @@ serve(async (req) => {
           to: announcementGroupId,
           messages: [{
             type: 'text',
-            text: `${flagIcon}คุณ ${token.employee.full_name} ${actionText}เวลา ${timeStr} ที่${token.employee.branch?.name || 'ไม่ระบุ'}${flagWarning}`
+            text: `${flagIcon}คุณ ${token.employee.full_name} ${actionText}เวลา ${timeStr} ที่${token.employee.branch?.name || 'ไม่ระบุ'}${otInfo ? `\n⏰ OT: ${overtimeHours.toFixed(2)} ชม.` : ''}${flagWarning}`
           }]
         })
       });
