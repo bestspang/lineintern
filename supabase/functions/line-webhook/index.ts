@@ -927,6 +927,118 @@ async function detectAndHandleReminderPreference(
 }
 
 // =============================
+// OT REQUEST HANDLER (for employees)
+// =============================
+
+interface OTRequestResult {
+  detected: boolean;
+  message: string;
+}
+
+async function handleOTRequestCommand(
+  messageText: string,
+  user: any,
+  lineUserId: string,
+  locale: 'en' | 'th'
+): Promise<OTRequestResult> {
+  // Pattern matching for OT request commands
+  // Thai: "/ot [เหตุผล]", "/โอที [เหตุผล]"
+  // English: "/ot [reason]"
+  
+  const otRequestPatterns = [
+    /^\/ot\s+(.+)/i,
+    /^\/โอที\s+(.+)/i,
+  ];
+
+  let reason: string | null = null;
+
+  for (const pattern of otRequestPatterns) {
+    const match = pattern.exec(messageText.trim());
+    if (match) {
+      reason = match[1].trim();
+      break;
+    }
+  }
+
+  if (!reason) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[handleOTRequestCommand] Processing OT request for user ${user.id} with reason: ${reason}`);
+  
+  try {
+    // Check if user is linked to an employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('*, branch:branches(*)')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .single();
+    
+    if (empError || !employee) {
+      console.log('[handleOTRequestCommand] Employee not found');
+      const message = locale === 'th'
+        ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียนหรือเชื่อมโยงบัญชี LINE ของคุณกับระบบ\n\n---\n\nSorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.'
+        : 'Sorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.';
+      
+      return { detected: true, message };
+    }
+    
+    // Check if employee is currently checked in
+    const { data: todayLog } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', employee.id)
+      .gte('server_time', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+      .order('server_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (!todayLog || todayLog.event_type !== 'check_in') {
+      const message = locale === 'th'
+        ? '❌ คุณยังไม่ได้ check-in วันนี้ กรุณา check-in ก่อนขอทำ OT\n\n---\n\n❌ You haven\'t checked in today. Please check in first before requesting OT.'
+        : '❌ You haven\'t checked in today. Please check in first before requesting OT.';
+      
+      return { detected: true, message };
+    }
+    
+    // Call overtime-request edge function
+    const { data, error } = await supabase.functions.invoke('overtime-request', {
+      body: {
+        employee_id: employee.id,
+        reason: reason,
+        request_method: 'line'
+      }
+    });
+
+    if (error) {
+      console.error('[handleOTRequestCommand] Error calling overtime-request:', error);
+      const message = locale === 'th'
+        ? `❌ เกิดข้อผิดพลาด: ${error.message || 'กรุณาลองใหม่'}\n\n---\n\n❌ Error: ${error.message || 'Please try again'}`
+        : `❌ Error: ${error.message || 'Please try again'}`;
+      
+      return { detected: true, message };
+    }
+
+    const requestId = data?.request_id || 'N/A';
+    const message = locale === 'th'
+      ? `✅ ส่งคำขอ OT เรียบร้อยแล้ว\n\n📋 รหัสคำขอ: ${requestId}\n📝 เหตุผล: ${reason}\n⏰ เวลาที่ขอ: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}\n\n🔔 รอการอนุมัติจากผู้ดูแล\n\n---\n\n✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })}\n\n🔔 Awaiting admin approval`
+      : `✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })}\n\n🔔 Awaiting admin approval`;
+    
+    console.log('[handleOTRequestCommand] OT request submitted successfully');
+    return { detected: true, message };
+    
+  } catch (error) {
+    console.error('[handleOTRequestCommand] Error:', error);
+    const message = locale === 'th'
+      ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่\n\nSystem error. Please try again.'
+      : 'System error. Please try again.';
+    
+    return { detected: true, message };
+  }
+}
+
+// =============================
 // OT APPROVAL DETECTION
 // =============================
 
@@ -6639,6 +6751,20 @@ async function handleMessageEvent(event: LineEvent) {
       }
     }
     
+    // OT Request Command Detection (DM only)
+    const otRequestResult = await handleOTRequestCommand(event.message.text, user, lineUserId, attendanceLocale);
+    
+    if (otRequestResult.detected) {
+      console.log(`[handleMessageEvent] Detected OT request command from user ${user.id}`);
+      try {
+        await replyToLine(event.replyToken, otRequestResult.message);
+        console.log('[handleMessageEvent] Sent OT request confirmation');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending OT request confirmation:', error);
+      }
+    }
+    
     // Welcome message with Quick Reply for unrecognized commands in DM
     const menuLocale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
     const lowerText = event.message.text.toLowerCase().trim();
@@ -6659,10 +6785,11 @@ async function handleMessageEvent(event: LineEvent) {
     }
   }
 
-  // Redirect attendance commands in groups to DM
+  // Redirect attendance and OT commands in groups to DM
   if (!isDM) {
     const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
     const attendanceCommands = ['checkin', 'เช็คอิน', 'เข้างาน', 'checkout', 'เช็คเอาต์', 'ออกงาน', 'history', 'ประวัติ', 'ประวัติการเข้างาน'];
+    const otCommands = ['/ot', '/โอที'];
     const messageTextLower = event.message.text.toLowerCase().trim();
     
     if (attendanceCommands.some(cmd => messageTextLower === cmd || messageTextLower.startsWith(cmd + ' '))) {
@@ -6672,6 +6799,19 @@ async function handleMessageEvent(event: LineEvent) {
           : 'Please use attendance features via private message with the bot. 🙏';
         await replyToLine(event.replyToken, message);
         console.log('[handleMessageEvent] Redirected group attendance command to DM');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending redirect message:', error);
+      }
+    }
+    
+    if (otCommands.some(cmd => messageTextLower.startsWith(cmd + ' '))) {
+      try {
+        const message = locale === 'th' 
+          ? 'กรุณาขอ OT ผ่านแชทส่วนตัวกับบอทเท่านั้นครับ 🙏\n\nเพื่อความปลอดภัยของข้อมูลส่วนตัว\n\n---\n\nPlease request OT via private message with the bot. 🙏\n\nFor privacy protection.'
+          : 'Please request OT via private message with the bot. 🙏\n\nFor privacy protection.';
+        await replyToLine(event.replyToken, message);
+        console.log('[handleMessageEvent] Redirected group OT command to DM');
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending redirect message:', error);
