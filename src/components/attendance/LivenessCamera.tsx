@@ -47,6 +47,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   // Center face detection states
   const [waitingForCenter, setWaitingForCenter] = useState(false);
   const [centerHoldTimer, setCenterHoldTimer] = useState(0);
+  const [waitingForCenterAfterStep1, setWaitingForCenterAfterStep1] = useState(false);
   const centerStartTimeRef = useRef<number | null>(null);
   const lastEyeStateRef = useRef<boolean>(true); // true = open, false = closed
   const livenessDataRef = useRef<LivenessData>({
@@ -322,9 +323,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       // Step 1: turn_right (must complete before step 2)
       if (!step1Completed && challengeStep === 1 && currentChallenge === "turn_right") {
         setStep1Completed(true);
-        setChallengeStep(2);
-        setCurrentChallenge(step2Challenge);
-        livenessDataRef.current.headTurned = true;
+        setWaitingForCenterAfterStep1(true); // รอให้กลับหน้าตรงก่อน
+        // ยังไม่ advance step 2
       }
     } else if (normalizedOffset > 0.25) {
       // User turns left → camera sees right → offset > 0
@@ -336,6 +336,14 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       }
     } else {
       setHeadPosition("center");
+      
+      // ถ้าทำ step 1 เสร็จและกลับหน้าตรง → เริ่ม step 2
+      if (waitingForCenterAfterStep1) {
+        setWaitingForCenterAfterStep1(false);
+        setChallengeStep(2);
+        setCurrentChallenge(step2Challenge);
+        livenessDataRef.current.headTurned = true;
+      }
     }
   };
 
@@ -446,20 +454,21 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                     
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-base sm:text-lg text-primary truncate">
-                        {challengeStep === 1 ? "หันหน้าไปทางขวา" : 
+                        {waitingForCenterAfterStep1 ? "กลับหน้าตรงก่อน" :
+                         challengeStep === 1 ? "หันหน้าไปทางขวา" : 
                          currentChallenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้าย"}
                       </div>
                       
                       <div className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                        {challengeStep === 1 && (
+                        {waitingForCenterAfterStep1 ? (
+                          <>ตำแหน่ง: {headPosition === "center" ? "✓ กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}</>
+                        ) : challengeStep === 1 ? (
                           <>ตำแหน่ง: {headPosition === "right" ? "✓ ขวา" : headPosition === "left" ? "ซ้าย" : "กลาง"}</>
-                        )}
-                        {challengeStep === 2 && currentChallenge === "blink" && (
+                        ) : challengeStep === 2 && currentChallenge === "blink" ? (
                           <>ตรวจพบ: {blinkCount}/2 ครั้ง</>
-                        )}
-                        {challengeStep === 2 && currentChallenge === "turn_left" && (
+                        ) : challengeStep === 2 && currentChallenge === "turn_left" ? (
                           <>ตำแหน่ง: {headPosition === "left" ? "✓ ซ้าย" : headPosition === "right" ? "ขวา" : "กลาง"}</>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     
