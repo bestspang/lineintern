@@ -41,9 +41,6 @@ export default function AttendanceEmployees() {
     break_hours: 1.00,
     allowed_work_start_time: '06:00',
     allowed_work_end_time: '20:00',
-    salary_per_month: null,
-    ot_rate_multiplier: 1.5,
-    auto_ot_enabled: false,
     allow_remote_checkin: false,
     require_photo: null as boolean | null,
     preferred_start_time: '',
@@ -162,9 +159,6 @@ export default function AttendanceEmployees() {
       break_hours: 1.00,
       allowed_work_start_time: '06:00',
       allowed_work_end_time: '20:00',
-      salary_per_month: null,
-      ot_rate_multiplier: 1.5,
-      auto_ot_enabled: false,
       allow_remote_checkin: false,
       require_photo: null as boolean | null,
       preferred_start_time: '',
@@ -203,9 +197,6 @@ export default function AttendanceEmployees() {
       break_hours: employee.break_hours || 1.00,
       allowed_work_start_time: employee.allowed_work_start_time?.substring(0, 5) || '06:00',
       allowed_work_end_time: employee.allowed_work_end_time?.substring(0, 5) || '20:00',
-      salary_per_month: employee.salary_per_month || null,
-      ot_rate_multiplier: employee.ot_rate_multiplier || 1.5,
-      auto_ot_enabled: employee.auto_ot_enabled || false,
       allow_remote_checkin: employee.allow_remote_checkin || false,
       require_photo: employee.require_photo ?? null,
       preferred_start_time: employee.preferred_start_time?.substring(0, 5) || '',
@@ -994,104 +985,14 @@ export default function AttendanceEmployees() {
                     </div>
                   )}
 
-                  {/* OT Configuration Section */}
+
+                  {/* Attendance Settings */}
                   <div className="space-y-4 border-t pt-4">
                     <h4 className="font-medium text-sm flex items-center gap-2">
-                      💰 OT Configuration
+                      🎯 Attendance Settings
                     </h4>
-                    
-                    <div className="space-y-3">
-                      <div>
-                        <Label htmlFor="salary_per_month">Monthly Salary (THB)</Label>
-                        <Input
-                          id="salary_per_month"
-                          type="number"
-                          step="1000"
-                          min="0"
-                          value={formData.salary_per_month || ''}
-                          onChange={(e) => setFormData({ 
-                            ...formData, 
-                            salary_per_month: e.target.value ? parseFloat(e.target.value) : null 
-                          })}
-                          placeholder="30000"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Used to calculate OT pay automatically
-                        </p>
-                      </div>
 
-                      <div>
-                        <Label htmlFor="ot_rate_multiplier">OT Rate Multiplier</Label>
-                        <Select 
-                          value={formData.ot_rate_multiplier?.toString() || '1.5'} 
-                          onValueChange={(value) => setFormData({ 
-                            ...formData, 
-                            ot_rate_multiplier: parseFloat(value) 
-                          })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1.5">1.5x (Standard OT)</SelectItem>
-                            <SelectItem value="2.0">2.0x (Weekends/Special)</SelectItem>
-                            <SelectItem value="3.0">3.0x (Holidays)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Overtime pay rate multiplier
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
-                        <div>
-                          <Label htmlFor="auto_ot_enabled" className="text-sm">
-                            Auto OT (No Approval Required)
-                          </Label>
-                          <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                            ⚠️ Enable only for trusted roles
-                          </p>
-                        </div>
-                        <Switch
-                          id="auto_ot_enabled"
-                          checked={formData.auto_ot_enabled || false}
-                          onCheckedChange={(checked) => setFormData({ 
-                            ...formData, 
-                            auto_ot_enabled: checked 
-                          })}
-                        />
-                      </div>
-
-                      {formData.salary_per_month && formData.hours_per_day && (
-                        <Alert className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
-                          <AlertDescription className="text-xs space-y-1">
-                            <div className="font-semibold text-green-900 dark:text-green-100">
-                              💡 OT Pay Calculation Example:
-                            </div>
-                            <div className="text-muted-foreground space-y-0.5">
-                              {(() => {
-                                const dailyRate = formData.salary_per_month / 30;
-                                const hourlyRate = dailyRate / (formData.hours_per_day || 8);
-                                const otRate = hourlyRate * (formData.ot_rate_multiplier || 1.5);
-                                return (
-                                  <>
-                                    <div>• Daily rate: ฿{dailyRate.toFixed(2)}</div>
-                                    <div>• Hourly rate: ฿{hourlyRate.toFixed(2)}/hr</div>
-                                    <div>• OT rate ({formData.ot_rate_multiplier}x): ฿{otRate.toFixed(2)}/hr</div>
-                                    <div className="font-semibold text-green-700 dark:text-green-300 pt-1">
-                                      Example: 2 hours OT = ฿{(otRate * 2).toFixed(2)}
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  </div>
-
-                   <div className="flex items-center space-x-2 border-t pt-4">
+                   <div className="flex items-center space-x-2">
                     <Switch
                       id="allow_remote_checkin"
                       checked={formData.allow_remote_checkin}
@@ -1114,9 +1015,9 @@ export default function AttendanceEmployees() {
                     <div className="flex-1">
                       <Label htmlFor="require_photo">📸 Require Photo</Label>
                       <p className="text-xs text-muted-foreground">
-                        บังคับถ่ายรูปเมื่อ check-in/out (null = ใช้ setting ของสาขา/ระบบ)
                       </p>
                     </div>
+                  </div>
                   </div>
 
                   <div className="flex items-center space-x-2 border-t pt-4">
