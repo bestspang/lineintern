@@ -45,6 +45,7 @@ export default function AttendanceEmployees() {
     ot_rate_multiplier: 1.5,
     auto_ot_enabled: false,
     allow_remote_checkin: false,
+    require_photo: null as boolean | null,
     reminder_preferences: {
       check_in_reminder_enabled: true,
       check_out_reminder_enabled: true,
@@ -158,6 +159,7 @@ export default function AttendanceEmployees() {
       ot_rate_multiplier: 1.5,
       auto_ot_enabled: false,
       allow_remote_checkin: false,
+      require_photo: null as boolean | null,
       reminder_preferences: {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -191,6 +193,7 @@ export default function AttendanceEmployees() {
       ot_rate_multiplier: employee.ot_rate_multiplier || 1.5,
       auto_ot_enabled: employee.auto_ot_enabled || false,
       allow_remote_checkin: employee.allow_remote_checkin || false,
+      require_photo: employee.require_photo ?? null,
       reminder_preferences: employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
@@ -960,6 +963,34 @@ export default function AttendanceEmployees() {
                       <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
                       <p className="text-xs text-muted-foreground">
                         พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 border-t pt-4">
+                    <Switch
+                      id="allow_remote_checkin"
+                      checked={formData.allow_remote_checkin}
+                      onCheckedChange={(checked) => setFormData({ ...formData, allow_remote_checkin: checked })}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
+                      <p className="text-xs text-muted-foreground">
+                        พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 border-t pt-4">
+                    <Switch
+                      id="require_photo"
+                      checked={formData.require_photo ?? true}
+                      onCheckedChange={(checked) => setFormData({ ...formData, require_photo: checked })}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="require_photo">📸 Require Photo</Label>
+                      <p className="text-xs text-muted-foreground">
+                        บังคับถ่ายรูปเมื่อ check-in/out (null = ใช้ setting ของสาขา/ระบบ)
                       </p>
                     </div>
                   </div>
