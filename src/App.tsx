@@ -50,6 +50,8 @@ import OvertimeSummary from "./pages/attendance/OvertimeSummary";
 import OvertimeRequests from "./pages/attendance/OvertimeRequests";
 import EarlyLeaveRequests from "./pages/attendance/EarlyLeaveRequests";
 import WorkSummary from "./pages/attendance/WorkSummary";
+import AttendanceRoles from "./pages/attendance/Roles";
+import EmployeeMenu from "./pages/EmployeeMenu";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +64,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/employee-menu" element={<EmployeeMenu />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/attendance/employee-history" element={<EmployeeHistory />} />
             <Route path="/*" element={
@@ -100,6 +103,7 @@ const App = () => (
                     <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
                     <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
                     <Route path="/attendance/work-summary" element={<WorkSummary />} />
+                    <Route path="/attendance/roles" element={<AttendanceRoles />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/settings" element={<SettingsLayout />}>

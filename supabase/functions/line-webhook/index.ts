@@ -6116,167 +6116,44 @@ function getAttendanceQuickReply(locale: 'th' | 'en' = 'th') {
   };
 }
 
-// Generate Role-Based Quick Reply (สำหรับระบบแยกตาม Role)
-function getRoleBasedQuickReply(role: string | null, locale: 'th' | 'en' = 'th', isDM: boolean = false) {
-  // For DMs - show attendance controls
-  if (isDM) {
-    if (role === 'executive' || role === 'admin') {
-      // Executive/Admin DM: Attendance + Leave + Management
-      return {
-        items: [
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🟢 เข้างาน' : '🟢 Check In',
-              text: 'checkin'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🔴 ออกงาน' : '🔴 Check Out',
-              text: 'checkout'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🏖️ ขอลา' : '🏖️ Leave',
-              text: '/leave'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '📊 Dashboard' : '📊 Dashboard',
-              text: '/status'
-            }
-          }
-        ]
-      };
-    } else {
-      // Field employee DM: Basic attendance + Leave
-      return {
-        items: [
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🟢 เข้างาน' : '🟢 Check In',
-              text: 'checkin'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🔴 ออกงาน' : '🔴 Check Out',
-              text: 'checkout'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '📋 ประวัติ' : '📋 History',
-              text: 'history'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: locale === 'th' ? '🏖️ ขอลา' : '🏖️ Leave',
-              text: '/leave'
-            }
-          }
-        ]
-      };
-    }
-  }
-  
-  // For Group Chats - show management controls
-  if (role === 'executive' || role === 'admin') {
-    // Executive/Admin in group: Approval buttons
-    return {
-      items: [
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '✅ อนุมัติ OT' : '✅ Approve OT',
-            text: '/approve_ot'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '✅ อนุมัติลา' : '✅ Approve Leave',
-            text: '/approve_leave'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '📊 รายงาน' : '📊 Report',
-            text: '/report'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '❓ ช่วยเหลือ' : '❓ Help',
-            text: '/help'
-          }
+// Generate Simple Quick Reply (4 buttons only)
+function getSimpleQuickReply(locale: 'th' | 'en' = 'th') {
+  return {
+    items: [
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '✅ เช็คอิน' : '✅ Check In',
+          text: 'checkin'
         }
-      ]
-    };
-  } else {
-    // Field employee in group: Basic commands
-    return {
-      items: [
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '📝 สรุปแชท' : '📝 Summary',
-            text: '/summary'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '🔍 ค้นหา' : '🔍 Search',
-            text: '/find'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '📋 งานของฉัน' : '📋 My Tasks',
-            text: '/tasks'
-          }
-        },
-        {
-          type: 'action',
-          action: {
-            type: 'message',
-            label: locale === 'th' ? '❓ ช่วยเหลือ' : '❓ Help',
-            text: '/help'
-          }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '🚪 เช็คเอาต์' : '🚪 Check Out',
+          text: 'checkout'
         }
-      ]
-    };
-  }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '📋 เมนู' : '📋 Menu',
+          text: 'menu'
+        }
+      },
+      {
+        type: 'action',
+        action: {
+          type: 'message',
+          label: locale === 'th' ? '❓ ช่วยเหลือ' : '❓ Help',
+          text: 'help'
+        }
+      }
+    ]
+  };
 }
 
 async function pushToLine(to: string, text: string) {
@@ -7154,38 +7031,58 @@ async function handleMessageEvent(event: LineEvent) {
     const menuLocale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
     const lowerText = event.message.text.toLowerCase().trim();
     
-    // Get employee role for Quick Reply
-    const { data: empData } = await supabase
-      .from('employees')
-      .select('role')
-      .eq('line_user_id', lineUserId)
-      .maybeSingle();
-    const employeeRole = empData?.role || null;
-    
-    // Check if it's a help/menu command
-    if (lowerText === '/menu' || lowerText === 'menu' || lowerText === 'เมนู' || lowerText === '/start' || lowerText === 'start') {
+    // Check if it's a menu command
+    if (lowerText === '/menu' || lowerText === 'menu' || lowerText === 'เมนู') {
       try {
-        const welcomeMessage = menuLocale === 'th'
-          ? `สวัสดีครับ คุณ${user.display_name}! 👋\n\nเลือกคำสั่งที่ต้องการ:`
-          : `Hello ${user.display_name}! 👋\n\nPlease select an option:`;
+        // Get employee data with role
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id, full_name, role_id')
+          .eq('line_user_id', lineUserId)
+          .maybeSingle();
         
-        await replyToLine(event.replyToken, welcomeMessage, getRoleBasedQuickReply(employeeRole, menuLocale, true));
-        console.log('[handleMessageEvent] Sent welcome message with role-based Quick Reply');
+        if (!employee) {
+          const notEmployeeMsg = menuLocale === 'th'
+            ? '❌ คุณยังไม่ได้ลงทะเบียนในระบบ\nกรุณาติดต่อผู้ดูแลระบบ'
+            : '❌ You are not registered in the system\nPlease contact administrator';
+          await replyToLine(event.replyToken, notEmployeeMsg, getSimpleQuickReply(menuLocale));
+          return;
+        }
+
+        // Generate secure token (valid for 30 minutes)
+        const token = `emp_${employee.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+        const { error: tokenError } = await supabase
+          .from('employee_menu_tokens')
+          .insert({
+            employee_id: employee.id,
+            token: token,
+            expires_at: expiresAt
+          });
+
+        if (tokenError) {
+          console.error('[Menu] Error creating token:', tokenError);
+          const errorMsg = menuLocale === 'th'
+            ? '❌ เกิดข้อผิดพลาดในการสร้างเมนู\nกรุณาลองใหม่อีกครั้ง'
+            : '❌ Error creating menu\nPlease try again';
+          await replyToLine(event.replyToken, errorMsg, getSimpleQuickReply(menuLocale));
+          return;
+        }
+
+        // Get app URL from environment
+        const appUrl = Deno.env.get('APP_URL') || 'https://your-app-url.com';
+        const menuUrl = `${appUrl}/employee-menu?token=${token}`;
+
+        const menuMessage = menuLocale === 'th'
+          ? `📋 เมนูพนักงาน\n\nคลิกลิงก์ด้านล่างเพื่อเปิดเมนู:\n${menuUrl}\n\n⏰ ลิงก์นี้ใช้ได้ 30 นาที`
+          : `📋 Employee Menu\n\nClick the link below to open menu:\n${menuUrl}\n\n⏰ This link is valid for 30 minutes`;
+
+        await replyToLine(event.replyToken, menuMessage, getSimpleQuickReply(menuLocale));
+        console.log('[Menu] Sent menu link with token');
         return;
       } catch (error) {
-        console.error('[handleMessageEvent] Error sending welcome message:', error);
-      }
-    }
-    
-    // Handle leave request command
-    const leaveResult = await handleLeaveRequestCommand(event.message.text, user, lineUserId, menuLocale);
-    if (leaveResult.detected) {
-      try {
-        await replyToLine(event.replyToken, leaveResult.message, leaveResult.quickReply);
-        console.log('[handleMessageEvent] Sent leave request response');
-        return;
-      } catch (error) {
-        console.error('[handleMessageEvent] Error sending leave request:', error);
+        console.error('[Menu] Error handling menu command:', error);
       }
     }
   }
@@ -7396,16 +7293,8 @@ async function handleMessageEvent(event: LineEvent) {
 
   // Send reply to LINE
   try {
-    // Get employee role for Quick Reply
-    const { data: empData } = await supabase
-      .from('employees')
-      .select('role')
-      .eq('line_user_id', user.line_user_id)
-      .maybeSingle();
-    const employeeRole = empData?.role || null;
-    
-    // Add role-based Quick Reply to AI responses
-    const quickReply = getRoleBasedQuickReply(employeeRole, locale, isDM);
+    // Add simple Quick Reply to AI responses
+    const quickReply = getSimpleQuickReply(locale);
     await replyToLine(event.replyToken, aiReply, quickReply);
     
     // Insert bot message

@@ -923,6 +923,71 @@ export type Database = {
           },
         ]
       }
+      employee_menu_tokens: {
+        Row: {
+          created_at: string | null
+          employee_id: string | null
+          expires_at: string
+          id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id?: string | null
+          expires_at: string
+          id?: string
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string | null
+          expires_at?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_menu_tokens_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_roles: {
+        Row: {
+          created_at: string | null
+          display_name_en: string
+          display_name_th: string
+          id: string
+          is_system: boolean | null
+          priority: number | null
+          role_key: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_name_en: string
+          display_name_th: string
+          id?: string
+          is_system?: boolean | null
+          priority?: number | null
+          role_key: string
+        }
+        Update: {
+          created_at?: string | null
+          display_name_en?: string
+          display_name_th?: string
+          id?: string
+          is_system?: boolean | null
+          priority?: number | null
+          role_key?: string
+        }
+        Relationships: []
+      }
       employees: {
         Row: {
           allow_remote_checkin: boolean | null
@@ -949,6 +1014,7 @@ export type Database = {
           reminder_preferences: Json | null
           require_photo: boolean | null
           role: string | null
+          role_id: string | null
           salary_per_month: number | null
           shift_end_time: string | null
           shift_start_time: string | null
@@ -980,6 +1046,7 @@ export type Database = {
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
+          role_id?: string | null
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
@@ -1011,6 +1078,7 @@ export type Database = {
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
+          role_id?: string | null
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
@@ -1023,6 +1091,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "employee_roles"
             referencedColumns: ["id"]
           },
         ]
@@ -1449,6 +1524,45 @@ export type Database = {
           },
         ]
       }
+      menu_items: {
+        Row: {
+          action_type: string
+          action_url: string | null
+          created_at: string | null
+          display_name_en: string
+          display_name_th: string
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          menu_key: string
+        }
+        Insert: {
+          action_type: string
+          action_url?: string | null
+          created_at?: string | null
+          display_name_en: string
+          display_name_th: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          menu_key: string
+        }
+        Update: {
+          action_type?: string
+          action_url?: string | null
+          created_at?: string | null
+          display_name_en?: string
+          display_name_th?: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          menu_key?: string
+        }
+        Relationships: []
+      }
       message_threads: {
         Row: {
           created_at: string | null
@@ -1750,6 +1864,42 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_menu_permissions: {
+        Row: {
+          created_at: string | null
+          id: string
+          menu_item_id: string | null
+          role_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          role_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          role_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_menu_permissions_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_menu_permissions_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "employee_roles"
             referencedColumns: ["id"]
           },
         ]
