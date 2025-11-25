@@ -107,6 +107,12 @@ export default function AttendancePhotos() {
   };
 
   const getPhotoUrl = (path: string) => {
+    // ถ้าเป็น full URL อยู่แล้ว ใช้เลย (backward compatibility)
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    
+    // ถ้าเป็น path ให้สร้าง public URL
     const { data } = supabase.storage
       .from('attendance-photos')
       .getPublicUrl(path);

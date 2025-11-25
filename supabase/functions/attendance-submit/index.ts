@@ -505,7 +505,7 @@ serve(async (req) => {
         timezone: timezone,
         latitude: latitude,
         longitude: longitude,
-        photo_url: photoUrl,
+        photo_url: photoPath,
         photo_hash: photoHash,
         exif_data: exifData,
         fraud_score: fraudScore,
