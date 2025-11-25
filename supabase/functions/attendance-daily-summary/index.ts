@@ -31,6 +31,16 @@ interface Employee {
   id: string;
   full_name: string;
   line_user_id: string | null;
+  hours_per_day: number | null;
+  break_hours: number | null;
+}
+
+interface WorkHoursResult {
+  grossHours: number;    // ชั่วโมงทำงานจริง (check-out - check-in)
+  netHours: number;      // ชั่วโมงหลังหักพัก
+  countedHours: number;  // ชั่วโมงที่นับจ่าย
+  overtimeHours: number; // ชั่วโมง OT (ถ้ามี)
+  hasApprovedOT: boolean;
 }
 
 const isWithinTimeWindow = (currentTime: string, targetTime: string, windowMinutes: number): boolean => {
@@ -50,6 +60,66 @@ const calculateWorkHours = (checkIn: any, checkOut: any): number => {
   const end = new Date(checkOut.server_time);
   const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
   return Math.max(0, hours);
+};
+
+const calculateWorkHoursDetailed = async (
+  supabase: any,
+  employeeId: string,
+  checkIn: any,
+  checkOut: any,
+  hoursPerDay: number,
+  breakHours: number,
+  workDate: string
+): Promise<WorkHoursResult> => {
+  if (!checkIn || !checkOut) {
+    return {
+      grossHours: 0,
+      netHours: 0,
+      countedHours: 0,
+      overtimeHours: 0,
+      hasApprovedOT: false
+    };
+  }
+
+  const start = new Date(checkIn.server_time);
+  const end = new Date(checkOut.server_time);
+  const grossHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  
+  // Calculate net hours (after break deduction)
+  const netHours = Math.max(0, grossHours - breakHours);
+  
+  // Check for approved OT
+  const { data: otRequest } = await supabase
+    .from('overtime_requests')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .eq('request_date', workDate)
+    .eq('status', 'approved')
+    .maybeSingle();
+  
+  const hasApprovedOT = !!otRequest;
+  
+  // Calculate counted hours
+  let countedHours: number;
+  let overtimeHours: number;
+  
+  if (hasApprovedOT) {
+    // If OT approved, count all net hours
+    countedHours = netHours;
+    overtimeHours = Math.max(0, netHours - hoursPerDay);
+  } else {
+    // If no OT, cap at hours_per_day
+    countedHours = Math.min(netHours, hoursPerDay);
+    overtimeHours = 0;
+  }
+  
+  return {
+    grossHours,
+    netHours,
+    countedHours,
+    overtimeHours,
+    hasApprovedOT
+  };
 };
 
 const generatePersonalSummary = async (
@@ -91,8 +161,28 @@ const generatePersonalSummary = async (
   summaryText += `🏁 เช็คเอาต์: ${checkOutTime}\n`;
 
   if (includeWorkHours && checkIn && checkOut) {
-    const hours = calculateWorkHours(checkIn, checkOut);
-    summaryText += `⏱️ ชั่วโมงทำงาน: ${hours.toFixed(1)} ชม.\n`;
+    const hoursPerDay = employee.hours_per_day || 8;
+    const breakHours = employee.break_hours || 1;
+    
+    const workHours = await calculateWorkHoursDetailed(
+      supabase,
+      employee.id,
+      checkIn,
+      checkOut,
+      hoursPerDay,
+      breakHours,
+      today
+    );
+    
+    summaryText += `⏱️ ทำงาน ${workHours.grossHours.toFixed(1)} ชม. (หักพัก ${breakHours} ชม. = ${workHours.netHours.toFixed(1)} ชม.)\n`;
+    summaryText += `💰 นับเป็น: ${workHours.countedHours.toFixed(1)} ชม.`;
+    
+    if (workHours.hasApprovedOT && workHours.overtimeHours > 0) {
+      summaryText += ` (OT ${workHours.overtimeHours.toFixed(1)} ชม.)`;
+    } else if (!workHours.hasApprovedOT && workHours.netHours > hoursPerDay) {
+      summaryText += ` (ไม่มี OT)`;
+    }
+    summaryText += '\n';
   }
 
   if (logs?.some((l: any) => l.is_flagged)) {
@@ -122,7 +212,11 @@ const generateSummary = async (
       .eq('branch_id', branch.id)
       .eq('is_active', true);
 
-    if (!employees || employees.length === 0) continue;
+    // Handle empty branches
+    if (!employees || employees.length === 0) {
+      branchSummaries.push(`📍 ${branch.name}\n⏸️ ไม่มีพนักงานในสาขานี้`);
+      continue;
+    }
 
     totalEmployees += employees.length;
     const employeeLines: string[] = [];
@@ -168,11 +262,30 @@ const generateSummary = async (
           })
         : 'ยังไม่เช็คเอาต์';
 
-      // Calculate work hours
+      // Calculate work hours with detailed breakdown
       let workHoursText = '';
       if (includeWorkHours && checkIn && checkOut) {
-        const hours = calculateWorkHours(checkIn, checkOut);
-        workHoursText = `, ทำงาน ${hours.toFixed(1)} ชม.`;
+        const hoursPerDay = employee.hours_per_day || 8;
+        const breakHours = employee.break_hours || 1;
+        
+        const workHours = await calculateWorkHoursDetailed(
+          supabase,
+          employee.id,
+          checkIn,
+          checkOut,
+          hoursPerDay,
+          breakHours,
+          today
+        );
+        
+        workHoursText = `, ทำงาน ${workHours.grossHours.toFixed(1)} ชม. (หักพัก ${breakHours} ชม.)`;
+        workHoursText += `, นับ ${workHours.countedHours.toFixed(1)} ชม.`;
+        
+        if (workHours.hasApprovedOT && workHours.overtimeHours > 0) {
+          workHoursText += ` (OT ${workHours.overtimeHours.toFixed(1)} ชม.)`;
+        } else if (!workHours.hasApprovedOT && workHours.netHours > hoursPerDay) {
+          workHoursText += ` (ไม่มี OT)`;
+        }
       }
 
       // Check if late
@@ -396,7 +509,7 @@ serve(async (req) => {
             if (messageId) sentMessageIds.push(messageId);
             successCount++;
 
-            // Store summary
+            // Store summary ONLY for per_branch preset
             await supabase.from('daily_attendance_summaries').upsert({
               branch_id: branch.id,
               summary_date: today,
@@ -500,18 +613,10 @@ serve(async (req) => {
         }
       }
 
+      // DO NOT store summaries for custom configs to prevent duplicate bug
+      // Only per_branch preset stores summaries
+      
       if (successCount > 0) {
-        // Store summary for each branch
-        for (const branch of branches) {
-          await supabase.from('daily_attendance_summaries').upsert({
-            branch_id: branch.id,
-            summary_date: today,
-            summary_text: summaryText,
-            line_message_id: sentMessageIds[0] || null,
-            sent_at: new Date().toISOString(),
-          });
-        }
-        
         processedCount++;
         console.log(`[Config: ${config.name}] Successfully sent to ${successCount} destination(s) (${failedCount} failed)`);
       } else {
