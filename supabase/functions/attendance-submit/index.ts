@@ -170,9 +170,10 @@ serve(async (req) => {
         auto_ot_enabled,
         max_work_hours_per_day,
         ot_warning_minutes,
-        branch:branches(*)
+        branch:branches!inner(*)
       `)
       .eq('id', claimedToken.employee_id)
+      .eq('branch.is_deleted', false)
       .single();
 
     if (empError || !fullEmployee) {
