@@ -503,6 +503,91 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_message_logs: {
+        Row: {
+          command_type: string | null
+          created_at: string
+          delivery_status: string | null
+          destination_id: string
+          destination_name: string | null
+          destination_type: string
+          edge_function_name: string
+          error_message: string | null
+          group_id: string | null
+          id: string
+          line_message_id: string | null
+          message_text: string
+          message_type: string
+          recipient_employee_id: string | null
+          recipient_user_id: string | null
+          sent_at: string
+          trigger_message_id: string | null
+          triggered_by: string | null
+        }
+        Insert: {
+          command_type?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          destination_id: string
+          destination_name?: string | null
+          destination_type: string
+          edge_function_name: string
+          error_message?: string | null
+          group_id?: string | null
+          id?: string
+          line_message_id?: string | null
+          message_text: string
+          message_type: string
+          recipient_employee_id?: string | null
+          recipient_user_id?: string | null
+          sent_at?: string
+          trigger_message_id?: string | null
+          triggered_by?: string | null
+        }
+        Update: {
+          command_type?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          destination_id?: string
+          destination_name?: string | null
+          destination_type?: string
+          edge_function_name?: string
+          error_message?: string | null
+          group_id?: string | null
+          id?: string
+          line_message_id?: string | null
+          message_text?: string
+          message_type?: string
+          recipient_employee_id?: string | null
+          recipient_user_id?: string | null
+          sent_at?: string
+          trigger_message_id?: string | null
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_message_logs_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_message_logs_recipient_employee_id_fkey"
+            columns: ["recipient_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_message_logs_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_triggers: {
         Row: {
           available_in_dm: boolean | null

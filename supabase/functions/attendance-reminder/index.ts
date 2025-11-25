@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { format, addMinutes, startOfDay, endOfDay } from 'https://esm.sh/date-fns@4.1.0';
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -407,13 +408,15 @@ async function sendCheckInReminder(
   
   const groupMessage = `⏰ แจ้งเตือน: @${employee.full_name} ยังไม่ได้ Check-In`;
 
+  const employeeData = { id: employee.id, full_name: employee.full_name, line_user_id: employee.line_user_id };
+
   try {
     if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
-      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken, employeeData, 'reminder', 'check_in');
     }
 
     if ((notificationType === 'group' || notificationType === 'both') && employee.announcement_group_line_id) {
-      await sendLineMessage(employee.announcement_group_line_id, groupMessage, lineAccessToken);
+      await sendLineMessage(employee.announcement_group_line_id, groupMessage, lineAccessToken, employeeData, 'reminder', 'check_in');
     }
   } catch (error) {
     console.error('[sendCheckInReminder] Error:', error);
@@ -433,13 +436,15 @@ async function sendCheckOutReminder(
   
   const groupMessage = `🏠 แจ้งเตือน: @${employee.full_name} ยังไม่ได้ Check-Out`;
 
+  const employeeData = { id: employee.id, full_name: employee.full_name, line_user_id: employee.line_user_id };
+
   try {
     if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
-      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken, employeeData, 'reminder', 'check_out');
     }
 
     if ((notificationType === 'group' || notificationType === 'both') && employee.announcement_group_line_id) {
-      await sendLineMessage(employee.announcement_group_line_id, groupMessage, lineAccessToken);
+      await sendLineMessage(employee.announcement_group_line_id, groupMessage, lineAccessToken, employeeData, 'reminder', 'check_out');
     }
   } catch (error) {
     console.error('[sendCheckOutReminder] Error:', error);
@@ -462,9 +467,11 @@ async function sendSoftCheckInReminder(
     `🔗 ${appUrl}/attendance\n\n` +
     `💡 ข้อความนี้เป็นแค่การแนะนำ ไม่ใช่การบังคับค่ะ`;
   
+  const employeeData = { id: employee.id, full_name: employee.full_name, line_user_id: employee.line_user_id };
+  
   try {
     if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
-      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken, employeeData, 'reminder', 'soft_check_in');
     }
   } catch (error) {
     console.error('[sendSoftCheckInReminder] Error:', error);
@@ -491,9 +498,11 @@ async function sendSecondCheckInReminder(
     `📍 กรุณา Check-In ด้วยค่ะ\n` +
     `🔗 ${appUrl}/attendance`;
   
+  const employeeData = { id: employee.id, full_name: employee.full_name, line_user_id: employee.line_user_id };
+  
   try {
     if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
-      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken, employeeData, 'warning', 'second_check_in');
     }
   } catch (error) {
     console.error('[sendSecondCheckInReminder] Error:', error);
@@ -501,22 +510,68 @@ async function sendSecondCheckInReminder(
 }
 
 // Send LINE message with retry
-async function sendLineMessage(lineId: string, message: string, lineAccessToken: string) {
-  await fetchWithRetry(
-    'https://api.line.me/v2/bot/message/push',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${lineAccessToken}`,
-        'Content-Type': 'application/json',
+async function sendLineMessage(
+  lineId: string, 
+  message: string, 
+  lineAccessToken: string, 
+  employeeData?: { id: string; full_name: string; line_user_id: string | null },
+  messageType: 'reminder' | 'notification' | 'warning' = 'reminder',
+  reminderType?: string
+) {
+  try {
+    await fetchWithRetry(
+      'https://api.line.me/v2/bot/message/push',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${lineAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: lineId,
+          messages: [{ type: 'text', text: message }],
+        })
       },
-      body: JSON.stringify({
-        to: lineId,
-        messages: [{ type: 'text', text: message }],
-      })
-    },
-    { maxRetries: 2 }
-  );
+      { maxRetries: 2 }
+    );
 
-  logger.info('LINE message sent successfully', { lineId });
+    logger.info('LINE message sent successfully', { lineId });
+    
+    // Log to bot_message_logs
+    if (employeeData) {
+      await logBotMessage({
+        destinationType: lineId.startsWith('U') ? 'dm' : 'group',
+        destinationId: lineId,
+        destinationName: lineId.startsWith('U') ? employeeData.full_name : 'Announcement Group',
+        recipientEmployeeId: employeeData.id,
+        messageText: message,
+        messageType: messageType,
+        triggeredBy: 'cron',
+        commandType: reminderType,
+        edgeFunctionName: 'attendance-reminder',
+        deliveryStatus: 'sent',
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to send LINE message', { lineId, error });
+    
+    // Log failed message
+    if (employeeData) {
+      await logBotMessage({
+        destinationType: lineId.startsWith('U') ? 'dm' : 'group',
+        destinationId: lineId,
+        destinationName: lineId.startsWith('U') ? employeeData.full_name : 'Announcement Group',
+        recipientEmployeeId: employeeData.id,
+        messageText: message,
+        messageType: messageType,
+        triggeredBy: 'cron',
+        commandType: reminderType,
+        edgeFunctionName: 'attendance-reminder',
+        deliveryStatus: 'failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
+    
+    throw error;
+  }
 }
