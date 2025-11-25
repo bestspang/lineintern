@@ -130,6 +130,19 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     }
   }, [challengeCompleted, captureStage]);
 
+  // Re-check video stream when entering verify stage
+  useEffect(() => {
+    if (captureStage === 'verify' && videoRef.current) {
+      const video = videoRef.current;
+      if (video.paused) {
+        video.play().catch(err => {
+          console.error('Failed to play video:', err);
+          setError('ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่');
+        });
+      }
+    }
+  }, [captureStage]);
+
   // Process video frames
   useEffect(() => {
     if (!faceLandmarker || !videoRef.current || !stream) return;
@@ -155,7 +168,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         const result: FaceLandmarkerResult = faceLandmarker.detectForVideo(video, Date.now());
         
         if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          console.log('🎥 Frame processed, stage:', captureStage);
           detectLiveness(result);
+        } else {
+          console.log('⚠️ No face detected');
         }
       } catch (err) {
         console.error("Frame processing error:", err);
@@ -192,8 +208,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       if (Math.abs(normalizedOffset) < 0.1) {
         setFaceDetectedStable(prev => {
           const newCount = prev + 1;
-          // 30 frames (~1 second) of stable face forward
-          if (newCount >= 30) {
+          // 90 frames (~3 seconds) of stable face forward
+          if (newCount >= 90) {
             autoCaptureFaceForward();
             return 0;
           }
@@ -368,13 +384,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                         📸 หันหน้าตรงกล้อง
                       </div>
                       <div className="text-base text-muted-foreground text-center">
-                        ระบบจะถ่ายรูปอัตโนมัติเมื่อใบหน้าอยู่ตรงกลาง
+                        ระบบจะถ่ายรูปอัตโนมัติใน <strong>3 วินาที</strong> เมื่อใบหน้าอยู่ตรงกลาง
+                        <br />
+                        <span className="text-sm text-primary">
+                          เตรียมหน้าของคุณให้พร้อม
+                        </span>
                       </div>
                       {/* Progress Bar */}
                       <div className="w-full bg-secondary rounded-full h-2">
                         <div 
                           className="bg-primary h-2 rounded-full transition-all duration-100"
-                          style={{ width: `${(faceDetectedStable / 30) * 100}%` }}
+                          style={{ width: `${(faceDetectedStable / 90) * 100}%` }}
                         />
                       </div>
                     </div>
@@ -412,10 +432,24 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 <>
                   <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
                     <div className="flex flex-col items-center gap-4">
-                      <ChallengeIcon className="h-12 w-12 text-primary" />
+                      <ChallengeIcon className="h-12 w-12 text-primary animate-pulse" />
                       
                       <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
                         {currentChallengeInfo.text}
+                      </div>
+                      
+                      {/* Face Detection Status */}
+                      <div className="flex items-center gap-2">
+                        {faceLandmarker ? (
+                          <Badge variant="default" className="gap-2">
+                            <Check className="h-3 w-3" />
+                            กำลังตรวจจับใบหน้า
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-2 animate-pulse">
+                            ⏳ กำลังโหลด...
+                          </Badge>
+                        )}
                       </div>
                       
                       {currentChallenge === "blink" && (
@@ -451,6 +485,21 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                       muted
                     />
                     <canvas ref={canvasRef} className="hidden" />
+                    
+                    {/* Debug Overlay */}
+                    {!faceLandmarker && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                        กำลังโหลดระบบตรวจจับใบหน้า...
+                      </div>
+                    )}
+                    
+                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded">
+                      Video: {videoRef.current?.readyState === 4 ? '✅ Ready' : '⏳ Loading'}
+                      <br />
+                      Stream: {stream ? '✅ Active' : '❌ Inactive'}
+                      <br />
+                      FaceLandmarker: {faceLandmarker ? '✅ Ready' : '❌ Not Ready'}
+                    </div>
                   </div>
 
                   <Button
