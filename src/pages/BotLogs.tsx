@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Bot, MessageSquare, Bell, AlertTriangle, FileText, Settings, CheckCircle2, XCircle, Clock } from "lucide-react";
-import { DashboardLayout } from "@/components/DashboardLayout";
 
 interface BotLog {
   id: string;
@@ -140,10 +139,9 @@ export default function BotLogs() {
   );
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6 animate-in fade-in duration-500">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Bot className="w-8 h-8 text-primary" />
@@ -328,7 +326,6 @@ export default function BotLogs() {
             )}
           </CardContent>
         </Card>
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }
