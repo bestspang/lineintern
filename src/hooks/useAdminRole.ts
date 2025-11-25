@@ -11,7 +11,7 @@ export function useAdminRole() {
   });
 
   const { data: isAdmin, isLoading } = useQuery({
-    queryKey: ['user-role', user?.id],
+    queryKey: ['user-role-admin-check', user?.id],
     queryFn: async () => {
       if (!user?.id) return false;
       
