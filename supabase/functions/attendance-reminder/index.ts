@@ -11,17 +11,23 @@ interface Employee {
   full_name: string;
   line_user_id: string | null;
   announcement_group_line_id: string | null;
-  working_time_type: string; // 'time_based' or 'hours_based'
+  working_time_type: string;
   shift_start_time: string | null;
   shift_end_time: string | null;
   hours_per_day: number | null;
   break_hours: number | null;
+  preferred_start_time: string | null;
+  allowed_work_end_time: string | null;
+  enable_second_checkin_reminder: boolean | null;
   reminder_preferences: {
     check_in_reminder_enabled: boolean;
     check_out_reminder_enabled: boolean;
     notification_type: 'private' | 'group' | 'both';
     grace_period_minutes: number;
     check_out_reminder_after_minutes: number;
+    soft_checkin_reminder_enabled?: boolean;
+    soft_checkin_reminder_minutes_before?: number;
+    second_checkin_reminder_enabled?: boolean;
   };
 }
 
@@ -72,6 +78,68 @@ Deno.serve(async (req) => {
       };
 
       const workingTimeType = employee.working_time_type || 'time_based';
+
+      // SOFT CHECK-IN REMINDER for hours_based
+      if (workingTimeType === 'hours_based' && prefs.soft_checkin_reminder_enabled && employee.preferred_start_time) {
+        const preferredStartTime = employee.preferred_start_time;
+        const reminderMinutesBefore = prefs.soft_checkin_reminder_minutes_before || 15;
+        
+        const [hour, minute] = preferredStartTime.split(':').map(Number);
+        const preferredStart = new Date(bangkokTime);
+        preferredStart.setHours(hour, minute, 0, 0);
+        const reminderTime = addMinutes(preferredStart, -reminderMinutesBefore);
+        const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
+        
+        if (currentTime >= reminderTimeStr && currentTime < format(preferredStart, 'HH:mm:ss')) {
+          const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
+          
+          if (!hasCheckedIn) {
+            const reminderSent = await hasReminderSentToday(supabase, employee.id, 'soft_check_in', today);
+            
+            if (!reminderSent) {
+              console.log(`[reminder] Sending soft check-in reminder to ${employee.full_name}`);
+              await sendSoftCheckInReminder(employee, prefs.notification_type, lineAccessToken);
+              await logReminder(supabase, employee.id, 'soft_check_in', today, prefs.notification_type);
+              checkInReminders++;
+            }
+          }
+        }
+      }
+
+      // SECOND CHECK-IN REMINDER for hours_based (before allowed_work_end_time)
+      if (workingTimeType === 'hours_based' && prefs.second_checkin_reminder_enabled && employee.enable_second_checkin_reminder) {
+        const allowedWorkEndTime = employee.allowed_work_end_time;
+        const hoursPerDay = employee.hours_per_day || 8;
+        const breakHours = employee.break_hours || 1;
+        
+        if (allowedWorkEndTime) {
+          const [endHour, endMinute] = allowedWorkEndTime.split(':').map(Number);
+          const workEnd = new Date(bangkokTime);
+          workEnd.setHours(endHour, endMinute, 0, 0);
+          
+          const totalMinutes = (hoursPerDay + breakHours) * 60;
+          const latestStartTime = addMinutes(workEnd, -totalMinutes);
+          const latestStartTimeStr = format(latestStartTime, 'HH:mm:ss');
+          
+          const secondReminderTime = addMinutes(latestStartTime, -15);
+          const secondReminderTimeStr = format(secondReminderTime, 'HH:mm:ss');
+          
+          if (currentTime >= secondReminderTimeStr && currentTime < latestStartTimeStr) {
+            const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
+            
+            if (!hasCheckedIn) {
+              const reminderSent = await hasReminderSentToday(supabase, employee.id, 'second_check_in', today);
+              
+              if (!reminderSent) {
+                console.log(`[reminder] Sending second check-in reminder to ${employee.full_name}`);
+                await sendSecondCheckInReminder(employee, latestStartTime, prefs.notification_type, lineAccessToken);
+                await logReminder(supabase, employee.id, 'second_check_in', today, prefs.notification_type);
+                checkInReminders++;
+              }
+            }
+          }
+        }
+      }
 
       // CHECK-IN REMINDER LOGIC (only for time_based employees)
       if (workingTimeType === 'time_based' && prefs.check_in_reminder_enabled) {
@@ -282,7 +350,7 @@ async function getEmployeeCheckInTime(
 async function hasReminderSentToday(
   supabase: any,
   employeeId: string,
-  reminderType: 'check_in' | 'check_out',
+  reminderType: 'check_in' | 'check_out' | 'soft_check_in' | 'second_check_in',
   date: string
 ): Promise<boolean> {
   const { data, error } = await supabase
@@ -306,7 +374,7 @@ async function hasReminderSentToday(
 async function logReminder(
   supabase: any,
   employeeId: string,
-  reminderType: 'check_in' | 'check_out',
+  reminderType: 'check_in' | 'check_out' | 'soft_check_in' | 'second_check_in',
   date: string,
   notificationType: string
 ) {
@@ -374,6 +442,59 @@ async function sendCheckOutReminder(
   } catch (error) {
     console.error('[sendCheckOutReminder] Error:', error);
     throw error;
+  }
+}
+
+// Send soft check-in reminder
+async function sendSoftCheckInReminder(
+  employee: Employee,
+  notificationType: 'private' | 'group' | 'both',
+  lineAccessToken: string
+) {
+  const appUrl = Deno.env.get('APP_URL') || 'https://your-app.lovableproject.com';
+  
+  const privateMessage = `☀️ สวัสดีค่ะ คุณ${employee.full_name}\n\n` +
+    `💼 เวลาเริ่มงานที่แนะนำคือ ${employee.preferred_start_time?.substring(0, 5)}\n` +
+    `⏰ อีก 15 นาทีจะถึงเวลาแล้วค่ะ\n\n` +
+    `📍 พร้อม Check-In เมื่อเริ่มงานนะคะ\n` +
+    `🔗 ${appUrl}/attendance\n\n` +
+    `💡 ข้อความนี้เป็นแค่การแนะนำ ไม่ใช่การบังคับค่ะ`;
+  
+  try {
+    if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+    }
+  } catch (error) {
+    console.error('[sendSoftCheckInReminder] Error:', error);
+  }
+}
+
+// Send second check-in reminder
+async function sendSecondCheckInReminder(
+  employee: Employee,
+  latestStartTime: Date,
+  notificationType: 'private' | 'group' | 'both',
+  lineAccessToken: string
+) {
+  const appUrl = Deno.env.get('APP_URL') || 'https://your-app.lovableproject.com';
+  const latestStartStr = format(latestStartTime, 'HH:mm');
+  const allowedEndStr = employee.allowed_work_end_time?.substring(0, 5) || '20:00';
+  
+  const privateMessage = `⚠️ แจ้งเตือนสำคัญ!\n\n` +
+    `👤 คุณ${employee.full_name}\n` +
+    `⏰ ตอนนี้เวลา ${format(new Date(), 'HH:mm')}\n\n` +
+    `📢 หากคุณยังไม่ Check-In ภายใน ${latestStartStr}\n` +
+    `คุณจะไม่สามารถทำงานครบ ${employee.hours_per_day} ชั่วโมงได้\n` +
+    `(เพราะสิ้นสุดการนับเวลาที่ ${allowedEndStr})\n\n` +
+    `📍 กรุณา Check-In ด้วยค่ะ\n` +
+    `🔗 ${appUrl}/attendance`;
+  
+  try {
+    if ((notificationType === 'private' || notificationType === 'both') && employee.line_user_id) {
+      await sendLineMessage(employee.line_user_id, privateMessage, lineAccessToken);
+    }
+  } catch (error) {
+    console.error('[sendSecondCheckInReminder] Error:', error);
   }
 }
 

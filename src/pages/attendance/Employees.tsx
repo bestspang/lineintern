@@ -46,12 +46,19 @@ export default function AttendanceEmployees() {
     auto_ot_enabled: false,
     allow_remote_checkin: false,
     require_photo: null as boolean | null,
+    preferred_start_time: '',
+    auto_checkout_grace_period_minutes: 60,
+    enable_pattern_learning: true,
+    enable_second_checkin_reminder: true,
     reminder_preferences: {
       check_in_reminder_enabled: true,
       check_out_reminder_enabled: true,
       notification_type: 'private',
       grace_period_minutes: 15,
       check_out_reminder_after_minutes: 15,
+      soft_checkin_reminder_enabled: true,
+      soft_checkin_reminder_minutes_before: 15,
+      second_checkin_reminder_enabled: true,
     },
     is_active: true
   });
@@ -160,12 +167,19 @@ export default function AttendanceEmployees() {
       auto_ot_enabled: false,
       allow_remote_checkin: false,
       require_photo: null as boolean | null,
+      preferred_start_time: '',
+      auto_checkout_grace_period_minutes: 60,
+      enable_pattern_learning: true,
+      enable_second_checkin_reminder: true,
       reminder_preferences: {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
         notification_type: 'private',
         grace_period_minutes: 15,
         check_out_reminder_after_minutes: 15,
+        soft_checkin_reminder_enabled: true,
+        soft_checkin_reminder_minutes_before: 15,
+        second_checkin_reminder_enabled: true,
       },
       is_active: true
     });
@@ -194,12 +208,19 @@ export default function AttendanceEmployees() {
       auto_ot_enabled: employee.auto_ot_enabled || false,
       allow_remote_checkin: employee.allow_remote_checkin || false,
       require_photo: employee.require_photo ?? null,
+      preferred_start_time: employee.preferred_start_time?.substring(0, 5) || '',
+      auto_checkout_grace_period_minutes: employee.auto_checkout_grace_period_minutes || 60,
+      enable_pattern_learning: employee.enable_pattern_learning ?? true,
+      enable_second_checkin_reminder: employee.enable_second_checkin_reminder ?? true,
       reminder_preferences: employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,
         notification_type: 'private',
         grace_period_minutes: 15,
         check_out_reminder_after_minutes: 15,
+        soft_checkin_reminder_enabled: true,
+        soft_checkin_reminder_minutes_before: 15,
+        second_checkin_reminder_enabled: true,
       },
       is_active: employee.is_active
     });
@@ -856,6 +877,123 @@ export default function AttendanceEmployees() {
                     </div>
                   </div>
 
+                  {/* Hours-Based Specific Settings */}
+                  {formData.working_time_type === 'hours_based' && (
+                    <div className="space-y-4 border-t pt-4 bg-blue-50/50 dark:bg-blue-950/20 p-4 rounded-lg">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        🎯 Hours-Based Settings
+                      </h4>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="preferred_start_time">
+                          เวลาเริ่มงานที่แนะนำ (Soft Reminder)
+                        </Label>
+                        <Input
+                          id="preferred_start_time"
+                          type="time"
+                          value={formData.preferred_start_time || ''}
+                          onChange={(e) => setFormData({ ...formData, preferred_start_time: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          ระบบจะส่งการแนะนำเบาๆ ก่อนเวลานี้ (ไม่ใช่การบังคับ)
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="auto_checkout_grace_period">
+                          Grace Period ก่อน Auto Checkout (นาที)
+                        </Label>
+                        <Input
+                          id="auto_checkout_grace_period"
+                          type="number"
+                          min="0"
+                          max="180"
+                          value={formData.auto_checkout_grace_period_minutes || 60}
+                          onChange={(e) => setFormData({ 
+                            ...formData, 
+                            auto_checkout_grace_period_minutes: parseInt(e.target.value) || 60
+                          })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          หลังครบชั่วโมงทำงาน รอกี่นาทีก่อน auto checkout (default: 60 นาที)
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label htmlFor="enable_pattern_learning">เปิดใช้งาน Pattern Learning</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            เรียนรู้รูปแบบการทำงานและเตือนอัจฉริยะ
+                          </p>
+                        </div>
+                        <Switch
+                          id="enable_pattern_learning"
+                          checked={formData.enable_pattern_learning}
+                          onCheckedChange={(checked) => setFormData({ ...formData, enable_pattern_learning: checked })}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label htmlFor="enable_second_checkin_reminder">
+                            เปิดใช้งาน Second Check-In Reminder
+                          </Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            เตือนก่อนเวลาสิ้นสุดที่จะทำงานไม่ครบ
+                          </p>
+                        </div>
+                        <Switch
+                          id="enable_second_checkin_reminder"
+                          checked={formData.enable_second_checkin_reminder}
+                          onCheckedChange={(checked) => setFormData({ ...formData, enable_second_checkin_reminder: checked })}
+                        />
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="soft_checkin_reminder"
+                          checked={formData.reminder_preferences.soft_checkin_reminder_enabled ?? true}
+                          onCheckedChange={(checked) => setFormData({
+                            ...formData,
+                            reminder_preferences: {
+                              ...formData.reminder_preferences,
+                              soft_checkin_reminder_enabled: checked
+                            }
+                          })}
+                        />
+                        <div className="flex-1">
+                          <Label htmlFor="soft_checkin_reminder">Soft Check-In Reminder</Label>
+                          <p className="text-xs text-muted-foreground">
+                            แจ้งเตือนเบาๆ ตาม preferred_start_time
+                          </p>
+                        </div>
+                      </div>
+
+                      {formData.reminder_preferences.soft_checkin_reminder_enabled && (
+                        <div className="ml-6 space-y-2">
+                          <Label htmlFor="soft_reminder_minutes_before" className="text-xs">
+                            แจ้งเตือนก่อนกี่นาที
+                          </Label>
+                          <Input
+                            id="soft_reminder_minutes_before"
+                            type="number"
+                            min="5"
+                            max="60"
+                            value={formData.reminder_preferences.soft_checkin_reminder_minutes_before || 15}
+                            onChange={(e) => setFormData({
+                              ...formData,
+                              reminder_preferences: {
+                                ...formData.reminder_preferences,
+                                soft_checkin_reminder_minutes_before: parseInt(e.target.value) || 15
+                              }
+                            })}
+                            className="h-8"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* OT Configuration Section */}
                   <div className="space-y-4 border-t pt-4">
                     <h4 className="font-medium text-sm flex items-center gap-2">
@@ -954,20 +1092,6 @@ export default function AttendanceEmployees() {
                   </div>
 
                    <div className="flex items-center space-x-2 border-t pt-4">
-                    <Switch
-                      id="allow_remote_checkin"
-                      checked={formData.allow_remote_checkin}
-                      onCheckedChange={(checked) => setFormData({ ...formData, allow_remote_checkin: checked })}
-                    />
-                    <div className="flex-1">
-                      <Label htmlFor="allow_remote_checkin">🌐 Allow Remote Check-in</Label>
-                      <p className="text-xs text-muted-foreground">
-                        พนักงานสามารถ check-in จากที่ไหนก็ได้ (ไม่ตรวจสอบพื้นที่)
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2 border-t pt-4">
                     <Switch
                       id="allow_remote_checkin"
                       checked={formData.allow_remote_checkin}
