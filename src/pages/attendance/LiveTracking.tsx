@@ -26,6 +26,7 @@ interface CheckedInEmployee {
   expected_check_out: string;
   time_until_checkout: number;
   is_remote_checkin: boolean;
+  working_minutes_elapsed: number;
 }
 
 export default function LiveTracking() {
@@ -173,6 +174,7 @@ export default function LiveTracking() {
         }
 
         const timeUntilCheckout = differenceInMinutes(expectedCheckOut, new Date());
+        const workingMinutesElapsed = differenceInMinutes(new Date(), checkInTime);
 
         return {
           employee_id: employee.id,
@@ -187,6 +189,7 @@ export default function LiveTracking() {
           expected_check_out: expectedCheckOut.toISOString(),
           time_until_checkout: timeUntilCheckout,
           is_remote_checkin: checkIn.is_remote_checkin || false,
+          working_minutes_elapsed: workingMinutesElapsed,
         };
       });
 
@@ -303,6 +306,12 @@ export default function LiveTracking() {
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
+  const formatWorkingHours = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
   return (
     <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
       {/* Header */}
@@ -408,6 +417,10 @@ export default function LiveTracking() {
                           <span className="hidden sm:inline">•</span>
                           <span>
                             📥 Check-in: {format(new Date(employee.check_in_time), 'HH:mm')}
+                          </span>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="font-medium text-primary">
+                            ⏱️ Working: {formatWorkingHours(employee.working_minutes_elapsed)}
                           </span>
                           <span className="hidden sm:inline">•</span>
                           <span>
