@@ -31,6 +31,7 @@ export default function AttendanceEmployees() {
     code: '',
     full_name: '',
     role: 'office',
+    role_id: null,
     branch_id: '',
     line_user_id: '',
     announcement_group_line_id: '',
@@ -65,8 +66,25 @@ export default function AttendanceEmployees() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('*, branch:branches(name)')
+        .select(`
+          *, 
+          branch:branches(name),
+          employee_role:employee_roles(id, display_name_th, display_name_en, role_key)
+        `)
         .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: employeeRoles } = useQuery({
+    queryKey: ['employee-roles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employee_roles')
+        .select('*')
+        .order('priority', { ascending: false });
       
       if (error) throw error;
       return data;
@@ -149,6 +167,7 @@ export default function AttendanceEmployees() {
       code: '',
       full_name: '',
       role: 'office',
+      role_id: null,
       branch_id: '',
       line_user_id: '',
       announcement_group_line_id: '',
@@ -187,6 +206,7 @@ export default function AttendanceEmployees() {
       code: employee.code,
       full_name: employee.full_name,
       role: employee.role || 'office',
+      role_id: employee.role_id || null,
       branch_id: employee.branch_id || '',
       line_user_id: employee.line_user_id || '',
       announcement_group_line_id: employee.announcement_group_line_id || '',
@@ -259,6 +279,11 @@ export default function AttendanceEmployees() {
 
     // Sanitize data based on working_time_type
     const dataToSave = { ...formData };
+    
+    // Ensure role_id is included (can be null)
+    if (!dataToSave.role_id) {
+      dataToSave.role_id = null;
+    }
 
     if (formData.working_time_type === 'hours_based') {
       // สำหรับ hours_based: ลบ shift times (ใช้ hours + allowed times แทน)
@@ -366,7 +391,7 @@ export default function AttendanceEmployees() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="role">Role</Label>
+                    <Label htmlFor="role">Role (Legacy)</Label>
                     <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
                       <SelectTrigger>
                         <SelectValue />
@@ -376,6 +401,22 @@ export default function AttendanceEmployees() {
                         <SelectItem value="field">Field</SelectItem>
                         <SelectItem value="manager">Manager</SelectItem>
                         <SelectItem value="executive">Executive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="role_id">ระดับพนักงาน (Employee Level)</Label>
+                    <Select value={formData.role_id || ''} onValueChange={(value) => setFormData({ ...formData, role_id: value || null })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกระดับพนักงาน" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">ไม่ระบุ</SelectItem>
+                        {employeeRoles?.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.display_name_th} ({role.display_name_en})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1075,7 +1116,16 @@ export default function AttendanceEmployees() {
                       <span className="text-[10px] sm:hidden text-muted-foreground capitalize">{employee.role}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell capitalize text-sm py-2">{employee.role}</TableCell>
+                  <TableCell className="hidden sm:table-cell py-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="capitalize text-sm">{employee.role}</span>
+                      {employee.employee_role && (
+                        <Badge variant="secondary" className="w-fit text-xs">
+                          {employee.employee_role.display_name_th}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
                   <TableCell className="hidden lg:table-cell py-2">
                     {employee.working_time_type === 'hours_based' ? (
