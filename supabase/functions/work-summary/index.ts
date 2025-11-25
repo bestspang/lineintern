@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,14 +86,32 @@ serve(async (req) => {
         console.log(`[work-summary] ✅ Generated summary for group ${group.id} (${group.display_name}):`, summary);
 
         // Send summary to LINE group (will fail for test groups with fake LINE IDs)
+        let lineMessageId: string | null = null;
+        let deliveryStatus: 'sent' | 'failed' = 'sent';
+        
         try {
-          await sendLineMessage(group.line_group_id, summary);
+          lineMessageId = await sendLineMessage(group.line_group_id, summary);
           console.log(`[work-summary] Sent work summary to group ${group.id} (${group.display_name})`);
           results.push({ groupId: group.id, status: 'success' });
         } catch (sendError) {
+          deliveryStatus = 'failed';
           console.log(`[work-summary] ⚠️ Could not send to LINE (expected for test data), but summary was generated successfully`);
           results.push({ groupId: group.id, status: 'generated_but_not_sent', message: 'Summary generated but LINE send failed (test data)' });
         }
+
+        // Log bot message
+        await logBotMessage({
+          destinationType: 'group',
+          destinationId: group.line_group_id,
+          destinationName: group.display_name,
+          groupId: group.id,
+          messageText: summary,
+          messageType: 'summary',
+          triggeredBy: 'cron',
+          edgeFunctionName: 'work-summary',
+          lineMessageId: lineMessageId || undefined,
+          deliveryStatus: deliveryStatus
+        });
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -324,7 +343,7 @@ Tone: Friendly, supportive, but direct about delays`;
   }
 }
 
-async function sendLineMessage(lineGroupId: string, message: string): Promise<void> {
+async function sendLineMessage(lineGroupId: string, message: string): Promise<string | null> {
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
@@ -349,7 +368,9 @@ async function sendLineMessage(lineGroupId: string, message: string): Promise<vo
       throw new Error(`LINE API error: ${response.status}`);
     }
 
+    const data = await response.json();
     console.log('[sendLineMessage] Message sent successfully');
+    return data.sentMessages?.[0]?.id || null;
   } catch (error) {
     console.error('[sendLineMessage] Error:', error);
     throw error;
