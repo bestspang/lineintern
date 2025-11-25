@@ -929,11 +929,14 @@ export type Database = {
           allowed_work_end_time: string | null
           allowed_work_start_time: string | null
           announcement_group_line_id: string | null
+          auto_checkout_grace_period_minutes: number | null
           auto_ot_enabled: boolean | null
           branch_id: string | null
           break_hours: number | null
           code: string
           created_at: string | null
+          enable_pattern_learning: boolean | null
+          enable_second_checkin_reminder: boolean | null
           full_name: string
           hours_per_day: number | null
           id: string
@@ -942,6 +945,7 @@ export type Database = {
           max_work_hours_per_day: number | null
           ot_rate_multiplier: number | null
           ot_warning_minutes: number | null
+          preferred_start_time: string | null
           reminder_preferences: Json | null
           require_photo: boolean | null
           role: string | null
@@ -956,11 +960,14 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
           branch_id?: string | null
           break_hours?: number | null
           code: string
           created_at?: string | null
+          enable_pattern_learning?: boolean | null
+          enable_second_checkin_reminder?: boolean | null
           full_name: string
           hours_per_day?: number | null
           id?: string
@@ -969,6 +976,7 @@ export type Database = {
           max_work_hours_per_day?: number | null
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
+          preferred_start_time?: string | null
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
@@ -983,11 +991,14 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
           branch_id?: string | null
           break_hours?: number | null
           code?: string
           created_at?: string | null
+          enable_pattern_learning?: boolean | null
+          enable_second_checkin_reminder?: boolean | null
           full_name?: string
           hours_per_day?: number | null
           id?: string
@@ -996,6 +1007,7 @@ export type Database = {
           max_work_hours_per_day?: number | null
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
+          preferred_start_time?: string | null
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
@@ -2102,6 +2114,53 @@ export type Database = {
         }
         Relationships: []
       }
+      work_patterns: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          employee_id: string
+          id: string
+          last_updated_at: string | null
+          pattern_type: string | null
+          sample_size: number | null
+          typical_checkin_time: string
+          typical_checkout_time: string
+          typical_work_duration_minutes: number
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          last_updated_at?: string | null
+          pattern_type?: string | null
+          sample_size?: number | null
+          typical_checkin_time: string
+          typical_checkout_time: string
+          typical_work_duration_minutes: number
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          last_updated_at?: string | null
+          pattern_type?: string | null
+          sample_size?: number | null
+          typical_checkin_time?: string
+          typical_checkout_time?: string
+          typical_work_duration_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_patterns_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_progress: {
         Row: {
           ai_feedback: string | null
@@ -2162,6 +2221,88 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_sessions: {
+        Row: {
+          actual_end_time: string | null
+          actual_start_time: string | null
+          auto_checkout_grace_expires_at: string | null
+          auto_checkout_performed: boolean | null
+          auto_checkout_warning_sent_at: string | null
+          break_minutes: number | null
+          checkin_log_id: string | null
+          checkout_log_id: string | null
+          created_at: string | null
+          employee_id: string
+          id: string
+          net_work_minutes: number | null
+          session_number: number
+          status: string | null
+          total_minutes: number | null
+          updated_at: string | null
+          work_date: string
+        }
+        Insert: {
+          actual_end_time?: string | null
+          actual_start_time?: string | null
+          auto_checkout_grace_expires_at?: string | null
+          auto_checkout_performed?: boolean | null
+          auto_checkout_warning_sent_at?: string | null
+          break_minutes?: number | null
+          checkin_log_id?: string | null
+          checkout_log_id?: string | null
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          net_work_minutes?: number | null
+          session_number?: number
+          status?: string | null
+          total_minutes?: number | null
+          updated_at?: string | null
+          work_date: string
+        }
+        Update: {
+          actual_end_time?: string | null
+          actual_start_time?: string | null
+          auto_checkout_grace_expires_at?: string | null
+          auto_checkout_performed?: boolean | null
+          auto_checkout_warning_sent_at?: string | null
+          break_minutes?: number | null
+          checkin_log_id?: string | null
+          checkout_log_id?: string | null
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          net_work_minutes?: number | null
+          session_number?: number
+          status?: string | null
+          total_minutes?: number | null
+          updated_at?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_sessions_checkin_log_id_fkey"
+            columns: ["checkin_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_sessions_checkout_log_id_fkey"
+            columns: ["checkout_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_sessions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]

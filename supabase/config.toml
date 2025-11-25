@@ -80,3 +80,9 @@ verify_jwt = false
 
 [functions.attendance-employee-history]
 verify_jwt = false
+
+[functions.auto-checkout-grace]
+verify_jwt = false
+
+[functions.pattern-learner]
+verify_jwt = false

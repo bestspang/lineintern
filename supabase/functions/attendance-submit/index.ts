@@ -531,6 +531,88 @@ serve(async (req) => {
       );
     }
 
+    // Multi-Shift Support: Track work_sessions
+    if (token.employee.working_time_type === 'hours_based') {
+      const today = new Date().toISOString().split('T')[0];
+      
+      if (token.type === 'check_in') {
+        // สร้าง work_session ใหม่
+        const { data: existingSessions } = await supabase
+          .from('work_sessions')
+          .select('session_number')
+          .eq('employee_id', token.employee.id)
+          .eq('work_date', today)
+          .order('session_number', { ascending: false })
+          .limit(1);
+        
+        const sessionNumber = (existingSessions && existingSessions.length > 0) 
+          ? existingSessions[0].session_number + 1 
+          : 1;
+        
+        // คำนวณ grace period expiry
+        const hoursPerDay = token.employee.hours_per_day || 8;
+        const breakHours = token.employee.break_hours || 1;
+        const gracePeriodMinutes = token.employee.auto_checkout_grace_period_minutes || 60;
+        
+        const totalMinutes = (hoursPerDay + breakHours) * 60;
+        const graceExpiresAt = new Date(Date.now() + (totalMinutes + gracePeriodMinutes) * 60 * 1000);
+        
+        // สร้าง session
+        const { error: sessionError } = await supabase.from('work_sessions').insert({
+          employee_id: token.employee.id,
+          work_date: today,
+          session_number: sessionNumber,
+          checkin_log_id: logData.id,
+          actual_start_time: new Date().toISOString(),
+          auto_checkout_grace_expires_at: graceExpiresAt.toISOString(),
+          break_minutes: breakHours * 60,
+          status: 'active'
+        });
+        
+        if (sessionError) {
+          console.error('[work_sessions] Error creating session:', sessionError);
+        } else {
+          console.log(`[work_sessions] Created session ${sessionNumber} for ${token.employee.full_name}`);
+        }
+      } else if (token.type === 'check_out') {
+        // อัปเดต session ที่ active
+        const { data: activeSession } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('employee_id', token.employee.id)
+          .eq('work_date', today)
+          .eq('status', 'active')
+          .order('session_number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (activeSession) {
+          const actualStartTime = new Date(activeSession.actual_start_time);
+          const actualEndTime = new Date();
+          const totalMinutes = Math.floor((actualEndTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
+          const netWorkMinutes = Math.max(0, totalMinutes - (activeSession.break_minutes || 60));
+          
+          const { error: updateError } = await supabase
+            .from('work_sessions')
+            .update({
+              checkout_log_id: logData.id,
+              actual_end_time: actualEndTime.toISOString(),
+              total_minutes: totalMinutes,
+              net_work_minutes: netWorkMinutes,
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', activeSession.id);
+          
+          if (updateError) {
+            console.error('[work_sessions] Error updating session:', updateError);
+          } else {
+            console.log(`[work_sessions] Completed session ${activeSession.session_number} for ${token.employee.full_name}: ${(netWorkMinutes / 60).toFixed(1)} hrs`);
+          }
+        }
+      }
+    }
+
     // Send confirmation DM with Quick Reply
     const actionText = token.type === 'check_in' ? 'เช็คอิน' : 'เช็คเอาต์';
     const actionTextEn = token.type === 'check_in' ? 'checked in' : 'checked out';
