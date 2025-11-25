@@ -260,6 +260,13 @@ export type Database = {
             foreignKeyName: "attendance_logs_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
@@ -389,6 +396,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_settings_branch_id_fkey"
             columns: ["branch_id"]
@@ -934,6 +948,13 @@ export type Database = {
             foreignKeyName: "daily_attendance_summaries_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_attendance_summaries_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
@@ -1177,6 +1198,13 @@ export type Database = {
           working_time_type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "employees_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employees_branch_id_fkey"
             columns: ["branch_id"]
@@ -2155,6 +2183,13 @@ export type Database = {
             foreignKeyName: "summary_delivery_config_source_branch_id_fkey"
             columns: ["source_branch_id"]
             isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "summary_delivery_config_source_branch_id_fkey"
+            columns: ["source_branch_id"]
+            isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
@@ -2857,7 +2892,57 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      active_branches: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          deleted_at: string | null
+          id: string | null
+          is_deleted: boolean | null
+          latitude: number | null
+          line_group_id: string | null
+          longitude: number | null
+          name: string | null
+          photo_required: boolean | null
+          radius_meters: number | null
+          standard_start_time: string | null
+          type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          id?: string | null
+          is_deleted?: boolean | null
+          latitude?: number | null
+          line_group_id?: string | null
+          longitude?: number | null
+          name?: string | null
+          photo_required?: boolean | null
+          radius_meters?: number | null
+          standard_start_time?: string | null
+          type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          id?: string | null
+          is_deleted?: boolean | null
+          latitude?: number | null
+          line_group_id?: string | null
+          longitude?: number | null
+          name?: string | null
+          photo_required?: boolean | null
+          radius_meters?: number | null
+          standard_start_time?: string | null
+          type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calculate_distance_meters: {

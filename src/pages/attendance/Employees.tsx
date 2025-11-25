@@ -96,6 +96,7 @@ export default function AttendanceEmployees() {
       const { data, error } = await supabase
         .from('branches')
         .select('*')
+        .eq('is_deleted', false)
         .order('name');
       
       if (error) throw error;
