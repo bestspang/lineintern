@@ -16,11 +16,12 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get token from URL params
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token');
+    // Get token from request body
+    const body = await req.json();
+    const token = body?.token;
 
     if (!token) {
+      console.error('[employee-menu-validate] No token provided in request body');
       return new Response(
         JSON.stringify({ error: 'Token is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
