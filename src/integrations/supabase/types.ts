@@ -1230,6 +1230,78 @@ export type Database = {
           },
         ]
       }
+      leave_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by_admin_id: string | null
+          created_at: string | null
+          employee_id: string
+          end_date: string
+          id: string
+          leave_type: string
+          line_message_id: string | null
+          reason: string
+          rejection_reason: string | null
+          request_date: string
+          requested_at: string
+          start_date: string
+          status: string
+          total_days: number
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id: string
+          end_date: string
+          id?: string
+          leave_type: string
+          line_message_id?: string | null
+          reason: string
+          rejection_reason?: string | null
+          request_date?: string
+          requested_at?: string
+          start_date: string
+          status?: string
+          total_days?: number
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id?: string
+          end_date?: string
+          id?: string
+          leave_type?: string
+          line_message_id?: string | null
+          reason?: string
+          rejection_reason?: string | null
+          request_date?: string
+          requested_at?: string
+          start_date?: string
+          status?: string
+          total_days?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_approved_by_admin_id_fkey"
+            columns: ["approved_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memory_items: {
         Row: {
           access_count: number | null
