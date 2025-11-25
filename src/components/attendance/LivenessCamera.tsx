@@ -318,8 +318,38 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
     const normalizedOffset = noseOffsetFromCenter / faceWidth;
 
-    // Use more lenient threshold when waiting for center after step 1
-    const centerThreshold = waitingForCenterAfterStep1 ? 0.15 : 0.25;
+    // ✅ Special case: waiting for center after step 1
+    if (waitingForCenterAfterStep1) {
+      // Use strict threshold for center detection
+      if (Math.abs(normalizedOffset) <= 0.10) {
+        setHeadPosition("center");
+        
+        console.log("[DEBUG] ✓ Detected center after step 1, advancing to step 2...", {
+          normalizedOffset,
+          step1Completed,
+          step2Challenge
+        });
+        
+        // ✅ Advance to step 2 immediately
+        setWaitingForCenterAfterStep1(false);
+        setChallengeStep(2);
+        setCurrentChallenge(step2Challenge);
+        livenessDataRef.current.headTurned = true;
+        
+        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", step2Challenge);
+      } else {
+        // Not centered yet, show position
+        if (normalizedOffset < -0.10) {
+          setHeadPosition("right");
+        } else if (normalizedOffset > 0.10) {
+          setHeadPosition("left");
+        }
+      }
+      return; // ✅ Early return - don't check other conditions
+    }
+
+    // ✅ Normal logic for step 1 and step 2
+    const centerThreshold = 0.25;
 
     // ⚠️ INVERT logic because video is mirrored
     if (normalizedOffset < -centerThreshold) {
@@ -328,8 +358,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       // Step 1: turn_right (must complete before step 2)
       if (!step1Completed && challengeStep === 1 && currentChallenge === "turn_right") {
         setStep1Completed(true);
-        setWaitingForCenterAfterStep1(true); // รอให้กลับหน้าตรงก่อน
-        // ยังไม่ advance step 2
+        setWaitingForCenterAfterStep1(true);
+        console.log("[DEBUG] ✅ Step 1 completed, waiting for center");
       }
     } else if (normalizedOffset > centerThreshold) {
       // User turns left → camera sees right → offset > 0
@@ -340,42 +370,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         setChallengeCompleted(true);
       }
     } else {
-      const newPosition = "center";
-      setHeadPosition(newPosition);
-      
-      console.log("[DEBUG] Head position: center", {
-        normalizedOffset,
-        threshold: centerThreshold,
-        waitingForCenterAfterStep1,
-        challengeStep,
-        step1Completed
-      });
-      
-      // ถ้าทำ step 1 เสร็จและกลับหน้าตรง → เริ่ม step 2
-      if (waitingForCenterAfterStep1) {
-        console.log("[DEBUG] ✅ Conditions met for advancing to step 2:", {
-          waitingForCenterAfterStep1: true,
-          step1Completed,
-          challengeStep,
-          currentChallenge,
-          step2Challenge
-        });
-        
-        // Guard: ต้อง step 1 completed จริงๆ
-        if (!step1Completed) {
-          console.error("[ERROR] step1Completed is false but waitingForCenterAfterStep1 is true!");
-          return;
-        }
-        
-        setWaitingForCenterAfterStep1(false);
-        setChallengeStep(2);
-        
-        const validStep2Challenge = step2Challenge;
-        setCurrentChallenge(validStep2Challenge);
-        livenessDataRef.current.headTurned = true;
-        
-        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", validStep2Challenge);
-      }
+      setHeadPosition("center");
     }
   };
 
