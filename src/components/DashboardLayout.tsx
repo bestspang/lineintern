@@ -27,7 +27,9 @@ import {
   Bell,
   Activity,
   AlertTriangle,
-  DollarSign
+  DollarSign,
+  CalendarDays,
+  UserCog
 } from 'lucide-react';
 import {
   Sidebar,
@@ -97,6 +99,8 @@ const navigationGroups = [
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
+      { title: 'Employee Roles', url: '/attendance/roles', icon: UserCog },
+      { title: 'Leave Balance', url: '/attendance/leave-balance', icon: CalendarDays },
       { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
       { title: 'Photos', url: '/attendance/photos', icon: Camera },
       { title: 'Fraud Detection', url: '/attendance/fraud-detection', icon: Shield },
