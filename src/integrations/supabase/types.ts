@@ -2021,7 +2021,9 @@ export type Database = {
           id: string
           include_work_hours: boolean | null
           is_enabled: boolean | null
+          is_system: boolean | null
           name: string
+          preset_type: string | null
           send_time: string
           source_branch_id: string | null
           source_type: string
@@ -2034,7 +2036,9 @@ export type Database = {
           id?: string
           include_work_hours?: boolean | null
           is_enabled?: boolean | null
+          is_system?: boolean | null
           name: string
+          preset_type?: string | null
           send_time?: string
           source_branch_id?: string | null
           source_type?: string
@@ -2047,7 +2051,9 @@ export type Database = {
           id?: string
           include_work_hours?: boolean | null
           is_enabled?: boolean | null
+          is_system?: boolean | null
           name?: string
+          preset_type?: string | null
           send_time?: string
           source_branch_id?: string | null
           source_type?: string
