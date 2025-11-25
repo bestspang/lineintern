@@ -6,12 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Building, Plus, Edit, MapPin } from 'lucide-react';
+import { Loader2, Building, Plus, Edit, MapPin, Trash2 } from 'lucide-react';
 import { MapPicker } from '@/components/attendance/MapPicker';
 
 export default function AttendanceBranches() {
@@ -20,6 +21,9 @@ export default function AttendanceBranches() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [branchToDelete, setBranchToDelete] = useState<any>(null);
+  const [deleteStats, setDeleteStats] = useState<{ logs: number; summaries: number } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     type: 'office',
@@ -38,6 +42,7 @@ export default function AttendanceBranches() {
       const { data, error } = await supabase
         .from('branches')
         .select('*')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -141,6 +146,62 @@ export default function AttendanceBranches() {
     }
     saveMutation.mutate(formData);
   };
+
+  const handleDeleteClick = async (branch: any) => {
+    setBranchToDelete(branch);
+    
+    // Fetch stats for confirmation
+    const { data: logs } = await supabase
+      .from('attendance_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('branch_id', branch.id);
+    
+    const { data: summaries } = await supabase
+      .from('daily_attendance_summaries')
+      .select('id', { count: 'exact', head: true })
+      .eq('branch_id', branch.id);
+    
+    setDeleteStats({
+      logs: logs?.length || 0,
+      summaries: summaries?.length || 0
+    });
+    
+    setDeleteDialogOpen(true);
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (branchId: string) => {
+      const { data, error } = await supabase.rpc('soft_delete_branch', {
+        p_branch_id: branchId
+      });
+      
+      if (error) throw error;
+      
+      const result = data as any;
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+      
+      return result;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['branches'] });
+      setDeleteDialogOpen(false);
+      setBranchToDelete(null);
+      setDeleteStats(null);
+      toast({
+        title: 'Success',
+        description: data.message,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
 
   if (isLoading) {
     return (
@@ -358,14 +419,24 @@ export default function AttendanceBranches() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right py-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
-                        onClick={() => handleEdit(branch)}
-                      >
-                        <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
+                      <div className="flex gap-1 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                          onClick={() => handleEdit(branch)}
+                        >
+                          <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteClick(branch)}
+                        >
+                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                 </TableRow>
               ))}
@@ -390,6 +461,49 @@ export default function AttendanceBranches() {
           setMapPickerOpen(false);
         }}
       />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Branch: {branchToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>This branch will be hidden from the system, but all historical data will be preserved:</p>
+              
+              {deleteStats && (
+                <div className="bg-muted p-3 rounded-md text-sm">
+                  <div className="font-semibold mb-2">📊 Historical Data (will be preserved):</div>
+                  <ul className="space-y-1 ml-4">
+                    <li>• {deleteStats.logs.toLocaleString()} attendance logs</li>
+                    <li>• {deleteStats.summaries.toLocaleString()} daily summaries</li>
+                  </ul>
+                </div>
+              )}
+              
+              <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-3 rounded-md text-sm">
+                <div className="font-semibold text-amber-900 dark:text-amber-100 mb-1">⚠️ Important:</div>
+                <p className="text-amber-800 dark:text-amber-200">
+                  All attendance data will remain intact for salary calculations and reports. 
+                  Only the branch configuration will be hidden.
+                </p>
+              </div>
+              
+              <p className="text-sm text-muted-foreground">
+                Note: You cannot delete a branch with active employees. Please reassign or deactivate employees first.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => branchToDelete && deleteMutation.mutate(branchToDelete.id)}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete Branch'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
