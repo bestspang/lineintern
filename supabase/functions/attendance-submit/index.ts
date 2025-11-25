@@ -145,31 +145,50 @@ serve(async (req) => {
       }
     }
 
-    // Validate token again
-    const { data: token, error: tokenError } = await supabase
-      .from('attendance_tokens')
-      .select(`
-        *,
-        employee:employees(
-          *,
-          salary_per_month,
-          ot_rate_multiplier,
-          auto_ot_enabled,
-          max_work_hours_per_day,
-          ot_warning_minutes,
-          branch:branches(*)
-        )
-      `)
-      .eq('id', tokenId)
-      .eq('status', 'pending')
-      .single();
+    // Validate token using ATOMIC claim function
+    const { data: claimedTokens, error: tokenError } = await supabase
+      .rpc('claim_attendance_token', { p_token_id: tokenId });
 
-    if (tokenError || !token || new Date(token.expires_at) < new Date()) {
+    if (tokenError || !claimedTokens || claimedTokens.length === 0) {
+      logger.warn('Token claim failed', { tokenId, error: tokenError });
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid or expired token' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const claimedToken = claimedTokens[0];
+    const employee = claimedToken.employee_data;
+    
+    // Get full employee data with relationships
+    const { data: fullEmployee, error: empError } = await supabase
+      .from('employees')
+      .select(`
+        *,
+        salary_per_month,
+        ot_rate_multiplier,
+        auto_ot_enabled,
+        max_work_hours_per_day,
+        ot_warning_minutes,
+        branch:branches(*)
+      `)
+      .eq('id', claimedToken.employee_id)
+      .single();
+
+    if (empError || !fullEmployee) {
+      logger.error('Failed to fetch employee data', empError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Employee not found' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = {
+      id: claimedToken.token_id,
+      type: claimedToken.token_type,
+      expires_at: claimedToken.expires_at,
+      employee: fullEmployee
+    };
 
     // VALIDATION: Check if employee can perform this action
     if (token.type === 'check_in') {

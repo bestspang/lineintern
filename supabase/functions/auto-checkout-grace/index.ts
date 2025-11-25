@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
           id, full_name, code, line_user_id, 
           announcement_group_line_id,
           hours_per_day, break_hours,
-          auto_checkout_grace_period_minutes
+          auto_checkout_grace_period_minutes,
+          branch_id
         )
       `)
       .eq('status', 'active')
@@ -67,6 +68,7 @@ Deno.serve(async (req) => {
           .from('attendance_logs')
           .insert({
             employee_id: employee.id,
+            branch_id: employee.branch_id, // FIX: Add branch_id
             event_type: 'check_out',
             server_time: checkoutTime.toISOString(),
             device_time: checkoutTime.toISOString(),

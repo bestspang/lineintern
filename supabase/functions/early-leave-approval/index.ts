@@ -85,6 +85,7 @@ serve(async (req) => {
           code,
           line_user_id,
           announcement_group_line_id,
+          branch_id,
           branches (
             name,
             line_group_id
@@ -175,11 +176,11 @@ serve(async (req) => {
 
     // If approved, perform checkout
     if (action === 'approve' && employee) {
-      const { error: checkoutError } = await supabase
+      const { data: checkoutLog, error: checkoutError } = await supabase
         .from('attendance_logs')
         .insert({
           employee_id: employee.id,
-          branch_id: leaveRequest.attendance_log_id, // May need adjustment
+          branch_id: employee.branch_id, // FIX: Use employee's branch_id
           event_type: 'check_out',
           server_time: now.toISOString(),
           device_time: now.toISOString(),
@@ -192,12 +193,32 @@ serve(async (req) => {
             leave_type: leaveRequest.leave_type,
             leave_reason: leaveRequest.leave_reason
           }
-        });
+        })
+        .select()
+        .single();
 
       if (checkoutError) {
         logger.error('Auto-checkout failed for early leave', checkoutError);
       } else {
         logger.info('Auto-checkout successful for early leave', { employee_id: employee.id });
+        
+        // Update work_sessions to completed status
+        const { error: sessionError } = await supabase
+          .from('work_sessions')
+          .update({
+            status: 'completed',
+            checkout_log_id: checkoutLog.id,
+            actual_end_time: now.toISOString(),
+            updated_at: now.toISOString()
+          })
+          .eq('employee_id', employee.id)
+          .eq('status', 'active');
+        
+        if (sessionError) {
+          logger.error('Failed to update work session', sessionError);
+        } else {
+          logger.info('Work session updated to completed', { employee_id: employee.id });
+        }
       }
     }
 
