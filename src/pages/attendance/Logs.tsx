@@ -12,8 +12,8 @@ import { format } from 'date-fns';
 import { CheckCircle2, XCircle, AlertTriangle, MapPin, Camera, RefreshCw, Clock } from 'lucide-react';
 
 export default function AttendanceLogs() {
-  const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(new Date());
+  const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
   const [employeeId, setEmployeeId] = useState<string>('');
   const [branchId, setBranchId] = useState<string>('');
   const [eventType, setEventType] = useState<string>('');
@@ -54,6 +54,9 @@ export default function AttendanceLogs() {
   const { data: logs, isLoading, refetch } = useQuery({
     queryKey: ['attendance-logs', dateFrom, dateTo, employeeId, branchId, eventType, status, page],
     queryFn: async () => {
+      const dateFromStr = dateFrom ? format(dateFrom, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+      const dateToStr = dateTo ? format(dateTo, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+      
       let query = supabase
         .from('attendance_logs')
         .select(`
@@ -65,8 +68,8 @@ export default function AttendanceLogs() {
             id, name
           )
         `, { count: 'exact' })
-        .gte('server_time', `${dateFrom}T00:00:00`)
-        .lte('server_time', `${dateTo}T23:59:59`)
+        .gte('server_time', `${dateFromStr}T00:00:00`)
+        .lte('server_time', `${dateToStr}T23:59:59`)
         .order('server_time', { ascending: false });
 
       if (employeeId) {
@@ -101,8 +104,8 @@ export default function AttendanceLogs() {
   const totalPages = Math.ceil((logs?.count || 0) / pageSize);
 
   const handleReset = () => {
-    setDateFrom(format(new Date(), 'yyyy-MM-dd'));
-    setDateTo(format(new Date(), 'yyyy-MM-dd'));
+    setDateFrom(new Date());
+    setDateTo(new Date());
     setEmployeeId('');
     setBranchId('');
     setEventType('');
@@ -135,10 +138,15 @@ export default function AttendanceLogs() {
             Refresh
           </Button>
           <AttendanceLogExport 
-            dateFrom={dateFrom} 
-            dateTo={dateTo}
-            employeeId={employeeId}
-            branchId={branchId}
+            logs={logs?.logs || []}
+            filters={{
+              dateFrom,
+              dateTo,
+              employeeId,
+              branchId,
+              eventType,
+              status
+            }}
           />
         </div>
       </div>
@@ -329,7 +337,7 @@ export default function AttendanceLogs() {
         <AttendanceLogDetail
           log={selectedLog}
           open={!!selectedLog}
-          onClose={() => setSelectedLog(null)}
+          onOpenChange={(open) => !open && setSelectedLog(null)}
         />
       )}
     </div>
