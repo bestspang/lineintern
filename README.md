@@ -115,39 +115,43 @@ The dashboard will be available at `http://localhost:5173`
 ## 💬 Bot Commands
 
 ### General
-- `@intern [question]` - Ask any question
-- `/help` - Show help guide with all commands
+- `@intern [question]` - Ask any question or chat naturally
+- `/help` - Show comprehensive help guide with all commands
 
 ### Conversations
-- `/summary [period]` - Summarize chat
-- `/find [keyword]` - Search messages
-- `/mentions [@user]` - Find user mentions
+- `/summary [period]` - Summarize chat (last 10/50/100 messages, or today/week)
+- `/find [keyword]` - Search messages by keyword
+- `/mentions [@user]` - Find all mentions of a specific user
 
-### Tasks & Work
-- `/todo [task]` - Create a task
-- `/remind [task] [time]` - Set a reminder
-- `/tasks @user` - List pending work
-- `/confirm @user` - Approve work
-- `/progress [text]` - Report work progress
-- `/reminders` - List all pending work
+### Work Management
+- `/todo [task]` - Create a simple task or reminder
+- `/remind [task] [time]` - Set a reminder at specific time
+- `@user [task]` - Assign work to a user (detected automatically)
+- `/tasks @user` - List all pending work assignments for a user
+- `/progress [text] [percentage]` - Report work progress with optional percentage
+- `/confirm @user` - Approve completed work
+- `/confirm @user [feedback]` - Approve with AI-generated feedback
+- `/reminders` - List all pending reminders and work assignments
 
 ### Attendance (DM only)
-- `checkin` or `เช็คอิน` - Check in to work
-- `checkout` or `เช็คเอาต์` - Check out from work
+- `checkin` / `เช็คอิน` - Request check-in link (valid for 10 minutes)
+- `checkout` / `เช็คเอาต์` - Request check-out link (valid for 10 minutes)
+- `/ot [reason]` - Request overtime approval
+- `/menu` - Access employee self-service menu
 
-### Knowledge
-- `/faq [question]` - Search knowledge base
-- `/train [content]` - Add knowledge
+### Knowledge Base
+- `/faq [question]` - Search knowledge base and FAQ
+- `/train [content]` - Add new knowledge item to database
 
-### Analytics
-- `/report [period]` - Generate activity report
+### Analytics & Reports
+- `/report [period]` - Generate group activity report (today/week/month)
 
-### Creative
-- `/imagine [description]` - Generate AI image
+### AI & Creative
+- `/imagine [description]` - Generate AI image using Gemini
 
-### Settings
-- `/mode [mode]` - Change bot mode
-- `/status` - View AI personality stats
+### Settings & Info
+- `/mode [mode]` - Change bot mode (helper/faq/fun/safety)
+- `/status` - View AI personality state and statistics
 
 ## 🎨 Dashboard Pages
 

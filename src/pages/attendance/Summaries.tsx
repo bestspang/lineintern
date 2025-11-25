@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings, HelpCircle, FileUser, Building2, Users } from 'lucide-react';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings, HelpCircle, FileUser, Building2, Users, History } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -219,6 +219,20 @@ export default function AttendanceSummaries() {
       }
 
       const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch delivery logs
+  const { data: deliveryLogs, isLoading: loadingDeliveryLogs } = useQuery({
+    queryKey: ['delivery-logs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('summary_delivery_logs')
+        .select('*, config:summary_delivery_config(name)')
+        .order('sent_at', { ascending: false })
+        .limit(50);
       if (error) throw error;
       return data;
     }
@@ -1348,6 +1362,71 @@ export default function AttendanceSummaries() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delivery History Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <History className="h-5 w-5" />
+            📜 ประวัติการส่งรายงาน
+          </CardTitle>
+          <CardDescription>
+            ประวัติการส่งรายงานอัตโนมัติ 50 ครั้งล่าสุด
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingDeliveryLogs ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : deliveryLogs && deliveryLogs.length > 0 ? (
+            <div className="space-y-2">
+              {deliveryLogs.map((log: any) => (
+                <div 
+                  key={log.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">
+                      {log.config?.name || 'ไม่ระบุชื่อ'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {log.sent_at ? format(new Date(log.sent_at), 'dd/MM/yyyy HH:mm') : 'ไม่ระบุเวลา'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <Badge 
+                        variant={
+                          log.success_count === log.recipients_count ? 'default' :
+                          log.success_count > 0 ? 'secondary' : 'destructive'
+                        }
+                        className="text-xs"
+                      >
+                        {log.success_count || 0} / {log.recipients_count || 0}
+                      </Badge>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        สำเร็จ / ทั้งหมด
+                      </p>
+                    </div>
+                    {log.failed_count > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        ❌ {log.failed_count} ล้มเหลว
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>ยังไม่มีประวัติการส่งรายงาน</p>
+              <p className="text-sm">รายงานจะถูกส่งอัตโนมัติตามเวลาที่ตั้งไว้</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
