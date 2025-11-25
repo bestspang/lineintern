@@ -20,7 +20,6 @@ export default function EmployeeSettings() {
     salary_per_month: "",
     ot_rate_multiplier: "1.5",
     auto_ot_enabled: false,
-    allow_remote_checkin: false,
     max_work_hours_per_day: "8.0",
     ot_warning_minutes: "15",
   });
@@ -53,7 +52,6 @@ export default function EmployeeSettings() {
         salary_per_month: employee.salary_per_month?.toString() || "",
         ot_rate_multiplier: employee.ot_rate_multiplier?.toString() || "1.5",
         auto_ot_enabled: employee.auto_ot_enabled || false,
-        allow_remote_checkin: employee.allow_remote_checkin || false,
         max_work_hours_per_day: employee.max_work_hours_per_day?.toString() || "8.0",
         ot_warning_minutes: employee.ot_warning_minutes?.toString() || "15",
       });
@@ -69,7 +67,6 @@ export default function EmployeeSettings() {
           salary_per_month: data.salary_per_month ? parseFloat(data.salary_per_month) : null,
           ot_rate_multiplier: parseFloat(data.ot_rate_multiplier),
           auto_ot_enabled: data.auto_ot_enabled,
-          allow_remote_checkin: data.allow_remote_checkin,
           max_work_hours_per_day: parseFloat(data.max_work_hours_per_day),
           ot_warning_minutes: parseInt(data.ot_warning_minutes),
         })
@@ -232,25 +229,6 @@ export default function EmployeeSettings() {
                 checked={formData.auto_ot_enabled}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, auto_ot_enabled: checked })
-                }
-              />
-            </div>
-
-            {/* Allow Remote Check-in */}
-            <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="allow_remote" className="text-base">
-                  🌐 อนุญาตให้ Check-in จากที่ไหนก็ได้
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  สำหรับ Field Worker ไม่ตรวจสอบพื้นที่ (ยังบันทึก location)
-                </p>
-              </div>
-              <Switch
-                id="allow_remote"
-                checked={formData.allow_remote_checkin}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, allow_remote_checkin: checked })
                 }
               />
             </div>
