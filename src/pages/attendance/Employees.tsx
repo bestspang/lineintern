@@ -280,12 +280,20 @@ export default function AttendanceEmployees() {
       if (dataToSave.allowed_work_end_time.length === 5) {
         dataToSave.allowed_work_end_time += ':00';
       }
+      
+      // Handle preferred_start_time (Soft Reminder) - hours_based
+      if (!dataToSave.preferred_start_time || dataToSave.preferred_start_time.trim() === '') {
+        dataToSave.preferred_start_time = null;
+      } else if (dataToSave.preferred_start_time.length === 5) {
+        dataToSave.preferred_start_time += ':00';
+      }
     } else if (formData.working_time_type === 'time_based') {
       // สำหรับ time_based: ลบ hours + allowed times (ใช้ shift times แทน)
       dataToSave.hours_per_day = null;
       dataToSave.break_hours = null;
       dataToSave.allowed_work_start_time = null;
       dataToSave.allowed_work_end_time = null;
+      dataToSave.preferred_start_time = null; // time_based ไม่ใช้ soft reminder
       
       // เพิ่ม :00 ถ้ารูปแบบเป็น HH:MM
       if (dataToSave.shift_start_time && dataToSave.shift_start_time.length === 5) {
@@ -883,7 +891,8 @@ export default function AttendanceEmployees() {
                           id="preferred_start_time"
                           type="time"
                           value={formData.preferred_start_time || ''}
-                          onChange={(e) => setFormData({ ...formData, preferred_start_time: e.target.value })}
+                          onChange={(e) => setFormData({ ...formData, preferred_start_time: e.target.value || null })}
+                          placeholder="Optional: 09:00"
                         />
                         <p className="text-xs text-muted-foreground">
                           ระบบจะส่งการแนะนำเบาๆ ก่อนเวลานี้ (ไม่ใช่การบังคับ)
