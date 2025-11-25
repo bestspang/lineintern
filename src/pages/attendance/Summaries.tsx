@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,20 +9,69 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
 
 export default function AttendanceSummaries() {
+  const queryClient = useQueryClient();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
-  const [checkinType, setCheckinType] = useState<string>('all'); // all, onsite, remote
+  const [checkinType, setCheckinType] = useState<string>('all');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<any>(null);
+  
+  // Form state
+  const [configName, setConfigName] = useState('');
+  const [sourceType, setSourceType] = useState<'all_branches' | 'single_branch'>('all_branches');
+  const [sourceBranchId, setSourceBranchId] = useState('');
+  const [destinationType, setDestinationType] = useState<'group' | 'private'>('group');
+  const [destinationLineId, setDestinationLineId] = useState('');
+  const [destinationEmployeeId, setDestinationEmployeeId] = useState('');
+  const [sendTime, setSendTime] = useState('21:00');
+  const [includeWorkHours, setIncludeWorkHours] = useState(true);
 
   // Fetch branches
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: async () => {
       const { data, error } = await supabase.from('branches').select('*');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch employees (for private delivery)
+  const { data: employees } = useQuery({
+    queryKey: ['employees-all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, full_name, code, line_user_id')
+        .eq('is_active', true)
+        .order('full_name');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch delivery configs
+  const { data: deliveryConfigs, isLoading: loadingConfigs } = useQuery({
+    queryKey: ['summary-delivery-configs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('summary_delivery_config')
+        .select(`
+          *,
+          source_branch:branches!source_branch_id(name),
+          destination_employee:employees!destination_employee_id(full_name, line_user_id)
+        `)
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
     }
@@ -273,7 +322,6 @@ export default function AttendanceSummaries() {
     const csv = [
       ['Employee', 'Branch', 'Date', 'Leave Type', 'Reason', 'Status', 'Remote Check-in'],
       ...earlyLeaveRequests.map(req => {
-        // Find associated attendance log to check if it was remote
         const associatedLog = attendanceLogs?.find(log => 
           log.employee_id === req.employee_id && 
           format(new Date(log.server_time), 'yyyy-MM-dd') === req.request_date
@@ -300,7 +348,115 @@ export default function AttendanceSummaries() {
     window.URL.revokeObjectURL(url);
   };
 
-  const isLoading = loadingDaily || loadingOT || loadingEarlyLeave || loadingLogs;
+  // Mutations for delivery configs
+  const createConfigMutation = useMutation({
+    mutationFn: async (config: any) => {
+      const { error } = await supabase.from('summary_delivery_config').insert(config);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summary-delivery-configs'] });
+      toast.success('เพิ่มการตั้งค่าสำเร็จ');
+      resetForm();
+      setDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  });
+
+  const updateConfigMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
+      const { error } = await supabase
+        .from('summary_delivery_config')
+        .update(updates)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summary-delivery-configs'] });
+      toast.success('อัพเดทสำเร็จ');
+    },
+    onError: (error) => {
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  });
+
+  const deleteConfigMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('summary_delivery_config')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summary-delivery-configs'] });
+      toast.success('ลบการตั้งค่าสำเร็จ');
+    },
+    onError: (error) => {
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.functions.invoke('attendance-daily-summary');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('ส่งรายงานทดสอบสำเร็จ');
+    },
+    onError: (error) => {
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  });
+
+  const resetForm = () => {
+    setConfigName('');
+    setSourceType('all_branches');
+    setSourceBranchId('');
+    setDestinationType('group');
+    setDestinationLineId('');
+    setDestinationEmployeeId('');
+    setSendTime('21:00');
+    setIncludeWorkHours(true);
+    setEditingConfig(null);
+  };
+
+  const handleSaveConfig = () => {
+    const config = {
+      name: configName,
+      source_type: sourceType,
+      source_branch_id: sourceType === 'single_branch' ? sourceBranchId : null,
+      destination_type: destinationType,
+      destination_line_id: destinationType === 'group' ? destinationLineId : null,
+      destination_employee_id: destinationType === 'private' ? destinationEmployeeId : null,
+      send_time: sendTime + ':00',
+      include_work_hours: includeWorkHours,
+    };
+
+    if (editingConfig) {
+      updateConfigMutation.mutate({ id: editingConfig.id, updates: config });
+    } else {
+      createConfigMutation.mutate(config);
+    }
+  };
+
+  const handleEditConfig = (config: any) => {
+    setEditingConfig(config);
+    setConfigName(config.name);
+    setSourceType(config.source_type);
+    setSourceBranchId(config.source_branch_id || '');
+    setDestinationType(config.destination_type);
+    setDestinationLineId(config.destination_line_id || '');
+    setDestinationEmployeeId(config.destination_employee_id || '');
+    setSendTime(config.send_time?.substring(0, 5) || '21:00');
+    setIncludeWorkHours(config.include_work_hours);
+    setDialogOpen(true);
+  };
+
+  const isLoading = loadingDaily || loadingOT || loadingEarlyLeave || loadingLogs || loadingConfigs;
 
   if (isLoading) {
     return (
@@ -318,6 +474,249 @@ export default function AttendanceSummaries() {
           Comprehensive attendance, overtime, and early leave reports
         </p>
       </div>
+
+      {/* Delivery Configuration Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                📬 ตั้งค่าการส่งรายงาน
+              </CardTitle>
+              <CardDescription>
+                กำหนดว่าจะส่งรายงานไปที่ไหน และเวลาไหน
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => testSendMutation.mutate()}
+                variant="outline"
+                size="sm"
+                disabled={testSendMutation.isPending}
+              >
+                {testSendMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                ส่งทดสอบ
+              </Button>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" onClick={resetForm}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    เพิ่มการส่งใหม่
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingConfig ? 'แก้ไขการส่งรายงาน' : 'เพิ่มการส่งรายงานใหม่'}</DialogTitle>
+                    <DialogDescription>
+                      กำหนดว่าจะส่งรายงานจากสาขาไหน ไปที่ไหน และเวลาไหน
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="config-name">ชื่อการตั้งค่า</Label>
+                      <Input
+                        id="config-name"
+                        value={configName}
+                        onChange={(e) => setConfigName(e.target.value)}
+                        placeholder="เช่น รายงานทุกสาขา → ฝ่ายบริหาร"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>ข้อมูลจาก</Label>
+                      <Select value={sourceType} onValueChange={(v: any) => setSourceType(v)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all_branches">ทุกสาขา</SelectItem>
+                          <SelectItem value="single_branch">เลือกสาขา</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {sourceType === 'single_branch' && (
+                      <div className="space-y-2">
+                        <Label>เลือกสาขา</Label>
+                        <Select value={sourceBranchId} onValueChange={setSourceBranchId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="เลือกสาขา" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {branches?.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                {b.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>ส่งไป</Label>
+                      <Select value={destinationType} onValueChange={(v: any) => setDestinationType(v)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="group">กลุ่ม LINE</SelectItem>
+                          <SelectItem value="private">ส่งตรงหาพนักงาน</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {destinationType === 'group' && (
+                      <div className="space-y-2">
+                        <Label>LINE Group ID</Label>
+                        <Input
+                          value={destinationLineId}
+                          onChange={(e) => setDestinationLineId(e.target.value)}
+                          placeholder="กรอก LINE Group ID"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          สามารถหา Group ID ได้จากหน้า Groups
+                        </p>
+                      </div>
+                    )}
+
+                    {destinationType === 'private' && (
+                      <div className="space-y-2">
+                        <Label>เลือกพนักงาน</Label>
+                        <Select value={destinationEmployeeId} onValueChange={setDestinationEmployeeId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="เลือกพนักงาน" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {employees?.filter(e => e.line_user_id).map((e) => (
+                              <SelectItem key={e.id} value={e.id}>
+                                {e.full_name} ({e.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="send-time">เวลาส่ง</Label>
+                      <Input
+                        id="send-time"
+                        type="time"
+                        value={sendTime}
+                        onChange={(e) => setSendTime(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="include-hours"
+                        checked={includeWorkHours}
+                        onCheckedChange={setIncludeWorkHours}
+                      />
+                      <Label htmlFor="include-hours">รวมชั่วโมงทำงาน</Label>
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                      ยกเลิก
+                    </Button>
+                    <Button
+                      onClick={handleSaveConfig}
+                      disabled={!configName || createConfigMutation.isPending || updateConfigMutation.isPending}
+                    >
+                      {(createConfigMutation.isPending || updateConfigMutation.isPending) && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      บันทึก
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {deliveryConfigs && deliveryConfigs.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ชื่อ</TableHead>
+                  <TableHead>ข้อมูลจาก</TableHead>
+                  <TableHead>ส่งไป</TableHead>
+                  <TableHead>เวลา</TableHead>
+                  <TableHead>สถานะ</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deliveryConfigs.map((config: any) => (
+                  <TableRow key={config.id}>
+                    <TableCell className="font-medium">{config.name}</TableCell>
+                    <TableCell>
+                      {config.source_type === 'all_branches' 
+                        ? 'ทุกสาขา' 
+                        : config.source_branch?.name || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {config.destination_type === 'group' 
+                        ? `📱 Group: ${config.destination_line_id?.substring(0, 10)}...` 
+                        : `👤 ${config.destination_employee?.full_name || '-'}`}
+                    </TableCell>
+                    <TableCell>{config.send_time?.substring(0, 5) || '-'}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={config.is_enabled}
+                        onCheckedChange={(checked) =>
+                          updateConfigMutation.mutate({
+                            id: config.id,
+                            updates: { is_enabled: checked },
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditConfig(config)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm('ต้องการลบการตั้งค่านี้?')) {
+                              deleteConfigMutation.mutate(config.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>ยังไม่มีการตั้งค่าการส่งรายงาน</p>
+              <p className="text-sm">คลิก "เพิ่มการส่งใหม่" เพื่อเริ่มต้น</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>

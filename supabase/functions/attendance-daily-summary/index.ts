@@ -6,6 +6,188 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface DeliveryConfig {
+  id: string;
+  name: string;
+  source_type: 'all_branches' | 'single_branch';
+  source_branch_id: string | null;
+  destination_type: 'group' | 'private';
+  destination_line_id: string | null;
+  destination_employee_id: string | null;
+  send_time: string;
+  include_work_hours: boolean;
+  is_enabled: boolean;
+}
+
+interface Branch {
+  id: string;
+  name: string;
+  line_group_id: string | null;
+  standard_start_time: string | null;
+}
+
+interface Employee {
+  id: string;
+  full_name: string;
+  line_user_id: string | null;
+}
+
+const calculateWorkHours = (checkIn: any, checkOut: any): number => {
+  if (!checkIn || !checkOut) return 0;
+  const start = new Date(checkIn.server_time);
+  const end = new Date(checkOut.server_time);
+  const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  return Math.max(0, hours);
+};
+
+const generateSummary = async (
+  supabase: any,
+  branches: Branch[],
+  today: string,
+  includeWorkHours: boolean
+): Promise<string> => {
+  const branchSummaries: string[] = [];
+  let totalCheckedIn = 0;
+  let totalCheckedOut = 0;
+  let totalLate = 0;
+  let totalFlagged = 0;
+  let totalEmployees = 0;
+
+  for (const branch of branches) {
+    const { data: employees } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('branch_id', branch.id)
+      .eq('is_active', true);
+
+    if (!employees || employees.length === 0) continue;
+
+    totalEmployees += employees.length;
+    const employeeLines: string[] = [];
+    let checkedInCount = 0;
+    let checkedOutCount = 0;
+    let lateCount = 0;
+    let flaggedCount = 0;
+
+    for (const employee of employees) {
+      const { data: logs } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .gte('server_time', `${today}T00:00:00`)
+        .lte('server_time', `${today}T23:59:59`)
+        .order('server_time', { ascending: true });
+
+      if (!logs || logs.length === 0) {
+        employeeLines.push(`- ${employee.full_name}: ไม่พบการเช็คอิน`);
+        continue;
+      }
+
+      const checkIn = logs.find((l: any) => l.event_type === 'check_in');
+      const checkOut = logs.find((l: any) => l.event_type === 'check_out');
+
+      if (checkIn) checkedInCount++;
+      if (checkOut) checkedOutCount++;
+      if (logs.some((l: any) => l.is_flagged)) flaggedCount++;
+
+      const checkInTime = checkIn
+        ? new Date(checkIn.server_time).toLocaleTimeString('th-TH', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Bangkok',
+          })
+        : '-';
+
+      const checkOutTime = checkOut
+        ? new Date(checkOut.server_time).toLocaleTimeString('th-TH', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Bangkok',
+          })
+        : 'ยังไม่เช็คเอาต์';
+
+      // Calculate work hours
+      let workHoursText = '';
+      if (includeWorkHours && checkIn && checkOut) {
+        const hours = calculateWorkHours(checkIn, checkOut);
+        workHoursText = `, ทำงาน ${hours.toFixed(1)} ชม.`;
+      }
+
+      // Check if late
+      let lateIndicator = '';
+      if (checkIn && branch.standard_start_time) {
+        const checkInDate = new Date(checkIn.server_time);
+        const [hours, minutes] = branch.standard_start_time.split(':');
+        const standardTime = new Date(checkInDate);
+        standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
+
+        if (checkInDate > standardTime) {
+          lateIndicator = ' (สาย)';
+          lateCount++;
+        }
+      }
+
+      const flagIndicator = logs.some((l: any) => l.is_flagged) ? ' ⚠️' : '';
+
+      employeeLines.push(
+        `- ${employee.full_name}: เช็คอิน ${checkInTime}${lateIndicator}, เช็คเอาต์ ${checkOutTime}${workHoursText}${flagIndicator}`
+      );
+    }
+
+    totalCheckedIn += checkedInCount;
+    totalCheckedOut += checkedOutCount;
+    totalLate += lateCount;
+    totalFlagged += flaggedCount;
+
+    if (branches.length > 1) {
+      branchSummaries.push(
+        `📍 ${branch.name}\n${employeeLines.join('\n')}\n\n📈 สรุป ${branch.name}:\n- เช็คอินแล้ว: ${checkedInCount}/${employees.length} คน\n- เช็คเอาต์แล้ว: ${checkedOutCount}/${employees.length} คน\n- มาสาย: ${lateCount} คน\n- มีข้อสังเกต: ${flaggedCount} คน`
+      );
+    } else {
+      branchSummaries.push(
+        `📍 ${branch.name}\n\n${employeeLines.join('\n')}\n\n📈 สรุป:\n- เช็คอินแล้ว: ${checkedInCount}/${employees.length} คน\n- เช็คเอาต์แล้ว: ${checkedOutCount}/${employees.length} คน\n- มาสาย: ${lateCount} คน\n- มีข้อสังเกต: ${flaggedCount} คน`
+      );
+    }
+  }
+
+  let summaryText = `📊 สรุปการเข้างาน ${today}\n\n${branchSummaries.join('\n\n')}`;
+
+  if (branches.length > 1) {
+    summaryText += `\n\n📊 สรุปรวมทุกสาขา:\n- เช็คอินแล้ว: ${totalCheckedIn}/${totalEmployees} คน\n- เช็คเอาต์แล้ว: ${totalCheckedOut}/${totalEmployees} คน\n- มาสาย: ${totalLate} คน\n- มีข้อสังเกต: ${totalFlagged} คน`;
+  }
+
+  return summaryText;
+};
+
+const sendToLine = async (
+  to: string,
+  message: string,
+  accessToken: string
+): Promise<{ ok: boolean; messageId: string | null }> => {
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        to: to,
+        messages: [{ type: 'text', text: message }],
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return { ok: true, messageId: data.sentMessages?.[0]?.id || null };
+    }
+    return { ok: false, messageId: null };
+  } catch (error) {
+    console.error('Error sending LINE message:', error);
+    return { ok: false, messageId: null };
+  }
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,145 +200,116 @@ serve(async (req) => {
     );
 
     const today = new Date().toISOString().split('T')[0];
-    
-    // Get all active branches with daily summary enabled
-    const { data: branches } = await supabase
-      .from('branches')
-      .select('*')
-      .not('line_group_id', 'is', null);
+    const currentTime = new Date().toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Bangkok',
+      hour12: false,
+    });
 
-    if (!branches || branches.length === 0) {
-      console.log('No branches with LINE groups found');
-      return new Response(JSON.stringify({ processed: 0 }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    console.log(`[Daily Summary] Running at ${currentTime} for date ${today}`);
+
+    // Get enabled delivery configs
+    const { data: configs, error: configError } = await supabase
+      .from('summary_delivery_config')
+      .select('*')
+      .eq('is_enabled', true);
+
+    if (configError) {
+      console.error('Error fetching configs:', configError);
+      throw configError;
+    }
+
+    if (!configs || configs.length === 0) {
+      console.log('No enabled delivery configs found');
+      return new Response(
+        JSON.stringify({ success: true, processed: 0, message: 'No configs enabled' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     let processedCount = 0;
+    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? '';
 
-    for (const branch of branches) {
-      // Get all employees for this branch
-      const { data: employees } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('branch_id', branch.id)
-        .eq('is_active', true);
+    for (const config of configs as DeliveryConfig[]) {
+      console.log(`[Config: ${config.name}] Processing...`);
 
-      if (!employees || employees.length === 0) continue;
-
-      const summaryLines: string[] = [];
-      let checkedInCount = 0;
-      let checkedOutCount = 0;
-      let lateCount = 0;
-      let flaggedCount = 0;
-
-      for (const employee of employees) {
-        // Get today's check-in and check-out
-        const { data: logs } = await supabase
-          .from('attendance_logs')
+      // Get branches based on source type
+      let branches: Branch[] = [];
+      if (config.source_type === 'all_branches') {
+        const { data: allBranches } = await supabase.from('branches').select('*');
+        branches = allBranches || [];
+      } else if (config.source_branch_id) {
+        const { data: branch } = await supabase
+          .from('branches')
           .select('*')
-          .eq('employee_id', employee.id)
-          .gte('server_time', `${today}T00:00:00`)
-          .lte('server_time', `${today}T23:59:59`)
-          .order('server_time', { ascending: true });
-
-        if (!logs || logs.length === 0) {
-          summaryLines.push(`- ${employee.full_name}: ไม่พบการเช็คอิน`);
-          continue;
-        }
-
-        const checkIn = logs.find(l => l.event_type === 'check_in');
-        const checkOut = logs.find(l => l.event_type === 'check_out');
-
-        if (checkIn) checkedInCount++;
-        if (checkOut) checkedOutCount++;
-        if (logs.some(l => l.is_flagged)) flaggedCount++;
-
-        const checkInTime = checkIn ? 
-          new Date(checkIn.server_time).toLocaleTimeString('th-TH', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok'
-          }) : '-';
-
-        const checkOutTime = checkOut ?
-          new Date(checkOut.server_time).toLocaleTimeString('th-TH', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok'
-          }) : 'ยังไม่เช็คเอาต์';
-
-        // Check if late
-        let lateIndicator = '';
-        if (checkIn && branch.standard_start_time) {
-          const checkInDate = new Date(checkIn.server_time);
-          const [hours, minutes] = branch.standard_start_time.split(':');
-          const standardTime = new Date(checkInDate);
-          standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
-
-          if (checkInDate > standardTime) {
-            lateIndicator = ' (สาย)';
-            lateCount++;
-          }
-        }
-
-        const flagIndicator = logs.some(l => l.is_flagged) ? ' ⚠️' : '';
-
-        summaryLines.push(
-          `- ${employee.full_name}: เช็คอิน ${checkInTime}${lateIndicator}, เช็คเอาต์ ${checkOutTime}${flagIndicator}`
-        );
+          .eq('id', config.source_branch_id)
+          .single();
+        if (branch) branches = [branch];
       }
 
-      // Compose summary message
-      const summaryText = `📊 สรุปการเข้างาน ${today}\n📍 ${branch.name}\n\n${summaryLines.join('\n')}\n\n📈 สรุป:\n- เช็คอินแล้ว: ${checkedInCount}/${employees.length} คน\n- เช็คเอาต์แล้ว: ${checkedOutCount}/${employees.length} คน\n- มาสาย: ${lateCount} คน\n- มีข้อสังเกต: ${flaggedCount} คน`;
-
-      // Send to LINE group
-      const lineResponse = await fetch(`https://api.line.me/v2/bot/message/push`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')}`
-        },
-        body: JSON.stringify({
-          to: branch.line_group_id,
-          messages: [{
-            type: 'text',
-            text: summaryText
-          }]
-        })
-      });
-
-      let lineMessageId = null;
-      if (lineResponse.ok) {
-        const lineData = await lineResponse.json();
-        lineMessageId = lineData.sentMessages?.[0]?.id || null;
+      if (branches.length === 0) {
+        console.log(`[Config: ${config.name}] No branches found, skipping`);
+        continue;
       }
 
-      // Store summary
-      await supabase
-        .from('daily_attendance_summaries')
-        .upsert({
-          branch_id: branch.id,
-          summary_date: today,
-          summary_text: summaryText,
-          total_employees: employees.length,
-          checked_in: checkedInCount,
-          checked_out: checkedOutCount,
-          late_count: lateCount,
-          absent_count: employees.length - checkedInCount,
-          flagged_count: flaggedCount,
-          line_message_id: lineMessageId,
-          sent_at: new Date().toISOString()
-        });
+      // Generate summary
+      const summaryText = await generateSummary(
+        supabase,
+        branches,
+        today,
+        config.include_work_hours
+      );
 
-      processedCount++;
+      // Determine destination
+      let destinationId: string | null = null;
+      if (config.destination_type === 'group') {
+        destinationId = config.destination_line_id;
+      } else if (config.destination_type === 'private' && config.destination_employee_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', config.destination_employee_id)
+          .single();
+        destinationId = employee?.line_user_id || null;
+      }
+
+      if (!destinationId) {
+        console.log(`[Config: ${config.name}] No valid destination, skipping`);
+        continue;
+      }
+
+      // Send to LINE
+      const { ok, messageId } = await sendToLine(destinationId, summaryText, lineAccessToken);
+
+      if (ok) {
+        console.log(`[Config: ${config.name}] Sent successfully`);
+        
+        // Store summary for each branch
+        for (const branch of branches) {
+          await supabase.from('daily_attendance_summaries').upsert({
+            branch_id: branch.id,
+            summary_date: today,
+            summary_text: summaryText,
+            line_message_id: messageId,
+            sent_at: new Date().toISOString(),
+          });
+        }
+        
+        processedCount++;
+      } else {
+        console.error(`[Config: ${config.name}] Failed to send`);
+      }
     }
 
     return new Response(
-      JSON.stringify({ success: true, processed: processedCount }),
+      JSON.stringify({
+        success: true,
+        processed: processedCount,
+        total_configs: configs.length,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
     console.error('Error:', error);
     return new Response(
