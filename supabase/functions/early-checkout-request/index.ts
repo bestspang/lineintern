@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimiters } from '../_shared/rate-limiter.ts';
+import { logger } from '../_shared/logger.ts';
+import { validateSchema, earlyLeaveSchema } from '../_shared/validators.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,31 +30,41 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Rate limiting
+    const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
+    if (rateLimiters.api.isRateLimited(clientIp)) {
+      logger.warn('Rate limit exceeded for early leave request', { clientIp });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            ...rateLimiters.api.getHeaders(clientIp),
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
     const { employee_id, leave_reason, leave_type, custom_reason }: EarlyCheckoutRequest = await req.json();
 
-    // Input validation
-    if (!employee_id || typeof employee_id !== 'string') {
+    // Input validation with Zod
+    const validation = validateSchema(earlyLeaveSchema, {
+      employee_id,
+      leave_type,
+      leave_reason
+    });
+
+    if (!validation.success) {
+      logger.warn('Early leave validation failed', { error: validation.error });
       return new Response(
-        JSON.stringify({ success: false, error: 'Invalid employee_id' }),
+        JSON.stringify({ success: false, error: validation.error }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!leave_reason || typeof leave_reason !== 'string' || leave_reason.length > 500) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Invalid leave_reason (max 500 chars)' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!leave_type || !leaveReasons.includes(leave_type)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Invalid leave_type' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[early-checkout-request] Processing request for employee ${employee_id}`);
+    logger.info('Processing early leave request', { employee_id });
 
     const today = new Date().toISOString().split('T')[0];
     const now = new Date();

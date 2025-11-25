@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimiters } from '../_shared/rate-limiter.ts';
+import { logger } from '../_shared/logger.ts';
+import { validateSchema, otRequestSchema } from '../_shared/validators.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,19 +28,36 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Rate limiting
+    const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
+    if (rateLimiters.api.isRateLimited(clientIp)) {
+      logger.warn('Rate limit exceeded for OT request', { clientIp });
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            ...rateLimiters.api.getHeaders(clientIp),
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
     const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     const body: OvertimeRequest = await req.json();
 
-    console.log('[overtime-request] Received request:', body);
+    logger.info('OT request received', { employee_id: body.employee_id });
 
-    // Validation
-    if (!body.employee_id || !body.reason) {
-      return new Response(JSON.stringify({ 
-        error: 'Missing required fields: employee_id, reason' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    // Input validation with Zod
+    const validation = validateSchema(otRequestSchema, body);
+    if (!validation.success) {
+      logger.warn('OT request validation failed', { error: validation.error });
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Default estimated_hours to 2 if not provided (from LINE)

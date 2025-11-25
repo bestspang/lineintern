@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logger } from '../_shared/logger.ts';
+import { fetchWithRetry } from '../_shared/retry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +19,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('[overtime-warning] Starting OT warning check...');
+    logger.info('Starting OT warning check');
 
     const today = new Date().toISOString().split('T')[0];
     const now = new Date();
@@ -145,24 +147,28 @@ serve(async (req) => {
           message += `💬 พิมพ์ "/ot [เหตุผล]" เพื่อขออนุมัติ OT`;
         }
 
-        // Send LINE notification
-        const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${lineAccessToken}`
-          },
-          body: JSON.stringify({
-            to: employee.line_user_id,
-            messages: [{
-              type: 'text',
-              text: message
-            }]
-          })
-        });
-
-        if (!lineResponse.ok) {
-          console.error(`[overtime-warning] Failed to send LINE message to ${employee.full_name}`);
+        // Send LINE notification with retry
+        try {
+          await fetchWithRetry(
+            'https://api.line.me/v2/bot/message/push',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${lineAccessToken}`
+              },
+              body: JSON.stringify({
+                to: employee.line_user_id,
+                messages: [{
+                  type: 'text',
+                  text: message
+                }]
+              })
+            },
+            { maxRetries: 2 }
+          );
+        } catch (error) {
+          logger.error(`Failed to send OT warning to ${employee.full_name}`, error);
           continue;
         }
 
@@ -215,21 +221,29 @@ serve(async (req) => {
           message += `⚠️ หากไม่ได้อนุมัติ เวลาเกินอาจไม่ได้รับค่าตอบแทน`;
         }
 
-        // Send urgent LINE notification
-        await fetch('https://api.line.me/v2/bot/message/push', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${lineAccessToken}`
-          },
-          body: JSON.stringify({
-            to: employee.line_user_id,
-            messages: [{
-              type: 'text',
-              text: message
-            }]
-          })
-        });
+        // Send urgent LINE notification with retry
+        try {
+          await fetchWithRetry(
+            'https://api.line.me/v2/bot/message/push',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${lineAccessToken}`
+              },
+              body: JSON.stringify({
+                to: employee.line_user_id,
+                messages: [{
+                  type: 'text',
+                  text: message
+                }]
+              })
+            },
+            { maxRetries: 2 }
+          );
+        } catch (error) {
+          logger.error(`Failed to send OT exceeded warning to ${employee.full_name}`, error);
+        }
 
         // Log the reminder
         await supabase
