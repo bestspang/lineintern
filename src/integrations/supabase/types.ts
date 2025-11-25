@@ -1305,6 +1305,56 @@ export type Database = {
           },
         ]
       }
+      leave_balances: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          id: string
+          leave_year: number
+          personal_days_total: number | null
+          personal_days_used: number | null
+          sick_days_total: number | null
+          sick_days_used: number | null
+          updated_at: string | null
+          vacation_days_total: number | null
+          vacation_days_used: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          leave_year?: number
+          personal_days_total?: number | null
+          personal_days_used?: number | null
+          sick_days_total?: number | null
+          sick_days_used?: number | null
+          updated_at?: string | null
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          leave_year?: number
+          personal_days_total?: number | null
+          personal_days_used?: number | null
+          sick_days_total?: number | null
+          sick_days_used?: number | null
+          updated_at?: string | null
+          vacation_days_total?: number | null
+          vacation_days_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_balances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leave_requests: {
         Row: {
           approved_at: string | null

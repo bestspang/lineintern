@@ -50,6 +50,8 @@ import OvertimeSummary from "./pages/attendance/OvertimeSummary";
 import OvertimeRequests from "./pages/attendance/OvertimeRequests";
 import EarlyLeaveRequests from "./pages/attendance/EarlyLeaveRequests";
 import WorkSummary from "./pages/attendance/WorkSummary";
+import WorkHistory from "./pages/attendance/WorkHistory";
+import LeaveBalance from "./pages/attendance/LeaveBalance";
 import AttendanceRoles from "./pages/attendance/Roles";
 import EmployeeMenu from "./pages/EmployeeMenu";
 
@@ -103,6 +105,8 @@ const App = () => (
                     <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
                     <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
                     <Route path="/attendance/work-summary" element={<WorkSummary />} />
+                    <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
+                    <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
                     <Route path="/attendance/roles" element={<AttendanceRoles />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
