@@ -26,6 +26,7 @@ export default function AttendanceSummaries() {
   const [checkinType, setCheckinType] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<any>(null);
+  const [editingPresetType, setEditingPresetType] = useState<string | null>(null);
   
   // Form state
   const [configName, setConfigName] = useState('');
@@ -419,32 +420,52 @@ export default function AttendanceSummaries() {
     setSendTime('21:00');
     setIncludeWorkHours(true);
     setEditingConfig(null);
+    setEditingPresetType(null);
   };
 
   const handleSaveConfig = () => {
-    const allLineIds = customLineId.trim() 
-      ? [...selectedLineIds, customLineId.trim()] 
-      : selectedLineIds;
-
-    const config = {
-      name: configName,
-      source_type: sourceType,
-      source_branch_id: sourceType === 'single_branch' ? sourceBranchId : null,
-      destination_line_ids: allLineIds,
-      destination_employee_ids: selectedEmployeeIds,
-      send_time: sendTime + ':00',
-      include_work_hours: includeWorkHours,
-    };
-
-    if (editingConfig) {
-      updateConfigMutation.mutate({ id: editingConfig.id, updates: config });
+    if (editingConfig?.is_system) {
+      // System preset - only editable fields
+      const updates: any = { send_time: sendTime + ':00' };
+      
+      // Management preset can edit groups
+      if (editingPresetType === null) {
+        const allLineIds = customLineId.trim() 
+          ? [...selectedLineIds, customLineId.trim()] 
+          : selectedLineIds;
+        updates.destination_line_ids = allLineIds;
+      }
+      
+      updateConfigMutation.mutate({ id: editingConfig.id, updates });
+      setDialogOpen(false);
+      resetForm();
     } else {
-      createConfigMutation.mutate(config);
+      // Custom config - all fields
+      const allLineIds = customLineId.trim() 
+        ? [...selectedLineIds, customLineId.trim()] 
+        : selectedLineIds;
+
+      const config = {
+        name: configName,
+        source_type: sourceType,
+        source_branch_id: sourceType === 'single_branch' ? sourceBranchId : null,
+        destination_line_ids: allLineIds,
+        destination_employee_ids: selectedEmployeeIds,
+        send_time: sendTime + ':00',
+        include_work_hours: includeWorkHours,
+      };
+
+      if (editingConfig) {
+        updateConfigMutation.mutate({ id: editingConfig.id, updates: config });
+      } else {
+        createConfigMutation.mutate(config);
+      }
     }
   };
 
   const handleEditConfig = (config: any) => {
     setEditingConfig(config);
+    setEditingPresetType(config.preset_type);
     setConfigName(config.name);
     setSourceType(config.source_type);
     setSourceBranchId(config.source_branch_id || '');
@@ -513,128 +534,147 @@ export default function AttendanceSummaries() {
                   <DialogHeader>
                     <DialogTitle>{editingConfig ? 'แก้ไขการส่งรายงาน' : 'เพิ่มการส่งรายงานใหม่'}</DialogTitle>
                     <DialogDescription>
-                      กำหนดว่าจะส่งรายงานจากสาขาไหน ไปที่ไหน และเวลาไหน
+                      {editingConfig?.is_system ? (
+                        editingPresetType === 'per_employee' || editingPresetType === 'per_branch' 
+                          ? 'แก้ไขเฉพาะเวลาส่ง (ระบบจะส่งอัตโนมัติตามพนักงาน/สาขาปัจจุบัน)'
+                          : 'แก้ไขเวลาส่งและเลือกกลุ่มผู้รับ'
+                      ) : (
+                        'กำหนดว่าจะส่งรายงานจากสาขาไหน ไปที่ไหน และเวลาไหน'
+                      )}
                     </DialogDescription>
                   </DialogHeader>
 
                   <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="config-name">ชื่อการตั้งค่า</Label>
-                      <Input
-                        id="config-name"
-                        value={configName}
-                        onChange={(e) => setConfigName(e.target.value)}
-                        placeholder="เช่น รายงานทุกสาขา → ฝ่ายบริหาร"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>ข้อมูลจาก</Label>
-                      <Select value={sourceType} onValueChange={(v: any) => setSourceType(v)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all_branches">ทุกสาขา</SelectItem>
-                          <SelectItem value="single_branch">เลือกสาขา</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {sourceType === 'single_branch' && (
+                    {/* Only show name for custom configs */}
+                    {!editingConfig?.is_system && (
                       <div className="space-y-2">
-                        <Label>เลือกสาขา</Label>
-                        <Select value={sourceBranchId} onValueChange={setSourceBranchId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="เลือกสาขา" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {branches?.map((b) => (
-                              <SelectItem key={b.id} value={b.id}>
-                                {b.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Label htmlFor="config-name">ชื่อการตั้งค่า</Label>
+                        <Input
+                          id="config-name"
+                          value={configName}
+                          onChange={(e) => setConfigName(e.target.value)}
+                          placeholder="เช่น รายงานทุกสาขา → ฝ่ายบริหาร"
+                        />
                       </div>
                     )}
 
-                    {/* LINE Groups Selection */}
-                    <div className="space-y-3">
-                      <Label className="flex items-center gap-2 text-base">
-                        <MessageSquare className="h-4 w-4" />
-                        ส่งไปกลุ่ม LINE (เลือกได้หลายกลุ่ม)
-                      </Label>
-                      <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
-                        {branches?.filter(b => b.line_group_id).length === 0 ? (
-                          <p className="text-sm text-muted-foreground">ไม่มีกลุ่ม LINE ที่เชื่อมต่อ</p>
-                        ) : (
-                          branches?.filter(b => b.line_group_id).map(branch => (
-                            <div key={branch.id} className="flex items-center gap-2">
-                              <Checkbox 
-                                id={`line-${branch.id}`}
-                                checked={selectedLineIds.includes(branch.line_group_id!)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setSelectedLineIds([...selectedLineIds, branch.line_group_id!]);
-                                  } else {
-                                    setSelectedLineIds(selectedLineIds.filter(id => id !== branch.line_group_id));
-                                  }
-                                }}
-                              />
-                              <Label htmlFor={`line-${branch.id}`} className="font-normal cursor-pointer flex-1">
-                                {branch.name}
-                              </Label>
-                            </div>
-                          ))
+                    {/* Only show source selection for custom configs */}
+                    {!editingConfig?.is_system && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>ข้อมูลจาก</Label>
+                          <Select value={sourceType} onValueChange={(v: any) => setSourceType(v)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all_branches">ทุกสาขา</SelectItem>
+                              <SelectItem value="single_branch">เลือกสาขา</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {sourceType === 'single_branch' && (
+                          <div className="space-y-2">
+                            <Label>เลือกสาขา</Label>
+                            <Select value={sourceBranchId} onValueChange={setSourceBranchId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="เลือกสาขา" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {branches?.map((b) => (
+                                  <SelectItem key={b.id} value={b.id}>
+                                    {b.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="customLineId" className="text-xs text-muted-foreground">
-                          + เพิ่ม Group ID เอง
+                      </>
+                    )}
+
+                    {/* LINE Groups - only for custom configs OR management preset */}
+                    {(!editingConfig?.is_system || editingPresetType === null) && (
+                      <div className="space-y-3">
+                        <Label className="flex items-center gap-2 text-base">
+                          <MessageSquare className="h-4 w-4" />
+                          ส่งไปกลุ่ม LINE (เลือกได้หลายกลุ่ม)
                         </Label>
-                        <Input
-                          id="customLineId"
-                          value={customLineId}
-                          onChange={(e) => setCustomLineId(e.target.value)}
-                          placeholder="Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                          className="text-sm"
-                        />
+                        <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
+                          {branches?.filter(b => b.line_group_id).length === 0 ? (
+                            <p className="text-sm text-muted-foreground">ไม่มีกลุ่ม LINE ที่เชื่อมต่อ</p>
+                          ) : (
+                            branches?.filter(b => b.line_group_id).map(branch => (
+                              <div key={branch.id} className="flex items-center gap-2">
+                                <Checkbox 
+                                  id={`line-${branch.id}`}
+                                  checked={selectedLineIds.includes(branch.line_group_id!)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedLineIds([...selectedLineIds, branch.line_group_id!]);
+                                    } else {
+                                      setSelectedLineIds(selectedLineIds.filter(id => id !== branch.line_group_id));
+                                    }
+                                  }}
+                                />
+                                <Label htmlFor={`line-${branch.id}`} className="font-normal cursor-pointer flex-1">
+                                  {branch.name}
+                                </Label>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="customLineId" className="text-xs text-muted-foreground">
+                            + เพิ่ม Group ID เอง
+                          </Label>
+                          <Input
+                            id="customLineId"
+                            value={customLineId}
+                            onChange={(e) => setCustomLineId(e.target.value)}
+                            placeholder="Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                            className="text-sm"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Employees Selection */}
-                    <div className="space-y-3">
-                      <Label className="flex items-center gap-2 text-base">
-                        <User className="h-4 w-4" />
-                        ส่งตรงหาพนักงาน (เลือกได้หลายคน)
-                      </Label>
-                      <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
-                        {employees?.filter(e => e.line_user_id).length === 0 ? (
-                          <p className="text-sm text-muted-foreground">ไม่มีพนักงานที่เชื่อมต่อ LINE</p>
-                        ) : (
-                          employees?.filter(e => e.line_user_id).map(emp => (
-                            <div key={emp.id} className="flex items-center gap-2">
-                              <Checkbox 
-                                id={`emp-${emp.id}`}
-                                checked={selectedEmployeeIds.includes(emp.id)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
-                                  } else {
-                                    setSelectedEmployeeIds(selectedEmployeeIds.filter(id => id !== emp.id));
-                                  }
-                                }}
-                              />
-                              <Label htmlFor={`emp-${emp.id}`} className="font-normal cursor-pointer flex-1">
-                                {emp.full_name} ({emp.code})
-                              </Label>
-                            </div>
-                          ))
-                        )}
+                    {/* Employees - only for custom configs */}
+                    {!editingConfig?.is_system && (
+                      <div className="space-y-3">
+                        <Label className="flex items-center gap-2 text-base">
+                          <User className="h-4 w-4" />
+                          ส่งตรงหาพนักงาน (เลือกได้หลายคน)
+                        </Label>
+                        <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
+                          {employees?.filter(e => e.line_user_id).length === 0 ? (
+                            <p className="text-sm text-muted-foreground">ไม่มีพนักงานที่เชื่อมต่อ LINE</p>
+                          ) : (
+                            employees?.filter(e => e.line_user_id).map(emp => (
+                              <div key={emp.id} className="flex items-center gap-2">
+                                <Checkbox 
+                                  id={`emp-${emp.id}`}
+                                  checked={selectedEmployeeIds.includes(emp.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
+                                    } else {
+                                      setSelectedEmployeeIds(selectedEmployeeIds.filter(id => id !== emp.id));
+                                    }
+                                  }}
+                                />
+                                <Label htmlFor={`emp-${emp.id}`} className="font-normal cursor-pointer flex-1">
+                                  {emp.full_name} ({emp.code})
+                                </Label>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
+                    {/* Send time - always visible */}
                     <div className="space-y-2">
                       <Label htmlFor="send-time">เวลาส่ง</Label>
                       <Input
@@ -645,14 +685,17 @@ export default function AttendanceSummaries() {
                       />
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="include-hours"
-                        checked={includeWorkHours}
-                        onCheckedChange={setIncludeWorkHours}
-                      />
-                      <Label htmlFor="include-hours">รวมชั่วโมงทำงาน</Label>
-                    </div>
+                    {/* Work hours toggle - only for custom configs */}
+                    {!editingConfig?.is_system && (
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="include-hours"
+                          checked={includeWorkHours}
+                          onCheckedChange={setIncludeWorkHours}
+                        />
+                        <Label htmlFor="include-hours">รวมชั่วโมงทำงาน</Label>
+                      </div>
+                    )}
                   </div>
 
                   <DialogFooter>
@@ -661,7 +704,11 @@ export default function AttendanceSummaries() {
                     </Button>
                     <Button
                       onClick={handleSaveConfig}
-                      disabled={!configName || createConfigMutation.isPending || updateConfigMutation.isPending}
+                      disabled={
+                        (!editingConfig?.is_system && !configName) || 
+                        createConfigMutation.isPending || 
+                        updateConfigMutation.isPending
+                      }
                     >
                       {(createConfigMutation.isPending || updateConfigMutation.isPending) && (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -683,39 +730,57 @@ export default function AttendanceSummaries() {
                 Presets (ตั้งค่าเริ่มต้น)
               </h3>
               <div className="grid gap-3 md:grid-cols-3">
-                {deliveryConfigs?.filter((c: any) => c.is_system).map((preset: any) => (
-                  <Card key={preset.id} className="border-2">
-                    <CardContent className="p-4">
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm leading-tight">{preset.name}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              เวลาส่ง: {preset.send_time?.substring(0, 5)}
-                            </p>
+                {deliveryConfigs?.filter((c: any) => c.is_system).map((preset: any) => {
+                  const getPresetInfo = () => {
+                    if (preset.preset_type === 'per_employee') {
+                      const activeCount = employees?.filter(e => e.line_user_id).length || 0;
+                      return `Auto: ${activeCount} พนักงานที่มี LINE`;
+                    }
+                    if (preset.preset_type === 'per_branch') {
+                      const branchCount = branches?.filter(b => b.line_group_id).length || 0;
+                      return `Auto: ${branchCount} สาขาที่มี LINE Group`;
+                    }
+                    const groupCount = preset.destination_line_ids?.length || 0;
+                    return groupCount > 0 ? `ส่งไป ${groupCount} กลุ่ม` : 'ยังไม่ได้เลือกกลุ่ม';
+                  };
+
+                  return (
+                    <Card key={preset.id} className="border-2">
+                      <CardContent className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm leading-tight">{preset.name}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                ⏰ {preset.send_time?.substring(0, 5)}
+                              </p>
+                              <p className="text-xs text-primary/80 mt-1 font-medium">
+                                {getPresetInfo()}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={preset.is_enabled}
+                              onCheckedChange={(checked) =>
+                                updateConfigMutation.mutate({
+                                  id: preset.id,
+                                  updates: { is_enabled: checked },
+                                })
+                              }
+                            />
                           </div>
-                          <Switch
-                            checked={preset.is_enabled}
-                            onCheckedChange={(checked) =>
-                              updateConfigMutation.mutate({
-                                id: preset.id,
-                                updates: { is_enabled: checked },
-                              })
-                            }
-                          />
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="w-full"
+                            onClick={() => handleEditConfig(preset)}
+                          >
+                            <Edit className="h-3 w-3 mr-1" /> แก้ไข
+                          </Button>
                         </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="w-full"
-                          onClick={() => handleEditConfig(preset)}
-                        >
-                          <Edit className="h-3 w-3 mr-1" /> แก้ไข
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           )}
