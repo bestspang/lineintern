@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -30,9 +31,9 @@ export default function AttendanceSummaries() {
   const [configName, setConfigName] = useState('');
   const [sourceType, setSourceType] = useState<'all_branches' | 'single_branch'>('all_branches');
   const [sourceBranchId, setSourceBranchId] = useState('');
-  const [destinationType, setDestinationType] = useState<'group' | 'private'>('group');
-  const [destinationLineId, setDestinationLineId] = useState('');
-  const [destinationEmployeeId, setDestinationEmployeeId] = useState('');
+  const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [customLineId, setCustomLineId] = useState('');
   const [sendTime, setSendTime] = useState('21:00');
   const [includeWorkHours, setIncludeWorkHours] = useState(true);
 
@@ -66,11 +67,7 @@ export default function AttendanceSummaries() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('summary_delivery_config')
-        .select(`
-          *,
-          source_branch:branches!source_branch_id(name),
-          destination_employee:employees!destination_employee_id(full_name, line_user_id)
-        `)
+        .select('*, source_branch:branches!source_branch_id(name)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -416,22 +413,25 @@ export default function AttendanceSummaries() {
     setConfigName('');
     setSourceType('all_branches');
     setSourceBranchId('');
-    setDestinationType('group');
-    setDestinationLineId('');
-    setDestinationEmployeeId('');
+    setSelectedLineIds([]);
+    setSelectedEmployeeIds([]);
+    setCustomLineId('');
     setSendTime('21:00');
     setIncludeWorkHours(true);
     setEditingConfig(null);
   };
 
   const handleSaveConfig = () => {
+    const allLineIds = customLineId.trim() 
+      ? [...selectedLineIds, customLineId.trim()] 
+      : selectedLineIds;
+
     const config = {
       name: configName,
       source_type: sourceType,
       source_branch_id: sourceType === 'single_branch' ? sourceBranchId : null,
-      destination_type: destinationType,
-      destination_line_id: destinationType === 'group' ? destinationLineId : null,
-      destination_employee_id: destinationType === 'private' ? destinationEmployeeId : null,
+      destination_line_ids: allLineIds,
+      destination_employee_ids: selectedEmployeeIds,
       send_time: sendTime + ':00',
       include_work_hours: includeWorkHours,
     };
@@ -448,9 +448,9 @@ export default function AttendanceSummaries() {
     setConfigName(config.name);
     setSourceType(config.source_type);
     setSourceBranchId(config.source_branch_id || '');
-    setDestinationType(config.destination_type);
-    setDestinationLineId(config.destination_line_id || '');
-    setDestinationEmployeeId(config.destination_employee_id || '');
+    setSelectedLineIds(config.destination_line_ids || []);
+    setSelectedEmployeeIds(config.destination_employee_ids || []);
+    setCustomLineId('');
     setSendTime(config.send_time?.substring(0, 5) || '21:00');
     setIncludeWorkHours(config.include_work_hours);
     setDialogOpen(true);
@@ -559,50 +559,81 @@ export default function AttendanceSummaries() {
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <Label>ส่งไป</Label>
-                      <Select value={destinationType} onValueChange={(v: any) => setDestinationType(v)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="group">กลุ่ม LINE</SelectItem>
-                          <SelectItem value="private">ส่งตรงหาพนักงาน</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    {/* LINE Groups Selection */}
+                    <div className="space-y-3">
+                      <Label className="flex items-center gap-2 text-base">
+                        <MessageSquare className="h-4 w-4" />
+                        ส่งไปกลุ่ม LINE (เลือกได้หลายกลุ่ม)
+                      </Label>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
+                        {branches?.filter(b => b.line_group_id).length === 0 ? (
+                          <p className="text-sm text-muted-foreground">ไม่มีกลุ่ม LINE ที่เชื่อมต่อ</p>
+                        ) : (
+                          branches?.filter(b => b.line_group_id).map(branch => (
+                            <div key={branch.id} className="flex items-center gap-2">
+                              <Checkbox 
+                                id={`line-${branch.id}`}
+                                checked={selectedLineIds.includes(branch.line_group_id!)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedLineIds([...selectedLineIds, branch.line_group_id!]);
+                                  } else {
+                                    setSelectedLineIds(selectedLineIds.filter(id => id !== branch.line_group_id));
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`line-${branch.id}`} className="font-normal cursor-pointer flex-1">
+                                {branch.name}
+                              </Label>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="customLineId" className="text-xs text-muted-foreground">
+                          + เพิ่ม Group ID เอง
+                        </Label>
+                        <Input
+                          id="customLineId"
+                          value={customLineId}
+                          onChange={(e) => setCustomLineId(e.target.value)}
+                          placeholder="Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          className="text-sm"
+                        />
+                      </div>
                     </div>
 
-                    {destinationType === 'group' && (
-                      <div className="space-y-2">
-                        <Label>LINE Group ID</Label>
-                        <Input
-                          value={destinationLineId}
-                          onChange={(e) => setDestinationLineId(e.target.value)}
-                          placeholder="กรอก LINE Group ID"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          สามารถหา Group ID ได้จากหน้า Groups
-                        </p>
+                    {/* Employees Selection */}
+                    <div className="space-y-3">
+                      <Label className="flex items-center gap-2 text-base">
+                        <User className="h-4 w-4" />
+                        ส่งตรงหาพนักงาน (เลือกได้หลายคน)
+                      </Label>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-muted/30">
+                        {employees?.filter(e => e.line_user_id).length === 0 ? (
+                          <p className="text-sm text-muted-foreground">ไม่มีพนักงานที่เชื่อมต่อ LINE</p>
+                        ) : (
+                          employees?.filter(e => e.line_user_id).map(emp => (
+                            <div key={emp.id} className="flex items-center gap-2">
+                              <Checkbox 
+                                id={`emp-${emp.id}`}
+                                checked={selectedEmployeeIds.includes(emp.id)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
+                                  } else {
+                                    setSelectedEmployeeIds(selectedEmployeeIds.filter(id => id !== emp.id));
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`emp-${emp.id}`} className="font-normal cursor-pointer flex-1">
+                                {emp.full_name} ({emp.code})
+                              </Label>
+                            </div>
+                          ))
+                        )}
                       </div>
-                    )}
-
-                    {destinationType === 'private' && (
-                      <div className="space-y-2">
-                        <Label>เลือกพนักงาน</Label>
-                        <Select value={destinationEmployeeId} onValueChange={setDestinationEmployeeId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="เลือกพนักงาน" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {employees?.filter(e => e.line_user_id).map((e) => (
-                              <SelectItem key={e.id} value={e.id}>
-                                {e.full_name} ({e.code})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="send-time">เวลาส่ง</Label>
@@ -666,9 +697,24 @@ export default function AttendanceSummaries() {
                         : config.source_branch?.name || '-'}
                     </TableCell>
                     <TableCell>
-                      {config.destination_type === 'group' 
-                        ? `📱 Group: ${config.destination_line_id?.substring(0, 10)}...` 
-                        : `👤 ${config.destination_employee?.full_name || '-'}`}
+                      <div className="space-y-1">
+                        {(config.destination_line_ids?.length > 0 || config.destination_employee_ids?.length > 0) ? (
+                          <>
+                            {config.destination_line_ids?.length > 0 && (
+                              <div className="text-xs">
+                                📱 {config.destination_line_ids.length} กลุ่ม LINE
+                              </div>
+                            )}
+                            {config.destination_employee_ids?.length > 0 && (
+                              <div className="text-xs">
+                                👤 {config.destination_employee_ids.length} พนักงาน
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{config.send_time?.substring(0, 5) || '-'}</TableCell>
                     <TableCell>
