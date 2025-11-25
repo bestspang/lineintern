@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarIcon, MapPin, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getMapboxToken } from '@/lib/api-config';
+import { MapboxTokenDialog } from '@/components/shared/MapboxTokenDialog';
 
 interface LocationPoint {
   latitude: number;
@@ -40,7 +40,7 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date()
   });
-  const [mapboxToken, setMapboxToken] = useState('');
+  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [showTokenDialog, setShowTokenDialog] = useState(false);
   const [filteredLocations, setFilteredLocations] = useState<LocationPoint[]>([]);
   const markers = useRef<mapboxgl.Marker[]>([]);
@@ -54,24 +54,16 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
     setFilteredLocations(filtered);
   }, [locations, dateRange]);
 
-  // Check for Mapbox token
+  // Load token on mount
   useEffect(() => {
-    const token = localStorage.getItem('mapbox_token');
-    if (token) {
-      setMapboxToken(token);
-    } else {
-      setShowTokenDialog(true);
-    }
+    getMapboxToken().then(token => {
+      if (token) {
+        setMapboxToken(token);
+      } else {
+        setShowTokenDialog(true);
+      }
+    });
   }, []);
-
-  const handleSetToken = () => {
-    const input = document.getElementById('mapbox-token-input') as HTMLInputElement;
-    if (input?.value) {
-      localStorage.setItem('mapbox_token', input.value);
-      setMapboxToken(input.value);
-      setShowTokenDialog(false);
-    }
-  };
 
   // Initialize map
   useEffect(() => {
@@ -264,41 +256,6 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
     return Math.round(latDiff * lngDiff * 100) / 100;
   }
 
-  if (!mapboxToken) {
-    return (
-      <Dialog open={showTokenDialog} onOpenChange={setShowTokenDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Mapbox Access Token Required</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="mapbox-token-input">Mapbox Public Token</Label>
-              <Input
-                id="mapbox-token-input"
-                type="text"
-                placeholder="pk.eyJ1..."
-              />
-              <p className="text-sm text-muted-foreground mt-2">
-                Get your token from{' '}
-                <a
-                  href="https://account.mapbox.com/access-tokens/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  mapbox.com
-                </a>
-              </p>
-            </div>
-            <Button onClick={handleSetToken} className="w-full">
-              Save Token
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   if (locations.length === 0) {
     return (
@@ -315,7 +272,17 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
   }
 
   return (
-    <Card>
+    <>
+      {/* Token input dialog */}
+      <MapboxTokenDialog
+        open={showTokenDialog}
+        onTokenSet={(token) => {
+          setMapboxToken(token);
+          setShowTokenDialog(false);
+        }}
+      />
+
+      <Card>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
@@ -425,6 +392,7 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
         </div>
       </CardContent>
     </Card>
+    </>
   );
 };
 
