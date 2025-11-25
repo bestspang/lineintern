@@ -82,7 +82,9 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [centerLng, centerLat],
-      zoom: 11
+      zoom: 11,
+      minZoom: 5,
+      maxZoom: 18
     });
 
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -175,7 +177,10 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
       filteredLocations.forEach(loc => {
         bounds.extend([loc.longitude, loc.latitude]);
       });
-      map.current.fitBounds(bounds, { padding: 50 });
+      map.current.fitBounds(bounds, { 
+        padding: 50,
+        maxZoom: 15
+      });
 
       setMapLoaded(true);
     });
@@ -190,6 +195,13 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
   // Toggle markers
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
+
+    // Check if layer exists before trying to modify it
+    const layerExists = map.current.getLayer('check-ins-point');
+    if (!layerExists) {
+      console.log('[LocationHeatmap] Layer not ready yet, skipping toggle');
+      return;
+    }
 
     // Clear existing markers
     markers.current.forEach(marker => marker.remove());
