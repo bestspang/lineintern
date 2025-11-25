@@ -2781,6 +2781,16 @@ export type Database = {
         Args: { p_employee_id: string }
         Returns: boolean
       }
+      claim_attendance_token: {
+        Args: { p_token_id: string }
+        Returns: {
+          employee_data: Json
+          employee_id: string
+          expires_at: string
+          token_id: string
+          token_type: string
+        }[]
+      }
       detect_duplicate_photos: {
         Args: {
           p_employee_id: string
