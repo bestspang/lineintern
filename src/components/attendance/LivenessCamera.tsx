@@ -3,7 +3,8 @@ import { FaceLandmarker, FilesetResolver, FaceLandmarkerResult } from "@mediapip
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Check, X, Eye, MoveHorizontal } from "lucide-react";
+import { Camera, Check, X, Eye, MoveHorizontal, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
@@ -26,12 +27,18 @@ const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
 ];
 
 export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraProps) {
+  const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>("");
+  
+  // New 3-stage flow state
+  const [captureStage, setCaptureStage] = useState<'face_forward' | 'verify' | 'confirm'>('face_forward');
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [faceDetectedStable, setFaceDetectedStable] = useState(0);
   
   // Liveness detection state
   const [currentChallenge, setCurrentChallenge] = useState<Challenge>("blink");
@@ -116,16 +123,12 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     };
   }, []);
 
-  // Auto-capture when challenge completed
+  // Auto-navigate to confirm stage when challenge completed
   useEffect(() => {
-    if (challengeCompleted) {
-      const timer = setTimeout(() => {
-        capturePhoto();
-      }, 800);
-      
-      return () => clearTimeout(timer);
+    if (challengeCompleted && captureStage === 'verify') {
+      setCaptureStage('confirm');
     }
-  }, [challengeCompleted]);
+  }, [challengeCompleted, captureStage]);
 
   // Process video frames
   useEffect(() => {
@@ -176,63 +179,94 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     const landmarks = result.faceLandmarks[0];
 
-    // Blink detection using Eye Aspect Ratio (EAR)
-    const leftEyeTop = landmarks[159];
-    const leftEyeBottom = landmarks[145];
-    const leftEyeLeft = landmarks[33];
-    const leftEyeRight = landmarks[133];
-
-    const rightEyeTop = landmarks[386];
-    const rightEyeBottom = landmarks[374];
-    const rightEyeLeft = landmarks[362];
-    const rightEyeRight = landmarks[263];
-
-    const leftEAR = calculateEAR(leftEyeTop, leftEyeBottom, leftEyeLeft, leftEyeRight);
-    const rightEAR = calculateEAR(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
-    const avgEAR = (leftEAR + rightEAR) / 2;
-
-    const isEyeClosed = avgEAR < 0.2;
-
-    // Detect blink (eye closed then opened)
-    if (lastEyeStateRef.current && isEyeClosed) {
-      // Eye just closed
-      lastEyeStateRef.current = false;
-    } else if (!lastEyeStateRef.current && !isEyeClosed) {
-      // Eye just opened - blink detected
-      setBlinkCount(prev => {
-        const newCount = prev + 1;
-        if (currentChallenge === "blink" && newCount >= 2) {
-          livenessDataRef.current.blinked = true;
-          setChallengeCompleted(true);
-        }
-        return newCount;
-      });
-      lastEyeStateRef.current = true;
+    // Stage 1: Detect face forward and auto-capture
+    if (captureStage === 'face_forward') {
+      const noseTip = landmarks[1];
+      const leftCheek = landmarks[234];
+      const rightCheek = landmarks[454];
+      const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+      const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
+      const normalizedOffset = noseOffsetFromCenter / faceWidth;
+      
+      // Face is centered
+      if (Math.abs(normalizedOffset) < 0.1) {
+        setFaceDetectedStable(prev => {
+          const newCount = prev + 1;
+          // 30 frames (~1 second) of stable face forward
+          if (newCount >= 30) {
+            autoCaptureFaceForward();
+            return 0;
+          }
+          return newCount;
+        });
+      } else {
+        setFaceDetectedStable(0);
+      }
+      return;
     }
 
-    // Head turn detection using face center position
-    const noseTip = landmarks[1];
-    const leftCheek = landmarks[234];
-    const rightCheek = landmarks[454];
+    // Stage 2: Verification challenges
+    if (captureStage === 'verify') {
+      // Blink detection using Eye Aspect Ratio (EAR)
+      const leftEyeTop = landmarks[159];
+      const leftEyeBottom = landmarks[145];
+      const leftEyeLeft = landmarks[33];
+      const leftEyeRight = landmarks[133];
 
-    const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
-    const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
-    const normalizedOffset = noseOffsetFromCenter / faceWidth;
+      const rightEyeTop = landmarks[386];
+      const rightEyeBottom = landmarks[374];
+      const rightEyeLeft = landmarks[362];
+      const rightEyeRight = landmarks[263];
 
-    if (normalizedOffset < -0.15) {
-      setHeadPosition("left");
-      if (currentChallenge === "turn_left") {
-        livenessDataRef.current.headTurned = true;
-        setChallengeCompleted(true);
+      const leftEAR = calculateEAR(leftEyeTop, leftEyeBottom, leftEyeLeft, leftEyeRight);
+      const rightEAR = calculateEAR(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
+      const avgEAR = (leftEAR + rightEAR) / 2;
+
+      const isEyeClosed = avgEAR < 0.25; // Increased from 0.2 to 0.25
+
+      // Detect blink (eye closed then opened)
+      if (lastEyeStateRef.current && isEyeClosed) {
+        // Eye just closed
+        lastEyeStateRef.current = false;
+        console.log('👁️ Eye closed, EAR:', avgEAR.toFixed(3));
+      } else if (!lastEyeStateRef.current && !isEyeClosed) {
+        // Eye just opened - blink detected
+        console.log('✅ Blink detected! Count:', blinkCount + 1);
+        setBlinkCount(prev => {
+          const newCount = prev + 1;
+          if (currentChallenge === "blink" && newCount >= 2) {
+            livenessDataRef.current.blinked = true;
+            setChallengeCompleted(true);
+          }
+          return newCount;
+        });
+        lastEyeStateRef.current = true;
       }
-    } else if (normalizedOffset > 0.15) {
-      setHeadPosition("right");
-      if (currentChallenge === "turn_right") {
-        livenessDataRef.current.headTurned = true;
-        setChallengeCompleted(true);
+
+      // Head turn detection using face center position
+      const noseTip = landmarks[1];
+      const leftCheek = landmarks[234];
+      const rightCheek = landmarks[454];
+
+      const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+      const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
+      const normalizedOffset = noseOffsetFromCenter / faceWidth;
+
+      if (normalizedOffset < -0.15) {
+        setHeadPosition("left");
+        if (currentChallenge === "turn_left") {
+          livenessDataRef.current.headTurned = true;
+          setChallengeCompleted(true);
+        }
+      } else if (normalizedOffset > 0.15) {
+        setHeadPosition("right");
+        if (currentChallenge === "turn_right") {
+          livenessDataRef.current.headTurned = true;
+          setChallengeCompleted(true);
+        }
+      } else {
+        setHeadPosition("center");
       }
-    } else {
-      setHeadPosition("center");
     }
   };
 
@@ -252,36 +286,52 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     return verticalDist / horizontalDist;
   };
 
-  // Capture photo
-  const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current || !challengeCompleted) return;
+  // Auto-capture face forward photo
+  const autoCaptureFaceForward = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    // Flip horizontally to un-mirror the captured image
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+    ctx.restore();
+    
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    setCapturedImage(imageDataUrl);
+    
+    // Move to verification stage
+    setCaptureStage('verify');
+    
+    toast({
+      title: '📸 ถ่ายรูปเรียบร้อย',
+      description: 'กรุณายืนยันตัวตน',
+    });
+  };
 
+  // Confirm and submit captured photo
+  const handleConfirmAndCapture = async () => {
+    if (!capturedImage) return;
+    
     setIsProcessing(true);
-
+    
     try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // Convert data URL to Blob
+      const response = await fetch(capturedImage);
+      const blob = await response.blob();
       
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Cannot get canvas context");
-      
-      ctx.drawImage(video, 0, 0);
-      
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            livenessDataRef.current.timestamp = Date.now();
-            onCapture(blob, livenessDataRef.current);
-          }
-        },
-        "image/jpeg",
-        0.9
-      );
+      livenessDataRef.current.timestamp = Date.now();
+      onCapture(blob, livenessDataRef.current);
     } catch (err) {
       console.error("Capture error:", err);
-      setError("Failed to capture photo");
+      setError("Failed to process photo");
       setIsProcessing(false);
     }
   };
@@ -308,94 +358,174 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
             </div>
           ) : (
             <>
-              {/* Challenge Instructions */}
-              <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
-                <div className="flex flex-col items-center gap-4">
-                  <ChallengeIcon className="h-12 w-12 text-primary" />
-                  
-                  {/* Challenge Text - ขนาดใหญ่และชัดเจน */}
-                  <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                    {currentChallengeInfo.text}
+              {/* Stage 1: Face Forward */}
+              {captureStage === 'face_forward' && (
+                <>
+                  <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
+                    <div className="flex flex-col items-center gap-4">
+                      <Camera className="h-12 w-12 text-primary" />
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        📸 หันหน้าตรงกล้อง
+                      </div>
+                      <div className="text-base text-muted-foreground text-center">
+                        ระบบจะถ่ายรูปอัตโนมัติเมื่อใบหน้าอยู่ตรงกลาง
+                      </div>
+                      {/* Progress Bar */}
+                      <div className="w-full bg-secondary rounded-full h-2">
+                        <div 
+                          className="bg-primary h-2 rounded-full transition-all duration-100"
+                          style={{ width: `${(faceDetectedStable / 30) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Feed - Mirrored */}
+                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover scale-x-[-1]"
+                      playsInline
+                      muted
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    {!faceLandmarker && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                        กำลังโหลดระบบตรวจจับใบหน้า...
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    className="w-full"
+                  >
+                    ยกเลิก
+                  </Button>
+                </>
+              )}
+
+              {/* Stage 2: Verify with Challenge */}
+              {captureStage === 'verify' && (
+                <>
+                  <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
+                    <div className="flex flex-col items-center gap-4">
+                      <ChallengeIcon className="h-12 w-12 text-primary" />
+                      
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        {currentChallengeInfo.text}
+                      </div>
+                      
+                      {currentChallenge === "blink" && (
+                        <div className="text-base text-muted-foreground">
+                          ตรวจพบ: {blinkCount} / 2 ครั้ง
+                        </div>
+                      )}
+                      {currentChallenge.includes("turn") && (
+                        <div className="text-base text-muted-foreground">
+                          ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
+                        </div>
+                      )}
+                      
+                      {challengeCompleted ? (
+                        <Badge variant="default" className="gap-2 px-4 py-2 text-base">
+                          <Check className="h-4 w-4" />
+                          เสร็จสิ้น
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="px-4 py-2 text-base">
+                          กำลังดำเนินการ
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video Feed - Mirrored */}
+                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover scale-x-[-1]"
+                      playsInline
+                      muted
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    disabled={challengeCompleted}
+                    className="w-full"
+                  >
+                    ยกเลิก
+                  </Button>
+                </>
+              )}
+
+              {/* Stage 3: Confirm */}
+              {captureStage === 'confirm' && capturedImage && (
+                <>
+                  <div className="bg-green-50 dark:bg-green-950 p-6 rounded-lg border-2 border-green-500/20">
+                    <div className="flex flex-col items-center gap-4">
+                      <CheckCircle className="h-12 w-12 text-green-500" />
+                      <div className="font-bold text-2xl text-green-600 dark:text-green-400">
+                        ✅ ยืนยันตัวตนสำเร็จ
+                      </div>
+                    </div>
                   </div>
                   
-                  {/* Progress Info */}
-                  {currentChallenge === "blink" && (
-                    <div className="text-base text-muted-foreground">
-                      ตรวจพบ: {blinkCount} / 2 ครั้ง
-                    </div>
-                  )}
-                  {currentChallenge.includes("turn") && (
-                    <div className="text-base text-muted-foreground">
-                      ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
-                    </div>
-                  )}
+                  {/* Show captured photo */}
+                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                    <img 
+                      src={capturedImage} 
+                      alt="Captured" 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                   
-                  {/* Status Badge */}
-                  {challengeCompleted ? (
-                    <Badge variant="default" className="gap-2 px-4 py-2 text-base">
-                      <Check className="h-4 w-4" />
-                      เสร็จสิ้น
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="px-4 py-2 text-base">
-                      กำลังดำเนินการ
-                    </Badge>
-                  )}
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="outline"
+                      onClick={onCancel}
+                      disabled={isProcessing}
+                      className="flex-1"
+                    >
+                      ยกเลิก
+                    </Button>
+                    <Button 
+                      onClick={handleConfirmAndCapture}
+                      disabled={isProcessing}
+                      className="flex-1"
+                      size="lg"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Camera className="h-5 w-5 mr-2" />
+                          กำลังประมวลผล...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-5 w-5 mr-2" />
+                          ยืนยันและใช้รูปนี้
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {/* Tips - Show only in stage 1 and 2 */}
+              {captureStage !== 'confirm' && (
+                <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-4 rounded-lg">
+                  <p>💡 <strong>คำแนะนำ:</strong></p>
+                  <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าชัดเจน</p>
+                  <p>• วางใบหน้าให้อยู่ตรงกลางกรอบ</p>
+                  {captureStage === 'face_forward' && <p>• ยืนนิ่งเพื่อให้ระบบถ่ายรูปอัตโนมัติ</p>}
+                  {captureStage === 'verify' && <p>• ทำตามคำสั่งให้ครบถ้วน</p>}
                 </div>
-              </div>
-
-              {/* Video Feed */}
-              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  playsInline
-                  muted
-                />
-                <canvas ref={canvasRef} className="hidden" />
-                
-                {/* Face detection overlay */}
-                {!faceLandmarker && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                    กำลังโหลดระบบตรวจจับใบหน้า...
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={onCancel}
-                  disabled={isProcessing}
-                  className="flex-1"
-                >
-                  ยกเลิก
-                </Button>
-                {challengeCompleted && isProcessing ? (
-                  <Button disabled className="flex-1">
-                    <Camera className="h-4 w-4 mr-2" />
-                    กำลังถ่ายรูป...
-                  </Button>
-                ) : challengeCompleted ? (
-                  <Button disabled className="flex-1">
-                    <Check className="h-4 w-4 mr-2" />
-                    กำลังประมวลผล...
-                  </Button>
-                ) : (
-                  <Button disabled className="flex-1 opacity-50">
-                    รอการยืนยัน...
-                  </Button>
-                )}
-              </div>
-
-              {/* Tips */}
-              <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-4 rounded-lg">
-                <p>💡 <strong>คำแนะนำ:</strong></p>
-                <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าชัดเจน</p>
-                <p>• วางใบหน้าให้อยู่ตรงกลางกรอบ</p>
-                <p>• ทำตามคำสั่งให้ครบถ้วน ระบบจะถ่ายรูปอัตโนมัติ</p>
-              </div>
+              )}
             </>
           )}
         </CardContent>
