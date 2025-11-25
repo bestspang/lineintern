@@ -2386,6 +2386,33 @@ export type Database = {
         }
         Relationships: []
       }
+      webapp_menu_config: {
+        Row: {
+          can_access: boolean | null
+          created_at: string | null
+          id: string
+          menu_group: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_group: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_group?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       work_patterns: {
         Row: {
           confidence_score: number | null
@@ -2810,7 +2837,13 @@ export type Database = {
         | "error"
         | "rate_limit"
         | "failed_reply"
-      app_role: "admin" | "moderator" | "user"
+      app_role:
+        | "admin"
+        | "moderator"
+        | "user"
+        | "executive"
+        | "manager"
+        | "field"
       group_mode: "helper" | "faq" | "report" | "fun" | "safety" | "magic"
       group_status: "active" | "left" | "error" | "pending"
       knowledge_scope: "global" | "group"
@@ -2954,7 +2987,7 @@ export const Constants = {
         "rate_limit",
         "failed_reply",
       ],
-      app_role: ["admin", "moderator", "user"],
+      app_role: ["admin", "moderator", "user", "executive", "manager", "field"],
       group_mode: ["helper", "faq", "report", "fun", "safety", "magic"],
       group_status: ["active", "left", "error", "pending"],
       knowledge_scope: ["global", "group"],

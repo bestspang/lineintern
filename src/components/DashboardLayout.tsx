@@ -52,6 +52,7 @@ import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
+import { useUserRole } from '@/hooks/useUserRole';
 
 const navigationGroups = [
   {
@@ -134,6 +135,12 @@ const navigationGroups = [
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
   const location = useLocation();
+  const { canAccessMenuGroup, isLoading: isRoleLoading } = useUserRole();
+
+  // Filter navigation groups based on role permissions
+  const filteredNavigationGroups = navigationGroups.filter(group => 
+    canAccessMenuGroup(group.title)
+  );
 
   // Check if any item in a group is active
   const isGroupActive = (items: typeof navigationGroups[0]['items']) => {
@@ -155,52 +162,58 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           
           <SidebarContent>
-            {navigationGroups.map((group) => (
-              <Collapsible
-                key={group.title}
-                defaultOpen={isGroupActive(group.items)}
-                className="group/collapsible"
-              >
-                <SidebarGroup>
-                  <SidebarGroupLabel asChild>
-                    <CollapsibleTrigger className="flex w-full items-center gap-2 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
-                      <group.icon className="h-4 w-4 text-muted-foreground" />
-                      <span className="flex-1 text-left">{group.title}</span>
-                      <svg
-                        className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-90"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </CollapsibleTrigger>
-                  </SidebarGroupLabel>
-                  <CollapsibleContent>
-                    <SidebarGroupContent>
-                      <SidebarMenu>
-                        {group.items.map((item) => (
-                          <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton asChild>
-                              <NavLink 
-                                to={item.url} 
-                                end={item.url === '/'}
-                                className="hover:bg-muted/50 pl-6"
-                                activeClassName="bg-muted text-primary font-medium"
-                              >
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.title}</span>
-                              </NavLink>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
-                  </CollapsibleContent>
-                </SidebarGroup>
-              </Collapsible>
-            ))}
+            {isRoleLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+              </div>
+            ) : (
+              filteredNavigationGroups.map((group) => (
+                <Collapsible
+                  key={group.title}
+                  defaultOpen={isGroupActive(group.items)}
+                  className="group/collapsible"
+                >
+                  <SidebarGroup>
+                    <SidebarGroupLabel asChild>
+                      <CollapsibleTrigger className="flex w-full items-center gap-2 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
+                        <group.icon className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex-1 text-left">{group.title}</span>
+                        <svg
+                          className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-90"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </CollapsibleTrigger>
+                    </SidebarGroupLabel>
+                    <CollapsibleContent>
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {group.items.map((item) => (
+                            <SidebarMenuItem key={item.title}>
+                              <SidebarMenuButton asChild>
+                                <NavLink 
+                                  to={item.url} 
+                                  end={item.url === '/'}
+                                  className="hover:bg-muted/50 pl-6"
+                                  activeClassName="bg-muted text-primary font-medium"
+                                >
+                                  <item.icon className="h-4 w-4" />
+                                  <span>{item.title}</span>
+                                </NavLink>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </CollapsibleContent>
+                  </SidebarGroup>
+                </Collapsible>
+              ))
+            )}
           </SidebarContent>
 
           <div className="p-3 sm:p-4 border-t mt-auto">
