@@ -119,6 +119,7 @@ const navigationGroups = [
     icon: BarChart3,
     items: [
       { title: 'Analytics', url: '/analytics', icon: BarChart3 },
+      { title: 'Bot Message Logs', url: '/bot-logs', icon: MessageSquare },
       { title: 'Memory Analytics', url: '/memory-analytics', icon: Database },
       { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
     ],

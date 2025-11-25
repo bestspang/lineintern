@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
+import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -6053,7 +6054,19 @@ async function generateAiReply(
 // LINE REPLY
 // =============================
 
-async function replyToLine(replyToken: string, text: string, quickReply?: any, skipQuickReply: boolean = false) {
+interface ReplyContext {
+  groupId?: string;
+  groupName?: string;
+  userId?: string;
+  employeeId?: string;
+  lineUserId?: string;
+  lineGroupId?: string;
+  commandType?: string;
+  messageType?: BotLogEntry['messageType'];
+  isDM?: boolean;
+}
+
+async function replyToLine(replyToken: string, text: string, quickReply?: any, skipQuickReply: boolean = false, context?: ReplyContext) {
   // Use default Quick Reply if not provided and not skipped
   const finalQuickReply = skipQuickReply ? undefined : (quickReply || getSimpleQuickReply('th'));
   
@@ -6090,10 +6103,48 @@ async function replyToLine(replyToken: string, text: string, quickReply?: any, s
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[replyToLine] LINE API error: ${response.status} ${errorText}`);
+      
+      // Log failed message
+      if (context) {
+        await logBotMessage({
+          destinationType: context.isDM ? 'dm' : 'group',
+          destinationId: context.lineGroupId || context.lineUserId || 'unknown',
+          destinationName: context.groupName || 'Unknown',
+          groupId: context.groupId,
+          recipientUserId: context.userId,
+          recipientEmployeeId: context.employeeId,
+          messageText: text,
+          messageType: context.messageType || 'ai_reply',
+          triggeredBy: 'webhook',
+          commandType: context.commandType,
+          edgeFunctionName: 'line-webhook',
+          deliveryStatus: 'failed',
+          errorMessage: `LINE API error: ${response.status} ${errorText}`,
+        });
+      }
+      
       throw new Error(`LINE API error: ${response.status}`);
     }
 
     console.log(`[replyToLine] Successfully sent reply`);
+    
+    // Log successful message
+    if (context) {
+      await logBotMessage({
+        destinationType: context.isDM ? 'dm' : 'group',
+        destinationId: context.lineGroupId || context.lineUserId || 'unknown',
+        destinationName: context.groupName || 'Unknown',
+        groupId: context.groupId,
+        recipientUserId: context.userId,
+        recipientEmployeeId: context.employeeId,
+        messageText: text,
+        messageType: context.messageType || 'ai_reply',
+        triggeredBy: 'webhook',
+        commandType: context.commandType,
+        edgeFunctionName: 'line-webhook',
+        deliveryStatus: 'sent',
+      });
+    }
   } catch (error) {
     console.error(`[replyToLine] Error:`, error);
     throw error;
@@ -6180,7 +6231,7 @@ function getSimpleQuickReply(locale: 'th' | 'en' = 'th') {
   };
 }
 
-async function pushToLine(to: string, text: string) {
+async function pushToLine(to: string, text: string, context?: Partial<ReplyContext> & { messageType?: BotLogEntry['messageType'] }) {
   console.log(`[pushToLine] Sending push message to ${to} (${text.length} chars)`);
   
   // LINE has a 5000 character limit per message
@@ -6207,10 +6258,48 @@ async function pushToLine(to: string, text: string) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[pushToLine] LINE API error: ${response.status} ${errorText}`);
+      
+      // Log failed message
+      if (context) {
+        await logBotMessage({
+          destinationType: to.startsWith('U') ? 'dm' : 'group',
+          destinationId: to,
+          destinationName: context.groupName || 'Unknown',
+          groupId: context.groupId,
+          recipientUserId: context.userId,
+          recipientEmployeeId: context.employeeId,
+          messageText: text,
+          messageType: context.messageType || 'notification',
+          triggeredBy: 'webhook',
+          commandType: context.commandType,
+          edgeFunctionName: 'line-webhook',
+          deliveryStatus: 'failed',
+          errorMessage: `LINE API error: ${response.status} ${errorText}`,
+        });
+      }
+      
       throw new Error(`LINE API error: ${response.status}`);
     }
 
     console.log(`[pushToLine] Successfully sent push message`);
+    
+    // Log successful message
+    if (context) {
+      await logBotMessage({
+        destinationType: to.startsWith('U') ? 'dm' : 'group',
+        destinationId: to,
+        destinationName: context.groupName || 'Unknown',
+        groupId: context.groupId,
+        recipientUserId: context.userId,
+        recipientEmployeeId: context.employeeId,
+        messageText: text,
+        messageType: context.messageType || 'notification',
+        triggeredBy: 'webhook',
+        commandType: context.commandType,
+        edgeFunctionName: 'line-webhook',
+        deliveryStatus: 'sent',
+      });
+    }
   } catch (error) {
     console.error(`[pushToLine] Error:`, error);
     throw error;

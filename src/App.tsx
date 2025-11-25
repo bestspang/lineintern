@@ -15,6 +15,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import Tasks from "./pages/Tasks";
 import Analytics from "./pages/Analytics";
 import MemoryAnalytics from "./pages/MemoryAnalytics";
+import BotLogs from "./pages/BotLogs";
 import Reports from "./pages/Reports";
 import Alerts from "./pages/Alerts";
 import FaqLogs from "./pages/FaqLogs";
@@ -85,6 +86,7 @@ const App = () => (
               <Route path="/memory" element={<Memory />} />
                     <Route path="/commands" element={<Commands />} />
                     <Route path="/summaries" element={<Summaries />} />
+                    <Route path="/bot-logs" element={<BotLogs />} />
                     <Route path="/personality" element={<Personality />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/memory-analytics" element={<MemoryAnalytics />} />
