@@ -57,10 +57,59 @@ Deno.serve(async (req) => {
       
       // ตรวจสอบว่าหมดเวลา grace period แล้วหรือยัง
       if (bangkokTime >= graceExpiresAt) {
-        logger.info('Grace period expired, performing auto checkout', { 
+        logger.info('Grace period expired, checking for existing checkout', { 
           employeeId: employee.id,
           graceExpiresAt: graceExpiresAt.toISOString() 
         });
+        
+        // SAFEGUARD: Check if early leave checkout already exists for today
+        const todayStart = new Date(bangkokTime);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(bangkokTime);
+        todayEnd.setHours(23, 59, 59, 999);
+        
+        const { data: existingCheckout } = await supabase
+          .from('attendance_logs')
+          .select('id, early_leave_request_id, server_time')
+          .eq('employee_id', employee.id)
+          .eq('event_type', 'check_out')
+          .gte('server_time', todayStart.toISOString())
+          .lte('server_time', todayEnd.toISOString())
+          .not('early_leave_request_id', 'is', null)
+          .single();
+        
+        if (existingCheckout) {
+          logger.info('Early leave checkout already exists, updating session to completed', {
+            employeeId: employee.id,
+            checkoutLogId: existingCheckout.id
+          });
+          
+          // Update session to completed and link to existing checkout
+          const checkoutTime = new Date(existingCheckout.server_time);
+          const actualStartTime = new Date(session.actual_start_time);
+          const totalMinutes = Math.floor((checkoutTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
+          const breakMinutes = session.break_minutes || 60;
+          const netWorkMinutes = Math.max(0, totalMinutes - breakMinutes);
+          
+          await supabase
+            .from('work_sessions')
+            .update({
+              checkout_log_id: existingCheckout.id,
+              actual_end_time: checkoutTime.toISOString(),
+              total_minutes: totalMinutes,
+              net_work_minutes: netWorkMinutes,
+              auto_checkout_performed: false,
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', session.id);
+          
+          logger.info('Session updated to completed with existing early leave checkout', {
+            sessionId: session.id
+          });
+          
+          continue; // Skip auto-checkout for this session
+        }
         
         // Perform auto checkout
         const checkoutTime = graceExpiresAt;

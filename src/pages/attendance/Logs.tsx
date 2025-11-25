@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileText, AlertTriangle, Eye } from 'lucide-react';
-import { format } from 'date-fns';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Loader2, FileText, AlertTriangle, Eye, Clock } from 'lucide-react';
+import { format, differenceInHours, differenceInMinutes } from 'date-fns';
 import AttendanceLogFilters from '@/components/attendance/AttendanceLogFilters';
 import AttendanceLogDetail from '@/components/attendance/AttendanceLogDetail';
 import AttendanceLogExport from '@/components/attendance/AttendanceLogExport';
@@ -56,7 +57,12 @@ export default function AttendanceLogs() {
     queryFn: async () => {
       let query = supabase
         .from('attendance_logs')
-        .select('*, employee:employees(full_name), branch:branches(name)', { count: 'exact' })
+        .select(`
+          *,
+          employee:employees(full_name),
+          branch:branches(name),
+          work_session:work_sessions!checkout_log_id(actual_start_time)
+        `, { count: 'exact' })
         .order('server_time', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -124,6 +130,36 @@ export default function AttendanceLogs() {
   const handleViewDetail = (log: any) => {
     setSelectedLog(log);
     setDetailOpen(true);
+  };
+
+  const formatTimeWithRelative = (log: any) => {
+    const serverTime = new Date(log.server_time);
+    const isCheckout = log.event_type === 'check_out';
+    const workSession = log.work_session?.[0];
+    
+    // Check if checkout is next day (early morning 00:00-06:00)
+    const isNextDay = isCheckout && serverTime.getHours() >= 0 && serverTime.getHours() < 6;
+    
+    // Calculate relative time for checkout
+    let relativeTime = '';
+    if (isCheckout && workSession?.actual_start_time) {
+      const startTime = new Date(workSession.actual_start_time);
+      const hours = differenceInHours(serverTime, startTime);
+      const minutes = differenceInMinutes(serverTime, startTime) % 60;
+      
+      if (hours > 0) {
+        relativeTime = `${hours}h ${minutes}m after check-in`;
+      } else {
+        relativeTime = `${minutes}m after check-in`;
+      }
+    }
+    
+    return {
+      display: format(serverTime, 'MMM dd, HH:mm'),
+      full: format(serverTime, 'yyyy-MM-dd HH:mm:ss zzz'),
+      isNextDay,
+      relativeTime
+    };
   };
 
   if (isLoading && !logs) {
@@ -208,8 +244,32 @@ export default function AttendanceLogs() {
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-sm py-2">{log.branch?.name || '-'}</TableCell>
-                    <TableCell className="text-xs sm:text-sm py-2 whitespace-nowrap">
-                      {format(new Date(log.server_time), 'MMM dd, HH:mm')}
+                    <TableCell className="text-xs sm:text-sm py-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 whitespace-nowrap">
+                                {formatTimeWithRelative(log).display}
+                                {formatTimeWithRelative(log).isNextDay && (
+                                  <Badge variant="secondary" className="h-4 text-[9px] px-1">
+                                    Day +1
+                                  </Badge>
+                                )}
+                              </div>
+                              {formatTimeWithRelative(log).relativeTime && (
+                                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  {formatTimeWithRelative(log).relativeTime}
+                                </div>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">{formatTimeWithRelative(log).full}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell className="hidden md:table-cell capitalize text-sm py-2">{log.source}</TableCell>
                     <TableCell className="py-2">
