@@ -215,6 +215,8 @@ export default function AttendanceSettings() {
               />
             </div>
 
+            <Separator className="my-4" />
+
             <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900">
@@ -222,19 +224,22 @@ export default function AttendanceSettings() {
                 </div>
                 <div className="flex-1 space-y-2">
                   <h4 className="font-semibold text-blue-900 dark:text-blue-100">
-                    Daily Summary Configuration
+                    Daily Summary & Delivery Settings
                   </h4>
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Daily attendance summaries are now configured on the Reports & Summaries page with more flexibility and scheduling options.
+                    Daily attendance summaries and delivery schedules are now managed on the Reports & Summaries page with advanced scheduling options, multiple delivery destinations, and delivery history tracking.
                   </p>
                   <Button asChild variant="outline" size="sm" className="mt-2">
                     <a href="/attendance/summaries" className="flex items-center gap-2">
-                      Configure Summaries →
+                      <SettingsIcon className="h-4 w-4" />
+                      Configure Summaries & Delivery →
                     </a>
                   </Button>
                 </div>
               </div>
             </div>
+
+            <Separator className="my-4" />
 
             <div className="space-y-2">
               <Label htmlFor="time_zone">Timezone</Label>

@@ -38,13 +38,20 @@ const Index = () => {
   ];
 
   const commands = [
-    { cmd: "/summary", desc: "Get a quick summary of recent messages" },
-    { cmd: "/faq", desc: "Search team knowledge base and FAQs" },
-    { cmd: "/todo", desc: "Create tasks and set reminders" },
-    { cmd: "/report", desc: "View group activity and engagement report" },
-    { cmd: "/checkin", desc: "Request check-in link for attendance" },
-    { cmd: "/checkout", desc: "Request check-out link for attendance" },
-    { cmd: "/help", desc: "See all available commands" },
+    { cmd: "@intern [question]", desc: "Ask any question or chat with the bot" },
+    { cmd: "/help", desc: "Show all available commands" },
+    { cmd: "/summary", desc: "Summarize recent chat messages" },
+    { cmd: "/find [keyword]", desc: "Search messages by keyword" },
+    { cmd: "/todo [task]", desc: "Create a task or reminder" },
+    { cmd: "/tasks @user", desc: "View pending work assignments" },
+    { cmd: "/progress [text]", desc: "Report work progress" },
+    { cmd: "/confirm @user", desc: "Approve completed work" },
+    { cmd: "checkin / เช็คอิน", desc: "Check in to work (DM only)" },
+    { cmd: "checkout / เช็คเอาต์", desc: "Check out from work (DM only)" },
+    { cmd: "/ot [reason]", desc: "Request overtime (DM only)" },
+    { cmd: "/faq [question]", desc: "Search knowledge base" },
+    { cmd: "/report [period]", desc: "Generate activity report" },
+    { cmd: "/imagine [text]", desc: "Generate AI image" },
   ];
 
   const mockMessages = [
