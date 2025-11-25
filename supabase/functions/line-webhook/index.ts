@@ -96,6 +96,25 @@ function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): string {
 }
 
 // =============================
+// EMPLOYEE CHECK
+// =============================
+
+async function checkIsEmployee(lineUserId: string): Promise<{ isEmployee: boolean; employee?: any }> {
+  const { data: employee, error } = await supabase
+    .from('employees')
+    .select('id, full_name, role, is_active, line_user_id')
+    .eq('line_user_id', lineUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+  
+  if (error || !employee) {
+    return { isEmployee: false };
+  }
+  
+  return { isEmployee: true, employee };
+}
+
+// =============================
 // WORK ASSIGNMENT DETECTION
 // =============================
 
@@ -6726,6 +6745,20 @@ async function handleMessageEvent(event: LineEvent) {
     return; // Skip processing if IDs are invalid
   }
 
+  // =============================
+  // EMPLOYEE CHECK (CRITICAL SECURITY)
+  // =============================
+  // Check if user is a registered employee
+  const { isEmployee, employee } = await checkIsEmployee(lineUserId);
+  if (!isEmployee) {
+    console.log(`[handleMessageEvent] SECURITY: User ${lineUserId} is NOT an employee - SILENT IGNORE`);
+    console.log(`[handleMessageEvent] - Message preview: ${event.message.text.substring(0, 50)}...`);
+    console.log(`[handleMessageEvent] - Context: ${isDM ? 'DM' : 'Group'}`);
+    console.log(`╚═══ [handleMessageEvent] END (non-employee ignored) ═══╝\n`);
+    return; // Silent ignore - do not respond or show Quick Reply
+  }
+  console.log(`[handleMessageEvent] ✓ User is employee: ${employee.full_name} (${employee.role || 'no role'})`);
+
   // Ensure group exists first (if it's a group message)
   let group;
   let groupIdForUser; // For monitoring in ensureUser
@@ -7039,29 +7072,30 @@ async function handleMessageEvent(event: LineEvent) {
     // Check if it's a menu command
     if (lowerText === '/menu' || lowerText === 'menu' || lowerText === 'เมนู') {
       try {
-        // Get employee data with role
-        const { data: employee } = await supabase
+        // Note: Employee check is already done at the start of handleMessageEvent
+        // Non-employees will never reach this point
+        
+        // Get employee data with role (we know they exist from earlier check)
+        const { data: employeeData } = await supabase
           .from('employees')
           .select('id, full_name, role_id')
           .eq('line_user_id', lineUserId)
           .maybeSingle();
         
-        if (!employee) {
-          const notEmployeeMsg = menuLocale === 'th'
-            ? '❌ คุณยังไม่ได้ลงทะเบียนในระบบ\nกรุณาติดต่อผู้ดูแลระบบ'
-            : '❌ You are not registered in the system\nPlease contact administrator';
-          await replyToLine(event.replyToken, notEmployeeMsg, getSimpleQuickReply(menuLocale));
-          return;
+        if (!employeeData) {
+          // This should never happen due to earlier check, but keep as fallback
+          console.error('[Menu] Employee not found despite passing initial check');
+          return; // Silent ignore
         }
 
         // Generate secure token (valid for 30 minutes)
-        const token = `emp_${employee.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const token = `emp_${employeeData.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
         const { error: tokenError } = await supabase
           .from('employee_menu_tokens')
           .insert({
-            employee_id: employee.id,
+            employee_id: employeeData.id,
             token: token,
             expires_at: expiresAt
           });
