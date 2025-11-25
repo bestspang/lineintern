@@ -943,6 +943,7 @@ export type Database = {
           ot_rate_multiplier: number | null
           ot_warning_minutes: number | null
           reminder_preferences: Json | null
+          require_photo: boolean | null
           role: string | null
           salary_per_month: number | null
           shift_end_time: string | null
@@ -969,6 +970,7 @@ export type Database = {
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           reminder_preferences?: Json | null
+          require_photo?: boolean | null
           role?: string | null
           salary_per_month?: number | null
           shift_end_time?: string | null
@@ -995,6 +997,7 @@ export type Database = {
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           reminder_preferences?: Json | null
+          require_photo?: boolean | null
           role?: string | null
           salary_per_month?: number | null
           shift_end_time?: string | null
