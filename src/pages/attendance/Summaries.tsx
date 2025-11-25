@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User } from 'lucide-react';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -674,87 +674,139 @@ export default function AttendanceSummaries() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          {deliveryConfigs && deliveryConfigs.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>ข้อมูลจาก</TableHead>
-                  <TableHead>ส่งไป</TableHead>
-                  <TableHead>เวลา</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead className="text-right">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deliveryConfigs.map((config: any) => (
-                  <TableRow key={config.id}>
-                    <TableCell className="font-medium">{config.name}</TableCell>
-                    <TableCell>
-                      {config.source_type === 'all_branches' 
-                        ? 'ทุกสาขา' 
-                        : config.source_branch?.name || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {(config.destination_line_ids?.length > 0 || config.destination_employee_ids?.length > 0) ? (
-                          <>
-                            {config.destination_line_ids?.length > 0 && (
-                              <div className="text-xs">
-                                📱 {config.destination_line_ids.length} กลุ่ม LINE
-                              </div>
-                            )}
-                            {config.destination_employee_ids?.length > 0 && (
-                              <div className="text-xs">
-                                👤 {config.destination_employee_ids.length} พนักงาน
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{config.send_time?.substring(0, 5) || '-'}</TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={config.is_enabled}
-                        onCheckedChange={(checked) =>
-                          updateConfigMutation.mutate({
-                            id: config.id,
-                            updates: { is_enabled: checked },
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleEditConfig(config)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            if (confirm('ต้องการลบการตั้งค่านี้?')) {
-                              deleteConfigMutation.mutate(config.id);
+        <CardContent className="space-y-6">
+          {/* System Presets Section */}
+          {deliveryConfigs?.some((c: any) => c.is_system) && (
+            <div>
+              <h3 className="font-semibold mb-3 flex items-center gap-2 text-base">
+                <Settings className="h-4 w-4" />
+                Presets (ตั้งค่าเริ่มต้น)
+              </h3>
+              <div className="grid gap-3 md:grid-cols-3">
+                {deliveryConfigs?.filter((c: any) => c.is_system).map((preset: any) => (
+                  <Card key={preset.id} className="border-2">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm leading-tight">{preset.name}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              เวลาส่ง: {preset.send_time?.substring(0, 5)}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={preset.is_enabled}
+                            onCheckedChange={(checked) =>
+                              updateConfigMutation.mutate({
+                                id: preset.id,
+                                updates: { is_enabled: checked },
+                              })
                             }
-                          }}
+                          />
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="w-full"
+                          onClick={() => handleEditConfig(preset)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Edit className="h-3 w-3 mr-1" /> แก้ไข
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </CardContent>
+                  </Card>
                 ))}
-              </TableBody>
-            </Table>
-          ) : (
+              </div>
+            </div>
+          )}
+
+          {/* Custom Configs Section */}
+          {deliveryConfigs && deliveryConfigs.some((c: any) => !c.is_system) && (
+            <div>
+              <h3 className="font-semibold mb-3 text-base">การตั้งค่าเพิ่มเติม</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ชื่อ</TableHead>
+                    <TableHead>ข้อมูลจาก</TableHead>
+                    <TableHead>ส่งไป</TableHead>
+                    <TableHead>เวลา</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead className="text-right">จัดการ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {deliveryConfigs.filter((c: any) => !c.is_system).map((config: any) => (
+                    <TableRow key={config.id}>
+                      <TableCell className="font-medium">{config.name}</TableCell>
+                      <TableCell>
+                        {config.source_type === 'all_branches' 
+                          ? 'ทุกสาขา' 
+                          : config.source_branch?.name || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {(config.destination_line_ids?.length > 0 || config.destination_employee_ids?.length > 0) ? (
+                            <>
+                              {config.destination_line_ids?.length > 0 && (
+                                <div className="text-xs">
+                                  📱 {config.destination_line_ids.length} กลุ่ม LINE
+                                </div>
+                              )}
+                              {config.destination_employee_ids?.length > 0 && (
+                                <div className="text-xs">
+                                  👤 {config.destination_employee_ids.length} พนักงาน
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{config.send_time?.substring(0, 5) || '-'}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={config.is_enabled}
+                          onCheckedChange={(checked) =>
+                            updateConfigMutation.mutate({
+                              id: config.id,
+                              updates: { is_enabled: checked },
+                            })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditConfig(config)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm('ต้องการลบการตั้งค่านี้?')) {
+                                deleteConfigMutation.mutate(config.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {(!deliveryConfigs || deliveryConfigs.length === 0) && (
             <div className="text-center py-8 text-muted-foreground">
               <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>ยังไม่มีการตั้งค่าการส่งรายงาน</p>

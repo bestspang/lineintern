@@ -16,6 +16,8 @@ interface DeliveryConfig {
   send_time: string;
   include_work_hours: boolean;
   is_enabled: boolean;
+  is_system: boolean;
+  preset_type: 'per_employee' | 'per_branch' | null;
 }
 
 interface Branch {
@@ -37,6 +39,56 @@ const calculateWorkHours = (checkIn: any, checkOut: any): number => {
   const end = new Date(checkOut.server_time);
   const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
   return Math.max(0, hours);
+};
+
+const generatePersonalSummary = async (
+  supabase: any,
+  employee: Employee,
+  today: string,
+  includeWorkHours: boolean
+): Promise<string> => {
+  const { data: logs } = await supabase
+    .from('attendance_logs')
+    .select('*')
+    .eq('employee_id', employee.id)
+    .gte('server_time', `${today}T00:00:00`)
+    .lte('server_time', `${today}T23:59:59`)
+    .order('server_time', { ascending: true });
+
+  const checkIn = logs?.find((l: any) => l.event_type === 'check_in');
+  const checkOut = logs?.find((l: any) => l.event_type === 'check_out');
+
+  const checkInTime = checkIn
+    ? new Date(checkIn.server_time).toLocaleTimeString('th-TH', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Bangkok',
+      })
+    : 'ยังไม่เช็คอิน';
+
+  const checkOutTime = checkOut
+    ? new Date(checkOut.server_time).toLocaleTimeString('th-TH', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Bangkok',
+      })
+    : 'ยังไม่เช็คเอาต์';
+
+  let summaryText = `📋 สรุปการเข้างานของคุณ ${today}\n\n`;
+  summaryText += `👤 ${employee.full_name}\n`;
+  summaryText += `⏰ เช็คอิน: ${checkInTime}\n`;
+  summaryText += `🏁 เช็คเอาต์: ${checkOutTime}\n`;
+
+  if (includeWorkHours && checkIn && checkOut) {
+    const hours = calculateWorkHours(checkIn, checkOut);
+    summaryText += `⏱️ ชั่วโมงทำงาน: ${hours.toFixed(1)} ชม.\n`;
+  }
+
+  if (logs?.some((l: any) => l.is_flagged)) {
+    summaryText += `\n⚠️ มีข้อสังเกต: กรุณาติดต่อฝ่ายบริหาร\n`;
+  }
+
+  return summaryText;
 };
 
 const generateSummary = async (
@@ -231,7 +283,106 @@ serve(async (req) => {
     const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? '';
 
     for (const config of configs as DeliveryConfig[]) {
-      console.log(`[Config: ${config.name}] Processing...`);
+      console.log(`[Config: ${config.name}] Processing... (preset_type: ${config.preset_type})`);
+
+      const sentMessageIds: string[] = [];
+      let successCount = 0;
+
+      // Handle preset types
+      if (config.preset_type === 'per_employee') {
+        // Send personal summary to each employee
+        console.log(`[Config: ${config.name}] Running per-employee preset`);
+        
+        const { data: allEmployees } = await supabase
+          .from('employees')
+          .select('*')
+          .eq('is_active', true);
+
+        if (!allEmployees || allEmployees.length === 0) {
+          console.log(`[Config: ${config.name}] No active employees found`);
+          continue;
+        }
+
+        for (const employee of allEmployees) {
+          if (!employee.line_user_id) {
+            console.warn(`[Config: ${config.name}] Employee ${employee.full_name} has no LINE user ID, skipping`);
+            continue;
+          }
+
+          const personalSummary = await generatePersonalSummary(
+            supabase,
+            employee,
+            today,
+            config.include_work_hours
+          );
+
+          const { ok, messageId } = await sendToLine(employee.line_user_id, personalSummary, lineAccessToken);
+          if (ok) {
+            console.log(`[Config: ${config.name}] Sent personal summary to ${employee.full_name}`);
+            if (messageId) sentMessageIds.push(messageId);
+            successCount++;
+          } else {
+            console.error(`[Config: ${config.name}] Failed to send to ${employee.full_name}`);
+          }
+        }
+
+        processedCount++;
+        console.log(`[Config: ${config.name}] Sent ${successCount} personal summaries`);
+        continue;
+      }
+
+      if (config.preset_type === 'per_branch') {
+        // Send branch-specific summary to each branch's LINE group
+        console.log(`[Config: ${config.name}] Running per-branch preset`);
+        
+        const { data: allBranches } = await supabase
+          .from('branches')
+          .select('*');
+
+        if (!allBranches || allBranches.length === 0) {
+          console.log(`[Config: ${config.name}] No branches found`);
+          continue;
+        }
+
+        for (const branch of allBranches) {
+          if (!branch.line_group_id) {
+            console.warn(`[Config: ${config.name}] Branch ${branch.name} has no LINE group ID, skipping`);
+            continue;
+          }
+
+          const branchSummary = await generateSummary(
+            supabase,
+            [branch],
+            today,
+            config.include_work_hours
+          );
+
+          const { ok, messageId } = await sendToLine(branch.line_group_id, branchSummary, lineAccessToken);
+          if (ok) {
+            console.log(`[Config: ${config.name}] Sent branch summary to ${branch.name}`);
+            if (messageId) sentMessageIds.push(messageId);
+            successCount++;
+
+            // Store summary
+            await supabase.from('daily_attendance_summaries').upsert({
+              branch_id: branch.id,
+              summary_date: today,
+              summary_text: branchSummary,
+              line_message_id: messageId || null,
+              sent_at: new Date().toISOString(),
+            });
+          } else {
+            console.error(`[Config: ${config.name}] Failed to send to branch ${branch.name}`);
+          }
+        }
+
+        processedCount++;
+        console.log(`[Config: ${config.name}] Sent ${successCount} branch summaries`);
+        continue;
+      }
+
+      // Custom config (preset_type = null)
+      console.log(`[Config: ${config.name}] Running custom config`);
 
       // Get branches based on source type
       let branches: Branch[] = [];
@@ -271,9 +422,6 @@ serve(async (req) => {
         console.log(`[Config: ${config.name}] No destinations configured, skipping`);
         continue;
       }
-
-      const sentMessageIds: string[] = [];
-      let successCount = 0;
 
       // Send to LINE groups
       for (const lineGroupId of lineIds) {
