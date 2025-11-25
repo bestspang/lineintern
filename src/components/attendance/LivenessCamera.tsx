@@ -34,10 +34,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   const [error, setError] = useState<string>("");
   
   // Liveness detection state
-  const [currentChallenge, setCurrentChallenge] = useState<Challenge>("blink");
+  const [currentChallenge, setCurrentChallenge] = useState<Challenge>("turn_right");
   const [challengeCompleted, setChallengeCompleted] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
   const [headPosition, setHeadPosition] = useState<"center" | "left" | "right">("center");
+  
+  // 2-Step Challenge states
+  const [challengeStep, setChallengeStep] = useState<1 | 2>(1);
+  const [step1Completed, setStep1Completed] = useState(false);
+  const [step2Challenge, setStep2Challenge] = useState<"blink" | "turn_left">("blink");
+  
+  // Center face detection states
   const [waitingForCenter, setWaitingForCenter] = useState(false);
   const [centerHoldTimer, setCenterHoldTimer] = useState(0);
   const centerStartTimeRef = useRef<number | null>(null);
@@ -100,10 +107,16 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         
         setStream(mediaStream);
         
-        // Select random challenge
-        const randomChallenge = CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)];
-        setCurrentChallenge(randomChallenge.type);
-        livenessDataRef.current.challenge = randomChallenge.text;
+        // 2-Step Challenge Setup
+        // Step 1: Always turn_right
+        setCurrentChallenge("turn_right");
+        livenessDataRef.current.challenge = "หันขวา → ";
+        
+        // Step 2: Random between blink or turn_left
+        const step2Options: ("blink" | "turn_left")[] = ["blink", "turn_left"];
+        const selectedStep2 = step2Options[Math.floor(Math.random() * 2)];
+        setStep2Challenge(selectedStep2);
+        livenessDataRef.current.challenge += selectedStep2 === "blink" ? "กระพริบตา" : "หันซ้าย";
       } catch (err) {
         console.error("Camera error:", err);
         setError("Cannot access camera. Please allow camera permission.");
@@ -126,9 +139,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     }
   }, [challengeCompleted, waitingForCenter]);
 
-  // Detect center hold for 3 seconds
+  // Detect center hold for 3 seconds with strict face validation
   useEffect(() => {
-    if (!waitingForCenter) {
+    if (!waitingForCenter || !faceLandmarker || !videoRef.current) {
       centerStartTimeRef.current = null;
       setCenterHoldTimer(0);
       return;
@@ -137,23 +150,61 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     let animationId: number;
     
     const checkCenterHold = () => {
-      if (headPosition === "center") {
-        if (centerStartTimeRef.current === null) {
-          centerStartTimeRef.current = Date.now();
+      // Check if face is truly straight (strict validation)
+      const video = videoRef.current;
+      if (!video || video.readyState !== 4) {
+        animationId = requestAnimationFrame(checkCenterHold);
+        return;
+      }
+
+      try {
+        const result = faceLandmarker.detectForVideo(video, Date.now());
+        
+        if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          const landmarks = result.faceLandmarks[0];
+          
+          // Check if face is straight on both X and Y axis
+          const noseTip = landmarks[1];
+          const leftCheek = landmarks[234];
+          const rightCheek = landmarks[454];
+          const foreheadTop = landmarks[10];
+          const chin = landmarks[152];
+          
+          // X-axis (left-right)
+          const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+          const noseOffsetX = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
+          const normalizedOffsetX = noseOffsetX / faceWidth;
+          
+          // Y-axis (up-down)
+          const faceHeight = Math.abs(chin.y - foreheadTop.y);
+          const noseOffsetY = noseTip.y - (foreheadTop.y + chin.y) / 2;
+          const normalizedOffsetY = noseOffsetY / faceHeight;
+          
+          // Strict center detection: ±0.08 on both axes
+          const isFacingStraight = Math.abs(normalizedOffsetX) < 0.08 && Math.abs(normalizedOffsetY) < 0.08;
+          
+          if (isFacingStraight) {
+            if (centerStartTimeRef.current === null) {
+              centerStartTimeRef.current = Date.now();
+            }
+            
+            const elapsed = Date.now() - centerStartTimeRef.current;
+            const secondsHeld = Math.floor(elapsed / 1000) + 1;
+            
+            setCenterHoldTimer(Math.min(secondsHeld, 3));
+            
+            if (elapsed >= 3000) {
+              capturePhoto();
+              return;
+            }
+          } else {
+            // Reset if face is not straight
+            centerStartTimeRef.current = null;
+            setCenterHoldTimer(0);
+          }
         }
-        
-        const elapsed = Date.now() - centerStartTimeRef.current;
-        const secondsHeld = Math.floor(elapsed / 1000);
-        
-        setCenterHoldTimer(Math.min(secondsHeld, 3));
-        
-        if (elapsed >= 3000) {
-          capturePhoto();
-          return;
-        }
-      } else {
-        centerStartTimeRef.current = null;
-        setCenterHoldTimer(0);
+      } catch (err) {
+        console.error("Center hold check error:", err);
       }
       
       animationId = requestAnimationFrame(checkCenterHold);
@@ -166,7 +217,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         cancelAnimationFrame(animationId);
       }
     };
-  }, [waitingForCenter, headPosition]);
+  }, [waitingForCenter, faceLandmarker]);
 
   // Process video frames
   useEffect(() => {
@@ -217,8 +268,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     const landmarks = result.faceLandmarks[0];
 
-    // Blink detection - only during challenge phase
-    if (!challengeCompleted) {
+    // Blink detection - only during step 2 if challenge is blink
+    if (!challengeCompleted && challengeStep === 2 && currentChallenge === "blink") {
       const leftEyeTop = landmarks[159];
       const leftEyeBottom = landmarks[145];
       const leftEyeLeft = landmarks[33];
@@ -233,7 +284,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       const rightEAR = calculateEAR(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
       const avgEAR = (leftEAR + rightEAR) / 2;
 
-      const isEyeClosed = avgEAR < 0.2;
+      // Stricter threshold for blink detection
+      const isEyeClosed = avgEAR < 0.18;
 
       // Detect blink (eye closed then opened)
       if (lastEyeStateRef.current && isEyeClosed) {
@@ -241,7 +293,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       } else if (!lastEyeStateRef.current && !isEyeClosed) {
         setBlinkCount(prev => {
           const newCount = prev + 1;
-          if (currentChallenge === "blink" && newCount >= 2) {
+          if (newCount >= 2) {
             livenessDataRef.current.blinked = true;
             setChallengeCompleted(true);
           }
@@ -251,7 +303,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       }
     }
 
-    // Head turn detection - always track position
+    // Head turn detection - stricter thresholds (±0.25)
     const noseTip = landmarks[1];
     const leftCheek = landmarks[234];
     const rightCheek = landmarks[454];
@@ -260,17 +312,21 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
     const normalizedOffset = noseOffsetFromCenter / faceWidth;
 
-    if (normalizedOffset < -0.15) {
+    if (normalizedOffset < -0.25) {
       setHeadPosition("left");
-      if (!challengeCompleted && currentChallenge === "turn_left") {
+      // Step 2: turn_left
+      if (!challengeCompleted && challengeStep === 2 && currentChallenge === "turn_left") {
         livenessDataRef.current.headTurned = true;
         setChallengeCompleted(true);
       }
-    } else if (normalizedOffset > 0.15) {
+    } else if (normalizedOffset > 0.25) {
       setHeadPosition("right");
-      if (!challengeCompleted && currentChallenge === "turn_right") {
+      // Step 1: turn_right (must complete before step 2)
+      if (!step1Completed && challengeStep === 1 && currentChallenge === "turn_right") {
+        setStep1Completed(true);
+        setChallengeStep(2);
+        setCurrentChallenge(step2Challenge);
         livenessDataRef.current.headTurned = true;
-        setChallengeCompleted(true);
       }
     } else {
       setHeadPosition("center");
@@ -352,24 +408,54 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
             </div>
           ) : (
             <>
+              {/* Progress Indicator */}
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant={step1Completed ? "default" : challengeStep === 1 ? "secondary" : "outline"}>
+                  {step1Completed ? "✓" : "1"} หันขวา
+                </Badge>
+                <div className="h-px flex-1 bg-border"></div>
+                <Badge variant={challengeCompleted ? "default" : challengeStep === 2 ? "secondary" : "outline"}>
+                  {challengeCompleted ? "✓" : "2"} {step2Challenge === "blink" ? "กระพริบ" : "หันซ้าย"}
+                </Badge>
+                <div className="h-px flex-1 bg-border"></div>
+                <Badge variant={waitingForCenter ? "secondary" : "outline"}>
+                  3 ทำหน้าตรง
+                </Badge>
+              </div>
+
               {/* Challenge Instructions */}
               <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
                 <div className="flex flex-col items-center gap-4">
                   {!challengeCompleted ? (
                     <>
                       <ChallengeIcon className="h-12 w-12 text-primary" />
-                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                        {currentChallengeInfo.text}
+                      
+                      <div className="text-sm font-medium text-muted-foreground">
+                        ขั้นตอนที่ {challengeStep} / 2
                       </div>
                       
-                      {currentChallenge === "blink" && (
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        {challengeStep === 1 ? "หันหน้าไปทางขวา" : 
+                         currentChallenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้าย"}
+                      </div>
+                      
+                      {challengeStep === 1 && (
+                        <div className="text-base text-muted-foreground">
+                          ตำแหน่งหัว: {headPosition === "right" ? "✓ ขวา (ถูกต้อง)" : 
+                                     headPosition === "left" ? "ซ้าย (ไม่ถูกต้อง)" : "กลาง"}
+                        </div>
+                      )}
+                      
+                      {challengeStep === 2 && currentChallenge === "blink" && (
                         <div className="text-base text-muted-foreground">
                           ตรวจพบ: {blinkCount} / 2 ครั้ง
                         </div>
                       )}
-                      {currentChallenge.includes("turn") && (
+                      
+                      {challengeStep === 2 && currentChallenge === "turn_left" && (
                         <div className="text-base text-muted-foreground">
-                          ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
+                          ตำแหน่งหัว: {headPosition === "left" ? "✓ ซ้าย (ถูกต้อง)" : 
+                                     headPosition === "right" ? "ขวา (ไม่ถูกต้อง)" : "กลาง"}
                         </div>
                       )}
                       
@@ -386,22 +472,22 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                       
                       {centerHoldTimer > 0 ? (
                         <div className="text-6xl font-bold text-green-600 animate-pulse">
-                          {3 - centerHoldTimer}
+                          {4 - centerHoldTimer}
                         </div>
                       ) : (
                         <div className="text-base text-muted-foreground">
-                          ทำหน้าตรงค้างไว้ 3 วินาที
+                          ทำหน้าตรงและนิ่งค้างไว้ 3 วินาที
                         </div>
                       )}
                       
                       <Badge 
-                        variant={headPosition === "center" ? "default" : "secondary"} 
+                        variant={centerHoldTimer > 0 ? "default" : "secondary"} 
                         className="gap-2 px-4 py-2 text-base"
                       >
-                        {headPosition === "center" ? (
+                        {centerHoldTimer > 0 ? (
                           <>
                             <Check className="h-4 w-4" />
-                            กำลังนับ...
+                            กำลังนับ... {centerHoldTimer}/3
                           </>
                         ) : (
                           "รอทำหน้าตรง"
@@ -472,9 +558,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               {/* Tips */}
               <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-4 rounded-lg">
                 <p>💡 <strong>คำแนะนำ:</strong></p>
-                <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าชัดเจน</p>
-                <p>• วางใบหน้าให้อยู่ตรงกลางกรอบ</p>
-                <p>• ทำตามคำสั่งให้ครบถ้วน ระบบจะถ่ายรูปอัตโนมัติ</p>
+                <p>• <strong>ขั้นตอนที่ 1:</strong> หันหน้าไปทางขวาให้ชัดเจน</p>
+                <p>• <strong>ขั้นตอนที่ 2:</strong> {step2Challenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้ายให้ชัดเจน"}</p>
+                <p>• <strong>ขั้นตอนที่ 3:</strong> ทำหน้าตรงและนิ่งค้างไว้ 3 วินาที</p>
+                <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าอยู่ตรงกลาง</p>
               </div>
             </>
           )}
