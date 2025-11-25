@@ -43,12 +43,15 @@
 - Rate limit headers (X-RateLimit-*)
 
 **Applied To:**
+- ✅ `line-webhook` - 100 req/min
 - ✅ `attendance-submit` - 30 req/min
 - ✅ `overtime-request` - 60 req/min
 - ✅ `early-checkout-request` - 60 req/min
-- 🔄 `line-webhook` - Pending (needs to be applied)
+- ✅ `admin-checkout` - 60 req/min
+- ✅ `early-leave-approval` - 60 req/min
+- ✅ `overtime-approval` - 60 req/min
 
-**Status:** ✅ CREATED & APPLIED
+**Status:** ✅ COMPLETED
 
 ### 2.2 Safe Logging (Remove Sensitive Data)
 **File:** `supabase/functions/_shared/logger.ts`
@@ -65,13 +68,18 @@
 - Debug mode (only in non-production)
 
 **Applied To:**
+- ✅ `line-webhook`
 - ✅ `attendance-reminder`
 - ✅ `auto-checkout-midnight`
 - ✅ `overtime-warning`
 - ✅ `overtime-request`
 - ✅ `early-checkout-request`
+- ✅ `admin-checkout`
+- ✅ `attendance-validate-token`
+- ✅ `early-leave-approval`
+- ✅ `overtime-approval`
 
-**Status:** ✅ CREATED & APPLIED
+**Status:** ✅ COMPLETED (10 functions)
 
 ### 2.3 Input Validation with Zod
 **File:** `supabase/functions/_shared/validators.ts`
@@ -88,11 +96,14 @@
 - `validateSchema()` - safe parsing with error messages
 
 **Applied To:**
-- ✅ `attendance-submit` (ready to apply)
-- ✅ `overtime-request` (applied)
-- ✅ `early-checkout-request` (applied)
+- ✅ `attendance-submit`
+- ✅ `overtime-request`
+- ✅ `early-checkout-request`
+- ✅ `admin-checkout`
+- ✅ `early-leave-approval`
+- ✅ `overtime-approval`
 
-**Status:** ✅ CREATED & APPLIED
+**Status:** ✅ COMPLETED (6 endpoints)
 
 ### 2.4 Extension in Public Schema
 **Issue:** Supabase Linter warning about extension in public schema
@@ -220,9 +231,9 @@ Please request a new link from the LINE bot.
 
 | Area | Before | After |
 |------|--------|-------|
-| Rate Limiting | ❌ None | ✅ Implemented (3 endpoints) |
-| Log Security | ❌ Sensitive data exposed | ✅ Auto-masked (5 functions) |
-| Input Validation | ⚠️ Partial | ✅ Zod schemas (3 endpoints) |
+| Rate Limiting | ❌ None | ✅ Implemented (7 endpoints) |
+| Log Security | ❌ Sensitive data exposed | ✅ Auto-masked (10 functions) |
+| Input Validation | ⚠️ Partial | ✅ Zod schemas (6 endpoints) |
 | Error Recovery | ❌ None | ✅ Retry logic (4 cron jobs) |
 | Query Performance | ⚠️ Slow | ✅ 10 Indexes added |
 | Extension Security | ⚠️ Warning | ✅ Fixed |
@@ -237,7 +248,7 @@ Please request a new link from the LINE bot.
 **Edge Function Performance:**
 - ✅ Safe logging reduces log volume
 - ✅ Retry logic reduces failed requests (4 functions updated)
-- ✅ Rate limiting prevents abuse (3 endpoints protected)
+- ✅ Rate limiting prevents abuse (7 endpoints protected)
 
 **User Experience:**
 - ✅ Clear error messages reduce support tickets
@@ -255,17 +266,13 @@ Please request a new link from the LINE bot.
 - Extract 4 event handlers (~1000 lines)
 - Refactor main index.ts to use modules (~300 lines final)
 
-### 2. Apply Rate Limiting to line-webhook
-**Priority:** HIGH
-**File:** `supabase/functions/line-webhook/index.ts`
-
-### 3. Monitor and Tune Rate Limits
+### 2. Monitor and Tune Rate Limits
 **Priority:** MEDIUM
 - Collect metrics on actual usage patterns
 - Adjust rate limits based on real-world data
 - Add per-user rate limiting (not just IP-based)
 
-### 4. Add Monitoring & Alerting
+### 3. Add Monitoring & Alerting
 **Priority:** MEDIUM
 - Set up error tracking (e.g., Sentry integration)
 - Create dashboard for rate limit violations
@@ -274,4 +281,4 @@ Please request a new link from the LINE bot.
 ---
 
 Last Updated: 2025-11-25
-Status: Phases 1-4 Complete, Next Phase Recommended
+Status: All 4 Phases Complete ✅
