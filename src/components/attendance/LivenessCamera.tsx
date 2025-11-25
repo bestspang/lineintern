@@ -130,16 +130,48 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     }
   }, [challengeCompleted, captureStage]);
 
-  // Re-check video stream when entering verify stage
+  // Re-check video stream when entering verify stage with recovery mechanism
   useEffect(() => {
     if (captureStage === 'verify' && videoRef.current) {
       const video = videoRef.current;
-      if (video.paused) {
-        video.play().catch(err => {
-          console.error('Failed to play video:', err);
+      
+      const forceVideoReady = async () => {
+        try {
+          // Check if video is stuck in loading state
+          if (video.readyState < 4) {
+            console.log('⚠️ Video not ready (readyState:', video.readyState, '), attempting recovery...');
+            
+            const currentStream = video.srcObject as MediaStream;
+            if (currentStream && currentStream.active) {
+              video.load();
+              await video.play();
+              
+              // Wait up to 2 seconds for video to be ready
+              const waitForReady = new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => reject('Timeout'), 2000);
+                const interval = setInterval(() => {
+                  if (video.readyState === 4) {
+                    clearInterval(interval);
+                    clearTimeout(timeout);
+                    resolve();
+                  }
+                }, 100);
+              });
+              
+              await waitForReady;
+              console.log('✅ Video recovery successful, readyState:', video.readyState);
+            }
+          } else if (video.paused) {
+            await video.play();
+            console.log('▶️ Video resumed');
+          }
+        } catch (err) {
+          console.error('❌ Failed to recover video:', err);
           setError('ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่');
-        });
-      }
+        }
+      };
+      
+      forceVideoReady();
     }
   }, [captureStage]);
 
@@ -152,9 +184,16 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     const processFrame = async () => {
       const video = videoRef.current;
-      if (!video || video.readyState !== 4) {
+      
+      // More flexible readyState check - allow readyState >= 2
+      if (!video || video.readyState < 2) {
         animationId = requestAnimationFrame(processFrame);
         return;
+      }
+      
+      // If video is partially ready (2 or 3), still try to process but log it
+      if (video.readyState < 4) {
+        console.log('⏳ Video partially ready, readyState:', video.readyState);
       }
 
       const currentTime = video.currentTime;
@@ -168,10 +207,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         const result: FaceLandmarkerResult = faceLandmarker.detectForVideo(video, Date.now());
         
         if (result.faceLandmarks && result.faceLandmarks.length > 0) {
-          console.log('🎥 Frame processed, stage:', captureStage);
+          console.log('🎥 Frame processed, stage:', captureStage, 'readyState:', video.readyState);
           detectLiveness(result);
         } else {
-          console.log('⚠️ No face detected');
+          console.log('⚠️ No face detected, readyState:', video.readyState);
         }
       } catch (err) {
         console.error("Frame processing error:", err);
@@ -493,12 +532,31 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                       </div>
                     )}
                     
-                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded">
-                      Video: {videoRef.current?.readyState === 4 ? '✅ Ready' : '⏳ Loading'}
-                      <br />
-                      Stream: {stream ? '✅ Active' : '❌ Inactive'}
-                      <br />
-                      FaceLandmarker: {faceLandmarker ? '✅ Ready' : '❌ Not Ready'}
+                    {/* Debug: แสดงสถานะ video with retry button */}
+                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded space-y-1">
+                      <div>Video: {videoRef.current?.readyState === 4 ? '✅ Ready' : `⏳ Loading (${videoRef.current?.readyState || 0})`}</div>
+                      <div>Stream: {stream ? '✅ Active' : '❌ Inactive'}</div>
+                      <div>FaceLandmarker: {faceLandmarker ? '✅ Ready' : '❌ Not Ready'}</div>
+                      
+                      {/* Retry button if video stuck */}
+                      {videoRef.current && videoRef.current.readyState < 4 && stream && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-1 text-xs h-6 px-2"
+                          onClick={() => {
+                            if (videoRef.current) {
+                              console.log('🔄 Manual video reload triggered');
+                              videoRef.current.load();
+                              videoRef.current.play().catch(err => {
+                                console.error('Manual play failed:', err);
+                              });
+                            }
+                          }}
+                        >
+                          🔄 รีโหลดวิดีโอ
+                        </Button>
+                      )}
                     </div>
                   </div>
 
