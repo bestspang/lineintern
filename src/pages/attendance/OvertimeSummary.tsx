@@ -185,7 +185,7 @@ export default function OvertimeSummary() {
   }
 
   return (
-    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+    <div className="container mx-auto py-3 sm:py-6 px-3 sm:px-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -198,56 +198,58 @@ export default function OvertimeSummary() {
             </p>
           </div>
           
-          <div className="flex gap-2">
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger className="w-full sm:w-[150px] text-sm">
-                <Building2 className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="สาขา" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกสาขา</SelectItem>
-                {branches?.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger className="w-full sm:w-[150px] text-sm">
-                <User className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="พนักงาน" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกคน</SelectItem>
-                {employees
-                  ?.filter(emp => selectedBranch === 'all' || emp.branch_id === selectedBranch)
-                  .map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.full_name}
+          <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 flex-1">
+              <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                <SelectTrigger className="w-full sm:w-[140px] text-sm">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="สาขา" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกสาขา</SelectItem>
+                  {branches?.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name}
                     </SelectItem>
                   ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-full sm:w-[150px] text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 วัน</SelectItem>
-                <SelectItem value="14">14 วัน</SelectItem>
-                <SelectItem value="30">30 วัน</SelectItem>
-                <SelectItem value="90">90 วัน</SelectItem>
-              </SelectContent>
-            </Select>
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                <SelectTrigger className="w-full sm:w-[140px] text-sm">
+                  <User className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="พนักงาน" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกคน</SelectItem>
+                  {employees
+                    ?.filter(emp => selectedBranch === 'all' || emp.branch_id === selectedBranch)
+                    .map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.full_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={dateRange} onValueChange={setDateRange}>
+                <SelectTrigger className="w-full sm:w-[120px] text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 วัน</SelectItem>
+                  <SelectItem value="14">14 วัน</SelectItem>
+                  <SelectItem value="30">30 วัน</SelectItem>
+                  <SelectItem value="90">90 วัน</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <Button 
               onClick={handleExportCSV} 
               variant="outline"
               disabled={!otLogs || otLogs.length === 0}
-              className="text-sm"
+              className="text-sm w-full sm:w-auto"
             >
               <Download className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Export CSV</span>
@@ -319,10 +321,10 @@ export default function OvertimeSummary() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs sm:text-sm">พนักงาน</TableHead>
-                  <TableHead className="text-xs sm:text-sm">สาขา</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">จำนวนวัน</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">ชั่วโมง OT</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">อัตรา OT/ชม.</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden md:table-cell">สาขา</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm hidden lg:table-cell">จำนวนวัน</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm">ชม. OT</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell">อัตรา OT/ชม.</TableHead>
                   <TableHead className="text-right text-xs sm:text-sm">ค่า OT รวม</TableHead>
                 </TableRow>
               </TableHeader>
@@ -339,16 +341,16 @@ export default function OvertimeSummary() {
                       <TableCell className="font-medium text-xs sm:text-sm">
                         {summary.employee_name}
                       </TableCell>
-                      <TableCell className="text-xs sm:text-sm">
+                      <TableCell className="text-xs sm:text-sm hidden md:table-cell">
                         <Badge variant="outline">{summary.branch_name}</Badge>
                       </TableCell>
-                      <TableCell className="text-right text-xs sm:text-sm">
+                      <TableCell className="text-right text-xs sm:text-sm hidden lg:table-cell">
                         {summary.ot_days_count}
                       </TableCell>
                       <TableCell className="text-right text-xs sm:text-sm font-medium">
                         {summary.total_ot_hours.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right text-xs sm:text-sm text-muted-foreground">
+                      <TableCell className="text-right text-xs sm:text-sm text-muted-foreground hidden sm:table-cell">
                         {summary.avg_ot_rate.toFixed(2)} ฿
                       </TableCell>
                       <TableCell className="text-right text-xs sm:text-sm font-semibold text-green-600">
@@ -378,43 +380,43 @@ export default function OvertimeSummary() {
                 <TableRow>
                   <TableHead className="text-xs sm:text-sm">วันที่</TableHead>
                   <TableHead className="text-xs sm:text-sm">พนักงาน</TableHead>
-                  <TableHead className="text-xs sm:text-sm">สาขา</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">เข้า</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">ออก</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden md:table-cell">สาขา</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm hidden lg:table-cell">เข้า</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm hidden lg:table-cell">ออก</TableHead>
                   <TableHead className="text-right text-xs sm:text-sm">ชม. OT</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm">อัตรา</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell">อัตรา</TableHead>
                   <TableHead className="text-right text-xs sm:text-sm">ค่า OT</TableHead>
-                  <TableHead className="text-xs sm:text-sm">เหตุผล</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden xl:table-cell">เหตุผล</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {otLogs?.map((log) => (
                   <TableRow key={log.id}>
-                    <TableCell className="text-xs sm:text-sm">
-                      {format(new Date(log.server_time), 'dd/MM/yyyy')}
+                    <TableCell className="text-xs sm:text-sm whitespace-nowrap">
+                      {format(new Date(log.server_time), 'dd/MM/yy')}
                     </TableCell>
                     <TableCell className="text-xs sm:text-sm font-medium">
                       {log.employee?.full_name || 'Unknown'}
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm">
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell">
                       <Badge variant="outline">{log.branch?.name || 'Unknown'}</Badge>
                     </TableCell>
-                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground">
+                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground hidden lg:table-cell">
                       {log.device_time ? format(new Date(log.device_time), 'HH:mm') : '-'}
                     </TableCell>
-                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground">
+                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground hidden lg:table-cell">
                       {format(new Date(log.server_time), 'HH:mm')}
                     </TableCell>
                     <TableCell className="text-right text-xs sm:text-sm font-medium">
                       {log.overtime_hours?.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground">
+                    <TableCell className="text-right text-xs sm:text-sm text-muted-foreground hidden sm:table-cell">
                       {log.employee?.ot_rate_multiplier || 1.5}x
                     </TableCell>
                     <TableCell className="text-right text-xs sm:text-sm font-semibold text-green-600">
                       {log.calculated_ot_pay?.toFixed(2)} ฿
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm max-w-[200px] truncate">
+                    <TableCell className="text-xs sm:text-sm max-w-[200px] truncate hidden xl:table-cell">
                       {log.overtime_request?.reason || '-'}
                     </TableCell>
                   </TableRow>
