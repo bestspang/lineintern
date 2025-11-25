@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, earlyLeaveSchema } from '../_shared/validators.ts';
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -282,6 +283,24 @@ serve(async (req) => {
 
         if (lineResponse.ok) {
           notificationsSent++;
+          const data = await lineResponse.json();
+          const lineMessageId = data.sentMessages?.[0]?.id || undefined;
+          
+          // Log admin notification
+          await logBotMessage({
+            destinationType: 'dm',
+            destinationId: admin.line_user_id,
+            destinationName: admin.display_name,
+            recipientUserId: admin.id,
+            recipientEmployeeId: employee_id,
+            messageText: message,
+            messageType: 'notification',
+            triggeredBy: 'manual',
+            commandType: 'early_leave',
+            edgeFunctionName: 'early-checkout-request',
+            lineMessageId: lineMessageId,
+            deliveryStatus: 'sent'
+          });
         }
       }
     }
@@ -295,7 +314,7 @@ serve(async (req) => {
     if (announcementGroupId) {
       const groupMessage = `📢 คำขอออกงานก่อนเวลา\n\n${employee.full_name} ขอออกงานก่อนเวลา\nเหตุผล: ${leave_reason}\nรอการอนุมัติจากหัวหน้า...`;
 
-      await fetch('https://api.line.me/v2/bot/message/push', {
+      const groupResponse = await fetch('https://api.line.me/v2/bot/message/push', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -309,13 +328,29 @@ serve(async (req) => {
           }]
         })
       });
+      
+      if (groupResponse.ok) {
+        const data = await groupResponse.json();
+        await logBotMessage({
+          destinationType: 'group',
+          destinationId: announcementGroupId,
+          recipientEmployeeId: employee_id,
+          messageText: groupMessage,
+          messageType: 'notification',
+          triggeredBy: 'manual',
+          commandType: 'early_leave',
+          edgeFunctionName: 'early-checkout-request',
+          lineMessageId: data.sentMessages?.[0]?.id || undefined,
+          deliveryStatus: 'sent'
+        });
+      }
     }
 
     // Notify employee
     if (employee.line_user_id) {
       const employeeMessage = `✅ ส่งคำขอออกงานก่อนเวลาเรียบร้อย\n\n📋 เหตุผล: ${leave_reason}\n⏰ ทำงานมาแล้ว: ${hoursWorked.toFixed(1)} ชั่วโมง\n\nรอการอนุมัติจากหัวหน้า...`;
 
-      await fetch('https://api.line.me/v2/bot/message/push', {
+      const empResponse = await fetch('https://api.line.me/v2/bot/message/push', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -329,6 +364,23 @@ serve(async (req) => {
           }]
         })
       });
+      
+      if (empResponse.ok) {
+        const data = await empResponse.json();
+        await logBotMessage({
+          destinationType: 'dm',
+          destinationId: employee.line_user_id,
+          destinationName: employee.full_name,
+          recipientEmployeeId: employee_id,
+          messageText: employeeMessage,
+          messageType: 'notification',
+          triggeredBy: 'manual',
+          commandType: 'early_leave',
+          edgeFunctionName: 'early-checkout-request',
+          lineMessageId: data.sentMessages?.[0]?.id || undefined,
+          deliveryStatus: 'sent'
+        });
+      }
     }
 
     return new Response(

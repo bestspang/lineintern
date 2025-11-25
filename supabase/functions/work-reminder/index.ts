@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,12 +118,30 @@ serve(async (req) => {
         console.log(`[work-reminder] ✅ Generated ${reminderToSend.urgency} urgency reminder (${reminderToSend.interval}h interval) for task "${task.title}":`, reminderMessage);
 
         // Send reminder to LINE group (will fail for test groups with fake LINE IDs)
+        let lineMessageId: string | null = null;
+        let deliveryStatus: 'sent' | 'failed' = 'sent';
+        
         try {
-          await sendLineMessage(task.groups.line_group_id, reminderMessage);
+          lineMessageId = await sendLineMessage(task.groups.line_group_id, reminderMessage);
           console.log(`[work-reminder] Sent reminder for task ${task.id}`);
         } catch (sendError) {
+          deliveryStatus = 'failed';
           console.log(`[work-reminder] ⚠️ Could not send to LINE (expected for test data), but reminder was generated successfully`);
         }
+
+        // Log bot message
+        await logBotMessage({
+          destinationType: 'group',
+          destinationId: task.groups.line_group_id,
+          destinationName: task.groups.display_name,
+          groupId: task.group_id,
+          messageText: reminderMessage,
+          messageType: 'reminder',
+          triggeredBy: 'cron',
+          edgeFunctionName: 'work-reminder',
+          lineMessageId: lineMessageId || undefined,
+          deliveryStatus: deliveryStatus
+        });
 
         // Update task metadata to mark reminder as sent
         const updatedSentReminders = [...sentReminders, reminderToSend.interval];
@@ -264,7 +283,7 @@ function generateReminderMessage(
   }
 }
 
-async function sendLineMessage(lineGroupId: string, message: string): Promise<void> {
+async function sendLineMessage(lineGroupId: string, message: string): Promise<string | null> {
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
@@ -289,7 +308,9 @@ async function sendLineMessage(lineGroupId: string, message: string): Promise<vo
       throw new Error(`LINE API error: ${response.status}`);
     }
 
+    const data = await response.json();
     console.log('[sendLineMessage] Message sent successfully');
+    return data.sentMessages?.[0]?.id || null;
   } catch (error) {
     console.error('[sendLineMessage] Error:', error);
     throw error;

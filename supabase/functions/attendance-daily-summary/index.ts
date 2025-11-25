@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -456,9 +457,36 @@ serve(async (req) => {
             console.log(`[Config: ${config.name}] Sent personal summary to ${employee.full_name}`);
             if (messageId) sentMessageIds.push(messageId);
             successCount++;
+            
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'dm',
+              destinationId: employee.line_user_id,
+              destinationName: employee.full_name,
+              recipientEmployeeId: employee.id,
+              messageText: personalSummary,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              lineMessageId: messageId || undefined,
+              deliveryStatus: 'sent'
+            });
           } else {
             console.error(`[Config: ${config.name}] Failed to send to ${employee.full_name}`);
             failedCount++;
+            
+            // Log failed message
+            await logBotMessage({
+              destinationType: 'dm',
+              destinationId: employee.line_user_id,
+              destinationName: employee.full_name,
+              recipientEmployeeId: employee.id,
+              messageText: personalSummary,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              deliveryStatus: 'failed'
+            });
           }
         }
 
@@ -518,9 +546,34 @@ serve(async (req) => {
               line_message_id: messageId || null,
               sent_at: new Date().toISOString(),
             });
+            
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'group',
+              destinationId: branch.line_group_id,
+              destinationName: branch.name,
+              messageText: branchSummary,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              lineMessageId: messageId || undefined,
+              deliveryStatus: 'sent'
+            });
           } else {
             console.error(`[Config: ${config.name}] Failed to send to branch ${branch.name}`);
             failedCount++;
+            
+            // Log failed message
+            await logBotMessage({
+              destinationType: 'group',
+              destinationId: branch.line_group_id,
+              destinationName: branch.name,
+              messageText: branchSummary,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              deliveryStatus: 'failed'
+            });
           }
         }
 
@@ -589,9 +642,32 @@ serve(async (req) => {
           console.log(`[Config: ${config.name}] Sent to LINE group ${lineGroupId}`);
           if (messageId) sentMessageIds.push(messageId);
           successCount++;
+          
+          // Log bot message
+          await logBotMessage({
+            destinationType: 'group',
+            destinationId: lineGroupId,
+            messageText: summaryText,
+            messageType: 'summary',
+            triggeredBy: 'cron',
+            edgeFunctionName: 'attendance-daily-summary',
+            lineMessageId: messageId || undefined,
+            deliveryStatus: 'sent'
+          });
         } else {
           console.error(`[Config: ${config.name}] Failed to send to LINE group ${lineGroupId}`);
           failedCount++;
+          
+          // Log failed message
+          await logBotMessage({
+            destinationType: 'group',
+            destinationId: lineGroupId,
+            messageText: summaryText,
+            messageType: 'summary',
+            triggeredBy: 'cron',
+            edgeFunctionName: 'attendance-daily-summary',
+            deliveryStatus: 'failed'
+          });
         }
       }
 
@@ -604,9 +680,36 @@ serve(async (req) => {
             console.log(`[Config: ${config.name}] Sent to employee ${employee.full_name}`);
             if (messageId) sentMessageIds.push(messageId);
             successCount++;
+            
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'dm',
+              destinationId: employee.line_user_id,
+              destinationName: employee.full_name,
+              recipientEmployeeId: employee.id,
+              messageText: summaryText,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              lineMessageId: messageId || undefined,
+              deliveryStatus: 'sent'
+            });
           } else {
             console.error(`[Config: ${config.name}] Failed to send to employee ${employee.full_name}`);
             failedCount++;
+            
+            // Log failed message
+            await logBotMessage({
+              destinationType: 'dm',
+              destinationId: employee.line_user_id,
+              destinationName: employee.full_name,
+              recipientEmployeeId: employee.id,
+              messageText: summaryText,
+              messageType: 'summary',
+              triggeredBy: 'cron',
+              edgeFunctionName: 'attendance-daily-summary',
+              deliveryStatus: 'failed'
+            });
           }
         } else {
           console.warn(`[Config: ${config.name}] Employee ${employeeId} has no LINE user ID`);

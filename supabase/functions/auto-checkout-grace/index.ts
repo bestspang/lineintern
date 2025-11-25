@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { format, addMinutes } from 'https://esm.sh/date-fns@4.1.0';
 import { fetchWithRetry } from '../_shared/retry.ts';
 import { logger } from '../_shared/logger.ts';
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -176,8 +177,11 @@ Deno.serve(async (req) => {
           `หากมีข้อสงสัย กรุณาติดต่อหัวหน้างาน`;
         
         if (employee.line_user_id) {
+          let lineMessageId: string | null = null;
+          let deliveryStatus: 'sent' | 'failed' = 'sent';
+          
           try {
-            await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
+            const response = await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${lineAccessToken}`,
@@ -188,11 +192,29 @@ Deno.serve(async (req) => {
                 messages: [{ type: 'text', text: message }]
               })
             }, { maxRetries: 2 });
+            
+            const data = await response.json();
+            lineMessageId = data.sentMessages?.[0]?.id || null;
             logger.info('Sent auto-checkout notification', { employeeId: employee.id });
           } catch (notifyError) {
+            deliveryStatus = 'failed';
             logger.error('Failed to send LINE notification', { employeeId: employee.id, error: notifyError });
             // Continue processing even if notification fails
           }
+
+          // Log bot message
+          await logBotMessage({
+            destinationType: 'dm',
+            destinationId: employee.line_user_id,
+            destinationName: employee.full_name,
+            recipientEmployeeId: employee.id,
+            messageText: message,
+            messageType: 'notification',
+            triggeredBy: 'cron',
+            edgeFunctionName: 'auto-checkout-grace',
+            lineMessageId: lineMessageId || undefined,
+            deliveryStatus: deliveryStatus
+          });
         }
       }
     }
