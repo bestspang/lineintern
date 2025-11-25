@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,7 @@ export default function AttendanceSettings() {
   const [formData, setFormData] = useState({
     enable_attendance: true,
     require_location: true,
-    require_photo: false,
+    require_photo: true,
     daily_summary_enabled: true,
     daily_summary_time: '18:00',
     time_zone: 'Asia/Bangkok',
@@ -66,12 +66,12 @@ export default function AttendanceSettings() {
   });
 
   // Update form when settings load
-  useState(() => {
+  useEffect(() => {
     if (settings) {
       setFormData({
         enable_attendance: settings.enable_attendance ?? true,
         require_location: settings.require_location ?? true,
-        require_photo: settings.require_photo ?? false,
+        require_photo: settings.require_photo ?? true,
         daily_summary_enabled: settings.daily_summary_enabled ?? true,
         daily_summary_time: settings.daily_summary_time || '18:00',
         time_zone: settings.time_zone || 'Asia/Bangkok',
@@ -79,7 +79,7 @@ export default function AttendanceSettings() {
         grace_period_minutes: settings.grace_period_minutes || 15
       });
     }
-  });
+  }, [settings]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
