@@ -457,6 +457,57 @@ export type Database = {
           },
         ]
       }
+      audit_logs: {
+        Row: {
+          action_type: string
+          changes: Json | null
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          new_values: Json | null
+          old_values: Json | null
+          performed_by_employee_id: string | null
+          performed_by_user_id: string | null
+          reason: string | null
+          resource_id: string | null
+          resource_type: string
+          user_agent: string | null
+        }
+        Insert: {
+          action_type: string
+          changes?: Json | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_employee_id?: string | null
+          performed_by_user_id?: string | null
+          reason?: string | null
+          resource_id?: string | null
+          resource_type: string
+          user_agent?: string | null
+        }
+        Update: {
+          action_type?: string
+          changes?: Json | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_employee_id?: string | null
+          performed_by_user_id?: string | null
+          reason?: string | null
+          resource_id?: string | null
+          resource_type?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       bot_commands: {
         Row: {
           available_in_dm: boolean | null
@@ -2236,6 +2287,39 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_editable: boolean | null
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_editable?: boolean | null
+          setting_key: string
+          setting_value: Json
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_editable?: boolean | null
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           assigned_to_user_id: string | null
@@ -2943,6 +3027,27 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs_detailed: {
+        Row: {
+          action_type: string | null
+          changes: Json | null
+          created_at: string | null
+          id: string | null
+          ip_address: string | null
+          metadata: Json | null
+          new_values: Json | null
+          old_values: Json | null
+          performed_by_code: string | null
+          performed_by_employee_id: string | null
+          performed_by_name: string | null
+          performed_by_user_id: string | null
+          reason: string | null
+          resource_id: string | null
+          resource_type: string | null
+          user_agent: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calculate_distance_meters: {
@@ -3092,6 +3197,19 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      log_audit_trail: {
+        Args: {
+          p_action_type: string
+          p_metadata?: Json
+          p_new_values?: Json
+          p_old_values?: Json
+          p_performed_by_employee_id: string
+          p_reason?: string
+          p_resource_id: string
+          p_resource_type: string
+        }
+        Returns: string
       }
       restore_branch: { Args: { p_branch_id: string }; Returns: Json }
       retry_cron_job: { Args: { job_id: number }; Returns: Json }

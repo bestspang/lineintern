@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -375,13 +376,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const today = new Date().toISOString().split('T')[0];
-    const currentTime = new Date().toLocaleTimeString('th-TH', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Asia/Bangkok',
-      hour12: false,
-    });
+    const today = getBangkokDateString(new Date());
+    const currentTime = formatBangkokTime(new Date(), 'HH:mm');
 
     console.log(`[Daily Summary] Running at ${currentTime} for date ${today}`);
 
