@@ -497,10 +497,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               </div>
 
           {/* Video Feed - Larger */}
-          <div className="relative bg-black rounded-lg overflow-hidden max-h-[400px] sm:max-h-[450px]">
+          <div className="relative bg-black rounded-lg overflow-hidden h-[400px] sm:h-[450px]">
                 <video
                   ref={videoRef}
-                  className="w-full h-auto object-cover scale-x-[-1]"
+                  className="w-full h-full object-cover scale-x-[-1]"
                   playsInline
                   muted
                 />
