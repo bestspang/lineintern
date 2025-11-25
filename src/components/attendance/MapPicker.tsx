@@ -3,9 +3,9 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { MapPin, Navigation, AlertCircle } from 'lucide-react';
+import { getMapboxToken } from '@/lib/api-config';
+import { MapboxTokenDialog } from '@/components/shared/MapboxTokenDialog';
 
 interface MapPickerProps {
   open: boolean;
@@ -32,18 +32,19 @@ export function MapPicker({
   const [loading, setLoading] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mapboxToken, setMapboxToken] = useState('');
-  const [tokenInput, setTokenInput] = useState('');
-  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const [showTokenDialog, setShowTokenDialog] = useState(false);
 
+  // Load token on mount
   useEffect(() => {
-    const envToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN;
-    if (envToken) {
-      setMapboxToken(envToken);
-    } else {
-      setShowTokenInput(true);
-    }
-  }, []);
+    getMapboxToken().then(token => {
+      if (token) {
+        setMapboxToken(token);
+      } else if (open) {
+        setShowTokenDialog(true);
+      }
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open || !mapContainer.current || !mapboxToken) return;
@@ -249,73 +250,19 @@ export function MapPicker({
     onOpenChange(false);
   };
 
-  const handleSetToken = () => {
-    if (tokenInput.trim()) {
-      setMapboxToken(tokenInput.trim());
-      setShowTokenInput(false);
-      setError(null);
-    }
-  };
-
-  if (showTokenInput) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Mapbox Token Required</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg flex gap-2">
-              <AlertCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-900 dark:text-blue-100">
-                <p className="font-medium mb-1">Mapbox Public Token</p>
-                <p>ต้องใส่ Mapbox Public Token เพื่อแสดงแผนที่</p>
-                <p className="mt-2">
-                  สมัครและรับ token ฟรีได้ที่{' '}
-                  <a 
-                    href="https://account.mapbox.com/access-tokens/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="underline font-medium"
-                  >
-                    Mapbox
-                  </a>
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="mapbox-token">Mapbox Public Token</Label>
-              <Input
-                id="mapbox-token"
-                type="text"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="pk.eyJ1..."
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Token จะถูกใช้ในเซสชันนี้เท่านั้น
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              ยกเลิก
-            </Button>
-            <Button onClick={handleSetToken} disabled={!tokenInput.trim()}>
-              ใช้ Token นี้
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      {/* Token input dialog */}
+      <MapboxTokenDialog
+        open={showTokenDialog}
+        onTokenSet={(token) => {
+          setMapboxToken(token);
+          setShowTokenDialog(false);
+        }}
+      />
+
+      {/* Main map dialog - แสดงเฉพาะเมื่อมี token แล้ว */}
+      <Dialog open={open && !!mapboxToken} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[600px] flex flex-col">
         <DialogHeader>
           <DialogTitle>เลือกตำแหน่งบนแผนที่</DialogTitle>
@@ -392,5 +339,6 @@ export function MapPicker({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
