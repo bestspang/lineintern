@@ -11,9 +11,8 @@ interface DeliveryConfig {
   name: string;
   source_type: 'all_branches' | 'single_branch';
   source_branch_id: string | null;
-  destination_type: 'group' | 'private';
-  destination_line_id: string | null;
-  destination_employee_id: string | null;
+  destination_line_ids: string[];
+  destination_employee_ids: string[];
   send_time: string;
   include_work_hours: boolean;
   is_enabled: boolean;
@@ -261,44 +260,66 @@ serve(async (req) => {
         config.include_work_hours
       );
 
-      // Determine destination
-      let destinationId: string | null = null;
-      if (config.destination_type === 'group') {
-        destinationId = config.destination_line_id;
-      } else if (config.destination_type === 'private' && config.destination_employee_id) {
-        const { data: employee } = await supabase
-          .from('employees')
-          .select('line_user_id')
-          .eq('id', config.destination_employee_id)
-          .single();
-        destinationId = employee?.line_user_id || null;
-      }
-
-      if (!destinationId) {
-        console.log(`[Config: ${config.name}] No valid destination, skipping`);
+      // Get all employees for resolving LINE user IDs
+      const { data: allEmployees } = await supabase.from('employees').select('id, line_user_id, full_name');
+      
+      // Send to all destinations
+      const lineIds = config.destination_line_ids || [];
+      const employeeIds = config.destination_employee_ids || [];
+      
+      if (lineIds.length === 0 && employeeIds.length === 0) {
+        console.log(`[Config: ${config.name}] No destinations configured, skipping`);
         continue;
       }
 
-      // Send to LINE
-      const { ok, messageId } = await sendToLine(destinationId, summaryText, lineAccessToken);
+      const sentMessageIds: string[] = [];
+      let successCount = 0;
 
-      if (ok) {
-        console.log(`[Config: ${config.name}] Sent successfully`);
-        
+      // Send to LINE groups
+      for (const lineGroupId of lineIds) {
+        const { ok, messageId } = await sendToLine(lineGroupId, summaryText, lineAccessToken);
+        if (ok) {
+          console.log(`[Config: ${config.name}] Sent to LINE group ${lineGroupId}`);
+          if (messageId) sentMessageIds.push(messageId);
+          successCount++;
+        } else {
+          console.error(`[Config: ${config.name}] Failed to send to LINE group ${lineGroupId}`);
+        }
+      }
+
+      // Send to individual employees
+      for (const employeeId of employeeIds) {
+        const employee = allEmployees?.find(e => e.id === employeeId);
+        if (employee?.line_user_id) {
+          const { ok, messageId } = await sendToLine(employee.line_user_id, summaryText, lineAccessToken);
+          if (ok) {
+            console.log(`[Config: ${config.name}] Sent to employee ${employee.full_name}`);
+            if (messageId) sentMessageIds.push(messageId);
+            successCount++;
+          } else {
+            console.error(`[Config: ${config.name}] Failed to send to employee ${employee.full_name}`);
+          }
+        } else {
+          console.warn(`[Config: ${config.name}] Employee ${employeeId} has no LINE user ID`);
+        }
+      }
+
+      if (successCount > 0) {
         // Store summary for each branch
         for (const branch of branches) {
           await supabase.from('daily_attendance_summaries').upsert({
             branch_id: branch.id,
             summary_date: today,
             summary_text: summaryText,
-            line_message_id: messageId,
+            line_message_id: sentMessageIds[0] || null,
             sent_at: new Date().toISOString(),
           });
         }
         
         processedCount++;
+        console.log(`[Config: ${config.name}] Successfully sent to ${successCount} destination(s)`);
       } else {
-        console.error(`[Config: ${config.name}] Failed to send`);
+        console.error(`[Config: ${config.name}] Failed to send to any destination`);
       }
     }
 

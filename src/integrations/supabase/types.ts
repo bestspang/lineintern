@@ -2016,9 +2016,8 @@ export type Database = {
       summary_delivery_config: {
         Row: {
           created_at: string | null
-          destination_employee_id: string | null
-          destination_line_id: string | null
-          destination_type: string
+          destination_employee_ids: string[] | null
+          destination_line_ids: string[] | null
           id: string
           include_work_hours: boolean | null
           is_enabled: boolean | null
@@ -2030,9 +2029,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          destination_employee_id?: string | null
-          destination_line_id?: string | null
-          destination_type: string
+          destination_employee_ids?: string[] | null
+          destination_line_ids?: string[] | null
           id?: string
           include_work_hours?: boolean | null
           is_enabled?: boolean | null
@@ -2044,9 +2042,8 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          destination_employee_id?: string | null
-          destination_line_id?: string | null
-          destination_type?: string
+          destination_employee_ids?: string[] | null
+          destination_line_ids?: string[] | null
           id?: string
           include_work_hours?: boolean | null
           is_enabled?: boolean | null
@@ -2057,13 +2054,6 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "summary_delivery_config_destination_employee_id_fkey"
-            columns: ["destination_employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "summary_delivery_config_source_branch_id_fkey"
             columns: ["source_branch_id"]
