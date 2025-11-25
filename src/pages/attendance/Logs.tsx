@@ -1,27 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, FileText, AlertTriangle, Eye, Clock } from 'lucide-react';
-import { format, differenceInHours, differenceInMinutes } from 'date-fns';
 import AttendanceLogFilters from '@/components/attendance/AttendanceLogFilters';
 import AttendanceLogDetail from '@/components/attendance/AttendanceLogDetail';
 import AttendanceLogExport from '@/components/attendance/AttendanceLogExport';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
+import { CheckCircle2, XCircle, AlertTriangle, MapPin, Camera, RefreshCw, Clock } from 'lucide-react';
 
 export default function AttendanceLogs() {
-  const [dateFrom, setDateFrom] = useState<Date | undefined>();
-  const [dateTo, setDateTo] = useState<Date | undefined>();
-  const [employeeId, setEmployeeId] = useState('all');
-  const [branchId, setBranchId] = useState('all');
-  const [eventType, setEventType] = useState('all');
-  const [status, setStatus] = useState('all');
+  const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [employeeId, setEmployeeId] = useState<string>('');
+  const [branchId, setBranchId] = useState<string>('');
+  const [eventType, setEventType] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
   const [selectedLog, setSelectedLog] = useState<any>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const pageSize = 50;
 
   // Fetch employees for filter
@@ -30,7 +28,7 @@ export default function AttendanceLogs() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, full_name')
+        .select('id, code, full_name')
         .eq('is_active', true)
         .order('full_name');
       if (error) throw error;
@@ -38,13 +36,14 @@ export default function AttendanceLogs() {
     },
   });
 
-  // Fetch branches for filter
+  // Fetch branches for filter (exclude deleted)
   const { data: branches } = useQuery({
     queryKey: ['branches-filter'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('branches')
         .select('id, name')
+        .eq('is_deleted', false)
         .order('name');
       if (error) throw error;
       return data;
@@ -59,132 +58,92 @@ export default function AttendanceLogs() {
         .from('attendance_logs')
         .select(`
           *,
-          employee:employees(full_name),
-          branch:branches(name),
-          work_session:work_sessions!checkout_log_id(actual_start_time)
+          employees!attendance_logs_employee_id_fkey (
+            id, code, full_name
+          ),
+          branch:branches!attendance_logs_branch_id_fkey (
+            id, name
+          )
         `, { count: 'exact' })
-        .order('server_time', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+        .gte('server_time', `${dateFrom}T00:00:00`)
+        .lte('server_time', `${dateTo}T23:59:59`)
+        .order('server_time', { ascending: false });
 
-      if (dateFrom) {
-        query = query.gte('server_time', dateFrom.toISOString());
-      }
-      if (dateTo) {
-        const endOfDay = new Date(dateTo);
-        endOfDay.setHours(23, 59, 59, 999);
-        query = query.lte('server_time', endOfDay.toISOString());
-      }
-      if (employeeId !== 'all') {
+      if (employeeId) {
         query = query.eq('employee_id', employeeId);
       }
-      if (branchId !== 'all') {
+
+      if (branchId) {
         query = query.eq('branch_id', branchId);
       }
-      if (eventType !== 'all') {
+
+      if (eventType) {
         query = query.eq('event_type', eventType);
       }
+
       if (status === 'flagged') {
         query = query.eq('is_flagged', true);
       } else if (status === 'normal') {
         query = query.eq('is_flagged', false);
       }
 
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
       const { data, error, count } = await query;
       if (error) throw error;
-      return { data, count };
+
+      return { logs: data, count };
     },
   });
 
-  // Realtime subscription
-  useEffect(() => {
-    const channel = supabase
-      .channel('attendance-logs-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'attendance_logs',
-        },
-        () => {
-          refetch();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [refetch]);
+  const totalPages = Math.ceil((logs?.count || 0) / pageSize);
 
   const handleReset = () => {
-    setDateFrom(undefined);
-    setDateTo(undefined);
-    setEmployeeId('all');
-    setBranchId('all');
-    setEventType('all');
-    setStatus('all');
-    setPage(0);
+    setDateFrom(format(new Date(), 'yyyy-MM-dd'));
+    setDateTo(format(new Date(), 'yyyy-MM-dd'));
+    setEmployeeId('');
+    setBranchId('');
+    setEventType('');
+    setStatus('');
+    setPage(1);
   };
 
-  const handleViewDetail = (log: any) => {
-    setSelectedLog(log);
-    setDetailOpen(true);
-  };
-
-  const formatTimeWithRelative = (log: any) => {
-    const serverTime = new Date(log.server_time);
-    const isCheckout = log.event_type === 'check_out';
-    const workSession = log.work_session?.[0];
-    
-    // Check if checkout is next day (early morning 00:00-06:00)
-    const isNextDay = isCheckout && serverTime.getHours() >= 0 && serverTime.getHours() < 6;
-    
-    // Calculate relative time for checkout
-    let relativeTime = '';
-    if (isCheckout && workSession?.actual_start_time) {
-      const startTime = new Date(workSession.actual_start_time);
-      const hours = differenceInHours(serverTime, startTime);
-      const minutes = differenceInMinutes(serverTime, startTime) % 60;
-      
-      if (hours > 0) {
-        relativeTime = `${hours}h ${minutes}m after check-in`;
-      } else {
-        relativeTime = `${minutes}m after check-in`;
-      }
-    }
-    
-    return {
-      display: format(serverTime, 'MMM dd, HH:mm'),
-      full: format(serverTime, 'yyyy-MM-dd HH:mm:ss zzz'),
-      isNextDay,
-      relativeTime
-    };
-  };
-
-  if (isLoading && !logs) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-4">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-96 w-full" />
       </div>
     );
   }
 
-  const totalPages = logs?.count ? Math.ceil(logs.count / pageSize) : 0;
-
   return (
-    <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Attendance Logs</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">View and filter attendance records</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Attendance Logs</h1>
+          <p className="text-muted-foreground mt-1">
+            ประวัติการเข้า-ออกงานทั้งหมด
+          </p>
         </div>
-        <AttendanceLogExport 
-          logs={logs?.data || []} 
-          filters={{ dateFrom, dateTo, employeeId, branchId, eventType, status }}
-        />
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => refetch()} size="sm">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+          <AttendanceLogExport 
+            dateFrom={dateFrom} 
+            dateTo={dateTo}
+            employeeId={employeeId}
+            branchId={branchId}
+          />
+        </div>
       </div>
 
+      {/* Filters */}
       <AttendanceLogFilters
         dateFrom={dateFrom}
         dateTo={dateTo}
@@ -203,137 +162,176 @@ export default function AttendanceLogs() {
         onReset={handleReset}
       />
 
+      {/* Results Summary */}
       <Card>
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-            <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
-            Logs ({logs?.count || 0})
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            Recent attendance check-ins and check-outs
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0 sm:p-6">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[120px] text-xs sm:text-sm py-2">Employee</TableHead>
-                  <TableHead className="text-xs sm:text-sm py-2">Event</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Branch</TableHead>
-                  <TableHead className="text-xs sm:text-sm py-2">Time</TableHead>
-                  <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Source</TableHead>
-                  <TableHead className="text-xs sm:text-sm py-2">Status</TableHead>
-                  <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs?.data?.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="font-medium text-sm py-2">{log.employee?.full_name}</TableCell>
-                    <TableCell className="py-2">
-                      <div className="flex gap-1">
-                        <Badge variant={log.event_type === 'check_in' ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                          {log.event_type === 'check_in' ? 'In' : 'Out'}
-                        </Badge>
-                        {log.is_remote_checkin && (
-                          <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                            🌐
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-sm py-2">{log.branch?.name || '-'}</TableCell>
-                    <TableCell className="text-xs sm:text-sm py-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1 whitespace-nowrap">
-                                {formatTimeWithRelative(log).display}
-                                {formatTimeWithRelative(log).isNextDay && (
-                                  <Badge variant="secondary" className="h-4 text-[9px] px-1">
-                                    Day +1
-                                  </Badge>
-                                )}
-                              </div>
-                              {formatTimeWithRelative(log).relativeTime && (
-                                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {formatTimeWithRelative(log).relativeTime}
-                                </div>
-                              )}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-xs">{formatTimeWithRelative(log).full}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell capitalize text-sm py-2">{log.source}</TableCell>
-                    <TableCell className="py-2">
-                      {log.is_flagged ? (
-                        <Badge variant="destructive" className="flex items-center gap-1 w-fit h-4 sm:h-5 text-[10px] sm:text-xs">
-                          <AlertTriangle className="h-2 w-2 sm:h-3 sm:w-3" />
-                          Flag
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">OK</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right py-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
-                        onClick={() => handleViewDetail(log)}
-                      >
-                        <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                    </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4 px-4 sm:px-0">
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Page {page + 1} of {totalPages}
-              </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              แสดง {logs?.logs?.length || 0} รายการ จากทั้งหมด {logs?.count || 0} รายการ
+            </span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage(page - 1)}
-                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
                 >
                   Previous
                 </Button>
+                <span className="text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage(page + 1)}
-                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
                 >
                   Next
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      <AttendanceLogDetail
-        log={selectedLog}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-      />
+      {/* Logs List */}
+      <div className="grid gap-4">
+        {logs?.logs?.map((log) => {
+          const employee = log.employees;
+          const branch = log.branch;
+          const isCheckIn = log.event_type === 'check_in';
+
+          return (
+            <Card 
+              key={log.id}
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                log.is_flagged ? 'border-orange-500/50 bg-orange-50/5' : ''
+              }`}
+              onClick={() => setSelectedLog(log)}
+            >
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-3">
+                    {/* Header Row */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {isCheckIn ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-lg">
+                          {employee?.full_name || 'Unknown'} ({employee?.code || 'N/A'})
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {branch?.name || 'No Branch'}
+                        </div>
+                      </div>
+                      <Badge variant={isCheckIn ? 'default' : 'secondary'}>
+                        {isCheckIn ? 'CHECK IN' : 'CHECK OUT'}
+                      </Badge>
+                    </div>
+
+                    {/* Details Row */}
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <span>{format(new Date(log.server_time), 'dd/MM/yyyy HH:mm:ss')}</span>
+                      </div>
+                      {log.latitude && log.longitude && (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">
+                            {log.latitude.toFixed(6)}, {log.longitude.toFixed(6)}
+                          </span>
+                        </div>
+                      )}
+                      {log.photo_url && (
+                        <div className="flex items-center gap-2">
+                          <Camera className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">มีรูปภาพ</span>
+                        </div>
+                      )}
+                      {log.source && (
+                        <Badge variant="outline" className="text-xs">
+                          {log.source}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Flags & Warnings */}
+                    {log.is_flagged && (
+                      <div className="flex items-start gap-2 bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                        <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm text-orange-800 dark:text-orange-200">
+                            Flagged for Review
+                          </div>
+                          <div className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                            {log.flag_reason || 'Reason not specified'}
+                          </div>
+                          {log.fraud_score && log.fraud_score > 0 && (
+                            <Badge variant="destructive" className="mt-2 text-xs">
+                              Fraud Score: {log.fraud_score}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+
+        {logs?.logs?.length === 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12 text-muted-foreground">
+                <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No attendance logs found for selected filters</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground px-4">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Dialog */}
+      {selectedLog && (
+        <AttendanceLogDetail
+          log={selectedLog}
+          open={!!selectedLog}
+          onClose={() => setSelectedLog(null)}
+        />
+      )}
     </div>
   );
 }

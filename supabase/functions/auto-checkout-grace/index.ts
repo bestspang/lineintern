@@ -1,8 +1,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
-import { format, addMinutes } from 'https://esm.sh/date-fns@4.1.0';
 import { fetchWithRetry } from '../_shared/retry.ts';
 import { logger } from '../_shared/logger.ts';
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { 
+  getBangkokNow, 
+  getBangkokDateString, 
+  getBangkokStartOfDay,
+  getBangkokEndOfDay,
+  hasBangkokTimePassed,
+  toBangkokTime,
+  formatBangkokTime,
+  toUTC
+} from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,12 +35,20 @@ Deno.serve(async (req) => {
       throw new Error('LINE_CHANNEL_ACCESS_TOKEN not configured');
     }
     
-    const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    // ใช้ timezone utility แทนการ manual conversion
+    const bangkokNow = getBangkokNow();
+    const bangkokDateStr = getBangkokDateString();
+    const bangkokStartOfDay = getBangkokStartOfDay();
+    const bangkokEndOfDay = getBangkokEndOfDay();
     
-    logger.info('Starting grace period check', { time: bangkokTime.toISOString() });
+    logger.info('Starting grace period check (using timezone utility)', { 
+      bangkokTime: formatBangkokTime(bangkokNow),
+      bangkokDate: bangkokDateStr,
+      utcNow: new Date().toISOString()
+    });
     
     // หา active work sessions ที่ครบ grace period แล้ว
+    // ✅ FIX: ใช้ UTC time ใน comparison แทนที่จะใช้ "fake Bangkok" ISO string
     const { data: sessions, error } = await supabase
       .from('work_sessions')
       .select(`
@@ -46,7 +63,7 @@ Deno.serve(async (req) => {
       `)
       .eq('status', 'active')
       .not('auto_checkout_grace_expires_at', 'is', null)
-      .lte('auto_checkout_grace_expires_at', bangkokTime.toISOString());
+      .lte('auto_checkout_grace_expires_at', new Date().toISOString()); // ใช้ UTC consistently
     
     if (error) throw error;
     
@@ -54,30 +71,29 @@ Deno.serve(async (req) => {
     
     for (const session of sessions || []) {
       const employee = session.employees;
-      const graceExpiresAt = new Date(session.auto_checkout_grace_expires_at);
+      
+      // แปลงจาก UTC database timestamp เป็น Bangkok time
+      const graceExpiresAtBangkok = toBangkokTime(session.auto_checkout_grace_expires_at);
       
       // ตรวจสอบว่าหมดเวลา grace period แล้วหรือยัง
-      if (bangkokTime >= graceExpiresAt) {
+      if (hasBangkokTimePassed(session.auto_checkout_grace_expires_at)) {
         logger.info('Grace period expired, checking for existing checkout', { 
           employeeId: employee.id,
-          graceExpiresAt: graceExpiresAt.toISOString() 
+          graceExpiresAtBangkok: formatBangkokTime(graceExpiresAtBangkok),
+          graceExpiresAtUTC: session.auto_checkout_grace_expires_at
         });
         
         // SAFEGUARD: Check if early leave checkout already exists for today
-        const todayStart = new Date(bangkokTime);
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(bangkokTime);
-        todayEnd.setHours(23, 59, 59, 999);
-        
+        // ✅ FIX: ใช้ timezone utilities สำหรับ date boundaries
         const { data: existingCheckout } = await supabase
           .from('attendance_logs')
           .select('id, early_leave_request_id, server_time')
           .eq('employee_id', employee.id)
           .eq('event_type', 'check_out')
-          .gte('server_time', todayStart.toISOString())
-          .lte('server_time', todayEnd.toISOString())
+          .gte('server_time', bangkokStartOfDay.toISOString())
+          .lte('server_time', bangkokEndOfDay.toISOString())
           .not('early_leave_request_id', 'is', null)
-          .single();
+          .maybeSingle(); // ✅ FIX: ใช้ maybeSingle แทน single
         
         if (existingCheckout) {
           logger.info('Early leave checkout already exists, updating session to completed', {
@@ -99,142 +115,193 @@ Deno.serve(async (req) => {
               actual_end_time: checkoutTime.toISOString(),
               total_minutes: totalMinutes,
               net_work_minutes: netWorkMinutes,
-              auto_checkout_performed: false,
               status: 'completed',
               updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
           
-          logger.info('Session updated to completed with existing early leave checkout', {
-            sessionId: session.id
-          });
-          
-          continue; // Skip auto-checkout for this session
+          logger.info('Session updated to completed', { sessionId: session.id });
+          continue; // Skip auto-checkout ส่งข้อความไปแล้วจาก early-leave-approval
         }
         
-        // Perform auto checkout
-        const checkoutTime = graceExpiresAt;
+        // ถ้าไม่มี early leave checkout ให้ทำ auto-checkout ปกติ
+        logger.info('Performing auto-checkout', { employeeId: employee.id });
+        
+        // สร้าง attendance log สำหรับ auto-checkout
         const { data: checkoutLog, error: checkoutError } = await supabase
           .from('attendance_logs')
           .insert({
             employee_id: employee.id,
-            branch_id: employee.branch_id, // FIX: Add branch_id
             event_type: 'check_out',
-            server_time: checkoutTime.toISOString(),
-            device_time: checkoutTime.toISOString(),
-            timezone: 'Asia/Bangkok',
-            source: 'auto_checkout_grace_period',
-            device_info: { 
-              auto_checkout: true, 
-              reason: 'grace_period_expired',
-              session_id: session.id
-            }
+            server_time: new Date().toISOString(),
+            source: 'auto_checkout_grace',
+            branch_id: employee.branch_id,
+            admin_notes: `Auto checked out after grace period expired at ${formatBangkokTime(graceExpiresAtBangkok)}`
           })
           .select()
           .single();
         
         if (checkoutError) {
-          logger.error('Failed to create checkout log', { employeeId: employee.id, error: checkoutError });
+          logger.error('Failed to create checkout log', { error: checkoutError, employeeId: employee.id });
           continue;
         }
         
-        // Update session
+        // คำนวณเวลาทำงานจริง
         const actualStartTime = new Date(session.actual_start_time);
+        const checkoutTime = new Date(checkoutLog.server_time);
         const totalMinutes = Math.floor((checkoutTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
         const breakMinutes = session.break_minutes || 60;
         const netWorkMinutes = Math.max(0, totalMinutes - breakMinutes);
         
-        // บันทึกเวลาจริงที่พนักงานอยู่ที่ทำงาน
-        const recordedWorkMinutes = (employee.hours_per_day || 8) * 60;
-        
-        await supabase
+        // Update work session
+        const { error: updateError } = await supabase
           .from('work_sessions')
           .update({
             checkout_log_id: checkoutLog.id,
             actual_end_time: checkoutTime.toISOString(),
             total_minutes: totalMinutes,
             net_work_minutes: netWorkMinutes,
-            auto_checkout_performed: true,
             status: 'auto_closed',
             updated_at: new Date().toISOString()
           })
           .eq('id', session.id);
         
-        autoCheckouts++;
+        if (updateError) {
+          logger.error('Failed to update work session', { error: updateError, sessionId: session.id });
+          continue;
+        }
         
-        // ส่งข้อความแจ้งเตือน
-        const hoursWorked = (totalMinutes / 60).toFixed(1);
-        const recordedHours = (recordedWorkMinutes / 60).toFixed(1);
-        const gracePeriod = employee.auto_checkout_grace_period_minutes || 60;
+        // ส่งการแจ้งเตือนไป LINE
+        const hoursWorked = (netWorkMinutes / 60).toFixed(1);
+        const checkoutTimeBangkok = toBangkokTime(checkoutLog.server_time);
         
-        const message = `⏰ Auto Check-Out (Grace Period หมดเวลา)\n\n` +
-          `👤 คุณ${employee.full_name}\n` +
-          `📍 Check-Out เวลา: ${format(checkoutTime, 'HH:mm')}\n\n` +
-          `⏱️ เวลาอยู่ที่ทำงาน: ${hoursWorked} ชั่วโมง\n` +
-          `💼 นับเป็นเงินเดือน: ${recordedHours} ชั่วโมง\n\n` +
-          `ℹ️ เนื่องจากคุณไม่ได้ Check-Out ภายใน ${gracePeriod} นาที หลังครบชั่วโมงทำงาน\n` +
-          `ระบบได้ทำการ Check-Out อัตโนมัติให้แล้วค่ะ\n\n` +
-          `หากมีข้อสงสัย กรุณาติดต่อหัวหน้างาน`;
+        let message = `🚪 Auto Check-out (Grace Period)\n\n`;
+        message += `พนักงาน: ${employee.full_name} (${employee.code})\n`;
+        message += `เวลาออก: ${formatBangkokTime(checkoutTimeBangkok, 'HH:mm')} น.\n`;
+        message += `ชั่วโมงทำงาน: ${hoursWorked} ชม.\n\n`;
+        message += `📌 ระบบทำการ check-out อัตโนมัติเนื่องจากพ้นช่วง grace period แล้ว\n`;
+        message += `Grace Period หมดเวลา: ${formatBangkokTime(graceExpiresAtBangkok, 'HH:mm')} น.`;
         
+        // ส่งไปพนักงาน
         if (employee.line_user_id) {
-          let lineMessageId: string | null = null;
-          let deliveryStatus: 'sent' | 'failed' = 'sent';
-          
           try {
-            const response = await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
+            await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${lineAccessToken}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
               },
               body: JSON.stringify({
                 to: employee.line_user_id,
                 messages: [{ type: 'text', text: message }]
               })
-            }, { maxRetries: 2 });
+            });
             
-            const data = await response.json();
-            lineMessageId = data.sentMessages?.[0]?.id || null;
-            logger.info('Sent auto-checkout notification', { employeeId: employee.id });
-          } catch (notifyError) {
-            deliveryStatus = 'failed';
-            logger.error('Failed to send LINE notification', { employeeId: employee.id, error: notifyError });
-            // Continue processing even if notification fails
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'dm',
+              destinationId: employee.line_user_id,
+              destinationName: employee.full_name,
+              messageType: 'notification',
+              messageText: message,
+              edgeFunctionName: 'auto-checkout-grace',
+              recipientEmployeeId: employee.id,
+              commandType: 'auto_checkout',
+              triggeredBy: 'cron',
+              deliveryStatus: 'sent'
+            });
+            
+            logger.info('Auto-checkout notification sent to employee', { 
+              employeeId: employee.id,
+              lineUserId: employee.line_user_id 
+            });
+          } catch (error) {
+            logger.error('Failed to send notification to employee', { 
+              error, 
+              employeeId: employee.id 
+            });
           }
-
-          // Log bot message
-          await logBotMessage({
-            destinationType: 'dm',
-            destinationId: employee.line_user_id,
-            destinationName: employee.full_name,
-            recipientEmployeeId: employee.id,
-            messageText: message,
-            messageType: 'notification',
-            triggeredBy: 'cron',
-            edgeFunctionName: 'auto-checkout-grace',
-            lineMessageId: lineMessageId || undefined,
-            deliveryStatus: deliveryStatus
-          });
         }
+        
+        // ส่งไปกลุ่มประกาศ (ถ้ามี)
+        if (employee.announcement_group_line_id) {
+          try {
+            await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${lineAccessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: employee.announcement_group_line_id,
+                messages: [{ type: 'text', text: message }]
+              })
+            });
+            
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'group',
+              destinationId: employee.announcement_group_line_id,
+              destinationName: 'Announcement Group',
+              messageType: 'notification',
+              messageText: message,
+              edgeFunctionName: 'auto-checkout-grace',
+              recipientEmployeeId: employee.id,
+              commandType: 'auto_checkout',
+              triggeredBy: 'cron',
+              deliveryStatus: 'sent'
+            });
+            
+            logger.info('Auto-checkout notification sent to announcement group', { 
+              employeeId: employee.id,
+              groupId: employee.announcement_group_line_id 
+            });
+          } catch (error) {
+            logger.error('Failed to send notification to announcement group', { 
+              error, 
+              employeeId: employee.id 
+            });
+          }
+        }
+        
+        autoCheckouts++;
+        logger.info('Auto-checkout completed successfully', { 
+          employeeId: employee.id,
+          sessionId: session.id 
+        });
       }
     }
     
-    logger.info('Auto-checkout grace period check completed', { autoCheckouts });
+    logger.info('Grace period check completed', { 
+      autoCheckouts,
+      totalSessions: sessions?.length || 0,
+      bangkokTime: formatBangkokTime(bangkokNow)
+    });
     
+    return new Response(
+      JSON.stringify({
+        success: true,
+        autoCheckouts,
+        totalSessions: sessions?.length || 0,
+        checkedAt: formatBangkokTime(bangkokNow)
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('Error in auto-checkout-grace', { error: errorMessage });
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        auto_checkouts: autoCheckouts
+        success: false, 
+        error: errorMessage
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-    
-  } catch (error) {
-    logger.error('Auto-checkout grace period check failed', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      }
     );
   }
 });

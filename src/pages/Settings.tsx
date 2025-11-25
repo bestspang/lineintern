@@ -27,8 +27,28 @@ export default function Settings() {
       const { data, error } = await supabase
         .from('app_settings')
         .select('*')
-        .single();
+        .maybeSingle();
+      
       if (error) throw error;
+      
+      // Create default settings if none exist
+      if (!data) {
+        const { data: newSettings, error: insertError } = await supabase
+          .from('app_settings')
+          .insert({
+            environment_name: 'Sandbox',
+            default_mode: 'helper',
+            default_language: 'auto',
+            openai_model: 'gpt-4',
+            max_summary_messages: 100,
+          })
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        return newSettings;
+      }
+      
       return data;
     },
   });

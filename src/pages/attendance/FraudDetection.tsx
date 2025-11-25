@@ -118,10 +118,12 @@ export default function FraudDetection() {
         .neq("id", log.id)
         .order("server_time", { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
       
       if (data) {
         setComparisonLog(data as FraudLog);
+      } else {
+        setComparisonLog(null);
       }
     }
   };
