@@ -36,7 +36,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   const [error, setError] = useState<string>("");
   
   // New 3-stage flow state
-  const [captureStage, setCaptureStage] = useState<'face_forward' | 'verify' | 'confirm'>('face_forward');
+  const [captureStage, setCaptureStage] = useState<'verify' | 'face_forward' | 'confirm'>('verify');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [faceDetectedStable, setFaceDetectedStable] = useState(0);
   
@@ -123,57 +123,19 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     };
   }, []);
 
-  // Auto-navigate to confirm stage when challenge completed
+  // Auto-navigate to face_forward stage when challenge completed
   useEffect(() => {
     if (challengeCompleted && captureStage === 'verify') {
-      setCaptureStage('confirm');
+      setCaptureStage('face_forward');
+      setFaceDetectedStable(0); // Reset counter
+      
+      toast({
+        title: '✅ ยืนยันตัวตนสำเร็จ',
+        description: 'กรุณาหันหน้าตรงกล้องเพื่อถ่ายรูป',
+      });
     }
   }, [challengeCompleted, captureStage]);
 
-  // Re-check video stream when entering verify stage with recovery mechanism
-  useEffect(() => {
-    if (captureStage === 'verify' && videoRef.current) {
-      const video = videoRef.current;
-      
-      const forceVideoReady = async () => {
-        try {
-          // Check if video is stuck in loading state
-          if (video.readyState < 4) {
-            console.log('⚠️ Video not ready (readyState:', video.readyState, '), attempting recovery...');
-            
-            const currentStream = video.srcObject as MediaStream;
-            if (currentStream && currentStream.active) {
-              video.load();
-              await video.play();
-              
-              // Wait up to 2 seconds for video to be ready
-              const waitForReady = new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => reject('Timeout'), 2000);
-                const interval = setInterval(() => {
-                  if (video.readyState === 4) {
-                    clearInterval(interval);
-                    clearTimeout(timeout);
-                    resolve();
-                  }
-                }, 100);
-              });
-              
-              await waitForReady;
-              console.log('✅ Video recovery successful, readyState:', video.readyState);
-            }
-          } else if (video.paused) {
-            await video.play();
-            console.log('▶️ Video resumed');
-          }
-        } catch (err) {
-          console.error('❌ Failed to recover video:', err);
-          setError('ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่');
-        }
-      };
-      
-      forceVideoReady();
-    }
-  }, [captureStage]);
 
   // Process video frames
   useEffect(() => {
@@ -234,33 +196,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     const landmarks = result.faceLandmarks[0];
 
-    // Stage 1: Detect face forward and auto-capture
-    if (captureStage === 'face_forward') {
-      const noseTip = landmarks[1];
-      const leftCheek = landmarks[234];
-      const rightCheek = landmarks[454];
-      const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
-      const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
-      const normalizedOffset = noseOffsetFromCenter / faceWidth;
-      
-      // Face is centered
-      if (Math.abs(normalizedOffset) < 0.1) {
-        setFaceDetectedStable(prev => {
-          const newCount = prev + 1;
-          // 90 frames (~3 seconds) of stable face forward
-          if (newCount >= 90) {
-            autoCaptureFaceForward();
-            return 0;
-          }
-          return newCount;
-        });
-      } else {
-        setFaceDetectedStable(0);
-      }
-      return;
-    }
-
-    // Stage 2: Verification challenges
+    // Stage 1: Verification challenges (do FIRST)
     if (captureStage === 'verify') {
       // Blink detection using Eye Aspect Ratio (EAR)
       const leftEyeTop = landmarks[159];
@@ -322,6 +258,32 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       } else {
         setHeadPosition("center");
       }
+      return;
+    }
+
+    // Stage 2: Detect face forward and auto-capture (AFTER verification)
+    if (captureStage === 'face_forward') {
+      const noseTip = landmarks[1];
+      const leftCheek = landmarks[234];
+      const rightCheek = landmarks[454];
+      const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+      const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
+      const normalizedOffset = noseOffsetFromCenter / faceWidth;
+      
+      // Face is centered
+      if (Math.abs(normalizedOffset) < 0.1) {
+        setFaceDetectedStable(prev => {
+          const newCount = prev + 1;
+          // 90 frames (~3 seconds) of stable face forward
+          if (newCount >= 90) {
+            autoCaptureFaceForward();
+            return 0;
+          }
+          return newCount;
+        });
+      } else {
+        setFaceDetectedStable(0);
+      }
     }
   };
 
@@ -362,12 +324,12 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
     setCapturedImage(imageDataUrl);
     
-    // Move to verification stage
-    setCaptureStage('verify');
+    // Move to confirm stage (verification already done)
+    setCaptureStage('confirm');
     
     toast({
       title: '📸 ถ่ายรูปเรียบร้อย',
-      description: 'กรุณายืนยันตัวตน',
+      description: 'กดยืนยันเพื่อ Check In',
     });
   };
 
@@ -413,26 +375,111 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
             </div>
           ) : (
             <>
-              {/* Stage 1: Face Forward */}
-              {captureStage === 'face_forward' && (
+              {/* Stage 1: Verify with Challenge (FIRST) */}
+              {captureStage === 'verify' && (
                 <>
                   <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
                     <div className="flex flex-col items-center gap-4">
-                      <Camera className="h-12 w-12 text-primary" />
+                      <ChallengeIcon className="h-12 w-12 text-primary animate-pulse" />
+                      
                       <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                        📸 หันหน้าตรงกล้อง
+                        {currentChallengeInfo.text}
+                      </div>
+
+                      {currentChallenge === "blink" && (
+                        <div className="text-base text-muted-foreground text-center">
+                          จำนวนครั้งที่กระพริบ: <strong>{blinkCount}/2</strong>
+                        </div>
+                      )}
+
+                      {(currentChallenge === "turn_left" || currentChallenge === "turn_right") && (
+                        <div className="text-base text-muted-foreground text-center">
+                          ตำแหน่งหัว: <Badge variant={headPosition === "center" ? "secondary" : "default"}>{headPosition}</Badge>
+                        </div>
+                      )}
+
+                      {challengeCompleted && (
+                        <Badge variant="default" className="text-lg py-2 px-4 bg-green-500">
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          สำเร็จ
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video Feed - Mirrored */}
+                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover scale-x-[-1]"
+                      playsInline
+                      muted
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    {/* Debug Overlay with Retry */}
+                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded">
+                      Video: {videoRef.current?.readyState === 4 ? '✅ Ready' : `⏳ Loading (${videoRef.current?.readyState})`}
+                      <br />
+                      Stream: {stream ? '✅ Active' : '❌ Inactive'}
+                      <br />
+                      FaceLandmarker: {faceLandmarker ? '✅ Ready' : '❌ Not Ready'}
+                      
+                      {/* Retry button if stuck */}
+                      {videoRef.current?.readyState !== 4 && stream && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2 text-xs"
+                          onClick={() => {
+                            if (videoRef.current) {
+                              videoRef.current.load();
+                              videoRef.current.play();
+                            }
+                          }}
+                        >
+                          🔄 รีโหลดวิดีโอ
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {!faceLandmarker && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                        กำลังโหลดระบบตรวจจับใบหน้า...
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    className="w-full"
+                  >
+                    ยกเลิก
+                  </Button>
+                </>
+              )}
+
+              {/* Stage 2: Face Forward (AFTER verification) */}
+              {captureStage === 'face_forward' && (
+                <>
+                  <div className="bg-green-50 dark:bg-green-950 p-6 rounded-lg border-2 border-green-500/20">
+                    <div className="flex flex-col items-center gap-4">
+                      <CheckCircle className="h-12 w-12 text-green-500" />
+                      <div className="font-bold text-2xl text-green-600 dark:text-green-400">
+                        ✅ ยืนยันตัวตนสำเร็จ
                       </div>
                       <div className="text-base text-muted-foreground text-center">
-                        ระบบจะถ่ายรูปอัตโนมัติใน <strong>3 วินาที</strong> เมื่อใบหน้าอยู่ตรงกลาง
+                        กรุณา<strong>หันหน้าตรงกล้อง</strong>เพื่อถ่ายรูป
                         <br />
-                        <span className="text-sm text-primary">
-                          เตรียมหน้าของคุณให้พร้อม
+                        <span className="text-sm text-green-600 dark:text-green-400">
+                          ระบบจะถ่ายอัตโนมัติใน 3 วินาที
                         </span>
                       </div>
                       {/* Progress Bar */}
                       <div className="w-full bg-secondary rounded-full h-2">
                         <div 
-                          className="bg-primary h-2 rounded-full transition-all duration-100"
+                          className="bg-green-500 h-2 rounded-full transition-all duration-100"
                           style={{ width: `${(faceDetectedStable / 90) * 100}%` }}
                         />
                       </div>
@@ -459,111 +506,6 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                   <Button
                     variant="outline"
                     onClick={onCancel}
-                    className="w-full"
-                  >
-                    ยกเลิก
-                  </Button>
-                </>
-              )}
-
-              {/* Stage 2: Verify with Challenge */}
-              {captureStage === 'verify' && (
-                <>
-                  <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
-                    <div className="flex flex-col items-center gap-4">
-                      <ChallengeIcon className="h-12 w-12 text-primary animate-pulse" />
-                      
-                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                        {currentChallengeInfo.text}
-                      </div>
-                      
-                      {/* Face Detection Status */}
-                      <div className="flex items-center gap-2">
-                        {faceLandmarker ? (
-                          <Badge variant="default" className="gap-2">
-                            <Check className="h-3 w-3" />
-                            กำลังตรวจจับใบหน้า
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="gap-2 animate-pulse">
-                            ⏳ กำลังโหลด...
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      {currentChallenge === "blink" && (
-                        <div className="text-base text-muted-foreground">
-                          ตรวจพบ: {blinkCount} / 2 ครั้ง
-                        </div>
-                      )}
-                      {currentChallenge.includes("turn") && (
-                        <div className="text-base text-muted-foreground">
-                          ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
-                        </div>
-                      )}
-                      
-                      {challengeCompleted ? (
-                        <Badge variant="default" className="gap-2 px-4 py-2 text-base">
-                          <Check className="h-4 w-4" />
-                          เสร็จสิ้น
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="px-4 py-2 text-base">
-                          กำลังดำเนินการ
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Video Feed - Mirrored */}
-                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                    <video
-                      ref={videoRef}
-                      className="w-full h-full object-cover scale-x-[-1]"
-                      playsInline
-                      muted
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-                    
-                    {/* Debug Overlay */}
-                    {!faceLandmarker && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                        กำลังโหลดระบบตรวจจับใบหน้า...
-                      </div>
-                    )}
-                    
-                    {/* Debug: แสดงสถานะ video with retry button */}
-                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded space-y-1">
-                      <div>Video: {videoRef.current?.readyState === 4 ? '✅ Ready' : `⏳ Loading (${videoRef.current?.readyState || 0})`}</div>
-                      <div>Stream: {stream ? '✅ Active' : '❌ Inactive'}</div>
-                      <div>FaceLandmarker: {faceLandmarker ? '✅ Ready' : '❌ Not Ready'}</div>
-                      
-                      {/* Retry button if video stuck */}
-                      {videoRef.current && videoRef.current.readyState < 4 && stream && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="mt-1 text-xs h-6 px-2"
-                          onClick={() => {
-                            if (videoRef.current) {
-                              console.log('🔄 Manual video reload triggered');
-                              videoRef.current.load();
-                              videoRef.current.play().catch(err => {
-                                console.error('Manual play failed:', err);
-                              });
-                            }
-                          }}
-                        >
-                          🔄 รีโหลดวิดีโอ
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={onCancel}
-                    disabled={challengeCompleted}
                     className="w-full"
                   >
                     ยกเลิก
