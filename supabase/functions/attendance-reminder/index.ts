@@ -3,6 +3,7 @@ import { format, addMinutes, startOfDay, endOfDay } from 'https://esm.sh/date-fn
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,11 +51,10 @@ Deno.serve(async (req) => {
     logger.info('Starting attendance reminder check');
 
     const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-    const currentTime = format(bangkokTime, 'HH:mm:ss');
-    const today = format(bangkokTime, 'yyyy-MM-dd');
+    const currentTime = formatBangkokTime(now, 'HH:mm:ss');
+    const today = getBangkokDateString(now);
 
-    console.log(`[attendance-reminder] Current Bangkok time: ${format(bangkokTime, 'yyyy-MM-dd HH:mm:ss')}`);
+    console.log(`[attendance-reminder] Current Bangkok time: ${formatBangkokTime(now)}`);
 
     // Fetch all active employees with shift times
     const { data: employees, error: employeesError } = await supabase
@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
         const reminderMinutesBefore = prefs.soft_checkin_reminder_minutes_before || 15;
         
         const [hour, minute] = preferredStartTime.split(':').map(Number);
-        const preferredStart = new Date(bangkokTime);
+        const preferredStart = new Date(now);
         preferredStart.setHours(hour, minute, 0, 0);
         const reminderTime = addMinutes(preferredStart, -reminderMinutesBefore);
         const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         
         if (allowedWorkEndTime) {
           const [endHour, endMinute] = allowedWorkEndTime.split(':').map(Number);
-          const workEnd = new Date(bangkokTime);
+          const workEnd = new Date(now);
           workEnd.setHours(endHour, endMinute, 0, 0);
           
           const totalMinutes = (hoursPerDay + breakHours) * 60;
@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
         
         // Parse shift start time and add grace period
         const [startHour, startMinute] = shiftStartTime.split(':').map(Number);
-        const shiftStart = new Date(bangkokTime);
+        const shiftStart = new Date(now);
         shiftStart.setHours(startHour, startMinute, 0, 0);
         const reminderTime = addMinutes(shiftStart, gracePeriodMinutes);
         const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
 
           const shiftEndTime = employee.shift_end_time;
           const [endHour, endMinute] = shiftEndTime.split(':').map(Number);
-          const shiftEnd = new Date(bangkokTime);
+          const shiftEnd = new Date(now);
           shiftEnd.setHours(endHour, endMinute, 0, 0);
           expectedCheckOutTime = shiftEnd;
 
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
         success: true,
         check_in_reminders: checkInReminders,
         check_out_reminders: checkOutReminders,
-        timestamp: bangkokTime.toISOString(),
+        timestamp: now.toISOString(),
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

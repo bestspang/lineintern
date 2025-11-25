@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
+import { getBangkokDateString, formatBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,12 +23,12 @@ serve(async (req) => {
     logger.info('Starting auto checkout process');
 
     const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-    const today = bangkokTime.toISOString().split('T')[0];
+    const today = getBangkokDateString(now);
     
     // Get the date we're checking (yesterday if it's just past midnight)
-    const targetDate = bangkokTime.getHours() < 2 
-      ? new Date(bangkokTime.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const bangkokHour = parseInt(formatBangkokTime(now, 'HH'));
+    const targetDate = bangkokHour < 2 
+      ? getBangkokDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000))
       : today;
 
     console.log(`[auto-checkout-midnight] Checking date: ${targetDate}`);

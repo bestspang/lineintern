@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, attendanceSubmitSchema } from '../_shared/validators.ts';
+import { formatBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -261,8 +262,7 @@ serve(async (req) => {
     // Validate allowed work time for hours_based employees
     if (token.employee.working_time_type === 'hours_based') {
       const currentTime = new Date();
-      const bangkokTime = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-      const currentTimeStr = bangkokTime.toTimeString().substring(0, 8); // HH:MM:SS
+      const currentTimeStr = formatBangkokTime(currentTime, 'HH:mm:ss');
       
       const allowedStart = token.employee.allowed_work_start_time || '06:00:00';
       const allowedEnd = token.employee.allowed_work_end_time || '20:00:00';
