@@ -55,6 +55,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     challenge: "",
     timestamp: Date.now(),
   });
+  
+  // Tips dialog state
+  const [showTips, setShowTips] = useState(false);
 
   // Initialize MediaPipe Face Landmarker
   useEffect(() => {
@@ -312,14 +315,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
     const normalizedOffset = noseOffsetFromCenter / faceWidth;
 
+    // ⚠️ INVERT logic because video is mirrored
     if (normalizedOffset < -0.25) {
-      setHeadPosition("left");
-      // Step 2: turn_left
-      if (!challengeCompleted && challengeStep === 2 && currentChallenge === "turn_left") {
-        livenessDataRef.current.headTurned = true;
-        setChallengeCompleted(true);
-      }
-    } else if (normalizedOffset > 0.25) {
+      // User turns right → camera sees left → offset < 0
       setHeadPosition("right");
       // Step 1: turn_right (must complete before step 2)
       if (!step1Completed && challengeStep === 1 && currentChallenge === "turn_right") {
@@ -327,6 +325,14 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         setChallengeStep(2);
         setCurrentChallenge(step2Challenge);
         livenessDataRef.current.headTurned = true;
+      }
+    } else if (normalizedOffset > 0.25) {
+      // User turns left → camera sees right → offset > 0
+      setHeadPosition("left");
+      // Step 2: turn_left
+      if (!challengeCompleted && challengeStep === 2 && currentChallenge === "turn_left") {
+        livenessDataRef.current.headTurned = true;
+        setChallengeCompleted(true);
       }
     } else {
       setHeadPosition("center");
@@ -392,12 +398,12 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   return (
     <div className="fixed inset-0 z-50 bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Camera className="h-5 w-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Camera className="h-4 w-4 sm:h-5 sm:w-5" />
             ตรวจสอบใบหน้า
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             ทำตามคำแนะนำเพื่อยืนยันตัวตน
           </CardDescription>
         </CardHeader>
@@ -408,108 +414,93 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
             </div>
           ) : (
             <>
-              {/* Progress Indicator */}
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant={step1Completed ? "default" : challengeStep === 1 ? "secondary" : "outline"}>
-                  {step1Completed ? "✓" : "1"} หันขวา
+              {/* Progress Indicator - Compact */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Badge 
+                  variant={step1Completed ? "default" : challengeStep === 1 ? "secondary" : "outline"}
+                  className="text-xs px-2 py-0.5"
+                >
+                  {step1Completed ? "✓" : "1"}
                 </Badge>
                 <div className="h-px flex-1 bg-border"></div>
-                <Badge variant={challengeCompleted ? "default" : challengeStep === 2 ? "secondary" : "outline"}>
-                  {challengeCompleted ? "✓" : "2"} {step2Challenge === "blink" ? "กระพริบ" : "หันซ้าย"}
+                <Badge 
+                  variant={challengeCompleted ? "default" : challengeStep === 2 ? "secondary" : "outline"}
+                  className="text-xs px-2 py-0.5"
+                >
+                  {challengeCompleted ? "✓" : "2"}
                 </Badge>
                 <div className="h-px flex-1 bg-border"></div>
-                <Badge variant={waitingForCenter ? "secondary" : "outline"}>
-                  3 ทำหน้าตรง
+                <Badge 
+                  variant={waitingForCenter ? "secondary" : "outline"}
+                  className="text-xs px-2 py-0.5"
+                >
+                  3
                 </Badge>
               </div>
 
-              {/* Challenge Instructions */}
-              <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
-                <div className="flex flex-col items-center gap-4">
-                  {!challengeCompleted ? (
-                    <>
-                      <ChallengeIcon className="h-12 w-12 text-primary" />
-                      
-                      <div className="text-sm font-medium text-muted-foreground">
-                        ขั้นตอนที่ {challengeStep} / 2
-                      </div>
-                      
-                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+              {/* Challenge Instructions - Compact */}
+              <div className="bg-primary/10 p-3 sm:p-4 rounded-lg border border-primary/20">
+                {!challengeCompleted ? (
+                  <div className="flex items-center gap-3">
+                    <ChallengeIcon className="h-6 w-6 sm:h-7 sm:w-7 text-primary flex-shrink-0" />
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-base sm:text-lg text-primary truncate">
                         {challengeStep === 1 ? "หันหน้าไปทางขวา" : 
                          currentChallenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้าย"}
                       </div>
                       
-                      {challengeStep === 1 && (
-                        <div className="text-base text-muted-foreground">
-                          ตำแหน่งหัว: {headPosition === "right" ? "✓ ขวา (ถูกต้อง)" : 
-                                     headPosition === "left" ? "ซ้าย (ไม่ถูกต้อง)" : "กลาง"}
-                        </div>
-                      )}
-                      
-                      {challengeStep === 2 && currentChallenge === "blink" && (
-                        <div className="text-base text-muted-foreground">
-                          ตรวจพบ: {blinkCount} / 2 ครั้ง
-                        </div>
-                      )}
-                      
-                      {challengeStep === 2 && currentChallenge === "turn_left" && (
-                        <div className="text-base text-muted-foreground">
-                          ตำแหน่งหัว: {headPosition === "left" ? "✓ ซ้าย (ถูกต้อง)" : 
-                                     headPosition === "right" ? "ขวา (ไม่ถูกต้อง)" : "กลาง"}
-                        </div>
-                      )}
-                      
-                      <Badge variant="secondary" className="px-4 py-2 text-base">
-                        กำลังดำเนินการ
-                      </Badge>
-                    </>
-                  ) : waitingForCenter ? (
-                    <>
-                      <Camera className="h-12 w-12 text-primary" />
-                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                      <div className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                        {challengeStep === 1 && (
+                          <>ตำแหน่ง: {headPosition === "right" ? "✓ ขวา" : headPosition === "left" ? "ซ้าย" : "กลาง"}</>
+                        )}
+                        {challengeStep === 2 && currentChallenge === "blink" && (
+                          <>ตรวจพบ: {blinkCount}/2 ครั้ง</>
+                        )}
+                        {challengeStep === 2 && currentChallenge === "turn_left" && (
+                          <>ตำแหน่ง: {headPosition === "left" ? "✓ ซ้าย" : headPosition === "right" ? "ขวา" : "กลาง"}</>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <Badge variant="secondary" className="text-xs px-2 py-1">
+                      {challengeStep}/2
+                    </Badge>
+                  </div>
+                ) : waitingForCenter ? (
+                  <div className="flex items-center gap-3">
+                    <Camera className="h-6 w-6 sm:h-7 sm:w-7 text-primary flex-shrink-0" />
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-base sm:text-lg text-primary">
                         กรุณาทำหน้าตรง
                       </div>
-                      
-                      {centerHoldTimer > 0 ? (
-                        <div className="text-6xl font-bold text-green-600 animate-pulse">
-                          {4 - centerHoldTimer}
-                        </div>
-                      ) : (
-                        <div className="text-base text-muted-foreground">
-                          ทำหน้าตรงและนิ่งค้างไว้ 3 วินาที
-                        </div>
-                      )}
-                      
-                      <Badge 
-                        variant={centerHoldTimer > 0 ? "default" : "secondary"} 
-                        className="gap-2 px-4 py-2 text-base"
-                      >
-                        {centerHoldTimer > 0 ? (
-                          <>
-                            <Check className="h-4 w-4" />
-                            กำลังนับ... {centerHoldTimer}/3
-                          </>
-                        ) : (
-                          "รอทำหน้าตรง"
-                        )}
-                      </Badge>
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="h-12 w-12 text-primary animate-pulse" />
-                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                        กำลังถ่ายรูป...
+                      <div className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                        {centerHoldTimer > 0 ? `กำลังนับ... ${centerHoldTimer}/3` : "นิ่งค้างไว้ 3 วินาที"}
                       </div>
-                    </>
-                  )}
-                </div>
+                    </div>
+                    
+                    {centerHoldTimer > 0 && (
+                      <div className="text-2xl sm:text-3xl font-bold text-green-600 tabular-nums">
+                        {4 - centerHoldTimer}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <Camera className="h-6 w-6 animate-pulse text-primary" />
+                    <div className="font-bold text-base sm:text-lg text-primary">
+                      กำลังถ่ายรูป...
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Video Feed */}
-              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+              {/* Video Feed - Larger */}
+              <div className="relative bg-black rounded-lg overflow-hidden" style={{ maxHeight: '65vh' }}>
                 <video
                   ref={videoRef}
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  className="w-full h-auto object-cover scale-x-[-1]"
                   playsInline
                   muted
                 />
@@ -517,7 +508,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 
                 {/* Face detection overlay */}
                 {!faceLandmarker && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-sm">
                     กำลังโหลดระบบตรวจจับใบหน้า...
                   </div>
                 )}
@@ -555,14 +546,64 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 )}
               </div>
 
-              {/* Tips */}
-              <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-4 rounded-lg">
-                <p>💡 <strong>คำแนะนำ:</strong></p>
-                <p>• <strong>ขั้นตอนที่ 1:</strong> หันหน้าไปทางขวาให้ชัดเจน</p>
-                <p>• <strong>ขั้นตอนที่ 2:</strong> {step2Challenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้ายให้ชัดเจน"}</p>
-                <p>• <strong>ขั้นตอนที่ 3:</strong> ทำหน้าตรงและนิ่งค้างไว้ 3 วินาที</p>
-                <p>• ตรวจสอบว่าแสงสว่างเพียงพอและใบหน้าอยู่ตรงกลาง</p>
+              {/* Tips - Hidden by default */}
+              <div className="flex justify-center">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowTips(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  💡 คำแนะนำการใช้งาน
+                </Button>
               </div>
+
+              {/* Tips Dialog */}
+              {showTips && (
+                <div 
+                  className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+                  onClick={() => setShowTips(false)}
+                >
+                  <div 
+                    className="bg-background rounded-lg p-6 max-w-md w-full shadow-xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                      💡 คำแนะนำการใช้งาน
+                    </h3>
+                    
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                      <div className="flex gap-2">
+                        <span className="font-semibold text-foreground min-w-[80px]">ขั้นตอน 1:</span>
+                        <span>หันหน้าไปทางขวาให้ชัดเจน</span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <span className="font-semibold text-foreground min-w-[80px]">ขั้นตอน 2:</span>
+                        <span>{step2Challenge === "blink" ? "กระพริบตา 2 ครั้ง" : "หันหน้าไปทางซ้ายให้ชัดเจน"}</span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <span className="font-semibold text-foreground min-w-[80px]">ขั้นตอน 3:</span>
+                        <span>ทำหน้าตรงและนิ่งค้างไว้ 3 วินาที</span>
+                      </div>
+                      
+                      <div className="pt-2 border-t">
+                        <p className="text-xs">• ตรวจสอบว่าแสงสว่างเพียงพอ</p>
+                        <p className="text-xs">• วางใบหน้าให้อยู่ตรงกลางกรอบ</p>
+                      </div>
+                    </div>
+                    
+                    <Button 
+                      onClick={() => setShowTips(false)} 
+                      className="w-full mt-4"
+                      size="sm"
+                    >
+                      เข้าใจแล้ว
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </CardContent>
