@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings } from 'lucide-react';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings, HelpCircle, FileUser, Building2, Users } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -495,6 +495,54 @@ export default function AttendanceSummaries() {
           Comprehensive attendance, overtime, and early leave reports
         </p>
       </div>
+
+      {/* Help Card */}
+      <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+              <HelpCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                วิธีใช้งาน Reports & Summaries
+              </h3>
+              <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5 p-1 rounded bg-blue-200 dark:bg-blue-800">
+                    <FileUser className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <strong>📤 ส่งรายบุคคล:</strong> ส่งสรุปการเข้างานแต่ละคนไปหาพนักงานคนนั้นใน LINE โดยตรง
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5 p-1 rounded bg-blue-200 dark:bg-blue-800">
+                    <Building2 className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <strong>🏢 ส่งรายสาขา:</strong> ส่งสรุปข้อมูลพนักงานในสาขาไปยังกลุ่ม LINE ของสาขานั้น
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5 p-1 rounded bg-blue-200 dark:bg-blue-800">
+                    <Users className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <strong>📊 ส่งทุกสาขาไป Management:</strong> ส่งข้อมูลรวมทุกสาขาไปยังกลุ่มผู้บริหารที่คุณเลือก (เลือกได้หลายกลุ่ม)
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-900/50 border border-blue-300 dark:border-blue-700">
+                <p className="text-xs text-blue-900 dark:text-blue-100 font-medium flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  💡 ระบบจะส่งอัตโนมัติตามเวลาที่ตั้งไว้ พนักงาน/สาขาใหม่จะถูกรวมอัตโนมัติโดยไม่ต้องตั้งค่าใหม่
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Delivery Configuration Section */}
       <Card>

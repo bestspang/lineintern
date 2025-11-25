@@ -42,6 +42,8 @@ const Index = () => {
     { cmd: "/faq", desc: "Search team knowledge base and FAQs" },
     { cmd: "/todo", desc: "Create tasks and set reminders" },
     { cmd: "/report", desc: "View group activity and engagement report" },
+    { cmd: "/checkin", desc: "Request check-in link for attendance" },
+    { cmd: "/checkout", desc: "Request check-out link for attendance" },
     { cmd: "/help", desc: "See all available commands" },
   ];
 
