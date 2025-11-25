@@ -42,7 +42,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   // 2-Step Challenge states
   const [challengeStep, setChallengeStep] = useState<1 | 2>(1);
   const [step1Completed, setStep1Completed] = useState(false);
-  const [step2Challenge, setStep2Challenge] = useState<"blink" | "turn_left">("blink");
+  const [step2Challenge, setStep2Challenge] = useState<"blink" | "turn_left">(
+    Math.random() < 0.5 ? "blink" : "turn_left"
+  );
   
   // Center face detection states
   const [waitingForCenter, setWaitingForCenter] = useState(false);
@@ -93,6 +95,13 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         faceLandmarker.close();
       }
     };
+  }, []);
+
+  // Randomize step 2 challenge once at mount
+  useEffect(() => {
+    const randomChallenge = Math.random() < 0.5 ? "blink" : "turn_left";
+    setStep2Challenge(randomChallenge);
+    console.log("[DEBUG] Step 2 challenge randomized at mount:", randomChallenge);
   }, []);
 
   // Start camera
@@ -339,10 +348,24 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       
       // ถ้าทำ step 1 เสร็จและกลับหน้าตรง → เริ่ม step 2
       if (waitingForCenterAfterStep1) {
+        console.log("[DEBUG] Advancing to step 2:", {
+          step2Challenge,
+          currentChallenge,
+          step1Completed,
+          headPosition
+        });
+        
         setWaitingForCenterAfterStep1(false);
         setChallengeStep(2);
-        setCurrentChallenge(step2Challenge);
+        
+        // ✅ Validate step 2 challenge is different from step 1
+        // Step 1 is always "turn_right", so step 2 should be "blink" or "turn_left"
+        const validStep2Challenge = step2Challenge;
+        
+        setCurrentChallenge(validStep2Challenge);
         livenessDataRef.current.headTurned = true;
+        
+        console.log("[DEBUG] Step 2 started with challenge:", validStep2Challenge);
       }
     }
   };
