@@ -6032,8 +6032,11 @@ async function generateAiReply(
 // LINE REPLY
 // =============================
 
-async function replyToLine(replyToken: string, text: string, quickReply?: any) {
-  console.log(`[replyToLine] Sending reply (${text.length} chars)${quickReply ? ' with Quick Reply' : ''}`);
+async function replyToLine(replyToken: string, text: string, quickReply?: any, skipQuickReply: boolean = false) {
+  // Use default Quick Reply if not provided and not skipped
+  const finalQuickReply = skipQuickReply ? undefined : (quickReply || getSimpleQuickReply('th'));
+  
+  console.log(`[replyToLine] Sending reply (${text.length} chars)${finalQuickReply ? ' with Quick Reply' : ' (Quick Reply skipped)'}`);
   
   // LINE has a 5000 character limit per message
   const chunks: string[] = [];
@@ -6044,8 +6047,8 @@ async function replyToLine(replyToken: string, text: string, quickReply?: any) {
   const messages = chunks.map(chunk => {
     const msg: any = { type: "text", text: chunk };
     // Add quick reply to the first message only
-    if (quickReply && chunk === chunks[0]) {
-      msg.quickReply = quickReply;
+    if (finalQuickReply && chunk === chunks[0]) {
+      msg.quickReply = finalQuickReply;
     }
     return msg;
   });
