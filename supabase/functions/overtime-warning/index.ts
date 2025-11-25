@@ -21,7 +21,7 @@ serve(async (req) => {
 
     const today = new Date().toISOString().split('T')[0];
     const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    console.log(`[overtime-warning] Current time (UTC): ${now.toISOString()}`);
 
     // Get all employees who are currently checked in
     const { data: currentlyCheckedIn, error: fetchError } = await supabase
@@ -92,9 +92,11 @@ serve(async (req) => {
         continue;
       }
 
-      // Calculate work hours so far
+      // Calculate work hours so far (both times are in UTC)
       const checkInTime = new Date(checkInLog.server_time);
-      const hoursWorked = (bangkokTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+      const hoursWorked = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+      
+      console.log(`[overtime-warning] ${employee.full_name}: check-in=${checkInTime.toISOString()}, now=${now.toISOString()}, hours=${hoursWorked.toFixed(2)}`);
 
       // Get max work hours (use employee setting or default to 8)
       const maxWorkHours = employee.max_work_hours_per_day || 8;
@@ -171,10 +173,10 @@ serve(async (req) => {
             employee_id: empId,
             reminder_type: 'ot_warning',
             reminder_date: today,
-            scheduled_time: bangkokTime.toISOString(),
+            scheduled_time: now.toISOString(),
             notification_type: 'private',
             status: 'sent',
-            sent_at: bangkokTime.toISOString()
+            sent_at: now.toISOString()
           });
 
         warningsSent++;
@@ -236,10 +238,10 @@ serve(async (req) => {
             employee_id: empId,
             reminder_type: 'ot_exceeded',
             reminder_date: today,
-            scheduled_time: bangkokTime.toISOString(),
+            scheduled_time: now.toISOString(),
             notification_type: 'private',
             status: 'sent',
-            sent_at: bangkokTime.toISOString()
+            sent_at: now.toISOString()
           });
 
         warningsSent++;
