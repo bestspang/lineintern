@@ -12,11 +12,12 @@ import { format } from 'date-fns';
 
 interface AttendancePhoto {
   id: string;
-  photo_url: string;
+  photo_url: string | null;
   server_time: string;
   event_type: string;
   latitude: number | null;
   longitude: number | null;
+  is_remote_checkin: boolean | null;
   employee: {
     id: string;
     full_name: string;
@@ -61,10 +62,10 @@ export default function AttendancePhotos() {
           event_type,
           latitude,
           longitude,
+          is_remote_checkin,
           employee:employees!inner(id, full_name, code),
           branch:branches(id, name)
         `)
-        .not('photo_url', 'is', null)
         .order('server_time', { ascending: false });
 
       // Apply filters
@@ -126,10 +127,10 @@ export default function AttendancePhotos() {
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Camera className="h-4 w-4 sm:h-5 sm:w-5" />
-            Attendance Photos
+            Attendance Records
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            View and manage all employee attendance photos
+            View all employee attendance records (with or without photos)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -217,7 +218,7 @@ export default function AttendancePhotos() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {photos?.length || 0} photos found
+                {photos?.length || 0} records found ({photos?.filter(p => p.photo_url).length || 0} with photos)
               </p>
             </div>
 
@@ -230,18 +231,36 @@ export default function AttendancePhotos() {
                     onClick={() => setSelectedPhoto(photo)}
                   >
                     <div className="aspect-square relative bg-muted">
-                      <img
-                        src={getPhotoUrl(photo.photo_url)}
-                        alt={`${photo.employee.full_name} - ${photo.event_type}`}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                      <Badge 
-                        className="absolute top-2 right-2"
-                        variant={photo.event_type === 'check_in' ? 'default' : 'secondary'}
-                      >
-                        {photo.event_type === 'check_in' ? 'In' : 'Out'}
-                      </Badge>
+                      {photo.photo_url ? (
+                        <img
+                          src={getPhotoUrl(photo.photo_url)}
+                          alt={`${photo.employee.full_name} - ${photo.event_type}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+                          <Camera className="h-12 w-12 opacity-30 mb-2" />
+                          <span className="text-sm">No Photo</span>
+                        </div>
+                      )}
+                      <div className="absolute top-2 right-2 flex flex-col gap-1">
+                        <Badge 
+                          variant={photo.event_type === 'check_in' ? 'default' : 'secondary'}
+                        >
+                          {photo.event_type === 'check_in' ? 'In' : 'Out'}
+                        </Badge>
+                        {photo.is_remote_checkin && (
+                          <Badge variant="outline" className="bg-background/80">
+                            🌐 Remote
+                          </Badge>
+                        )}
+                        {!photo.photo_url && (
+                          <Badge variant="destructive" className="text-xs">
+                            No Photo
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <CardContent className="p-3 space-y-1">
                       <div className="flex items-center gap-2">
@@ -268,7 +287,7 @@ export default function AttendancePhotos() {
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 <Camera className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No photos found</p>
+                <p>No attendance records found</p>
                 <p className="text-sm mt-1">Try adjusting your filters</p>
               </div>
             )}
@@ -302,19 +321,35 @@ export default function AttendancePhotos() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="aspect-video relative bg-muted rounded-lg overflow-hidden">
-                <img
-                  src={getPhotoUrl(selectedPhoto.photo_url)}
-                  alt={`${selectedPhoto.employee.full_name} - ${selectedPhoto.event_type}`}
-                  className="w-full h-full object-contain"
-                />
+                {selectedPhoto.photo_url ? (
+                  <img
+                    src={getPhotoUrl(selectedPhoto.photo_url)}
+                    alt={`${selectedPhoto.employee.full_name} - ${selectedPhoto.event_type}`}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+                    <Camera className="h-16 w-16 opacity-30 mb-3" />
+                    <span className="text-lg font-medium">No Photo Available</span>
+                    <span className="text-sm">This check-in was completed without a photo</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Event Type</Label>
-                  <Badge variant={selectedPhoto.event_type === 'check_in' ? 'default' : 'secondary'}>
-                    {selectedPhoto.event_type === 'check_in' ? 'Check In' : 'Check Out'}
-                  </Badge>
+                  <div className="flex gap-2">
+                    <Badge variant={selectedPhoto.event_type === 'check_in' ? 'default' : 'secondary'}>
+                      {selectedPhoto.event_type === 'check_in' ? 'Check In' : 'Check Out'}
+                    </Badge>
+                    {selectedPhoto.is_remote_checkin && (
+                      <Badge variant="outline">🌐 Remote</Badge>
+                    )}
+                    {!selectedPhoto.photo_url && (
+                      <Badge variant="destructive">No Photo</Badge>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
