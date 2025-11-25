@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimiters } from '../_shared/rate-limiter.ts';
+import { logger } from '../_shared/logger.ts';
+import { validateSchema, attendanceSubmitSchema } from '../_shared/validators.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +24,23 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    // Rate limiting check
+    const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
+    if (rateLimiters.attendance.isRateLimited(clientIp)) {
+      logger.warn('Rate limit exceeded for attendance submission', { clientIp });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            ...rateLimiters.attendance.getHeaders(clientIp),
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
 
     // Check if this is a JSON request (check_only mode)
     const contentType = req.headers.get('content-type') || '';

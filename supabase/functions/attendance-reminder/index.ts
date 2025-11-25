@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { format, addMinutes, startOfDay, endOfDay } from 'https://esm.sh/date-fns@4.1.0';
+import { logger } from '../_shared/logger.ts';
+import { fetchWithRetry } from '../_shared/retry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('[attendance-reminder] Starting attendance reminder check...');
+    logger.info('Starting attendance reminder check');
 
     const now = new Date();
     const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
@@ -498,25 +500,23 @@ async function sendSecondCheckInReminder(
   }
 }
 
-// Send LINE message
+// Send LINE message with retry
 async function sendLineMessage(lineId: string, message: string, lineAccessToken: string) {
-  const response = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${lineAccessToken}`,
-      'Content-Type': 'application/json',
+  await fetchWithRetry(
+    'https://api.line.me/v2/bot/message/push',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lineAccessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: lineId,
+        messages: [{ type: 'text', text: message }],
+      })
     },
-    body: JSON.stringify({
-      to: lineId,
-      messages: [{ type: 'text', text: message }],
-    }),
-  });
+    { maxRetries: 2 }
+  );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[sendLineMessage] LINE API error:', response.status, errorText);
-    throw new Error(`LINE API error: ${response.status} - ${errorText}`);
-  }
-
-  console.log(`[sendLineMessage] Message sent successfully to ${lineId}`);
+  logger.info('LINE message sent successfully', { lineId });
 }

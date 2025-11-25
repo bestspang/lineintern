@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logger } from '../_shared/logger.ts';
+import { fetchWithRetry } from '../_shared/retry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +19,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('[auto-checkout-midnight] Starting auto checkout process...');
+    logger.info('Starting auto checkout process');
 
     const now = new Date();
     const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
@@ -187,20 +189,24 @@ serve(async (req) => {
         message += `ระบบได้ทำการ Check Out ให้อัตโนมัติเมื่อเที่ยงคืน\n\n`;
         message += `หากมีข้อสงสัย กรุณาติดต่อหัวหน้างาน`;
 
-        await fetch('https://api.line.me/v2/bot/message/push', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${lineAccessToken}`
+        await fetchWithRetry(
+          'https://api.line.me/v2/bot/message/push',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${lineAccessToken}`
+            },
+            body: JSON.stringify({
+              to: employee.line_user_id,
+              messages: [{
+                type: 'text',
+                text: message
+              }]
+            })
           },
-          body: JSON.stringify({
-            to: employee.line_user_id,
-            messages: [{
-              type: 'text',
-              text: message
-            }]
-          })
-        });
+          { maxRetries: 2 }
+        );
       }
 
       // Post to announcement group
@@ -216,20 +222,24 @@ serve(async (req) => {
           groupMessage += `\n⚠️ OT ไม่ได้รับอนุมัติ: ${overtimeHours.toFixed(1)} ชม.`;
         }
 
-        await fetch('https://api.line.me/v2/bot/message/push', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${lineAccessToken}`
+        await fetchWithRetry(
+          'https://api.line.me/v2/bot/message/push',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${lineAccessToken}`
+            },
+            body: JSON.stringify({
+              to: announcementGroupId,
+              messages: [{
+                type: 'text',
+                text: groupMessage
+              }]
+            })
           },
-          body: JSON.stringify({
-            to: announcementGroupId,
-            messages: [{
-              type: 'text',
-              text: groupMessage
-            }]
-          })
-        });
+          { maxRetries: 2 }
+        );
       }
     }
 
