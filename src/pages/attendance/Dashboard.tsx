@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut, CalendarDays } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, differenceInMinutes } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
@@ -207,6 +207,34 @@ export default function AttendanceDashboard() {
       return results;
     },
   });
+
+  // Fetch leave balances summary
+  const { data: leaveBalances } = useQuery({
+    queryKey: ['leave-balances-summary', new Date().getFullYear()],
+    queryFn: async () => {
+      const currentYear = new Date().getFullYear();
+      const { data, error } = await supabase
+        .from('leave_balances')
+        .select('vacation_days_total, vacation_days_used, sick_days_total, sick_days_used, personal_days_total, personal_days_used')
+        .eq('leave_year', currentYear);
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Calculate leave balance totals
+  const leaveBalanceSummary = leaveBalances?.reduce(
+    (acc, balance) => ({
+      vacationRemaining: acc.vacationRemaining + ((balance.vacation_days_total || 0) - (balance.vacation_days_used || 0)),
+      sickRemaining: acc.sickRemaining + ((balance.sick_days_total || 0) - (balance.sick_days_used || 0)),
+      personalRemaining: acc.personalRemaining + ((balance.personal_days_total || 0) - (balance.personal_days_used || 0)),
+      vacationTotal: acc.vacationTotal + (balance.vacation_days_total || 0),
+      sickTotal: acc.sickTotal + (balance.sick_days_total || 0),
+      personalTotal: acc.personalTotal + (balance.personal_days_total || 0),
+    }),
+    { vacationRemaining: 0, sickRemaining: 0, personalRemaining: 0, vacationTotal: 0, sickTotal: 0, personalTotal: 0 }
+  ) || { vacationRemaining: 0, sickRemaining: 0, personalRemaining: 0, vacationTotal: 0, sickTotal: 0, personalTotal: 0 };
 
   // Calculate employee statuses
   const employeeStatuses: EmployeeStatus[] = employees?.map((emp) => {
@@ -420,6 +448,68 @@ export default function AttendanceDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Leave Balance Summary Widget */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            สรุปวันลาทั้งหมด
+          </CardTitle>
+          <CardDescription>วันลาคงเหลือของพนักงานทั้งหมด (ปี {new Date().getFullYear()})</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">วันลาพักร้อน</span>
+                <Badge variant="secondary" className="text-xs">
+                  {leaveBalanceSummary.vacationRemaining}/{leaveBalanceSummary.vacationTotal}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-blue-600">
+                {leaveBalanceSummary.vacationRemaining}
+              </div>
+              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">วันลาป่วย</span>
+                <Badge variant="secondary" className="text-xs">
+                  {leaveBalanceSummary.sickRemaining}/{leaveBalanceSummary.sickTotal}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-orange-600">
+                {leaveBalanceSummary.sickRemaining}
+              </div>
+              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">วันลากิจ</span>
+                <Badge variant="secondary" className="text-xs">
+                  {leaveBalanceSummary.personalRemaining}/{leaveBalanceSummary.personalTotal}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-600">
+                {leaveBalanceSummary.personalRemaining}
+              </div>
+              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">วันลารวมทั้งหมด</span>
+              <span className="font-semibold">
+                {leaveBalanceSummary.vacationRemaining + leaveBalanceSummary.sickRemaining + leaveBalanceSummary.personalRemaining} วัน
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Today's Attendance Summary */}
