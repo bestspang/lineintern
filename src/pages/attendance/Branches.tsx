@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Building, Plus, Edit, MapPin, Trash2 } from 'lucide-react';
+import { Loader2, Building, Plus, Edit, MapPin, Trash2, RotateCcw } from 'lucide-react';
 import { MapPicker } from '@/components/attendance/MapPicker';
 
 export default function AttendanceBranches() {
@@ -24,6 +25,7 @@ export default function AttendanceBranches() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<any>(null);
   const [deleteStats, setDeleteStats] = useState<{ logs: number; summaries: number } | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'office',
@@ -37,13 +39,17 @@ export default function AttendanceBranches() {
   });
 
   const { data: branches, isLoading } = useQuery({
-    queryKey: ['branches'],
+    queryKey: ['branches', showDeleted],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const query = supabase
         .from('branches')
-        .select('*')
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false });
+        .select('*');
+      
+      if (!showDeleted) {
+        query.eq('is_deleted', false);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
       return data;
@@ -203,6 +209,37 @@ export default function AttendanceBranches() {
     }
   });
 
+  const restoreMutation = useMutation({
+    mutationFn: async (branchId: string) => {
+      const { data, error } = await supabase.rpc('restore_branch', {
+        p_branch_id: branchId
+      });
+      
+      if (error) throw error;
+      
+      const result = data as any;
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+      
+      return result;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['branches'] });
+      toast({
+        title: 'Success',
+        description: data.message,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -225,17 +262,28 @@ export default function AttendanceBranches() {
                 Manage branches, geofences, and announcement groups
               </CardDescription>
             </div>
-            <Dialog open={dialogOpen} onOpenChange={(open) => {
-              setDialogOpen(open);
-              if (!open) resetForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Branch
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-deleted"
+                  checked={showDeleted}
+                  onCheckedChange={setShowDeleted}
+                />
+                <Label htmlFor="show-deleted" className="text-sm cursor-pointer">
+                  Show Deleted
+                </Label>
+              </div>
+              <Dialog open={dialogOpen} onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (!open) resetForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="w-full sm:w-auto">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Branch
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingBranch ? 'Edit' : 'Add'} Branch</DialogTitle>
                   <DialogDescription>
@@ -370,8 +418,9 @@ export default function AttendanceBranches() {
                     </Button>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
@@ -392,8 +441,15 @@ export default function AttendanceBranches() {
                 {branches?.map((branch) => (
                   <TableRow key={branch.id}>
                     <TableCell className="font-medium py-2">
-                      <div className="flex flex-col">
-                        <span className="text-sm">{branch.name}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{branch.name}</span>
+                          {branch.is_deleted && (
+                            <Badge variant="destructive" className="h-4 text-[10px]">
+                              Deleted
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-[10px] sm:hidden text-muted-foreground capitalize">{branch.type}</span>
                       </div>
                     </TableCell>
@@ -420,22 +476,36 @@ export default function AttendanceBranches() {
                     </TableCell>
                     <TableCell className="text-right py-2">
                       <div className="flex gap-1 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 sm:h-8 sm:w-8"
-                          onClick={() => handleEdit(branch)}
-                        >
-                          <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteClick(branch)}
-                        >
-                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
+                        {!branch.is_deleted ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                              onClick={() => handleEdit(branch)}
+                            >
+                              <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteClick(branch)}
+                            >
+                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 sm:h-8 sm:w-8 text-green-600 hover:text-green-700"
+                            onClick={() => restoreMutation.mutate(branch.id)}
+                            disabled={restoreMutation.isPending}
+                          >
+                            <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                 </TableRow>

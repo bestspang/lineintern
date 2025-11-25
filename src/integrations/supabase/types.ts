@@ -3093,6 +3093,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      restore_branch: { Args: { p_branch_id: string }; Returns: Json }
       retry_cron_job: { Args: { job_id: number }; Returns: Json }
       search_memories_by_keywords: {
         Args: {
