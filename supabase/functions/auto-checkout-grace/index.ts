@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { format, addMinutes } from 'https://esm.sh/date-fns@4.1.0';
+import { fetchWithRetry } from '../_shared/retry.ts';
+import { logger } from '../_shared/logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,15 +15,20 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')!;
+    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? '';
+    
+    if (!lineAccessToken) {
+      throw new Error('LINE_CHANNEL_ACCESS_TOKEN not configured');
+    }
+    
     const now = new Date();
     const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     
-    console.log('[auto-checkout-grace] Starting grace period check...');
+    logger.info('Starting grace period check', { time: bangkokTime.toISOString() });
     
     // หา active work sessions ที่ครบ grace period แล้ว
     const { data: sessions, error } = await supabase
@@ -49,7 +56,10 @@ Deno.serve(async (req) => {
       
       // ตรวจสอบว่าหมดเวลา grace period แล้วหรือยัง
       if (bangkokTime >= graceExpiresAt) {
-        console.log(`[auto-checkout-grace] Grace period expired for ${employee.full_name}, performing auto checkout`);
+        logger.info('Grace period expired, performing auto checkout', { 
+          employeeId: employee.id,
+          graceExpiresAt: graceExpiresAt.toISOString() 
+        });
         
         // Perform auto checkout
         const checkoutTime = graceExpiresAt;
@@ -72,7 +82,7 @@ Deno.serve(async (req) => {
           .single();
         
         if (checkoutError) {
-          console.error(`[auto-checkout-grace] Error auto-checking out ${employee.full_name}:`, checkoutError);
+          logger.error('Failed to create checkout log', { employeeId: employee.id, error: checkoutError });
           continue;
         }
         
@@ -115,22 +125,28 @@ Deno.serve(async (req) => {
           `หากมีข้อสงสัย กรุณาติดต่อหัวหน้างาน`;
         
         if (employee.line_user_id) {
-          await fetch('https://api.line.me/v2/bot/message/push', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${lineAccessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              to: employee.line_user_id,
-              messages: [{ type: 'text', text: message }]
-            })
-          });
+          try {
+            await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${lineAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                to: employee.line_user_id,
+                messages: [{ type: 'text', text: message }]
+              })
+            }, { maxRetries: 2 });
+            logger.info('Sent auto-checkout notification', { employeeId: employee.id });
+          } catch (notifyError) {
+            logger.error('Failed to send LINE notification', { employeeId: employee.id, error: notifyError });
+            // Continue processing even if notification fails
+          }
         }
       }
     }
     
-    console.log(`[auto-checkout-grace] Completed: ${autoCheckouts} auto checkouts`);
+    logger.info('Auto-checkout grace period check completed', { autoCheckouts });
     
     return new Response(
       JSON.stringify({ 
@@ -141,7 +157,7 @@ Deno.serve(async (req) => {
     );
     
   } catch (error) {
-    console.error('[auto-checkout-grace] Error:', error);
+    logger.error('Auto-checkout grace period check failed', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
       JSON.stringify({ error: errorMessage }),
