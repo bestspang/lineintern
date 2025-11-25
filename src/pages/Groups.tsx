@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -15,9 +16,12 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
+import { RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Groups() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
   const { data: groups, isLoading } = useQuery({
@@ -38,6 +42,37 @@ export default function Groups() {
     },
   });
 
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('refresh-member-count');
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      
+      if (data.summary) {
+        toast.success(
+          `อัปเดต member count สำเร็จ!`,
+          {
+            description: `อัปเดต ${data.summary.success} groups สำเร็จ ${data.summary.errors > 0 ? `(${data.summary.errors} errors)` : ''}`
+          }
+        );
+      }
+    },
+    onError: (error: any) => {
+      toast.error('เกิดข้อผิดพลาด', {
+        description: error.message || 'ไม่สามารถอัปเดต member count ได้'
+      });
+    }
+  });
+
+  const handleRefresh = () => {
+    toast.info('กำลังอัปเดต member counts จาก LINE API...');
+    refreshMutation.mutate();
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
       active: 'default',
@@ -50,11 +85,20 @@ export default function Groups() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Groups</h1>
           <p className="text-sm text-muted-foreground">Manage LINE group configurations</p>
         </div>
+        <Button 
+          onClick={handleRefresh} 
+          disabled={refreshMutation.isPending}
+          variant="outline"
+          size="sm"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? 'animate-spin' : ''}`} />
+          {refreshMutation.isPending ? 'กำลังอัปเดต...' : 'Sync Member Count'}
+        </Button>
       </div>
 
       <Card>

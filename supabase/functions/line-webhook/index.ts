@@ -2563,8 +2563,9 @@ async function ensureGroup(lineGroupId: string) {
     return existing;
   }
 
-  // Fetch group name from LINE API
+  // Fetch group info from LINE API
   let displayName = lineGroupId;
+  let memberCount = 0;
   try {
     const response = await fetch(`https://api.line.me/v2/bot/group/${lineGroupId}/summary`, {
       headers: {
@@ -2574,9 +2575,11 @@ async function ensureGroup(lineGroupId: string) {
     if (response.ok) {
       const summary = await response.json();
       displayName = summary.groupName || lineGroupId;
+      memberCount = summary.count || 0;
+      console.log(`[ensureGroup] Fetched group info: ${displayName} (${memberCount} members)`);
     }
   } catch (error) {
-    console.error(`[ensureGroup] Failed to fetch group name:`, error);
+    console.error(`[ensureGroup] Failed to fetch group info:`, error);
   }
 
   // Create new group with defaults
@@ -2585,6 +2588,7 @@ async function ensureGroup(lineGroupId: string) {
     .insert({
       line_group_id: lineGroupId,
       display_name: displayName,
+      member_count: memberCount,
       status: "active",
       mode: "helper",
       language: "auto",
@@ -6553,23 +6557,13 @@ async function handleMemberJoinedEvent(event: LineEvent) {
         }
       }
     } else {
-      console.log(`[handleMemberJoinedEvent] ⚠ Skipping non-user member or member without userId`);
+        console.log(`[handleMemberJoinedEvent] ⚠ Skipping non-user member or member without userId`);
     }
   }
   
-  // Update group member count
-  const { count } = await supabase
-    .from("group_members")
-    .select("*", { count: "exact", head: true })
-    .eq("group_id", group.id)
-    .is("left_at", null);
-  
-  if (count !== null) {
-    await supabase
-      .from("groups")
-      .update({ member_count: count })
-      .eq("id", group.id);
-  }
+  // Note: member_count is now auto-updated by database trigger
+  console.log(`[handleMemberJoinedEvent] ✓ Member count will be updated automatically by trigger`);
+  console.log(`╚═══ [handleMemberJoinedEvent] END ═══╝\n`);
 }
 
 async function handleMemberLeftEvent(event: LineEvent) {
@@ -6631,19 +6625,8 @@ async function handleMemberLeftEvent(event: LineEvent) {
     }
   }
   
-  // Update group member count
-  const { count } = await supabase
-    .from("group_members")
-    .select("*", { count: "exact", head: true })
-    .eq("group_id", group.id)
-    .is("left_at", null);
-  
-  if (count !== null) {
-    await supabase
-      .from("groups")
-      .update({ member_count: count })
-      .eq("id", group.id);
-  }
+  // Note: member_count is now auto-updated by database trigger
+  console.log(`[handleMemberLeftEvent] ✓ Member count will be updated automatically by trigger`);
 }
 
 async function handleMessageEvent(event: LineEvent) {
