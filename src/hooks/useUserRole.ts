@@ -9,7 +9,7 @@ interface MenuConfig {
 }
 
 export function useUserRole() {
-  const { data: user } = useQuery({
+  const { data: user, isLoading: isUserLoading } = useQuery({
     queryKey: ['auth-user'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -41,12 +41,12 @@ export function useUserRole() {
   const { data: menuConfig, isLoading: isMenuLoading } = useQuery({
     queryKey: ['webapp-menu-config', roleData],
     queryFn: async () => {
-      if (!roleData) return {};
+      const role = roleData || 'user';
       
       const { data, error } = await supabase
         .from('webapp_menu_config')
         .select('menu_group, can_access')
-        .eq('role', roleData);
+        .eq('role', role);
       
       if (error) {
         console.error('Error fetching menu config:', error);
@@ -59,20 +59,25 @@ export function useUserRole() {
         return acc;
       }, {} as Record<string, boolean>);
     },
-    enabled: !!roleData,
+    enabled: !isUserLoading && !isRoleLoading,
   });
 
   const canAccessMenuGroup = (menuGroup: string): boolean => {
     // Admin can access everything
     if (roleData === 'admin') return true;
     
+    // Default to true if menu config not loaded yet or empty
+    if (!menuConfig || Object.keys(menuConfig).length === 0) {
+      return true;
+    }
+    
     // For other roles, check config
-    return menuConfig?.[menuGroup] ?? false;
+    return menuConfig[menuGroup] ?? false;
   };
 
   return {
     role: roleData,
-    isLoading: isRoleLoading || isMenuLoading,
+    isLoading: isUserLoading || isRoleLoading || isMenuLoading,
     canAccessMenuGroup,
     isAdmin: roleData === 'admin',
   };
