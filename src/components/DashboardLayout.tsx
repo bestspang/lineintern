@@ -60,6 +60,7 @@ const navigationGroups = [
     icon: Gauge,
     items: [
       { title: 'Overview', url: '/', icon: LayoutDashboard },
+      { title: 'Health Monitoring', url: '/health-monitoring', icon: Activity },
     ],
   },
   {

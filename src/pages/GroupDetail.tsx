@@ -20,15 +20,21 @@ export default function GroupDetail() {
   const [mode, setMode] = useState('');
   const [features, setFeatures] = useState<Record<string, boolean>>({});
 
-  const { data: group, isLoading } = useQuery({
+  const { data: group, isLoading, error: groupError } = useQuery({
     queryKey: ['group', id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('groups')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
+      
       if (error) throw error;
+      
+      if (!data) {
+        throw new Error('Group not found');
+      }
+      
       setMode(data.mode);
       setFeatures((data.features as Record<string, boolean>) || {});
       return data;

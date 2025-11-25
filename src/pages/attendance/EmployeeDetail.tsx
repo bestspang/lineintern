@@ -69,10 +69,10 @@ export default function EmployeeDetail() {
         .from('users')
         .select('id, display_name, line_user_id, avatar_url')
         .eq('line_user_id', employee.line_user_id)
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
-      return data;
+      return data; // Returns null if not found
     },
     enabled: !!employee?.line_user_id
   });
