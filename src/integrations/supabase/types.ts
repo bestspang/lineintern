@@ -2069,6 +2069,47 @@ export type Database = {
           },
         ]
       }
+      summary_delivery_logs: {
+        Row: {
+          config_id: string | null
+          created_at: string | null
+          details: Json | null
+          failed_count: number | null
+          id: string
+          recipients_count: number | null
+          sent_at: string | null
+          success_count: number | null
+        }
+        Insert: {
+          config_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          failed_count?: number | null
+          id?: string
+          recipients_count?: number | null
+          sent_at?: string | null
+          success_count?: number | null
+        }
+        Update: {
+          config_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          failed_count?: number | null
+          id?: string
+          recipients_count?: number | null
+          sent_at?: string | null
+          success_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "summary_delivery_logs_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "summary_delivery_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to_user_id: string | null

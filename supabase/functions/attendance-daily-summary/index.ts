@@ -33,6 +33,17 @@ interface Employee {
   line_user_id: string | null;
 }
 
+const isWithinTimeWindow = (currentTime: string, targetTime: string, windowMinutes: number): boolean => {
+  const [currentHour, currentMinute] = currentTime.split(':').map(Number);
+  const [targetHour, targetMinute] = targetTime.split(':').map(Number);
+  
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  const targetTotalMinutes = targetHour * 60 + targetMinute;
+  
+  const diff = Math.abs(currentTotalMinutes - targetTotalMinutes);
+  return diff <= windowMinutes;
+};
+
 const calculateWorkHours = (checkIn: any, checkOut: any): number => {
   if (!checkIn || !checkOut) return 0;
   const start = new Date(checkIn.server_time);
@@ -280,13 +291,24 @@ serve(async (req) => {
     }
 
     let processedCount = 0;
+    let skippedCount = 0;
     const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? '';
 
     for (const config of configs as DeliveryConfig[]) {
-      console.log(`[Config: ${config.name}] Processing... (preset_type: ${config.preset_type})`);
+      const configTime = config.send_time?.substring(0, 5); // "21:00"
+      
+      // Check if current time matches config send_time (±30 minutes window)
+      if (configTime && !isWithinTimeWindow(currentTime, configTime, 30)) {
+        console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 30min of ${configTime}`);
+        skippedCount++;
+        continue;
+      }
+
+      console.log(`[Config: ${config.name}] Processing... (preset_type: ${config.preset_type}, send_time: ${configTime})`);
 
       const sentMessageIds: string[] = [];
       let successCount = 0;
+      let failedCount = 0;
 
       // Handle preset types
       if (config.preset_type === 'per_employee') {
@@ -323,11 +345,22 @@ serve(async (req) => {
             successCount++;
           } else {
             console.error(`[Config: ${config.name}] Failed to send to ${employee.full_name}`);
+            failedCount++;
           }
         }
 
         processedCount++;
-        console.log(`[Config: ${config.name}] Sent ${successCount} personal summaries`);
+        console.log(`[Config: ${config.name}] Sent ${successCount} personal summaries (${failedCount} failed)`);
+        
+        // Log delivery
+        await supabase.from('summary_delivery_logs').insert({
+          config_id: config.id,
+          recipients_count: allEmployees.filter(e => e.line_user_id).length,
+          success_count: successCount,
+          failed_count: failedCount,
+          details: { preset_type: 'per_employee', sent_time: currentTime }
+        });
+        
         continue;
       }
 
@@ -373,11 +406,22 @@ serve(async (req) => {
             });
           } else {
             console.error(`[Config: ${config.name}] Failed to send to branch ${branch.name}`);
+            failedCount++;
           }
         }
 
         processedCount++;
-        console.log(`[Config: ${config.name}] Sent ${successCount} branch summaries`);
+        console.log(`[Config: ${config.name}] Sent ${successCount} branch summaries (${failedCount} failed)`);
+        
+        // Log delivery
+        await supabase.from('summary_delivery_logs').insert({
+          config_id: config.id,
+          recipients_count: allBranches.filter(b => b.line_group_id).length,
+          success_count: successCount,
+          failed_count: failedCount,
+          details: { preset_type: 'per_branch', sent_time: currentTime }
+        });
+        
         continue;
       }
 
@@ -418,7 +462,8 @@ serve(async (req) => {
       const lineIds = config.destination_line_ids || [];
       const employeeIds = config.destination_employee_ids || [];
       
-      if (lineIds.length === 0 && employeeIds.length === 0) {
+      const totalRecipients = lineIds.length + employeeIds.length;
+      if (totalRecipients === 0) {
         console.log(`[Config: ${config.name}] No destinations configured, skipping`);
         continue;
       }
@@ -432,6 +477,7 @@ serve(async (req) => {
           successCount++;
         } else {
           console.error(`[Config: ${config.name}] Failed to send to LINE group ${lineGroupId}`);
+          failedCount++;
         }
       }
 
@@ -446,9 +492,11 @@ serve(async (req) => {
             successCount++;
           } else {
             console.error(`[Config: ${config.name}] Failed to send to employee ${employee.full_name}`);
+            failedCount++;
           }
         } else {
           console.warn(`[Config: ${config.name}] Employee ${employeeId} has no LINE user ID`);
+          failedCount++;
         }
       }
 
@@ -465,16 +513,26 @@ serve(async (req) => {
         }
         
         processedCount++;
-        console.log(`[Config: ${config.name}] Successfully sent to ${successCount} destination(s)`);
+        console.log(`[Config: ${config.name}] Successfully sent to ${successCount} destination(s) (${failedCount} failed)`);
       } else {
         console.error(`[Config: ${config.name}] Failed to send to any destination`);
       }
+      
+      // Log delivery
+      await supabase.from('summary_delivery_logs').insert({
+        config_id: config.id,
+        recipients_count: totalRecipients,
+        success_count: successCount,
+        failed_count: failedCount,
+        details: { preset_type: 'custom', sent_time: currentTime }
+      });
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         processed: processedCount,
+        skipped: skippedCount,
         total_configs: configs.length,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

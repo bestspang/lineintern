@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Settings as SettingsIcon, Save, Building2 } from 'lucide-react';
+import { Loader2, Settings as SettingsIcon, Save, Building2, BarChart3 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 export default function AttendanceSettings() {
@@ -215,32 +215,26 @@ export default function AttendanceSettings() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="daily_summary_enabled">Enable Daily Summary</Label>
-                <p className="text-sm text-muted-foreground">
-                  Send attendance summary to LINE groups daily
-                </p>
+            <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <h4 className="font-semibold text-blue-900 dark:text-blue-100">
+                    Daily Summary Configuration
+                  </h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Daily attendance summaries are now configured on the Reports & Summaries page with more flexibility and scheduling options.
+                  </p>
+                  <Button asChild variant="outline" size="sm" className="mt-2">
+                    <a href="/attendance/summaries" className="flex items-center gap-2">
+                      Configure Summaries →
+                    </a>
+                  </Button>
+                </div>
               </div>
-              <Switch
-                id="daily_summary_enabled"
-                checked={formData.daily_summary_enabled}
-                onCheckedChange={(checked) => setFormData({ ...formData, daily_summary_enabled: checked })}
-              />
             </div>
-
-            {formData.daily_summary_enabled && (
-              <div className="ml-6 space-y-2">
-                <Label htmlFor="daily_summary_time">Summary Time</Label>
-                <Input
-                  id="daily_summary_time"
-                  type="time"
-                  value={formData.daily_summary_time}
-                  onChange={(e) => setFormData({ ...formData, daily_summary_time: e.target.value })}
-                  className="w-40"
-                />
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="time_zone">Timezone</Label>
