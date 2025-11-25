@@ -30,7 +30,6 @@ export default function AttendanceEmployees() {
   const [formData, setFormData] = useState({
     code: '',
     full_name: '',
-    role: 'office',
     role_id: null,
     branch_id: '',
     line_user_id: '',
@@ -166,7 +165,6 @@ export default function AttendanceEmployees() {
     setFormData({
       code: '',
       full_name: '',
-      role: 'office',
       role_id: null,
       branch_id: '',
       line_user_id: '',
@@ -205,7 +203,6 @@ export default function AttendanceEmployees() {
     setFormData({
       code: employee.code,
       full_name: employee.full_name,
-      role: employee.role || 'office',
       role_id: employee.role_id || null,
       branch_id: employee.branch_id || '',
       line_user_id: employee.line_user_id || '',
@@ -241,6 +238,7 @@ export default function AttendanceEmployees() {
   const validateForm = () => {
     if (!formData.code) return "Employee code is required";
     if (!formData.full_name) return "Full name is required";
+    if (!formData.role_id) return "Role is required";
     
     const duplicateCode = employees?.some(
       emp => emp.code === formData.code && emp.id !== editingEmployee?.id
@@ -391,30 +389,15 @@ export default function AttendanceEmployees() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="role">Role (Legacy)</Label>
-                    <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="office">Office</SelectItem>
-                        <SelectItem value="field">Field</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="executive">Executive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="role_id">ระดับพนักงาน (Employee Level)</Label>
+                    <Label htmlFor="role_id">Role *</Label>
                     <Select 
-                      value={formData.role_id || 'none'} 
-                      onValueChange={(value) => setFormData({ ...formData, role_id: value === 'none' ? null : value })}
+                      value={formData.role_id || ''} 
+                      onValueChange={(value) => setFormData({ ...formData, role_id: value })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="เลือกระดับพนักงาน" />
+                        <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">ไม่ระบุ</SelectItem>
                         {employeeRoles?.map((role) => (
                           <SelectItem key={role.id} value={role.id}>
                             {role.display_name_th} ({role.display_name_en})
@@ -1116,18 +1099,19 @@ export default function AttendanceEmployees() {
                   <TableCell className="py-2">
                     <div className="flex flex-col">
                       <span className="font-medium text-sm">{employee.full_name}</span>
-                      <span className="text-[10px] sm:hidden text-muted-foreground capitalize">{employee.role}</span>
+                      {employee.employee_role && (
+                        <span className="text-[10px] sm:hidden text-muted-foreground">{employee.employee_role.display_name_th}</span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell py-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="capitalize text-sm">{employee.role}</span>
-                      {employee.employee_role && (
-                        <Badge variant="secondary" className="w-fit text-xs">
-                          {employee.employee_role.display_name_th}
-                        </Badge>
-                      )}
-                    </div>
+                    {employee.employee_role ? (
+                      <Badge variant="secondary" className="w-fit text-xs">
+                        {employee.employee_role.display_name_th}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-sm py-2">{employee.branch?.name || '-'}</TableCell>
                   <TableCell className="hidden lg:table-cell py-2">
