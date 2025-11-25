@@ -2013,6 +2013,66 @@ export type Database = {
           },
         ]
       }
+      summary_delivery_config: {
+        Row: {
+          created_at: string | null
+          destination_employee_id: string | null
+          destination_line_id: string | null
+          destination_type: string
+          id: string
+          include_work_hours: boolean | null
+          is_enabled: boolean | null
+          name: string
+          send_time: string
+          source_branch_id: string | null
+          source_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          destination_employee_id?: string | null
+          destination_line_id?: string | null
+          destination_type: string
+          id?: string
+          include_work_hours?: boolean | null
+          is_enabled?: boolean | null
+          name: string
+          send_time?: string
+          source_branch_id?: string | null
+          source_type?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          destination_employee_id?: string | null
+          destination_line_id?: string | null
+          destination_type?: string
+          id?: string
+          include_work_hours?: boolean | null
+          is_enabled?: boolean | null
+          name?: string
+          send_time?: string
+          source_branch_id?: string | null
+          source_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "summary_delivery_config_destination_employee_id_fkey"
+            columns: ["destination_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "summary_delivery_config_source_branch_id_fkey"
+            columns: ["source_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to_user_id: string | null
