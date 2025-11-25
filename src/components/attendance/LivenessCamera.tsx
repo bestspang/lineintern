@@ -59,8 +59,41 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     timestamp: Date.now(),
   });
   
+  // ✅ Refs for accessing latest state in animation frame (avoid stale closure)
+  const waitingForCenterAfterStep1Ref = useRef(false);
+  const step1CompletedRef = useRef(false);
+  const challengeStepRef = useRef<1 | 2>(1);
+  const currentChallengeRef = useRef<Challenge>("turn_right");
+  const challengeCompletedRef = useRef(false);
+  const step2ChallengeRef = useRef<"blink" | "turn_left">("blink");
+  
   // Tips dialog state
   const [showTips, setShowTips] = useState(false);
+
+  // ✅ Sync state to refs for animation frame access
+  useEffect(() => {
+    waitingForCenterAfterStep1Ref.current = waitingForCenterAfterStep1;
+  }, [waitingForCenterAfterStep1]);
+
+  useEffect(() => {
+    step1CompletedRef.current = step1Completed;
+  }, [step1Completed]);
+
+  useEffect(() => {
+    challengeStepRef.current = challengeStep;
+  }, [challengeStep]);
+
+  useEffect(() => {
+    currentChallengeRef.current = currentChallenge;
+  }, [currentChallenge]);
+
+  useEffect(() => {
+    challengeCompletedRef.current = challengeCompleted;
+  }, [challengeCompleted]);
+
+  useEffect(() => {
+    step2ChallengeRef.current = step2Challenge;
+  }, [step2Challenge]);
 
   // Initialize MediaPipe Face Landmarker
   useEffect(() => {
@@ -273,9 +306,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     if (!result.faceLandmarks || result.faceLandmarks.length === 0) return;
 
     const landmarks = result.faceLandmarks[0];
+    
+    // ✅ Debug: Log current ref values
+    console.log("[DEBUG] detectLiveness called with refs:", {
+      waitingForCenterAfterStep1: waitingForCenterAfterStep1Ref.current,
+      step1Completed: step1CompletedRef.current,
+      challengeStep: challengeStepRef.current,
+      currentChallenge: currentChallengeRef.current
+    });
 
     // Blink detection - only during step 2 if challenge is blink
-    if (!challengeCompleted && challengeStep === 2 && currentChallenge === "blink") {
+    if (!challengeCompletedRef.current && challengeStepRef.current === 2 && currentChallengeRef.current === "blink") {
       const leftEyeTop = landmarks[159];
       const leftEyeBottom = landmarks[145];
       const leftEyeLeft = landmarks[33];
@@ -319,24 +360,24 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const normalizedOffset = noseOffsetFromCenter / faceWidth;
 
     // ✅ Special case: waiting for center after step 1
-    if (waitingForCenterAfterStep1) {
+    if (waitingForCenterAfterStep1Ref.current) {
       // Use strict threshold for center detection
       if (Math.abs(normalizedOffset) <= 0.10) {
         setHeadPosition("center");
         
         console.log("[DEBUG] ✓ Detected center after step 1, advancing to step 2...", {
           normalizedOffset,
-          step1Completed,
-          step2Challenge
+          step1Completed: step1CompletedRef.current,
+          step2Challenge: step2ChallengeRef.current
         });
         
         // ✅ Advance to step 2 immediately
         setWaitingForCenterAfterStep1(false);
         setChallengeStep(2);
-        setCurrentChallenge(step2Challenge);
+        setCurrentChallenge(step2ChallengeRef.current);
         livenessDataRef.current.headTurned = true;
         
-        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", step2Challenge);
+        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", step2ChallengeRef.current);
       } else {
         // Not centered yet, show position
         if (normalizedOffset < -0.10) {
@@ -356,7 +397,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       // User turns right → camera sees left → offset < 0
       setHeadPosition("right");
       // Step 1: turn_right (must complete before step 2)
-      if (!step1Completed && challengeStep === 1 && currentChallenge === "turn_right") {
+      if (!step1CompletedRef.current && challengeStepRef.current === 1 && currentChallengeRef.current === "turn_right") {
         setStep1Completed(true);
         setWaitingForCenterAfterStep1(true);
         console.log("[DEBUG] ✅ Step 1 completed, waiting for center");
@@ -365,7 +406,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       // User turns left → camera sees right → offset > 0
       setHeadPosition("left");
       // Step 2: turn_left
-      if (!challengeCompleted && challengeStep === 2 && currentChallenge === "turn_left") {
+      if (!challengeCompletedRef.current && challengeStepRef.current === 2 && currentChallengeRef.current === "turn_left") {
         livenessDataRef.current.headTurned = true;
         setChallengeCompleted(true);
       }
