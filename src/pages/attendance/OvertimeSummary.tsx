@@ -249,8 +249,8 @@ export default function OvertimeSummary() {
               disabled={!otLogs || otLogs.length === 0}
               className="text-sm"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
+              <Download className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Export CSV</span>
             </Button>
           </div>
         </div>
