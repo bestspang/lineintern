@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.pattern-learner]
 verify_jwt = false
+
+[functions.refresh-member-count]
+verify_jwt = false
