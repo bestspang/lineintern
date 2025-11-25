@@ -1125,7 +1125,7 @@ export default function AttendanceEmployees() {
                       </Badge>
                       {employee.allow_remote_checkin && (
                         <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                          🌐 Remote
+                          Remote
                         </Badge>
                       )}
                     </div>
