@@ -396,9 +396,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   const ChallengeIcon = currentChallengeInfo.icon;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl">
-        <CardHeader className="pb-3 sm:pb-6">
+    <div className="fixed inset-0 z-50 bg-background flex items-center justify-center p-2 sm:p-4 overflow-auto">
+      <Card className="w-full max-w-2xl my-auto max-h-screen overflow-y-auto">
+        <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-3">
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Camera className="h-4 w-4 sm:h-5 sm:w-5" />
             ตรวจสอบใบหน้า
@@ -407,7 +407,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
             ทำตามคำแนะนำเพื่อยืนยันตัวตน
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 p-4 sm:p-6">
           {error ? (
             <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
               {error}
@@ -439,7 +439,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               </div>
 
               {/* Challenge Instructions - Compact */}
-              <div className="bg-primary/10 p-3 sm:p-4 rounded-lg border border-primary/20">
+              <div className="bg-primary/10 p-2.5 sm:p-3 rounded-lg border border-primary/20">
                 {!challengeCompleted ? (
                   <div className="flex items-center gap-3">
                     <ChallengeIcon className="h-6 w-6 sm:h-7 sm:w-7 text-primary flex-shrink-0" />
@@ -496,8 +496,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 )}
               </div>
 
-              {/* Video Feed - Larger */}
-              <div className="relative bg-black rounded-lg overflow-hidden" style={{ maxHeight: '65vh' }}>
+          {/* Video Feed - Larger */}
+          <div className="relative bg-black rounded-lg overflow-hidden max-h-[400px] sm:max-h-[450px]">
                 <video
                   ref={videoRef}
                   className="w-full h-auto object-cover scale-x-[-1]"
@@ -515,7 +515,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={onCancel}
