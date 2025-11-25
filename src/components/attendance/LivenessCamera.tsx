@@ -38,6 +38,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   const [challengeCompleted, setChallengeCompleted] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
   const [headPosition, setHeadPosition] = useState<"center" | "left" | "right">("center");
+  const [waitingForCenter, setWaitingForCenter] = useState(false);
+  const [centerHoldTimer, setCenterHoldTimer] = useState(0);
+  const centerStartTimeRef = useRef<number | null>(null);
   const lastEyeStateRef = useRef<boolean>(true); // true = open, false = closed
   const livenessDataRef = useRef<LivenessData>({
     blinked: false,
@@ -116,16 +119,54 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     };
   }, []);
 
-  // Auto-capture when challenge completed
+  // Switch to center face phase after challenge
   useEffect(() => {
-    if (challengeCompleted) {
-      const timer = setTimeout(() => {
-        capturePhoto();
-      }, 800);
-      
-      return () => clearTimeout(timer);
+    if (challengeCompleted && !waitingForCenter) {
+      setWaitingForCenter(true);
     }
-  }, [challengeCompleted]);
+  }, [challengeCompleted, waitingForCenter]);
+
+  // Detect center hold for 3 seconds
+  useEffect(() => {
+    if (!waitingForCenter) {
+      centerStartTimeRef.current = null;
+      setCenterHoldTimer(0);
+      return;
+    }
+
+    let animationId: number;
+    
+    const checkCenterHold = () => {
+      if (headPosition === "center") {
+        if (centerStartTimeRef.current === null) {
+          centerStartTimeRef.current = Date.now();
+        }
+        
+        const elapsed = Date.now() - centerStartTimeRef.current;
+        const secondsHeld = Math.floor(elapsed / 1000);
+        
+        setCenterHoldTimer(Math.min(secondsHeld, 3));
+        
+        if (elapsed >= 3000) {
+          capturePhoto();
+          return;
+        }
+      } else {
+        centerStartTimeRef.current = null;
+        setCenterHoldTimer(0);
+      }
+      
+      animationId = requestAnimationFrame(checkCenterHold);
+    };
+    
+    animationId = requestAnimationFrame(checkCenterHold);
+    
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [waitingForCenter, headPosition]);
 
   // Process video frames
   useEffect(() => {
@@ -176,41 +217,41 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     const landmarks = result.faceLandmarks[0];
 
-    // Blink detection using Eye Aspect Ratio (EAR)
-    const leftEyeTop = landmarks[159];
-    const leftEyeBottom = landmarks[145];
-    const leftEyeLeft = landmarks[33];
-    const leftEyeRight = landmarks[133];
+    // Blink detection - only during challenge phase
+    if (!challengeCompleted) {
+      const leftEyeTop = landmarks[159];
+      const leftEyeBottom = landmarks[145];
+      const leftEyeLeft = landmarks[33];
+      const leftEyeRight = landmarks[133];
 
-    const rightEyeTop = landmarks[386];
-    const rightEyeBottom = landmarks[374];
-    const rightEyeLeft = landmarks[362];
-    const rightEyeRight = landmarks[263];
+      const rightEyeTop = landmarks[386];
+      const rightEyeBottom = landmarks[374];
+      const rightEyeLeft = landmarks[362];
+      const rightEyeRight = landmarks[263];
 
-    const leftEAR = calculateEAR(leftEyeTop, leftEyeBottom, leftEyeLeft, leftEyeRight);
-    const rightEAR = calculateEAR(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
-    const avgEAR = (leftEAR + rightEAR) / 2;
+      const leftEAR = calculateEAR(leftEyeTop, leftEyeBottom, leftEyeLeft, leftEyeRight);
+      const rightEAR = calculateEAR(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
+      const avgEAR = (leftEAR + rightEAR) / 2;
 
-    const isEyeClosed = avgEAR < 0.2;
+      const isEyeClosed = avgEAR < 0.2;
 
-    // Detect blink (eye closed then opened)
-    if (lastEyeStateRef.current && isEyeClosed) {
-      // Eye just closed
-      lastEyeStateRef.current = false;
-    } else if (!lastEyeStateRef.current && !isEyeClosed) {
-      // Eye just opened - blink detected
-      setBlinkCount(prev => {
-        const newCount = prev + 1;
-        if (currentChallenge === "blink" && newCount >= 2) {
-          livenessDataRef.current.blinked = true;
-          setChallengeCompleted(true);
-        }
-        return newCount;
-      });
-      lastEyeStateRef.current = true;
+      // Detect blink (eye closed then opened)
+      if (lastEyeStateRef.current && isEyeClosed) {
+        lastEyeStateRef.current = false;
+      } else if (!lastEyeStateRef.current && !isEyeClosed) {
+        setBlinkCount(prev => {
+          const newCount = prev + 1;
+          if (currentChallenge === "blink" && newCount >= 2) {
+            livenessDataRef.current.blinked = true;
+            setChallengeCompleted(true);
+          }
+          return newCount;
+        });
+        lastEyeStateRef.current = true;
+      }
     }
 
-    // Head turn detection using face center position
+    // Head turn detection - always track position
     const noseTip = landmarks[1];
     const leftCheek = landmarks[234];
     const rightCheek = landmarks[454];
@@ -221,13 +262,13 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
     if (normalizedOffset < -0.15) {
       setHeadPosition("left");
-      if (currentChallenge === "turn_left") {
+      if (!challengeCompleted && currentChallenge === "turn_left") {
         livenessDataRef.current.headTurned = true;
         setChallengeCompleted(true);
       }
     } else if (normalizedOffset > 0.15) {
       setHeadPosition("right");
-      if (currentChallenge === "turn_right") {
+      if (!challengeCompleted && currentChallenge === "turn_right") {
         livenessDataRef.current.headTurned = true;
         setChallengeCompleted(true);
       }
@@ -254,7 +295,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
   // Capture photo
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current || !challengeCompleted) return;
+    if (!videoRef.current || !canvasRef.current) return;
 
     setIsProcessing(true);
 
@@ -267,6 +308,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Cannot get canvas context");
       
+      // Mirror the captured image
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0);
       
       canvas.toBlob(
@@ -311,35 +355,66 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               {/* Challenge Instructions */}
               <div className="bg-primary/10 p-6 rounded-lg border-2 border-primary/20">
                 <div className="flex flex-col items-center gap-4">
-                  <ChallengeIcon className="h-12 w-12 text-primary" />
-                  
-                  {/* Challenge Text - ขนาดใหญ่และชัดเจน */}
-                  <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
-                    {currentChallengeInfo.text}
-                  </div>
-                  
-                  {/* Progress Info */}
-                  {currentChallenge === "blink" && (
-                    <div className="text-base text-muted-foreground">
-                      ตรวจพบ: {blinkCount} / 2 ครั้ง
-                    </div>
-                  )}
-                  {currentChallenge.includes("turn") && (
-                    <div className="text-base text-muted-foreground">
-                      ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
-                    </div>
-                  )}
-                  
-                  {/* Status Badge */}
-                  {challengeCompleted ? (
-                    <Badge variant="default" className="gap-2 px-4 py-2 text-base">
-                      <Check className="h-4 w-4" />
-                      เสร็จสิ้น
-                    </Badge>
+                  {!challengeCompleted ? (
+                    <>
+                      <ChallengeIcon className="h-12 w-12 text-primary" />
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        {currentChallengeInfo.text}
+                      </div>
+                      
+                      {currentChallenge === "blink" && (
+                        <div className="text-base text-muted-foreground">
+                          ตรวจพบ: {blinkCount} / 2 ครั้ง
+                        </div>
+                      )}
+                      {currentChallenge.includes("turn") && (
+                        <div className="text-base text-muted-foreground">
+                          ตำแหน่งหัว: {headPosition === "center" ? "กลาง" : headPosition === "left" ? "ซ้าย" : "ขวา"}
+                        </div>
+                      )}
+                      
+                      <Badge variant="secondary" className="px-4 py-2 text-base">
+                        กำลังดำเนินการ
+                      </Badge>
+                    </>
+                  ) : waitingForCenter ? (
+                    <>
+                      <Camera className="h-12 w-12 text-primary" />
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        กรุณาทำหน้าตรง
+                      </div>
+                      
+                      {centerHoldTimer > 0 ? (
+                        <div className="text-6xl font-bold text-green-600 animate-pulse">
+                          {3 - centerHoldTimer}
+                        </div>
+                      ) : (
+                        <div className="text-base text-muted-foreground">
+                          ทำหน้าตรงค้างไว้ 3 วินาที
+                        </div>
+                      )}
+                      
+                      <Badge 
+                        variant={headPosition === "center" ? "default" : "secondary"} 
+                        className="gap-2 px-4 py-2 text-base"
+                      >
+                        {headPosition === "center" ? (
+                          <>
+                            <Check className="h-4 w-4" />
+                            กำลังนับ...
+                          </>
+                        ) : (
+                          "รอทำหน้าตรง"
+                        )}
+                      </Badge>
+                    </>
                   ) : (
-                    <Badge variant="secondary" className="px-4 py-2 text-base">
-                      กำลังดำเนินการ
-                    </Badge>
+                    <>
+                      <Camera className="h-12 w-12 text-primary animate-pulse" />
+                      <div className="font-bold text-2xl sm:text-3xl text-center text-primary">
+                        กำลังถ่ายรูป...
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -348,7 +423,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
               <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
                 <video
                   ref={videoRef}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover scale-x-[-1]"
                   playsInline
                   muted
                 />
@@ -372,15 +447,20 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 >
                   ยกเลิก
                 </Button>
-                {challengeCompleted && isProcessing ? (
+                {isProcessing ? (
                   <Button disabled className="flex-1">
                     <Camera className="h-4 w-4 mr-2" />
                     กำลังถ่ายรูป...
                   </Button>
+                ) : waitingForCenter ? (
+                  <Button disabled className="flex-1 opacity-50">
+                    <Camera className="h-4 w-4 mr-2" />
+                    รอทำหน้าตรง...
+                  </Button>
                 ) : challengeCompleted ? (
                   <Button disabled className="flex-1">
                     <Check className="h-4 w-4 mr-2" />
-                    กำลังประมวลผล...
+                    เสร็จสิ้น
                   </Button>
                 ) : (
                   <Button disabled className="flex-1 opacity-50">
