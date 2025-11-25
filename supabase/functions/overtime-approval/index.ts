@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimiters } from "../_shared/rate-limiter.ts";
+import { logger } from "../_shared/logger.ts";
+import { sanitizeInput } from "../_shared/validators.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +23,22 @@ serve(async (req) => {
   }
 
   try {
+    // Rate limiting
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+    if (rateLimiters.api.isRateLimited(clientIp)) {
+      logger.warn('Rate limit exceeded', { ip: clientIp, endpoint: 'overtime-approval' });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            ...rateLimiters.api.getHeaders(clientIp),
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -28,17 +47,43 @@ serve(async (req) => {
     const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     const body: ApprovalRequest = await req.json();
 
-    console.log('[overtime-approval] Received:', body);
-
     // Validation
-    if (!body.request_id || !body.action) {
+    if (!body.request_id || typeof body.request_id !== 'string') {
+      logger.warn('Invalid request_id', { request_id: body.request_id });
       return new Response(JSON.stringify({ 
-        error: 'Missing required fields: request_id, action' 
+        error: 'Valid request_id is required' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    if (!body.action || !['approve', 'reject'].includes(body.action)) {
+      logger.warn('Invalid action', { action: body.action });
+      return new Response(JSON.stringify({ 
+        error: 'Action must be "approve" or "reject"' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (body.notes && (typeof body.notes !== 'string' || body.notes.length > 500)) {
+      logger.warn('Notes validation failed', { notesLength: body.notes?.length });
+      return new Response(JSON.stringify({ 
+        error: 'Notes too long (max 500 characters)' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const sanitizedNotes = body.notes ? sanitizeInput(body.notes) : null;
+    logger.info('Processing overtime approval', { 
+      request_id: body.request_id, 
+      action: body.action,
+      hasNotes: !!sanitizedNotes
+    });
 
     // Get OT request
     const { data: otRequest, error: reqError } = await supabase
@@ -48,6 +93,7 @@ serve(async (req) => {
       .single();
 
     if (reqError || !otRequest) {
+      logger.warn('OT request not found', { request_id: body.request_id, error: reqError });
       return new Response(JSON.stringify({ error: 'OT request not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -75,13 +121,13 @@ serve(async (req) => {
         status: newStatus,
         approved_by_admin_id: body.admin_id || null,
         approved_at: now,
-        rejection_reason: body.action === 'reject' ? body.notes || 'ไม่ระบุเหตุผล' : null,
+        rejection_reason: body.action === 'reject' ? sanitizedNotes || 'ไม่ระบุเหตุผล' : null,
         updated_at: now
       })
       .eq('id', body.request_id);
 
     if (updateError) {
-      console.error('[overtime-approval] Update error:', updateError);
+      logger.error('Failed to update OT request', updateError);
       return new Response(JSON.stringify({ error: updateError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -96,10 +142,14 @@ serve(async (req) => {
       admin_id: body.admin_id || null,
       action: body.action,
       decision_method: body.decision_method || 'webapp',
-      notes: body.notes || null
+      notes: sanitizedNotes
     });
 
-    console.log(`[overtime-approval] ${body.action} OT request ${body.request_id}`);
+    logger.info('OT request processed', { 
+      request_id: body.request_id, 
+      action: body.action,
+      employee_id: employee.id
+    });
 
     // Notify employee
     let employeeMessage: string;
@@ -115,7 +165,7 @@ serve(async (req) => {
         `📅 วันที่: ${otRequest.request_date}\n` +
         `⏰ จำนวน: ${otRequest.estimated_hours} ชั่วโมง\n` +
         `📝 เหตุผลที่ขอ: ${otRequest.reason}\n\n` +
-        `เหตุผลที่ไม่อนุมัติ: ${body.notes || 'ไม่ระบุ'}\n\n` +
+        `เหตุผลที่ไม่อนุมัติ: ${sanitizedNotes || 'ไม่ระบุ'}\n\n` +
         `กรุณา checkout ตามเวลาปกติ`;
     }
 
@@ -133,7 +183,7 @@ serve(async (req) => {
           })
         });
       } catch (e) {
-        console.error('[overtime-approval] Error notifying employee:', e);
+        logger.error('Failed to notify employee', e);
       }
     }
 
@@ -156,7 +206,7 @@ serve(async (req) => {
           })
         });
       } catch (e) {
-        console.error('[overtime-approval] Error posting to group:', e);
+        logger.error('Failed to notify announcement group', e);
       }
     }
 
@@ -170,7 +220,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('[overtime-approval] Unexpected error:', error);
+    logger.error('Overtime approval error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,

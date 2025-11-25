@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logger } from "../_shared/logger.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,11 +22,14 @@ serve(async (req) => {
     const tokenId = url.searchParams.get('t');
 
     if (!tokenId) {
+      logger.warn('Token validation failed: missing token ID');
       return new Response(
         JSON.stringify({ error: 'Token ID is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    logger.info('Validating token', { tokenId });
 
     // Get token with employee and branch details
     const { data: token, error: tokenError } = await supabase
@@ -41,6 +45,7 @@ serve(async (req) => {
       .single();
 
     if (tokenError || !token) {
+      logger.warn('Token not found', { tokenId, error: tokenError });
       return new Response(
         JSON.stringify({ 
           valid: false, 
@@ -53,6 +58,7 @@ serve(async (req) => {
 
     // Check if token is already used
     if (token.status === 'used') {
+      logger.info('Token already used', { tokenId });
       return new Response(
         JSON.stringify({ 
           valid: false, 
@@ -65,6 +71,7 @@ serve(async (req) => {
 
     // Check if token is expired
     if (new Date(token.expires_at) < new Date()) {
+      logger.info('Token expired', { tokenId, expires_at: token.expires_at });
       // Mark as expired
       await supabase
         .from('attendance_tokens')
@@ -80,6 +87,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    logger.info('Token validated successfully', { tokenId, employee_id: token.employee.id });
 
     // Get effective settings
     const { data: settings } = await supabase
@@ -107,7 +116,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error:', error);
+    logger.error('Token validation error', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimiters } from "../_shared/rate-limiter.ts";
+import { logger } from "../_shared/logger.ts";
+import { sanitizeInput } from "../_shared/validators.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,6 +25,22 @@ serve(async (req) => {
   }
 
   try {
+    // Rate limiting
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+    if (rateLimiters.api.isRateLimited(clientIp)) {
+      logger.warn('Rate limit exceeded', { ip: clientIp, endpoint: 'early-leave-approval' });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            ...rateLimiters.api.getHeaders(clientIp),
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -45,13 +64,15 @@ serve(async (req) => {
     }
 
     if (notes && (typeof notes !== 'string' || notes.length > 500)) {
+      logger.warn('Notes validation failed', { notesLength: notes?.length });
       return new Response(
         JSON.stringify({ success: false, error: 'Notes too long (max 500 chars)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[early-leave-approval] Processing ${action} for request ${request_id}`);
+    const sanitizedNotes = notes ? sanitizeInput(notes) : null;
+    logger.info('Processing early leave approval', { request_id, action, hasNotes: !!sanitizedNotes });
 
     // Get the leave request
     const { data: leaveRequest, error: fetchError } = await supabase
@@ -74,6 +95,7 @@ serve(async (req) => {
       .single();
 
     if (fetchError || !leaveRequest) {
+      logger.warn('Leave request not found', { request_id, error: fetchError });
       return new Response(
         JSON.stringify({ success: false, error: 'Leave request not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -112,7 +134,7 @@ serve(async (req) => {
       status: newStatus,
       approved_by_admin_id: actualAdminId,
       approved_at: now.toISOString(),
-      rejection_reason: action === 'reject' ? (notes || 'ไม่อนุมัติ') : null
+      rejection_reason: action === 'reject' ? (sanitizedNotes || 'ไม่อนุมัติ') : null
     };
     
     // Add leave_type if provided (for approvals)
@@ -126,7 +148,7 @@ serve(async (req) => {
       .eq('id', request_id);
 
     if (updateError) {
-      console.error('[early-leave-approval] Update error:', updateError);
+      logger.error('Failed to update leave request', updateError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to update request' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -143,7 +165,7 @@ serve(async (req) => {
         admin_id: actualAdminId,
         action: newStatus,
         decision_method: decision_method,
-        notes: notes
+        notes: sanitizedNotes
       });
 
     console.log(`[early-leave-approval] Request ${newStatus}`);
@@ -173,9 +195,9 @@ serve(async (req) => {
         });
 
       if (checkoutError) {
-        console.error('[early-leave-approval] Checkout error:', checkoutError);
+        logger.error('Auto-checkout failed for early leave', checkoutError);
       } else {
-        console.log(`[early-leave-approval] Auto-checked out ${employee.full_name}`);
+        logger.info('Auto-checkout successful for early leave', { employee_id: employee.id });
       }
     }
 
@@ -195,8 +217,8 @@ serve(async (req) => {
         message += `ขอบคุณสำหรับการทำงาน!`;
       } else {
         message += `❌ ไม่ได้รับอนุมัติ\n`;
-        if (notes) {
-          message += `📝 หมายเหตุ: ${notes}\n\n`;
+        if (sanitizedNotes) {
+          message += `📝 หมายเหตุ: ${sanitizedNotes}\n\n`;
         }
         message += `กรุณาทำงานต่อจนครบเวลา`;
       }
@@ -255,7 +277,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('[early-leave-approval] Error:', error);
+    logger.error('Early leave approval error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),

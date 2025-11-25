@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { rateLimiters } from "../_shared/rate-limiter.ts";
+import { logger } from "../_shared/logger.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -7424,6 +7426,22 @@ serve(async (req) => {
     });
   }
 
+  // Rate limiting for webhook endpoint
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('cf-connecting-ip') || 'unknown';
+  if (rateLimiters.webhook.isRateLimited(clientIp)) {
+    logger.warn('Rate limit exceeded for webhook', { ip: clientIp });
+    return new Response(JSON.stringify({ 
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.' 
+    }), {
+      status: 429,
+      headers: { 
+        'Content-Type': 'application/json',
+        ...rateLimiters.webhook.getHeaders(clientIp)
+      }
+    });
+  }
+
   if (req.method !== "POST") {
     console.log(`[webhook] ✗ Rejected: Method ${req.method} not allowed (expected POST)`);
     return new Response("Method not allowed", { status: 405 });
@@ -7501,21 +7519,11 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error(`\n${'!'.repeat(80)}`);
-    console.error("[webhook] ✗✗✗ ERROR OCCURRED ✗✗✗");
-    console.error(`${'!'.repeat(80)}`);
-    console.error("[webhook] Error type:", error?.constructor?.name);
-    console.error("[webhook] Error message:", error instanceof Error ? error.message : String(error));
-    if (error instanceof Error && error.stack) {
-      console.error("[webhook] Stack trace:");
-      console.error(error.stack);
-    }
-    console.error(`${'!'.repeat(80)}\n`);
+    logger.error('Webhook error', error);
     
     return new Response(
       JSON.stringify({ 
         error: "Internal server error", 
-        message: String(error),
         timestamp: new Date().toISOString()
       }),
       {
