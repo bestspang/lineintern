@@ -406,12 +406,15 @@ export default function AttendanceEmployees() {
                   </div>
                   <div>
                     <Label htmlFor="role_id">ระดับพนักงาน (Employee Level)</Label>
-                    <Select value={formData.role_id || ''} onValueChange={(value) => setFormData({ ...formData, role_id: value || null })}>
+                    <Select 
+                      value={formData.role_id || 'none'} 
+                      onValueChange={(value) => setFormData({ ...formData, role_id: value === 'none' ? null : value })}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="เลือกระดับพนักงาน" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">ไม่ระบุ</SelectItem>
+                        <SelectItem value="none">ไม่ระบุ</SelectItem>
                         {employeeRoles?.map((role) => (
                           <SelectItem key={role.id} value={role.id}>
                             {role.display_name_th} ({role.display_name_en})
