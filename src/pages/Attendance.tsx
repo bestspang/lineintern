@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield } from 'lucide-react';
+import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import LivenessCamera, { LivenessData } from '@/components/attendance/LivenessCamera';
+import { queueAttendanceSubmission, processPendingSubmissions, isOnline } from '@/lib/offline-queue';
 
 export default function Attendance() {
   const [searchParams] = useSearchParams();
@@ -18,6 +19,8 @@ export default function Attendance() {
   
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState<string>('');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [tokenData, setTokenData] = useState<any>(null);
   const [error, setError] = useState<string>('');
   
@@ -56,7 +59,33 @@ export default function Attendance() {
     }
     
     validateToken(token);
-  }, [searchParams]);
+
+    // Listen for online/offline events
+    const handleOnline = () => {
+      setIsOffline(false);
+      // Try to process pending submissions
+      processPendingSubmissions().then(({ processed }) => {
+        if (processed > 0) {
+          toast({
+            title: 'คิวที่รอส่งสำเร็จแล้ว',
+            description: `ส่งข้อมูลที่รออยู่จำนวน ${processed} รายการสำเร็จ`,
+          });
+        }
+      });
+    };
+    
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [searchParams, toast]);
 
   const validateToken = async (token: string) => {
     try {
@@ -201,6 +230,7 @@ export default function Attendance() {
 
     try {
       setSubmitting(true);
+      setSubmitProgress('กำลังเตรียมข้อมูล...');
 
       const formData = new FormData();
       formData.append('token', tokenData.token.id);
@@ -216,6 +246,7 @@ export default function Attendance() {
       }));
       
       if (photo) {
+        setSubmitProgress('กำลังอัพโหลดรูปภาพ...');
         formData.append('photo', photo);
       }
       
@@ -223,6 +254,28 @@ export default function Attendance() {
         formData.append('livenessData', JSON.stringify(livenessData));
       }
 
+      // Check if offline
+      if (!isOnline()) {
+        setSubmitProgress('ไม่มีอินเทอร์เน็ต กำลังบันทึกลงคิว...');
+        await queueAttendanceSubmission(tokenData.token.id, formData);
+        
+        toast({
+          title: 'บันทึกลงคิวแล้ว',
+          description: 'จะส่งอัตโนมัติเมื่อมีอินเทอร์เน็ต',
+        });
+        
+        setSubmitted(true);
+        setSubmitResult({
+          log: {
+            server_time: new Date().toISOString(),
+            is_flagged: false
+          },
+          queued: true
+        });
+        return;
+      }
+
+      setSubmitProgress('กำลังส่งข้อมูล...');
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-submit`,
         {
@@ -240,6 +293,7 @@ export default function Attendance() {
         throw new Error(result.error || 'Submission failed');
       }
 
+      setSubmitProgress('สำเร็จ!');
       setSubmitResult(result);
       setSubmitted(true);
       
@@ -250,13 +304,32 @@ export default function Attendance() {
 
     } catch (err) {
       console.error('Submit error:', err);
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to submit',
-        variant: 'destructive'
-      });
+      
+      // If network error, offer to queue
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        toast({
+          title: 'เกิดข้อผิดพลาดในการเชื่อมต่อ',
+          description: 'จะบันทึกข้อมูลลงคิวแทน',
+        });
+        
+        const formData = new FormData();
+        formData.append('token', tokenData.token.id);
+        formData.append('latitude', location?.lat.toString() || '');
+        formData.append('longitude', location?.lon.toString() || '');
+        await queueAttendanceSubmission(tokenData.token.id, formData);
+        
+        setSubmitted(true);
+        setSubmitResult({ queued: true, log: { server_time: new Date().toISOString() } });
+      } else {
+        toast({
+          title: 'Error',
+          description: err instanceof Error ? err.message : 'Failed to submit',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setSubmitting(false);
+      setSubmitProgress('');
     }
   };
 
@@ -409,23 +482,65 @@ export default function Attendance() {
     );
   }
 
+  // Improved error messages
+  const getErrorMessage = (error: string) => {
+    const errorMap: Record<string, { title: string; description: string; action: string }> = {
+      'token_expired': {
+        title: 'ลิงก์หมดอายุแล้ว',
+        description: 'ลิงก์นี้ถูกใช้งานมากกว่า 10 นาทีแล้ว เพื่อความปลอดภัยจึงหมดอายุแล้วค่ะ',
+        action: 'กรุณาขอลิงก์ใหม่จาก LINE Bot โดยพิมพ์ "checkin" หรือ "checkout"'
+      },
+      'token_used': {
+        title: 'ลิงก์ถูกใช้แล้ว',
+        description: 'ลิงก์นี้ถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้',
+        action: 'หากต้องการบันทึกเวลาใหม่ กรุณาขอลิงก์ใหม่จาก LINE Bot'
+      },
+      'employee_inactive': {
+        title: 'บัญชีไม่ Active',
+        description: 'บัญชีพนักงานของคุณไม่ได้เปิดใช้งาน',
+        action: 'กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อเปิดใช้งานบัญชี'
+      },
+      'No token provided': {
+        title: 'ไม่มีลิงก์',
+        description: 'ไม่พบข้อมูลการยืนยันตัวตน',
+        action: 'กรุณาขอลิงก์จาก LINE Bot'
+      }
+    };
+
+    return errorMap[error] || {
+      title: 'เกิดข้อผิดพลาด',
+      description: error,
+      action: 'กรุณาลองใหม่อีกครั้ง หรือติดต่อฝ่ายทรัพยากรบุคคล'
+    };
+  };
+
   if (error) {
+    const errorInfo = getErrorMessage(error);
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 to-destructive/10 p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <XCircle className="h-6 w-6" />
-              Error
+            <CardTitle className="flex items-center gap-2 text-destructive text-lg sm:text-xl">
+              <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
+              {errorInfo.title}
             </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              {errorInfo.description}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+          <CardContent className="space-y-3">
+            <Alert>
+              <AlertDescription className="text-xs sm:text-sm">
+                💡 {errorInfo.action}
+              </AlertDescription>
             </Alert>
-            <p className="mt-4 text-sm text-muted-foreground">
-              Please request a new link from the LINE bot.
-            </p>
+            <div className="text-xs text-muted-foreground">
+              <p className="font-medium mb-1">คำสั่งที่ใช้ได้:</p>
+              <ul className="list-disc list-inside space-y-0.5 ml-2">
+                <li><code className="bg-muted px-1 py-0.5 rounded">checkin</code> หรือ <code className="bg-muted px-1 py-0.5 rounded">เช็คอิน</code> - สำหรับเข้างาน</li>
+                <li><code className="bg-muted px-1 py-0.5 rounded">checkout</code> หรือ <code className="bg-muted px-1 py-0.5 rounded">เช็คเอาต์</code> - สำหรับออกงาน</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -439,12 +554,14 @@ export default function Attendance() {
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400 text-lg sm:text-xl">
               <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" />
-              {submitResult.early_leave ? 'ส่งคำขอแล้ว' : 'Success!'}
+              {submitResult.queued ? 'บันทึกลงคิวแล้ว' : (submitResult.early_leave ? 'ส่งคำขอแล้ว' : 'Success!')}
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              {submitResult.early_leave 
-                ? 'คำขอออกงานก่อนเวลาถูกส่งไปยังหัวหน้าแล้ว'
-                : 'Your attendance has been recorded'}
+              {submitResult.queued 
+                ? 'ข้อมูลจะถูกส่งอัตโนมัติเมื่อมีอินเทอร์เน็ต'
+                : (submitResult.early_leave 
+                  ? 'คำขอออกงานก่อนเวลาถูกส่งไปยังหัวหน้าแล้ว'
+                  : 'Your attendance has been recorded')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
@@ -507,6 +624,17 @@ export default function Attendance() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 p-3 sm:p-4 pb-16 sm:pb-20">
       <div className="max-w-2xl mx-auto space-y-3 sm:space-y-4">
+        
+        {/* Offline Indicator */}
+        {isOffline && (
+          <Alert variant="destructive" className="bg-destructive/10">
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              ไม่มีการเชื่อมต่ออินเทอร์เน็ต - ข้อมูลจะถูกบันทึกลงคิวและส่งอัตโนมัติเมื่อกลับมาออนไลน์
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Card>
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -681,14 +809,16 @@ export default function Attendance() {
         <Button 
           onClick={handleSubmit} 
           disabled={!canSubmit || submitting}
-          className="w-full h-11 sm:h-12 text-base sm:text-lg"
+          className="w-full h-11 sm:h-12 text-base sm:text-lg relative"
           size="lg"
         >
           {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Submitting...
-            </>
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{submitProgress || 'กำลังส่ง...'}</span>
+              </div>
+            </div>
           ) : (
             `Submit ${actionText}`
           )}
