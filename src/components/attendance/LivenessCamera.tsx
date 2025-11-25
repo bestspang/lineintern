@@ -97,13 +97,6 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     };
   }, []);
 
-  // Randomize step 2 challenge once at mount
-  useEffect(() => {
-    const randomChallenge = Math.random() < 0.5 ? "blink" : "turn_left";
-    setStep2Challenge(randomChallenge);
-    console.log("[DEBUG] Step 2 challenge randomized at mount:", randomChallenge);
-  }, []);
-
   // Start camera
   useEffect(() => {
     const startCamera = async () => {
@@ -325,8 +318,11 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     const noseOffsetFromCenter = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
     const normalizedOffset = noseOffsetFromCenter / faceWidth;
 
+    // Use more lenient threshold when waiting for center after step 1
+    const centerThreshold = waitingForCenterAfterStep1 ? 0.15 : 0.25;
+
     // ⚠️ INVERT logic because video is mirrored
-    if (normalizedOffset < -0.25) {
+    if (normalizedOffset < -centerThreshold) {
       // User turns right → camera sees left → offset < 0
       setHeadPosition("right");
       // Step 1: turn_right (must complete before step 2)
@@ -335,7 +331,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         setWaitingForCenterAfterStep1(true); // รอให้กลับหน้าตรงก่อน
         // ยังไม่ advance step 2
       }
-    } else if (normalizedOffset > 0.25) {
+    } else if (normalizedOffset > centerThreshold) {
       // User turns left → camera sees right → offset > 0
       setHeadPosition("left");
       // Step 2: turn_left
@@ -344,28 +340,41 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         setChallengeCompleted(true);
       }
     } else {
-      setHeadPosition("center");
+      const newPosition = "center";
+      setHeadPosition(newPosition);
+      
+      console.log("[DEBUG] Head position: center", {
+        normalizedOffset,
+        threshold: centerThreshold,
+        waitingForCenterAfterStep1,
+        challengeStep,
+        step1Completed
+      });
       
       // ถ้าทำ step 1 เสร็จและกลับหน้าตรง → เริ่ม step 2
       if (waitingForCenterAfterStep1) {
-        console.log("[DEBUG] Advancing to step 2:", {
-          step2Challenge,
-          currentChallenge,
+        console.log("[DEBUG] ✅ Conditions met for advancing to step 2:", {
+          waitingForCenterAfterStep1: true,
           step1Completed,
-          headPosition
+          challengeStep,
+          currentChallenge,
+          step2Challenge
         });
+        
+        // Guard: ต้อง step 1 completed จริงๆ
+        if (!step1Completed) {
+          console.error("[ERROR] step1Completed is false but waitingForCenterAfterStep1 is true!");
+          return;
+        }
         
         setWaitingForCenterAfterStep1(false);
         setChallengeStep(2);
         
-        // ✅ Validate step 2 challenge is different from step 1
-        // Step 1 is always "turn_right", so step 2 should be "blink" or "turn_left"
         const validStep2Challenge = step2Challenge;
-        
         setCurrentChallenge(validStep2Challenge);
         livenessDataRef.current.headTurned = true;
         
-        console.log("[DEBUG] Step 2 started with challenge:", validStep2Challenge);
+        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", validStep2Challenge);
       }
     }
   };
