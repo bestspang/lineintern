@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +33,52 @@ export default function AttendanceDashboard() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
   const { isAdmin } = useAdminRole();
+  const queryClient = useQueryClient();
   const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Setup realtime subscription for attendance logs
+  useEffect(() => {
+    const channel = supabase
+      .channel('attendance-dashboard-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'attendance_logs',
+          filter: `server_time=gte.${today}T00:00:00`,
+        },
+        (payload) => {
+          console.log('Realtime attendance update:', payload);
+          
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: ['attendance-logs-today'] });
+          
+          // Show toast notification for new check-ins/outs
+          if (payload.eventType === 'INSERT') {
+            const log = payload.new as any;
+            if (log.event_type === 'check_in') {
+              toast({
+                title: '✅ New Check-in',
+                description: 'An employee just checked in',
+                duration: 3000,
+              });
+            } else if (log.event_type === 'check_out') {
+              toast({
+                title: '👋 Check-out',
+                description: 'An employee just checked out',
+                duration: 3000,
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [today, queryClient, toast]);
 
   // Admin check-out mutation
   const adminCheckout = useMutation({

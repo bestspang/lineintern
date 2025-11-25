@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/DashboardLayout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import Auth from "./pages/Auth";
 import Overview from "./pages/Overview";
 import Groups from "./pages/Groups";
@@ -64,8 +65,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AuthProvider>
-          <Routes>
+        <ErrorBoundary>
+          <AuthProvider>
+            <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/employee-menu" element={<EmployeeMenu />} />
             <Route path="/attendance" element={<Attendance />} />
@@ -127,9 +129,10 @@ const App = () => (
             } />
           </Routes>
         </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+      </ErrorBoundary>
+    </BrowserRouter>
+  </TooltipProvider>
+</QueryClientProvider>
 );
 
 export default App;
