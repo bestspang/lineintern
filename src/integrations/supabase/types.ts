@@ -643,7 +643,9 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string | null
+          deleted_at: string | null
           id: string
+          is_deleted: boolean | null
           latitude: number | null
           line_group_id: string | null
           longitude: number | null
@@ -657,7 +659,9 @@ export type Database = {
         Insert: {
           address?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
+          is_deleted?: boolean | null
           latitude?: number | null
           line_group_id?: string | null
           longitude?: number | null
@@ -671,7 +675,9 @@ export type Database = {
         Update: {
           address?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
+          is_deleted?: boolean | null
           latitude?: number | null
           line_group_id?: string | null
           longitude?: number | null
@@ -3020,6 +3026,7 @@ export type Database = {
           title: string
         }[]
       }
+      soft_delete_branch: { Args: { p_branch_id: string }; Returns: Json }
     }
     Enums: {
       alert_severity: "low" | "medium" | "high"

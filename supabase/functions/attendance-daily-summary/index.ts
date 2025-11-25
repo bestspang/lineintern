@@ -483,10 +483,11 @@ serve(async (req) => {
         
         const { data: allBranches } = await supabase
           .from('branches')
-          .select('*');
+          .select('*')
+          .eq('is_deleted', false);
 
         if (!allBranches || allBranches.length === 0) {
-          console.log(`[Config: ${config.name}] No branches found`);
+          console.log(`[Config: ${config.name}] No active branches found`);
           continue;
         }
 
