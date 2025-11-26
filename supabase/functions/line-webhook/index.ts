@@ -4,6 +4,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
+import { getBangkokDateString } from "../_shared/timezone.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -1728,7 +1729,7 @@ async function detectAndHandleProgressReport(
       group_id: groupId,
       progress_text: progressText || `Progress update: ${percentage}% complete`,
       progress_percentage: percentage,
-      check_in_date: new Date().toISOString().split('T')[0],
+      check_in_date: getBangkokDateString(),
     });
 
   if (insertError) {
@@ -3602,7 +3603,7 @@ async function calculateMessageVelocity(groupId: string, fromDate: Date, toDate:
   // Group by day
   const messagesByDay: Record<string, number> = {};
   data.forEach(msg => {
-    const day = new Date(msg.sent_at).toISOString().split('T')[0];
+    const day = getBangkokDateString(new Date(msg.sent_at));
     messagesByDay[day] = (messagesByDay[day] || 0) + 1;
   });
 

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { sanitizeInput } from "../_shared/validators.ts";
+import { getBangkokDateString, formatBangkokTime } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -103,7 +104,7 @@ serve(async (req) => {
     }
 
     // Check if employee has checked in today
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokDateString();
     const { data: checkIn, error: checkInError } = await supabase
       .from('attendance_logs')
       .select('id, server_time')
@@ -180,11 +181,7 @@ serve(async (req) => {
 
     const adminName = adminProfile?.display_name || 'Admin';
 
-    const timeStr = new Date().toLocaleTimeString('th-TH', {
-      timeZone: 'Asia/Bangkok',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const timeStr = formatBangkokTime(new Date(), 'HH:mm');
 
     // Send confirmation DM to employee
     if (employee.line_user_id) {

@@ -1,9 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { toZonedTime } from 'npm:date-fns-tz@3.2.0';
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const BANGKOK_TIMEZONE = 'Asia/Bangkok';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -29,7 +32,7 @@ async function calculateMessageVelocity(groupId: string, fromDate: Date, toDate:
 
   const messagesByDay: Record<string, number> = {};
   data.forEach(msg => {
-    const day = new Date(msg.sent_at).toISOString().split('T')[0];
+    const day = getBangkokDateString(new Date(msg.sent_at));
     messagesByDay[day] = (messagesByDay[day] || 0) + 1;
   });
 
@@ -1200,8 +1203,9 @@ serve(async (req) => {
 
     // Determine if we should generate daily or weekly reports
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const hour = now.getHours();
+    const bangkokNow = toZonedTime(now, BANGKOK_TIMEZONE);
+    const dayOfWeek = bangkokNow.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const hour = bangkokNow.getHours();
 
     const results = [];
 

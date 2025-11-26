@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, otRequestSchema } from '../_shared/validators.ts';
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +78,7 @@ serve(async (req) => {
       });
     }
 
-    const requestDate = body.request_date || new Date().toISOString().split('T')[0];
+    const requestDate = body.request_date || getBangkokDateString();
 
     // Check for existing pending request today
     const { data: existingRequest } = await supabase

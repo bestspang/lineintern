@@ -4,6 +4,7 @@ import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, earlyLeaveSchema } from '../_shared/validators.ts';
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,7 +68,7 @@ serve(async (req) => {
 
     logger.info('Processing early leave request', { employee_id });
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokDateString();
     const now = new Date();
 
     // Get employee info

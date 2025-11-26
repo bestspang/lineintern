@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
+import { getBangkokDateString, formatBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,9 +22,9 @@ serve(async (req) => {
 
     logger.info('Starting OT warning check');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokDateString();
     const now = new Date();
-    console.log(`[overtime-warning] Current time (UTC): ${now.toISOString()}`);
+    console.log(`[overtime-warning] Current time (Bangkok): ${formatBangkokTime(now)}`);
 
     // Get all employees who are currently checked in
     const { data: currentlyCheckedIn, error: fetchError } = await supabase
@@ -125,11 +126,7 @@ serve(async (req) => {
 
         const minutesLeft = Math.round((maxWorkHours - hoursWorked) * 60);
         const overtimeStart = new Date(checkInTime.getTime() + maxWorkHours * 60 * 60 * 1000);
-        const overtimeStartTime = overtimeStart.toLocaleTimeString('th-TH', {
-          timeZone: 'Asia/Bangkok',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
+        const overtimeStartTime = formatBangkokTime(overtimeStart, 'HH:mm');
 
         let message = `⚠️ แจ้งเตือน: ใกล้ครบเวลาทำงาน\n\n`;
         message += `👤 คุณ ${employee.full_name}\n`;

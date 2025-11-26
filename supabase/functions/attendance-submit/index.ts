@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, attendanceSubmitSchema } from '../_shared/validators.ts';
-import { formatBangkokTime } from '../_shared/timezone.ts';
+import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -614,7 +614,7 @@ serve(async (req) => {
 
     // Multi-Shift Support: Track work_sessions
     if (token.employee.working_time_type === 'hours_based') {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getBangkokDateString();
       
       if (token.type === 'check_in') {
         // สร้าง work_session ใหม่
@@ -673,6 +673,41 @@ serve(async (req) => {
           const totalMinutes = Math.floor((actualEndTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
           const netWorkMinutes = Math.max(0, totalMinutes - (activeSession.break_minutes || 60));
           
+          // ========== BILLABLE HOURS CALCULATION ==========
+          const maxWorkHours = token.employee.max_work_hours_per_day || 8;
+          const maxWorkMinutes = maxWorkHours * 60;
+          
+          // Get minimum work hours setting
+          const { data: minHoursSetting } = await supabase
+            .from('system_settings')
+            .select('setting_value')
+            .eq('setting_key', 'minimum_work_hours')
+            .maybeSingle();
+          
+          const minimumHours = token.employee.minimum_work_hours || 
+                               (minHoursSetting?.setting_value as any)?.hours || 
+                               1.0;
+          const minimumMinutes = minimumHours * 60;
+          
+          let billableMinutes = netWorkMinutes;
+          let hoursCapped = false;
+          let capReason = null;
+          
+          // Check if below minimum hours
+          if (netWorkMinutes < minimumMinutes) {
+            billableMinutes = 0;
+            hoursCapped = true;
+            capReason = 'below_minimum';
+            console.log(`[billable_hours] ${token.employee.full_name}: Below minimum (${(netWorkMinutes/60).toFixed(2)}h < ${minimumHours}h) - Set to 0`);
+          }
+          // Check if exceeds maximum hours (and no OT approved)
+          else if (netWorkMinutes > maxWorkMinutes && !isOvertime) {
+            billableMinutes = maxWorkMinutes;
+            hoursCapped = true;
+            capReason = 'max_hours_exceeded';
+            console.log(`[billable_hours] ${token.employee.full_name}: Exceeded max (${(netWorkMinutes/60).toFixed(2)}h > ${maxWorkHours}h) - Capped to ${maxWorkHours}h`);
+          }
+          
           const { error: updateError } = await supabase
             .from('work_sessions')
             .update({
@@ -680,6 +715,9 @@ serve(async (req) => {
               actual_end_time: actualEndTime.toISOString(),
               total_minutes: totalMinutes,
               net_work_minutes: netWorkMinutes,
+              billable_minutes: billableMinutes,
+              hours_capped: hoursCapped,
+              cap_reason: capReason,
               status: 'completed',
               updated_at: new Date().toISOString()
             })
@@ -688,7 +726,7 @@ serve(async (req) => {
           if (updateError) {
             console.error('[work_sessions] Error updating session:', updateError);
           } else {
-            console.log(`[work_sessions] Completed session ${activeSession.session_number} for ${token.employee.full_name}: ${(netWorkMinutes / 60).toFixed(1)} hrs`);
+            console.log(`[work_sessions] Completed session ${activeSession.session_number} for ${token.employee.full_name}: net=${(netWorkMinutes / 60).toFixed(1)}h, billable=${(billableMinutes / 60).toFixed(1)}h${hoursCapped ? ' (capped)' : ''}`);
           }
         }
       }
@@ -697,11 +735,7 @@ serve(async (req) => {
     // Send confirmation DM with Quick Reply
     const actionText = token.type === 'check_in' ? 'เช็คอิน' : 'เช็คเอาต์';
     const actionTextEn = token.type === 'check_in' ? 'checked in' : 'checked out';
-    const timeStr = new Date().toLocaleTimeString('th-TH', { 
-      timeZone: 'Asia/Bangkok',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const timeStr = formatBangkokTime(new Date(), 'HH:mm');
 
     const flagWarning = isFlagged ? `\n\n⚠️ คำเตือน: ${flagReasons.join(', ')}` : '';
     
