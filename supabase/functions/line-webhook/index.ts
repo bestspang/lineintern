@@ -1906,34 +1906,34 @@ function extractMentions(text: string): Array<{ lineUserId: string; displayName:
   return mentions;
 }
 
+// ✅ OPTIMIZED: Compile regex patterns once at module level (not per function call)
+const THAI_DEADLINE_PATTERNS = [
+  { regex: /ก่อน.*?วัน(จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์)/i, days: ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'] },
+  { regex: /ภายใน\s*(\d+)\s*วัน/, type: 'days' },
+  { regex: /พรุ่งนี้/, type: 'tomorrow' },
+  { regex: /มะรืนนี้/, type: 'dayAfterTomorrow' },
+  { regex: /วันนี้/, type: 'today' },
+  { regex: /สัปดาห์หน้า/, type: 'nextWeek' },
+  { regex: /เดือนหน้า/, type: 'nextMonth' },
+  { regex: /(\d+)\/(\d+)/, type: 'date' }, // DD/MM format
+];
+
+const ENGLISH_DEADLINE_PATTERNS = [
+  { regex: /by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i, days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] },
+  { regex: /within\s+(\d+)\s+days?/i, type: 'days' },
+  { regex: /tomorrow/i, type: 'tomorrow' },
+  { regex: /today/i, type: 'today' },
+  { regex: /next\s+week/i, type: 'nextWeek' },
+  { regex: /next\s+month/i, type: 'nextMonth' },
+  { regex: /(\d{1,2})\/(\d{1,2})/, type: 'date' }, // MM/DD format
+];
+
 function parseDeadlineFromText(text: string, locale: 'th' | 'en' = 'th'): { deadline: Date | null; rawText: string } {
   const now = new Date();
   const textLower = text.toLowerCase();
   
-  // Thai patterns
-  const thaiPatterns = [
-    { regex: /ก่อน.*?วัน(จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์)/i, days: ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'] },
-    { regex: /ภายใน\s*(\d+)\s*วัน/, type: 'days' },
-    { regex: /พรุ่งนี้/, type: 'tomorrow' },
-    { regex: /มะรืนนี้/, type: 'dayAfterTomorrow' },
-    { regex: /วันนี้/, type: 'today' },
-    { regex: /สัปดาห์หน้า/, type: 'nextWeek' },
-    { regex: /เดือนหน้า/, type: 'nextMonth' },
-    { regex: /(\d+)\/(\d+)/, type: 'date' }, // DD/MM format
-  ];
-  
-  // English patterns
-  const englishPatterns = [
-    { regex: /by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i, days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] },
-    { regex: /within\s+(\d+)\s+days?/i, type: 'days' },
-    { regex: /tomorrow/i, type: 'tomorrow' },
-    { regex: /today/i, type: 'today' },
-    { regex: /next\s+week/i, type: 'nextWeek' },
-    { regex: /next\s+month/i, type: 'nextMonth' },
-    { regex: /(\d{1,2})\/(\d{1,2})/, type: 'date' }, // MM/DD format
-  ];
-  
-  const patterns = locale === 'th' ? thaiPatterns : englishPatterns;
+  // ✅ Use cached patterns instead of recreating them
+  const patterns = locale === 'th' ? THAI_DEADLINE_PATTERNS : ENGLISH_DEADLINE_PATTERNS;
   
   for (const pattern of patterns) {
     const match = textLower.match(pattern.regex);

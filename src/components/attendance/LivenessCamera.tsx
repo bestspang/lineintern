@@ -97,6 +97,8 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
 
   // Initialize MediaPipe Face Landmarker
   useEffect(() => {
+    let isMounted = true; // ✅ Memory leak prevention
+    
     const initializeFaceLandmarker = async () => {
       try {
         const vision = await FilesetResolver.forVisionTasks(
@@ -114,16 +116,24 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
           numFaces: 1,
         });
         
-        setFaceLandmarker(landmarker);
+        // ✅ Only update state if component is still mounted
+        if (isMounted) {
+          setFaceLandmarker(landmarker);
+        } else {
+          landmarker.close();
+        }
       } catch (err) {
         console.error("Failed to initialize face landmarker:", err);
-        setError("Failed to load face detection model");
+        if (isMounted) {
+          setError("Failed to load face detection model");
+        }
       }
     };
 
     initializeFaceLandmarker();
 
     return () => {
+      isMounted = false; // ✅ Mark as unmounted
       if (faceLandmarker) {
         faceLandmarker.close();
       }
@@ -178,128 +188,106 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     }
   }, [challengeCompleted, waitingForCenter]);
 
-  // Detect center hold for 3 seconds with strict face validation
+  // ✅ MERGED: Single render loop for both liveness detection AND center hold check
+  // This prevents double GPU/CPU load from running detectForVideo() twice per frame
   useEffect(() => {
-    if (!waitingForCenter || !faceLandmarker || !videoRef.current) {
+    if (!faceLandmarker || !videoRef.current || !stream) {
       centerStartTimeRef.current = null;
       setCenterHoldTimer(0);
       return;
     }
 
     let animationId: number;
-    
-    const checkCenterHold = () => {
-      // Check if face is truly straight (strict validation)
-      const video = videoRef.current;
-      if (!video || video.readyState !== 4) {
-        animationId = requestAnimationFrame(checkCenterHold);
-        return;
-      }
-
-      try {
-        const result = faceLandmarker.detectForVideo(video, Date.now());
-        
-        if (result.faceLandmarks && result.faceLandmarks.length > 0) {
-          const landmarks = result.faceLandmarks[0];
-          
-          // Check if face is straight on both X and Y axis
-          const noseTip = landmarks[1];
-          const leftCheek = landmarks[234];
-          const rightCheek = landmarks[454];
-          const foreheadTop = landmarks[10];
-          const chin = landmarks[152];
-          
-          // X-axis (left-right)
-          const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
-          const noseOffsetX = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
-          const normalizedOffsetX = noseOffsetX / faceWidth;
-          
-          // Y-axis (up-down)
-          const faceHeight = Math.abs(chin.y - foreheadTop.y);
-          const noseOffsetY = noseTip.y - (foreheadTop.y + chin.y) / 2;
-          const normalizedOffsetY = noseOffsetY / faceHeight;
-          
-          // Strict center detection: ±0.08 on both axes
-          const isFacingStraight = Math.abs(normalizedOffsetX) < 0.08 && Math.abs(normalizedOffsetY) < 0.08;
-          
-          if (isFacingStraight) {
-            if (centerStartTimeRef.current === null) {
-              centerStartTimeRef.current = Date.now();
-            }
-            
-            const elapsed = Date.now() - centerStartTimeRef.current;
-            const secondsHeld = Math.floor(elapsed / 1000) + 1;
-            
-            setCenterHoldTimer(Math.min(secondsHeld, 3));
-            
-            if (elapsed >= 3000) {
-              capturePhoto();
-              return;
-            }
-          } else {
-            // Reset if face is not straight
-            centerStartTimeRef.current = null;
-            setCenterHoldTimer(0);
-          }
-        }
-      } catch (err) {
-        console.error("Center hold check error:", err);
-      }
-      
-      animationId = requestAnimationFrame(checkCenterHold);
-    };
-    
-    animationId = requestAnimationFrame(checkCenterHold);
-    
-    return () => {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    };
-  }, [waitingForCenter, faceLandmarker]);
-
-  // Process video frames
-  useEffect(() => {
-    if (!faceLandmarker || !videoRef.current || !stream) return;
-
-    let animationId: number;
     let lastVideoTime = -1;
 
-    const processFrame = async () => {
+    const renderLoop = () => {
       const video = videoRef.current;
       if (!video || video.readyState !== 4) {
-        animationId = requestAnimationFrame(processFrame);
+        animationId = requestAnimationFrame(renderLoop);
         return;
       }
 
       const currentTime = video.currentTime;
       if (currentTime === lastVideoTime) {
-        animationId = requestAnimationFrame(processFrame);
+        animationId = requestAnimationFrame(renderLoop);
         return;
       }
       lastVideoTime = currentTime;
 
       try {
-        const result: FaceLandmarkerResult = faceLandmarker.detectForVideo(video, Date.now());
+        // ✅ Single face detection call per frame
+        const result = faceLandmarker.detectForVideo(video, Date.now());
         
         if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          // 1. Run liveness detection logic (blinks, head turns)
           detectLiveness(result);
+          
+          // 2. Run center hold logic (only if waiting for center)
+          if (waitingForCenter) {
+            checkCenterHoldLogic(result);
+          }
         }
       } catch (err) {
-        console.error("Frame processing error:", err);
+        console.error("Render loop error:", err);
       }
 
-      animationId = requestAnimationFrame(processFrame);
+      animationId = requestAnimationFrame(renderLoop);
     };
 
-    animationId = requestAnimationFrame(processFrame);
+    animationId = requestAnimationFrame(renderLoop);
 
     return () => {
       if (animationId) {
         cancelAnimationFrame(animationId);
       }
     };
-  }, [faceLandmarker, stream]);
+  }, [faceLandmarker, stream, waitingForCenter]);
+
+  // ✅ Helper: Center hold logic extracted from render loop
+  const checkCenterHoldLogic = (result: FaceLandmarkerResult) => {
+    if (!result.faceLandmarks || result.faceLandmarks.length === 0) return;
+
+    const landmarks = result.faceLandmarks[0];
+    
+    // Check if face is straight on both X and Y axis
+    const noseTip = landmarks[1];
+    const leftCheek = landmarks[234];
+    const rightCheek = landmarks[454];
+    const foreheadTop = landmarks[10];
+    const chin = landmarks[152];
+    
+    // X-axis (left-right)
+    const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+    const noseOffsetX = noseTip.x - (leftCheek.x + rightCheek.x) / 2;
+    const normalizedOffsetX = noseOffsetX / faceWidth;
+    
+    // Y-axis (up-down)
+    const faceHeight = Math.abs(chin.y - foreheadTop.y);
+    const noseOffsetY = noseTip.y - (foreheadTop.y + chin.y) / 2;
+    const normalizedOffsetY = noseOffsetY / faceHeight;
+    
+    // Strict center detection: ±0.08 on both axes
+    const isFacingStraight = Math.abs(normalizedOffsetX) < 0.08 && Math.abs(normalizedOffsetY) < 0.08;
+    
+    if (isFacingStraight) {
+      if (centerStartTimeRef.current === null) {
+        centerStartTimeRef.current = Date.now();
+      }
+      
+      const elapsed = Date.now() - centerStartTimeRef.current;
+      const secondsHeld = Math.floor(elapsed / 1000) + 1;
+      
+      setCenterHoldTimer(Math.min(secondsHeld, 3));
+      
+      if (elapsed >= 3000) {
+        capturePhoto();
+      }
+    } else {
+      // Reset if face is not straight
+      centerStartTimeRef.current = null;
+      setCenterHoldTimer(0);
+    }
+  };
 
   // Detect liveness from face landmarks
   const detectLiveness = (result: FaceLandmarkerResult) => {
