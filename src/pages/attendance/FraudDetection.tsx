@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,7 @@ export default function FraudDetection() {
   const [selectedRiskLevel, setSelectedRiskLevel] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<FraudLog | null>(null);
   const [comparisonLog, setComparisonLog] = useState<FraudLog | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
   // Fetch fraud statistics
   const { data: stats } = useQuery({
@@ -128,11 +129,47 @@ export default function FraudDetection() {
     }
   };
 
-  const getPhotoUrl = (path: string | null) => {
-    if (!path) return null;
-    const { data } = supabase.storage.from("attendance-photos").getPublicUrl(path);
-    return data.publicUrl;
-  };
+  // Generate signed URLs when logs load
+  useEffect(() => {
+    if (!flaggedLogs) return;
+
+    const generateUrls = async () => {
+      const urls: Record<string, string> = {};
+      
+      for (const log of flaggedLogs) {
+        if (log.photo_url) {
+          const { data, error } = await supabase.storage
+            .from("attendance-photos")
+            .createSignedUrl(log.photo_url, 3600);
+          
+          if (data && !error) {
+            urls[log.id] = data.signedUrl;
+          }
+        }
+      }
+      
+      setPhotoUrls(urls);
+    };
+
+    generateUrls();
+  }, [flaggedLogs]);
+
+  // Generate signed URL for comparison log when it's set
+  useEffect(() => {
+    if (!comparisonLog || !comparisonLog.photo_url) return;
+
+    const generateUrl = async () => {
+      const { data, error } = await supabase.storage
+        .from("attendance-photos")
+        .createSignedUrl(comparisonLog.photo_url!, 3600);
+      
+      if (data && !error) {
+        setPhotoUrls(prev => ({ ...prev, [comparisonLog.id]: data.signedUrl }));
+      }
+    };
+
+    generateUrl();
+  }, [comparisonLog]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -239,9 +276,9 @@ export default function FraudDetection() {
                   className="flex items-center gap-4 p-4 border rounded-lg hover:bg-accent cursor-pointer"
                   onClick={() => handleViewDetails(log)}
                 >
-                  {log.photo_url && (
+                  {log.photo_url && photoUrls[log.id] && (
                     <img
-                      src={getPhotoUrl(log.photo_url) || ""}
+                      src={photoUrls[log.id]}
                       alt="Attendance"
                       className="w-16 h-16 rounded object-cover"
                     />
@@ -369,22 +406,34 @@ export default function FraudDetection() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-sm font-semibold mb-2">Original Photo</div>
-                        <img
-                          src={getPhotoUrl(comparisonLog.photo_url) || ""}
-                          alt="Original"
-                          className="w-full rounded-lg border"
-                        />
+                        {photoUrls[comparisonLog.id] ? (
+                          <img
+                            src={photoUrls[comparisonLog.id]}
+                            alt="Original"
+                            className="w-full rounded-lg border"
+                          />
+                        ) : (
+                          <div className="w-full h-48 bg-muted rounded-lg border flex items-center justify-center">
+                            <span className="text-muted-foreground">Loading...</span>
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground mt-2">
                           {format(new Date(comparisonLog.server_time), "MMM dd, yyyy HH:mm")}
                         </div>
                       </div>
                       <div>
                         <div className="text-sm font-semibold mb-2">Current Photo</div>
-                        <img
-                          src={getPhotoUrl(selectedLog.photo_url) || ""}
-                          alt="Current"
-                          className="w-full rounded-lg border"
-                        />
+                        {photoUrls[selectedLog.id] ? (
+                          <img
+                            src={photoUrls[selectedLog.id]}
+                            alt="Current"
+                            className="w-full rounded-lg border"
+                          />
+                        ) : (
+                          <div className="w-full h-48 bg-muted rounded-lg border flex items-center justify-center">
+                            <span className="text-muted-foreground">Loading...</span>
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground mt-2">
                           {format(new Date(selectedLog.server_time), "MMM dd, yyyy HH:mm")}
                         </div>
@@ -392,14 +441,14 @@ export default function FraudDetection() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : selectedLog.photo_url ? (
+              ) : selectedLog.photo_url && photoUrls[selectedLog.id] ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Photo Evidence</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <img
-                      src={getPhotoUrl(selectedLog.photo_url) || ""}
+                      src={photoUrls[selectedLog.id]}
                       alt="Attendance"
                       className="w-full max-w-md mx-auto rounded-lg border"
                     />
