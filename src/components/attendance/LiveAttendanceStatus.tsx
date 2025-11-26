@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Activity, Clock, UserCheck, UserX, Building2, Loader2 } from 'lucide-react';
-import { format, startOfDay, endOfDay, differenceInMinutes } from 'date-fns';
+import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 interface EmployeeStatus {
   employee_id: string;
@@ -32,9 +33,8 @@ export default function LiveAttendanceStatus() {
   const { data: todayStatus, isLoading, refetch } = useQuery({
     queryKey: ['live-attendance-status'],
     queryFn: async () => {
-      const today = new Date();
-      const fromDate = startOfDay(today);
-      const toDate = endOfDay(today);
+      // Get today's date in Bangkok timezone
+      const todayBangkok = formatInTimeZone(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd');
 
       // Fetch all employees
       const { data: employees, error: empError } = await supabase
@@ -45,15 +45,14 @@ export default function LiveAttendanceStatus() {
 
       if (empError) throw empError;
 
-      // Fetch today's logs
-      const { data: logs, error: logsError } = await supabase
-        .from('attendance_logs')
+      // Fetch today's work sessions (using work_date which is already in Bangkok timezone)
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('work_sessions')
         .select('*')
-        .gte('server_time', fromDate.toISOString())
-        .lte('server_time', toDate.toISOString())
-        .order('server_time', { ascending: true });
+        .eq('work_date', todayBangkok)
+        .order('actual_start_time', { ascending: true });
 
-      if (logsError) throw logsError;
+      if (sessionsError) throw sessionsError;
 
       // Calculate status for each employee
       const employeeStatusMap: Record<string, EmployeeStatus> = {};
@@ -74,39 +73,25 @@ export default function LiveAttendanceStatus() {
         };
       });
 
-      // Process logs
-      logs?.forEach(log => {
-        if (!employeeStatusMap[log.employee_id]) return;
+      // Process work sessions
+      sessions?.forEach(session => {
+        if (!employeeStatusMap[session.employee_id]) return;
 
-        const emp = employeeStatusMap[log.employee_id];
+        const emp = employeeStatusMap[session.employee_id];
         
-        if (log.event_type === 'check_in') {
-          emp.checkIns.push(log);
+        // Set check-in/out times
+        emp.lastCheckIn = session.actual_start_time;
+        emp.lastCheckOut = session.actual_end_time;
+        
+        // Set current status based on session status
+        if (session.status === 'active') {
           emp.currentStatus = 'working';
-          emp.lastCheckIn = log.server_time;
-        } else if (log.event_type === 'check_out') {
-          emp.checkOuts.push(log);
+        } else if (session.status === 'closed' || session.status === 'auto_closed') {
           emp.currentStatus = 'off';
-          emp.lastCheckOut = log.server_time;
         }
-      });
-
-      // Calculate total working hours
-      Object.values(employeeStatusMap).forEach(emp => {
-        let totalMinutes = 0;
-
-        for (let i = 0; i < emp.checkIns.length; i++) {
-          const checkIn = new Date(emp.checkIns[i].server_time);
-          const checkOut = emp.checkOuts[i] 
-            ? new Date(emp.checkOuts[i].server_time)
-            : (emp.currentStatus === 'working' ? new Date() : null);
-
-          if (checkOut) {
-            totalMinutes += differenceInMinutes(checkOut, checkIn);
-          }
-        }
-
-        emp.totalMinutes = totalMinutes;
+        
+        // Use net_work_minutes from work_sessions (already calculated)
+        emp.totalMinutes = session.net_work_minutes || 0;
       });
 
       return Object.values(employeeStatusMap);
@@ -114,16 +99,16 @@ export default function LiveAttendanceStatus() {
     refetchInterval: 30000 // Auto-refresh every 30 seconds
   });
 
-  // Real-time subscription
+  // Real-time subscription for work_sessions
   useEffect(() => {
     const channel = supabase
       .channel('live-attendance-updates')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Listen to INSERT, UPDATE for work_sessions
           schema: 'public',
-          table: 'attendance_logs',
+          table: 'work_sessions',
         },
         () => {
           refetch();
