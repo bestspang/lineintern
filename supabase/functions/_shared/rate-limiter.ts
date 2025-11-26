@@ -31,11 +31,24 @@ export class RateLimiter {
     const now = Date.now();
     const entry = rateLimitStore.get(key);
 
-    // Clean up expired entries (older than 1 hour)
-    if (rateLimitStore.size > 10000) {
+    // ✅ OPTIMIZED: Non-blocking cleanup strategy
+    // 1. Hard limit: If map is huge, clear it to prevent OOM
+    if (rateLimitStore.size > 20000) {
+      console.warn('Rate limit store overflow, clearing cache');
+      rateLimitStore.clear();
+      return false; // Allow this request after clearing
+    }
+
+    // 2. Lazy cleanup: Only clean old entries occasionally (1% chance)
+    // This prevents blocking the event loop during high traffic
+    if (rateLimitStore.size > 10000 && Math.random() < 0.01) {
+      let deleted = 0;
       for (const [k, v] of rateLimitStore.entries()) {
         if (v.resetTime < now - 3600000) {
           rateLimitStore.delete(k);
+          deleted++;
+          // ✅ Break after 100 deletions to avoid blocking
+          if (deleted >= 100) break;
         }
       }
     }
