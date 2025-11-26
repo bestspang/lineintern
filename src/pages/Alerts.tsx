@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   Table,
   TableBody,
@@ -23,6 +24,7 @@ export default function Alerts() {
   const queryClient = useQueryClient();
   const [severityFilter, setSeverityFilter] = useState('all');
   const [resolvedFilter, setResolvedFilter] = useState('unresolved');
+  const [confirmResolve, setConfirmResolve] = useState<{ id: string; resolved: boolean } | null>(null);
 
   const { data: alerts, isLoading } = useQuery({
     queryKey: ['alerts', severityFilter, resolvedFilter],
@@ -54,9 +56,21 @@ export default function Alerts() {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
-      toast({ title: 'Alert updated' });
+      toast({ 
+        title: 'Alert updated', 
+        description: variables.resolved ? 'Alert marked as unresolved' : 'Alert resolved successfully' 
+      });
+      setConfirmResolve(null);
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Error', 
+        description: 'Failed to update alert: ' + error.message,
+        variant: 'destructive' 
+      });
+      setConfirmResolve(null);
     },
   });
 
@@ -150,9 +164,10 @@ export default function Alerts() {
                           variant="ghost"
                           size="sm"
                           className="h-6 text-[10px] sm:text-xs px-2"
-                          onClick={() => toggleResolved.mutate({ id: alert.id, resolved: alert.resolved })}
+                          onClick={() => setConfirmResolve({ id: alert.id, resolved: alert.resolved })}
+                          disabled={toggleResolved.isPending}
                         >
-                          {alert.resolved ? 'Unresolve' : 'Resolve'}
+                          {toggleResolved.isPending ? 'Updating...' : (alert.resolved ? 'Unresolve' : 'Resolve')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -167,6 +182,27 @@ export default function Alerts() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!confirmResolve} onOpenChange={() => setConfirmResolve(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Action</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmResolve?.resolved 
+                ? 'Mark this alert as unresolved?' 
+                : 'Mark this alert as resolved?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmResolve && toggleResolved.mutate(confirmResolve)}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
