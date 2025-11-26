@@ -407,9 +407,25 @@ serve(async (req) => {
     for (const config of configs as DeliveryConfig[]) {
       const configTime = config.send_time?.substring(0, 5); // "21:00"
       
-      // Check if current time matches config send_time (±30 minutes window)
-      if (configTime && !isWithinTimeWindow(currentTime, configTime, 30)) {
-        console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 30min of ${configTime}`);
+      // Check if current time matches config send_time (±10 minutes window)
+      if (configTime && !isWithinTimeWindow(currentTime, configTime, 10)) {
+        console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 10min of ${configTime}`);
+        skippedCount++;
+        continue;
+      }
+
+      // DEDUPLICATION: Check if we already sent a summary for this config today
+      const { data: existingLog } = await supabase
+        .from('summary_delivery_logs')
+        .select('id, sent_at')
+        .eq('config_id', config.id)
+        .gte('sent_at', `${today}T00:00:00`)
+        .lte('sent_at', `${today}T23:59:59`)
+        .gt('success_count', 0) // Only consider successful deliveries
+        .maybeSingle();
+
+      if (existingLog) {
+        console.log(`[Config: ${config.name}] Skipping - already sent today at ${existingLog.sent_at}`);
         skippedCount++;
         continue;
       }
