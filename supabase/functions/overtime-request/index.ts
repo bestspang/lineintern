@@ -69,7 +69,14 @@ serve(async (req) => {
       .from('employees')
       .select('id, code, full_name, line_user_id, announcement_group_line_id, branch_id')
       .eq('id', body.employee_id)
-      .single();
+      .maybeSingle();
+    
+    if (!employee) {
+      return new Response(JSON.stringify({ error: 'Employee not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (empError || !employee) {
       return new Response(JSON.stringify({ error: 'Employee not found' }), {
@@ -148,11 +155,13 @@ serve(async (req) => {
         status: 'pending'
       })
       .select()
-      .single();
-
-    if (insertError) {
+      .maybeSingle();
+    
+    if (insertError || !otRequest) {
       console.error('[overtime-request] Insert error:', insertError);
-      return new Response(JSON.stringify({ error: insertError.message }), {
+      return new Response(JSON.stringify({ 
+        error: insertError?.message || 'Failed to create overtime request' 
+      }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });

@@ -93,8 +93,15 @@ serve(async (req) => {
       .from('employees')
       .select('*, branch:branches(*)')
       .eq('id', employee_id)
-      .eq('is_active', true)
-      .single();
+    .eq('is_active', true)
+    .maybeSingle();
+  
+  if (!employee) {
+    return new Response(JSON.stringify({ error: 'Employee not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 
     if (employeeError || !employee) {
       return new Response(
@@ -160,9 +167,9 @@ serve(async (req) => {
         admin_notes: sanitizedNotes,
       })
       .select()
-      .single();
-
-    if (logError) {
+      .maybeSingle();
+    
+    if (logError || !log) {
       logger.error('Failed to insert checkout log', logError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to record checkout' }),

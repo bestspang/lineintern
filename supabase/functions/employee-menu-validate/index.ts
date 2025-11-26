@@ -95,7 +95,14 @@ Deno.serve(async (req) => {
       `)
       .eq('id', tokenData.employee_id)
       .eq('branches.is_deleted', false)
-      .single();
+      .maybeSingle();
+    
+    if (!employee) {
+      return new Response(JSON.stringify({ valid: false, error: 'Employee not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (empError || !employee) {
       console.error('[employee-menu-validate] Employee not found:', empError);
