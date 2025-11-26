@@ -32,6 +32,9 @@ import Summaries from "./pages/Summaries";
 import Personality from "./pages/Personality";
 import SettingsLayout from "./pages/SettingsLayout";
 import NotFound from "./pages/NotFound";
+import NetworkError from "./pages/NetworkError";
+import ServerError from "./pages/ServerError";
+import SessionExpired from "./pages/SessionExpired";
 import Attendance from "./pages/Attendance";
 import AttendanceEmployees from "./pages/attendance/Employees";
 import EmployeeDetail from "./pages/attendance/EmployeeDetail";
@@ -73,6 +76,9 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/employee-menu" element={<EmployeeMenu />} />
             <Route path="/attendance" element={<Attendance />} />
+            <Route path="/error/network" element={<NetworkError />} />
+            <Route path="/error/server" element={<ServerError />} />
+            <Route path="/error/session-expired" element={<SessionExpired />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <DashboardLayout>
