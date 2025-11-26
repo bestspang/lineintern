@@ -1,8 +1,10 @@
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { MapPin, Camera, Smartphone, AlertTriangle, Clock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AttendanceLogDetailProps {
   log: any;
@@ -11,6 +13,35 @@ interface AttendanceLogDetailProps {
 }
 
 export default function AttendanceLogDetail({ log, open, onOpenChange }: AttendanceLogDetailProps) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  // Generate signed URL when log changes
+  useEffect(() => {
+    if (!log?.photo_url) {
+      setPhotoUrl(null);
+      return;
+    }
+
+    const generateUrl = async () => {
+      // Check if it's already a full URL (backward compatibility)
+      if (log.photo_url.startsWith('http://') || log.photo_url.startsWith('https://')) {
+        setPhotoUrl(log.photo_url);
+        return;
+      }
+
+      // Generate signed URL with 1 hour expiration
+      const { data, error } = await supabase.storage
+        .from('attendance-photos')
+        .createSignedUrl(log.photo_url, 3600);
+
+      if (data && !error) {
+        setPhotoUrl(data.signedUrl);
+      }
+    };
+
+    generateUrl();
+  }, [log]);
+
   if (!log) return null;
 
   return (
@@ -134,11 +165,17 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
                   <Camera className="h-3 w-3 sm:h-4 sm:w-4" />
                   Photo
                 </h3>
-                <img
-                  src={log.photo_url}
-                  alt="Attendance photo"
-                  className="w-full max-w-md rounded-lg border"
-                />
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt="Attendance photo"
+                    className="w-full max-w-md rounded-lg border"
+                  />
+                ) : (
+                  <div className="w-full max-w-md h-48 bg-muted rounded-lg border flex items-center justify-center">
+                    <span className="text-muted-foreground">Loading photo...</span>
+                  </div>
+                )}
               </div>
             </>
           )}

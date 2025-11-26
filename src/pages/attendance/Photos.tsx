@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +36,7 @@ export default function AttendancePhotos() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<AttendancePhoto | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
   const { data: branches } = useQuery({
     queryKey: ['branches'],
@@ -98,25 +99,43 @@ export default function AttendancePhotos() {
     }
   });
 
+  // Generate signed URLs when photos load
+  useEffect(() => {
+    if (!photos) return;
+
+    const generateUrls = async () => {
+      const urls: Record<string, string> = {};
+      
+      for (const photo of photos) {
+        if (photo.photo_url) {
+          // Check if it's already a full URL (backward compatibility)
+          if (photo.photo_url.startsWith('http://') || photo.photo_url.startsWith('https://')) {
+            urls[photo.id] = photo.photo_url;
+          } else {
+            // Generate signed URL with 1 hour expiration
+            const { data, error } = await supabase.storage
+              .from('attendance-photos')
+              .createSignedUrl(photo.photo_url, 3600);
+            
+            if (data && !error) {
+              urls[photo.id] = data.signedUrl;
+            }
+          }
+        }
+      }
+      
+      setPhotoUrls(urls);
+    };
+
+    generateUrls();
+  }, [photos]);
+
   const clearFilters = () => {
     setSearchTerm('');
     setSelectedBranch('all');
     setSelectedEventType('all');
     setDateFrom('');
     setDateTo('');
-  };
-
-  const getPhotoUrl = (path: string) => {
-    // ถ้าเป็น full URL อยู่แล้ว ใช้เลย (backward compatibility)
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-    
-    // ถ้าเป็น path ให้สร้าง public URL
-    const { data } = supabase.storage
-      .from('attendance-photos')
-      .getPublicUrl(path);
-    return data.publicUrl;
   };
 
   if (isLoading) {
@@ -237,9 +256,9 @@ export default function AttendancePhotos() {
                     onClick={() => setSelectedPhoto(photo)}
                   >
                     <div className="aspect-square relative bg-muted">
-                      {photo.photo_url ? (
+                      {photo.photo_url && photoUrls[photo.id] ? (
                         <img
-                          src={getPhotoUrl(photo.photo_url)}
+                          src={photoUrls[photo.id]}
                           alt={`${photo.employee.full_name} - ${photo.event_type}`}
                           className="w-full h-full object-cover"
                           loading="lazy"
@@ -327,9 +346,9 @@ export default function AttendancePhotos() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="aspect-video relative bg-muted rounded-lg overflow-hidden">
-                {selectedPhoto.photo_url ? (
+                {selectedPhoto.photo_url && photoUrls[selectedPhoto.id] ? (
                   <img
-                    src={getPhotoUrl(selectedPhoto.photo_url)}
+                    src={photoUrls[selectedPhoto.id]}
                     alt={`${selectedPhoto.employee.full_name} - ${selectedPhoto.event_type}`}
                     className="w-full h-full object-contain"
                   />
