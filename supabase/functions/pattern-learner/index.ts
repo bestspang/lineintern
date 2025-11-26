@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { format, differenceInMinutes } from 'https://esm.sh/date-fns@4.1.0';
+import { toBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
       let lastCheckIn: Date | null = null;
       
       for (const log of logs) {
-        const time = new Date(log.server_time);
+        const time = toBangkokTime(log.server_time);
         
         if (log.event_type === 'check_in') {
           checkIns.push(time);

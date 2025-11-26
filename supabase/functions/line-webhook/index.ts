@@ -4,7 +4,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
-import { getBangkokDateString, formatBangkokTime, getBangkokNow } from "../_shared/timezone.ts";
+import { getBangkokDateString, formatBangkokTime, getBangkokNow, toBangkokTime, getBangkokTimeComponents } from "../_shared/timezone.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -69,14 +69,7 @@ function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): string {
     }
     
     // More than 1 day - show date and time
-    const formattedDate = date.toLocaleString(locale === 'th' ? 'th-TH' : 'en-US', {
-      timeZone: 'Asia/Bangkok',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+    const formattedDate = formatBangkokTime(date, 'MMM d, HH:mm');
     
     if (diffDay < 2) {
       // Tomorrow
@@ -3081,7 +3074,7 @@ async function getRecentMessages(groupId: string, limit = 50): Promise<string> {
     .reverse()
     .map((m: any) => {
       const sender = m.direction === "bot" ? "Intern" : (m.users?.display_name || "User");
-      return `[${new Date(m.sent_at).toLocaleString()}] ${sender}: ${m.text}`;
+      return `[${formatBangkokTime(m.sent_at, 'yyyy-MM-dd HH:mm')}] ${sender}: ${m.text}`;
     })
     .join("\n");
 }
@@ -3697,7 +3690,8 @@ async function getActivityHeatmap(groupId: string, fromDate: Date, toDate: Date)
   for (let i = 0; i < 24; i++) hourCounts[i] = 0;
 
   data.forEach(msg => {
-    const hour = new Date(msg.sent_at).getHours();
+    const bangkokTime = toBangkokTime(msg.sent_at);
+    const hour = bangkokTime.getHours();
     hourCounts[hour]++;
   });
 
@@ -4028,7 +4022,7 @@ async function handleSummaryCommand(
     messages.reverse();
 
     // Build prompt for structured summary
-    const messageTexts = messages.map((m: any) => `[${new Date(m.sent_at).toLocaleString()}] ${m.text}`).join('\n');
+    const messageTexts = messages.map((m: any) => `[${formatBangkokTime(m.sent_at, 'yyyy-MM-dd HH:mm')}] ${m.text}`).join('\n');
     
     const summaryPrompt = `You are summarizing a chat conversation. Analyze the following messages and provide a structured summary.
 
@@ -4158,7 +4152,7 @@ async function handleFindCommand(
     let resultText = `🔍 **Found ${messages.length} message(s) containing "${keyword}":**\n\n`;
     
     messages.forEach((msg: any, idx: number) => {
-      const timestamp = new Date(msg.sent_at).toLocaleString();
+      const timestamp = formatBangkokTime(msg.sent_at, 'yyyy-MM-dd HH:mm');
       const sender = msg.users?.display_name || 'Unknown';
       const preview = msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text;
       resultText += `${idx + 1}. [${timestamp}] ${sender}:\n${preview}\n\n`;
@@ -4221,7 +4215,7 @@ async function handleMentionsCommand(
     let resultText = `🔔 **Found ${mentions.length} mention(s) of you:**\n\n`;
     
     mentions.forEach((msg: any, idx: number) => {
-      const timestamp = new Date(msg.sent_at).toLocaleString();
+      const timestamp = formatBangkokTime(msg.sent_at, 'yyyy-MM-dd HH:mm');
       const sender = msg.users?.display_name || 'Unknown';
       const preview = msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text;
       resultText += `${idx + 1}. [${timestamp}] ${sender}:\n${preview}\n\n`;
@@ -5077,23 +5071,10 @@ async function handleTodoCommand(
 
 
   try {
-    // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
-    const now = new Date();
-    const bangkokOffset = 7 * 60; // Bangkok is UTC+7 (in minutes)
-    const localOffset = now.getTimezoneOffset(); // local offset from UTC
-    const bangkokTime = new Date(now.getTime() + (bangkokOffset + localOffset) * 60 * 1000);
-    
-    const readableTime = bangkokTime.toLocaleString("en-US", { 
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    
-    const todayDate = bangkokTime.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-    const currentHourMin = `${bangkokTime.getHours()}:${String(bangkokTime.getMinutes()).padStart(2, '0')}`;
+    // Get current Bangkok time using timezone utility
+    const bangkokTime = getBangkokNow();
+    const now = new Date(); // Keep UTC for date comparisons
+    const { datetime: readableTime, date: todayDate, time: currentHourMin } = getBangkokTimeComponents(bangkokTime);
 
     console.log(`[handleTodoCommand] 🕐 Current Bangkok time: ${readableTime} (${currentHourMin})`);
     console.log(`[handleTodoCommand] 📝 User message: ${userMessage}`);
@@ -5500,23 +5481,10 @@ async function handleRemindCommand(
   }
 
   try {
-    // Get current date/time in Bangkok timezone (UTC+7) - manual calculation for accuracy
-    const now = new Date();
-    const bangkokOffset = 7 * 60; // Bangkok is UTC+7 (in minutes)
-    const localOffset = now.getTimezoneOffset(); // local offset from UTC
-    const bangkokTime = new Date(now.getTime() + (bangkokOffset + localOffset) * 60 * 1000);
-    
-    const readableTime = bangkokTime.toLocaleString("en-US", { 
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    
-    const todayDate = bangkokTime.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-    const currentHourMin = `${bangkokTime.getHours()}:${String(bangkokTime.getMinutes()).padStart(2, '0')}`;
+    // Get current Bangkok time using timezone utility
+    const bangkokTime = getBangkokNow();
+    const now = new Date(); // Keep UTC for date comparisons
+    const { datetime: readableTime, date: todayDate, time: currentHourMin } = getBangkokTimeComponents(bangkokTime);
 
     console.log(`[handleRemindCommand] 🕐 Current Bangkok time: ${readableTime} (${currentHourMin})`);
     console.log(`[handleRemindCommand] 📝 User message: ${userMessage}`);

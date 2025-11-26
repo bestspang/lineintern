@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { formatBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -203,11 +204,7 @@ async function generateWorkSummary(
         for (const task of todayTasks.slice(0, 5)) {
           const assigneeId = task.work_metadata?.assignee_user_id;
           const user = userMap.get(assigneeId);
-          const dueTime = new Date(task.due_at).toLocaleTimeString('th-TH', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok'
-          });
+          const dueTime = formatBangkokTime(task.due_at, 'HH:mm');
           contextParts.push(`  • "${task.title}" - @${user?.display_name || 'Unknown'} (กำหนดส่ง ${dueTime})`);
         }
       }
@@ -242,11 +239,7 @@ async function generateWorkSummary(
         for (const task of todayTasks.slice(0, 5)) {
           const assigneeId = task.work_metadata?.assignee_user_id;
           const user = userMap.get(assigneeId);
-          const dueTime = new Date(task.due_at).toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok'
-          });
+          const dueTime = formatBangkokTime(task.due_at, 'HH:mm');
           contextParts.push(`  • "${task.title}" - @${user?.display_name || 'Unknown'} (due at ${dueTime})`);
         }
       }

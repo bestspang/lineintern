@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { toZonedTime } from 'npm:date-fns-tz@3.2.0';
-import { getBangkokDateString } from '../_shared/timezone.ts';
+import { getBangkokDateString, toBangkokTime } from '../_shared/timezone.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -121,7 +121,8 @@ async function getActivityHeatmap(groupId: string, fromDate: Date, toDate: Date)
   for (let i = 0; i < 24; i++) hourCounts[i] = 0;
 
   data.forEach(msg => {
-    const hour = new Date(msg.sent_at).getHours();
+    const bangkokTime = toBangkokTime(msg.sent_at);
+    const hour = bangkokTime.getHours();
     hourCounts[hour]++;
   });
 

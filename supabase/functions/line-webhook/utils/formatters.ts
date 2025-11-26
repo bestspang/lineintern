@@ -2,6 +2,8 @@
 // FORMATTING UTILITIES
 // =============================
 
+import { formatBangkokTime } from '../../_shared/timezone.ts';
+
 export function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): string {
   const now = new Date();
   const diffMs = date.getTime() - now.getTime();
@@ -55,14 +57,7 @@ export function formatTimeDistance(date: Date, locale: 'en' | 'th' = 'en'): stri
         : `in ${diffHour} hour${diffHour !== 1 ? 's' : ''}`;
     }
     
-    const formattedDate = date.toLocaleString(locale === 'th' ? 'th-TH' : 'en-US', {
-      timeZone: 'Asia/Bangkok',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+    const formattedDate = formatBangkokTime(date, 'MMM d, HH:mm');
     
     if (diffDay < 2) {
       return locale === 'th'

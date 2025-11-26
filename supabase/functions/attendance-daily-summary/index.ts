@@ -142,19 +142,11 @@ const generatePersonalSummary = async (
   const checkOut = logs?.find((l: any) => l.event_type === 'check_out');
 
   const checkInTime = checkIn
-    ? new Date(checkIn.server_time).toLocaleTimeString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Bangkok',
-      })
+    ? formatBangkokTime(checkIn.server_time, 'HH:mm')
     : 'ยังไม่เช็คอิน';
 
   const checkOutTime = checkOut
-    ? new Date(checkOut.server_time).toLocaleTimeString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Bangkok',
-      })
+    ? formatBangkokTime(checkOut.server_time, 'HH:mm')
     : 'ยังไม่เช็คเอาต์';
 
   let summaryText = `📋 สรุปการเข้างานของคุณ ${today}\n\n`;
@@ -249,19 +241,11 @@ const generateSummary = async (
       if (logs.some((l: any) => l.is_flagged)) flaggedCount++;
 
       const checkInTime = checkIn
-        ? new Date(checkIn.server_time).toLocaleTimeString('th-TH', {
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok',
-          })
+        ? formatBangkokTime(checkIn.server_time, 'HH:mm')
         : '-';
 
       const checkOutTime = checkOut
-        ? new Date(checkOut.server_time).toLocaleTimeString('th-TH', {
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Asia/Bangkok',
-          })
+        ? formatBangkokTime(checkOut.server_time, 'HH:mm')
         : 'ยังไม่เช็คเอาต์';
 
       // Calculate work hours with detailed breakdown
