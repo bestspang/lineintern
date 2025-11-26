@@ -41,12 +41,47 @@ serve(async (req) => {
         }
       );
     }
+    // Create client with user's authorization for authentication
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    );
+
+    // Service role client for actual operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { request_id, admin_id, admin_line_user_id, action, decision_method, notes, leave_type }: ApprovalRequest = await req.json();
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify user has admin role
+    const { data: isAdmin } = await supabase
+      .rpc('has_role', { _user_id: user.id, _role: 'admin' });
+
+    if (!isAdmin) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Admin access required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { request_id, admin_line_user_id, action, decision_method, notes, leave_type }: ApprovalRequest = await req.json();
+
+    // Use verified user.id as admin_id
+    const actualAdminId = user.id;
 
     // Input validation
     if (!request_id || typeof request_id !== 'string') {
@@ -113,19 +148,6 @@ serve(async (req) => {
       );
     }
 
-    // Find admin user ID if only line_user_id provided
-    let actualAdminId = admin_id;
-    if (!actualAdminId && admin_line_user_id) {
-      const { data: adminUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('line_user_id', admin_line_user_id)
-        .maybeSingle();
-
-      if (adminUser) {
-        actualAdminId = adminUser.id;
-      }
-    }
 
     const now = new Date();
     const newStatus = action === 'approve' ? 'approved' : 'rejected';

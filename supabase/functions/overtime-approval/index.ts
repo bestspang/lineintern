@@ -39,10 +39,42 @@ serve(async (req) => {
         }
       );
     }
+    // Create client with user's authorization for authentication
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    );
+
+    // Service role client for actual operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify user has admin role
+    const { data: isAdmin } = await supabase
+      .rpc('has_role', { _user_id: user.id, _role: 'admin' });
+
+    if (!isAdmin) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Admin access required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     const body: ApprovalRequest = await req.json();
@@ -113,13 +145,13 @@ serve(async (req) => {
     const employee = (otRequest.employees as any);
     const now = new Date().toISOString();
 
-    // Update OT request status
+    // Update OT request status (use verified user.id as admin)
     const newStatus = body.action === 'approve' ? 'approved' : 'rejected';
     const { error: updateError } = await supabase
       .from('overtime_requests')
       .update({
         status: newStatus,
-        approved_by_admin_id: body.admin_id || null,
+        approved_by_admin_id: user.id,
         approved_at: now,
         rejection_reason: body.action === 'reject' ? sanitizedNotes || 'ไม่ระบุเหตุผล' : null,
         updated_at: now
@@ -134,12 +166,12 @@ serve(async (req) => {
       });
     }
 
-    // Log approval
+    // Log approval (use verified user.id as admin)
     await supabase.from('approval_logs').insert({
       request_type: 'overtime',
       request_id: body.request_id,
       employee_id: employee.id,
-      admin_id: body.admin_id || null,
+      admin_id: user.id,
       action: body.action,
       decision_method: body.decision_method || 'webapp',
       notes: sanitizedNotes
