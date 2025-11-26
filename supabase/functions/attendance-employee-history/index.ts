@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { toBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,8 +90,8 @@ serve(async (req) => {
 
     // Calculate average check-in time
     const checkInTimes = checkIns.map(log => {
-      const date = new Date(log.server_time);
-      return date.getHours() * 60 + date.getMinutes();
+      const bangkokTime = toBangkokTime(log.server_time);
+      return bangkokTime.getHours() * 60 + bangkokTime.getMinutes();
     });
     const avgCheckInTime = checkInTimes.length > 0
       ? checkInTimes.reduce((a, b) => a + b, 0) / checkInTimes.length

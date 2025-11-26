@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -145,7 +146,7 @@ serve(async (req) => {
 
 function generatePersonalityContext(state: PersonalityState, userId?: string): string {
   const relationship = userId ? state.relationship_map[userId] : null;
-  const hour = new Date().getHours();
+  const hour = getBangkokNow().getHours();
   const timeOfDay = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
 
   let context = `🧠 PERSONALITY STATE:
