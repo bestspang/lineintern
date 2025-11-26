@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { CheckCircle2, XCircle, AlertTriangle, MapPin, Camera, RefreshCw, Clock } from 'lucide-react';
 
 export default function AttendanceLogs() {
@@ -246,7 +247,7 @@ export default function AttendanceLogs() {
                     <div className="flex flex-wrap gap-4 text-sm">
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span>{format(new Date(log.server_time), 'dd/MM/yyyy HH:mm:ss')}</span>
+                        <span>{formatInTimeZone(new Date(log.server_time), 'Asia/Bangkok', 'dd/MM/yyyy HH:mm:ss')}</span>
                       </div>
                       {log.latitude && log.longitude && (
                         <div className="flex items-center gap-2">

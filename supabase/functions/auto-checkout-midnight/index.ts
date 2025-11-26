@@ -107,7 +107,7 @@ serve(async (req) => {
 
       // Check if they have active OT approval
       const checkInTime = new Date(checkInLog.server_time);
-      const checkInDate = checkInTime.toISOString().split('T')[0];
+      const checkInDate = getBangkokDateString(checkInTime);
       
       const { data: otApproval } = await supabase
         .from('overtime_requests')

@@ -1171,6 +1171,7 @@ export type Database = {
           is_active: boolean | null
           line_user_id: string | null
           max_work_hours_per_day: number | null
+          minimum_work_hours: number | null
           ot_rate_multiplier: number | null
           ot_warning_minutes: number | null
           preferred_start_time: string | null
@@ -1203,6 +1204,7 @@ export type Database = {
           is_active?: boolean | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
+          minimum_work_hours?: number | null
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           preferred_start_time?: string | null
@@ -1235,6 +1237,7 @@ export type Database = {
           is_active?: boolean | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
+          minimum_work_hours?: number | null
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           preferred_start_time?: string | null
@@ -2838,11 +2841,14 @@ export type Database = {
           auto_checkout_grace_expires_at: string | null
           auto_checkout_performed: boolean | null
           auto_checkout_warning_sent_at: string | null
+          billable_minutes: number | null
           break_minutes: number | null
+          cap_reason: string | null
           checkin_log_id: string | null
           checkout_log_id: string | null
           created_at: string | null
           employee_id: string
+          hours_capped: boolean | null
           id: string
           net_work_minutes: number | null
           session_number: number
@@ -2857,11 +2863,14 @@ export type Database = {
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null
           auto_checkout_warning_sent_at?: string | null
+          billable_minutes?: number | null
           break_minutes?: number | null
+          cap_reason?: string | null
           checkin_log_id?: string | null
           checkout_log_id?: string | null
           created_at?: string | null
           employee_id: string
+          hours_capped?: boolean | null
           id?: string
           net_work_minutes?: number | null
           session_number?: number
@@ -2876,11 +2885,14 @@ export type Database = {
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null
           auto_checkout_warning_sent_at?: string | null
+          billable_minutes?: number | null
           break_minutes?: number | null
+          cap_reason?: string | null
           checkin_log_id?: string | null
           checkout_log_id?: string | null
           created_at?: string | null
           employee_id?: string
+          hours_capped?: boolean | null
           id?: string
           net_work_minutes?: number | null
           session_number?: number

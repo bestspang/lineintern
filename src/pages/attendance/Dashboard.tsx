@@ -10,9 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut, CalendarDays } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, differenceInMinutes } from 'date-fns';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
 import { useAdminRole } from '@/hooks/useAdminRole';
+
+const BANGKOK_TZ = 'Asia/Bangkok';
 
 interface EmployeeStatus {
   id: string;
@@ -695,7 +698,7 @@ export default function AttendanceDashboard() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {employee.branch?.name} • {format(new Date(log.server_time), 'HH:mm')}
+                        {employee.branch?.name} • {formatInTimeZone(new Date(log.server_time), BANGKOK_TZ, 'HH:mm')}
                       </p>
                     </div>
                   </div>
@@ -733,7 +736,7 @@ export default function AttendanceDashboard() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{employee.full_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {employee.branch?.name} • {format(new Date(log.server_time), 'HH:mm')} • {log.event_type}
+                        {employee.branch?.name} • {formatInTimeZone(new Date(log.server_time), BANGKOK_TZ, 'HH:mm')} • {log.event_type}
                       </p>
                     </div>
                     <Badge variant="destructive" className="text-xs">
@@ -782,7 +785,7 @@ export default function AttendanceDashboard() {
                           {employee.check_in_time && (
                             <>
                               <span>•</span>
-                              <span>📥 {format(new Date(employee.check_in_time), 'HH:mm')}</span>
+                              <span>📥 {formatInTimeZone(new Date(employee.check_in_time), BANGKOK_TZ, 'HH:mm')}</span>
                               <span>•</span>
                               <span>⏱️ {Math.floor(employee.minutes_worked / 60)}h {employee.minutes_worked % 60}m</span>
                             </>
@@ -831,7 +834,7 @@ export default function AttendanceDashboard() {
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Check-in Time:</span>
-                      <span className="text-sm">{format(new Date(selectedEmployee.check_in_time), 'HH:mm')}</span>
+                      <span className="text-sm">{formatInTimeZone(new Date(selectedEmployee.check_in_time), BANGKOK_TZ, 'HH:mm')}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Hours Worked:</span>
