@@ -73,7 +73,6 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/employee-menu" element={<EmployeeMenu />} />
             <Route path="/attendance" element={<Attendance />} />
-            <Route path="/attendance/employee-history" element={<EmployeeHistory />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <DashboardLayout>
