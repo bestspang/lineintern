@@ -4,7 +4,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
-import { getBangkokDateString } from "../_shared/timezone.ts";
+import { getBangkokDateString, formatBangkokTime, getBangkokNow } from "../_shared/timezone.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -1044,9 +1044,10 @@ async function handleOTRequestCommand(
     }
 
     const requestId = data?.request_id || 'N/A';
+    const requestTime = formatBangkokTime(new Date(), 'dd/MM/yyyy HH:mm');
     const message = locale === 'th'
-      ? `✅ ส่งคำขอ OT เรียบร้อยแล้ว\n\n📋 รหัสคำขอ: ${requestId}\n📝 เหตุผล: ${reason}\n⏰ เวลาที่ขอ: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}\n\n🔔 รอการอนุมัติจากผู้ดูแล\n\n---\n\n✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })}\n\n🔔 Awaiting admin approval`
-      : `✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })}\n\n🔔 Awaiting admin approval`;
+      ? `✅ ส่งคำขอ OT เรียบร้อยแล้ว\n\n📋 รหัสคำขอ: ${requestId}\n📝 เหตุผล: ${reason}\n⏰ เวลาที่ขอ: ${requestTime}\n\n🔔 รอการอนุมัติจากผู้ดูแล\n\n---\n\n✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${requestTime}\n\n🔔 Awaiting admin approval`
+      : `✅ OT request submitted successfully\n\n📋 Request ID: ${requestId}\n📝 Reason: ${reason}\n⏰ Requested at: ${requestTime}\n\n🔔 Awaiting admin approval`;
     
     console.log('[handleOTRequestCommand] OT request submitted successfully');
     return { detected: true, message };
@@ -6533,7 +6534,7 @@ async function handleAttendanceCommand(
     
     // TIME VALIDATION: Check if current time is within allowed work hours (skip for history)
     if (type !== 'history' && employee.allowed_work_start_time && employee.allowed_work_end_time) {
-      const bangkokTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const bangkokTime = getBangkokNow();
       const currentHour = bangkokTime.getHours();
       const currentMinute = bangkokTime.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
