@@ -222,7 +222,7 @@ export default function Personality() {
             <p className="text-muted-foreground">Loading magic mode groups...</p>
           </div>
           <div className="text-sm text-muted-foreground">
-            Last updated: {lastUpdated.toLocaleTimeString()}
+            Last updated: {lastUpdated.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}
           </div>
         </div>
         <Skeleton className="h-[200px] w-full" />
@@ -317,7 +317,7 @@ export default function Personality() {
             ) : (
               <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                 <LineChart data={moodHistory.map(h => ({
-                  time: new Date(h.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit' }),
+                  time: new Date(h.recorded_at).toLocaleDateString('th-TH', { month: 'short', day: 'numeric', hour: '2-digit', timeZone: 'Asia/Bangkok' }),
                   energy: h.energy_level,
                   moodScore: getMoodScore(h.mood),
                   moodLabel: h.mood,
@@ -420,7 +420,7 @@ export default function Personality() {
                         {state.groups?.display_name || "Unknown Group"}
                       </CardTitle>
                       <CardDescription>
-                        Last updated: {new Date(state.updated_at).toLocaleString()}
+                        Last updated: {new Date(state.updated_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}
                       </CardDescription>
                     </div>
                     {isAdmin && (
