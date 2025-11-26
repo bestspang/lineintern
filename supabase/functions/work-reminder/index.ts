@@ -21,6 +21,18 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Validate CRON_SECRET
+  const cronSecret = req.headers.get('x-cron-secret');
+  const expectedSecret = Deno.env.get('CRON_SECRET');
+
+  if (!cronSecret || cronSecret !== expectedSecret) {
+    console.error('[work-reminder] Unauthorized: Invalid or missing CRON_SECRET');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     console.log('[work-reminder] Starting hourly work reminder check...');
     
