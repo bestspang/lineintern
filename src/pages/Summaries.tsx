@@ -222,7 +222,7 @@ export default function Summaries() {
             Intelligent conversation summaries with context enrichment and multi-stage analysis
           </p>
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-2">
-            Total messages: {messageCount} • Last updated: {lastUpdated.toLocaleTimeString()}
+            Total messages: {messageCount} • Last updated: {lastUpdated.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}
           </p>
         </div>
       </div>

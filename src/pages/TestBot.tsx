@@ -228,7 +228,7 @@ export default function TestBot() {
                           <p className="text-sm whitespace-pre-wrap">{message.text}</p>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {message.timestamp.toLocaleTimeString()}
+                          {message.timestamp.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}
                         </span>
                       </div>
                     </div>

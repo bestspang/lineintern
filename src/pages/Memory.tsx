@@ -436,7 +436,7 @@ export default function Memory() {
       });
       
       const activityData = last30Days.map((date) => ({
-        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        date: new Date(date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric', timeZone: 'Asia/Bangkok' }),
         created: createdByDate[date] || 0,
         updated: updatedByDate[date] || 0,
         used: usedByDate[date] || 0,
