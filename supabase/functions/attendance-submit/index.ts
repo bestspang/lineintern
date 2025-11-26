@@ -494,24 +494,63 @@ serve(async (req) => {
           }
         }
 
-        // Check for approved OT request for today
-        const { data: approvedOT } = await supabase
-          .from('overtime_requests')
-          .select('id, estimated_hours')
-          .eq('employee_id', token.employee.id)
-          .eq('request_date', today)
-          .eq('status', 'approved')
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const maxWorkHours = token.employee.max_work_hours_per_day || 8;
 
-        // Calculate overtime if OT is approved OR if auto_ot is enabled
-        if ((approvedOT && approvedOT.length > 0) || token.employee.auto_ot_enabled) {
-          if (totalWorkHours > requiredHours) {
-            overtimeHours = totalWorkHours - requiredHours;
+        // 🚨 CRITICAL VALIDATION: Block check-out if overtime without approval
+        if (totalWorkHours > maxWorkHours) {
+          // Check for approved OT request for today
+          const { data: approvedOT } = await supabase
+            .from('overtime_requests')
+            .select('id, estimated_hours')
+            .eq('employee_id', token.employee.id)
+            .eq('request_date', today)
+            .eq('status', 'approved')
+            .maybeSingle();
+
+          // If no OT approval and auto_ot disabled - BLOCK CHECK-OUT
+          if (!approvedOT && !token.employee.auto_ot_enabled) {
+            const overtimeHoursBlocked = totalWorkHours - maxWorkHours;
+            
+            logger.warn('Check-out blocked: Overtime without approval', {
+              employee_id: token.employee.id,
+              hours_worked: totalWorkHours,
+              max_hours: maxWorkHours,
+              overtime: overtimeHoursBlocked
+            });
+
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHoursBlocked.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout`,
+                error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHoursBlocked.toFixed(1)} hours overtime\nbut don't have OT approval\n\nPlease:\n1. Request OT approval first (/ot [reason])\n2. Or contact your supervisor`,
+                hours_worked: totalWorkHours,
+                max_hours: maxWorkHours,
+                overtime_hours: overtimeHoursBlocked,
+                requires_ot_approval: true
+              }),
+              { 
+                status: 403, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
+
+          // Has OT approval or auto_ot enabled - calculate overtime
+          if (totalWorkHours > maxWorkHours) {
+            overtimeHours = totalWorkHours - maxWorkHours;
             isOvertime = true;
             
-            if (approvedOT && approvedOT.length > 0) {
-              overtimeRequestId = approvedOT[0].id;
+            if (approvedOT) {
+              overtimeRequestId = approvedOT.id;
+              
+              // Warn if exceeds estimated OT hours
+              if (overtimeHours > (approvedOT.estimated_hours || 0)) {
+                logger.warn('Overtime exceeds estimated hours', {
+                  employee_id: token.employee.id,
+                  actual_ot: overtimeHours,
+                  estimated_ot: approvedOT.estimated_hours
+                });
+              }
             }
 
             // Calculate OT pay if salary is available
@@ -523,12 +562,14 @@ serve(async (req) => {
               const otRate = hourlyRate * otMultiplier;
               otPayAmount = otRate * overtimeHours;
               
-              console.log(`[OT Calculation] ${token.employee.full_name}: ${overtimeHours.toFixed(2)}h OT @ ${otRate.toFixed(2)} THB/h = ${otPayAmount.toFixed(2)} THB`);
+              logger.info('OT Pay calculated', {
+                employee: token.employee.full_name,
+                ot_hours: overtimeHours,
+                ot_rate: otRate,
+                ot_amount: otPayAmount
+              });
             }
           }
-        } else {
-          // No OT approval and auto_ot disabled - no overtime counted
-          console.log(`[OT] ${token.employee.full_name}: No OT approval, overtime hours not counted`);
         }
       }
     }
