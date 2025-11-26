@@ -29,7 +29,7 @@ export default function WorkSummary() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000, // refresh every 30 seconds
+    refetchInterval: 60000, // Normal: Work summary auto-refresh
   });
 
   if (isLoading) {

@@ -44,7 +44,7 @@ export default function EarlyLeaveRequests() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Normal: Early leave request monitoring
   });
 
   // Approval mutation

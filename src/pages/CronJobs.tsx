@@ -59,7 +59,7 @@ export default function CronJobs() {
       if (error) throw error;
       return data || [];
     },
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchInterval: 60000, // Normal: Cron job monitoring
   });
 
   const { data: history = [], refetch: refetchHistory } = useQuery<CronHistory[]>({
@@ -69,7 +69,7 @@ export default function CronJobs() {
       if (error) throw error;
       return data || [];
     },
-    refetchInterval: 30000,
+    refetchInterval: 60000, // Normal: Cron history monitoring
   });
 
   useEffect(() => {

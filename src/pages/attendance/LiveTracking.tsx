@@ -60,7 +60,7 @@ export default function LiveTracking() {
       if (error) throw error;
       return data || [];
     },
-    refetchInterval: 60000,
+    refetchInterval: 30000, // Critical: Live tracking needs frequent updates
   });
 
   // Create a map for quick lookup
@@ -195,7 +195,7 @@ export default function LiveTracking() {
 
       return result;
     },
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 30000, // Critical: Live attendance status
   });
 
   // Admin check-out mutation

@@ -50,7 +50,7 @@ export default function AttendanceReminderLogs() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 60000, // Normal: Reminder logs monitoring
   });
 
   // Fetch employees for filter

@@ -37,6 +37,7 @@ export default function Tasks() {
     title: '',
     description: '',
     dueDate: new Date(),
+    dueTime: '12:00',
     groupId: '',
   });
   
@@ -105,12 +106,17 @@ export default function Tasks() {
 
   const createTaskMutation = useMutation({
     mutationFn: async (task: typeof newTask) => {
+      // Combine date and time
+      const [hours, minutes] = task.dueTime.split(':').map(Number);
+      const dueDateTime = new Date(task.dueDate);
+      dueDateTime.setHours(hours, minutes, 0, 0);
+
       const { data, error } = await supabase
         .from('tasks')
         .insert({
           title: task.title,
           description: task.description || null,
-          due_at: task.dueDate.toISOString(),
+          due_at: dueDateTime.toISOString(),
           group_id: task.groupId,
           status: 'pending',
         })
@@ -124,7 +130,7 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('Task created successfully!');
       setIsCreateOpen(false);
-      setNewTask({ title: '', description: '', dueDate: new Date(), groupId: '' });
+      setNewTask({ title: '', description: '', dueDate: new Date(), dueTime: '12:00', groupId: '' });
     },
     onError: (error) => {
       toast.error('Failed to create task: ' + error.message);
@@ -241,6 +247,15 @@ export default function Tasks() {
                     />
                   </PopoverContent>
                 </Popover>
+              </div>
+              <div>
+                <Label htmlFor="dueTime">Due Time</Label>
+                <Input
+                  id="dueTime"
+                  type="time"
+                  value={newTask.dueTime}
+                  onChange={(e) => setNewTask({ ...newTask, dueTime: e.target.value })}
+                />
               </div>
             </div>
             <DialogFooter>

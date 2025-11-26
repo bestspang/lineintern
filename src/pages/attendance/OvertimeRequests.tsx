@@ -66,7 +66,7 @@ export default function OvertimeRequests() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000
+    refetchInterval: 60000, // Normal: Overtime request monitoring
   });
 
   // Approve/Reject mutation
