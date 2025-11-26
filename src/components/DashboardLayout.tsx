@@ -61,6 +61,7 @@ const navigationGroups = [
     items: [
       { title: 'Overview', url: '/', icon: LayoutDashboard },
       { title: 'Health Monitoring', url: '/health-monitoring', icon: Activity },
+      { title: 'Config Validator', url: '/config-validator', icon: Settings },
     ],
   },
   {

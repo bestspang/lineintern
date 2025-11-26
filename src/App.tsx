@@ -57,6 +57,7 @@ import LeaveBalance from "./pages/attendance/LeaveBalance";
 import AttendanceRoles from "./pages/attendance/Roles";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
+import ConfigurationValidator from "./pages/ConfigurationValidator";
 
 const queryClient = new QueryClient();
 
@@ -116,6 +117,7 @@ const App = () => (
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/health-monitoring" element={<HealthMonitoring />} />
+                    <Route path="/config-validator" element={<ConfigurationValidator />} />
                     <Route path="/settings" element={<SettingsLayout />}>
                       <Route index element={<Settings />} />
                       <Route path="safety" element={<SafetyRules />} />
