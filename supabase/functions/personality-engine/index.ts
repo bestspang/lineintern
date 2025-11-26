@@ -37,7 +37,7 @@ serve(async (req) => {
       .from("personality_state")
       .select("*")
       .eq("group_id", groupId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !state) {
       // Create initial personality state
@@ -53,7 +53,7 @@ serve(async (req) => {
           personality_traits: { humor: 60, helpfulness: 85, curiosity: 75 },
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (createError) throw createError;
       state = newState;

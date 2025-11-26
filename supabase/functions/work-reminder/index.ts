@@ -97,7 +97,7 @@ serve(async (req) => {
           .from('users')
           .select('display_name, line_user_id')
           .eq('id', assigneeId)
-          .single();
+          .maybeSingle();
 
         if (!assignee) {
           console.log(`[work-reminder] Assignee not found for task ${task.id}, skipping`);

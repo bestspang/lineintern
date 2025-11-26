@@ -167,7 +167,7 @@ async function generateWorkSummary(
       .from('personality_state')
       .select('relationship_map')
       .eq('group_id', groupId)
-      .single();
+      .maybeSingle();
 
     const relationshipMap = (personalityState?.relationship_map as Record<string, any>) || {};
 

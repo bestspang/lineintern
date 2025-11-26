@@ -124,8 +124,10 @@ async function checkMemorySettings(
     .select("memory_enabled")
     .eq("scope", "global")
     .maybeSingle();
+  
+  const memoryEnabled = globalSettings?.memory_enabled ?? true;
 
-  if (!globalSettings?.memory_enabled) return false;
+  if (!memoryEnabled) return false;
 
   if (groupId) {
     const { data: groupSettings } = await supabase

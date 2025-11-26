@@ -32,7 +32,7 @@ serve(async (req) => {
       .select('*, employee:employees(id, full_name, code)')
       .eq('id', tokenId)
       .eq('type', 'history')
-      .single();
+      .maybeSingle();
 
     if (tokenError || !token) {
       console.error('Token not found:', tokenError);

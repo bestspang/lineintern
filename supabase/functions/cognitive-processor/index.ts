@@ -178,7 +178,7 @@ async function analyzeRelationship(
     .eq("group_id", groupId)
     .eq("user_a_id", userAId)
     .eq("user_b_id", userBId)
-    .single();
+    .maybeSingle();
 
   const interactionCount = (existingRel?.interaction_count || 0) + messages.length;
   
@@ -220,7 +220,7 @@ async function analyzeRelationship(
       .from("user_relationships")
       .insert(relationshipData)
       .select()
-      .single();
+      .maybeSingle();
     
     if (insertError) {
       console.error(`[cognitive-processor] Error inserting relationship:`, insertError);
@@ -383,7 +383,7 @@ async function updateProfileFromMessage(
     .select("*")
     .eq("group_id", groupId)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
   const userMessages = recentMessages.filter(m => m.user_id === userId);
   
@@ -426,7 +426,7 @@ async function updateProfileFromMessage(
       .from("user_profiles")
       .insert(profileData)
       .select()
-      .single();
+      .maybeSingle();
     
     if (insertError) {
       console.error(`[cognitive-processor] Error inserting profile:`, insertError);
@@ -553,7 +553,7 @@ async function getSocialContext(supabase: any, groupId: string, userId?: string)
       .select("*")
       .eq("group_id", groupId)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
     userProfile = profile;
   }
 

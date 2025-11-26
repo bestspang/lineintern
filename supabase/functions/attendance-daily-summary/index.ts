@@ -601,7 +601,7 @@ serve(async (req) => {
           .from('branches')
           .select('*')
           .eq('id', config.source_branch_id)
-          .single();
+          .maybeSingle();
         if (branch) branches = [branch];
       }
 
