@@ -188,14 +188,58 @@ serve(async (req) => {
           }),
         });
 
+        const responseData = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-          const errorText = await response.text();
+          const errorText = JSON.stringify(responseData);
           console.error(`[task-scheduler] LINE API error for task ${task.id}:`, response.status, errorText);
+          
+          // Log failed delivery to bot_message_logs
+          await supabase.from("bot_message_logs").insert({
+            edge_function_name: "task-scheduler",
+            destination_type: recipientId.startsWith("U") ? "user" : "group",
+            destination_id: recipientId,
+            message_type: "task_reminder",
+            message_text: messageText,
+            delivery_status: "failed",
+            error_message: `LINE API ${response.status}: ${errorText}`,
+            sent_at: now.toISOString(),
+            group_id: task.group_id,
+          });
+
+          // Create alert for failed delivery
+          await supabase.from("alerts").insert({
+            group_id: task.group_id,
+            type: "failed_reply",
+            severity: "medium",
+            summary: `Failed to send task reminder: ${task.title}`,
+            details: {
+              task_id: task.id,
+              error: errorText,
+              status_code: response.status,
+              recipient_id: recipientId,
+            },
+            resolved: false,
+          });
+
           results.push({ taskId: task.id, status: "error", error: errorText });
           continue;
         }
 
-        console.log(`[task-scheduler] Sent notification for task ${task.id}`);
+        console.log(`[task-scheduler] ✅ Sent notification for task ${task.id}`);
+
+        // Log successful delivery
+        await supabase.from("bot_message_logs").insert({
+          edge_function_name: "task-scheduler",
+          destination_type: recipientId.startsWith("U") ? "user" : "group",
+          destination_id: recipientId,
+          message_type: "task_reminder",
+          message_text: messageText,
+          delivery_status: "success",
+          line_message_id: responseData.sentMessages?.[0]?.id,
+          sent_at: now.toISOString(),
+          group_id: task.group_id,
+        });
 
         // Mark task as completed (since it's a reminder)
         await supabase

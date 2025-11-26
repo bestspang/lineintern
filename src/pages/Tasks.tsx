@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
@@ -31,6 +32,7 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ id: string; status: 'completed' | 'cancelled' } | null>(null);
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -138,12 +140,15 @@ export default function Tasks() {
       
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      toast.success('Task updated successfully!');
+      const message = variables.status === 'completed' ? 'Task marked as completed!' : 'Task cancelled';
+      toast.success(message);
+      setConfirmAction(null);
     },
     onError: (error) => {
       toast.error('Failed to update task: ' + error.message);
+      setConfirmAction(null);
     },
   });
 
@@ -346,7 +351,7 @@ export default function Tasks() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 w-6 p-0"
-                                    onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'completed' })}
+                                    onClick={() => setConfirmAction({ id: task.id, status: 'completed' })}
                                     disabled={updateTaskStatusMutation.isPending}
                                   >
                                     <CheckCircle2 className="h-3 w-3 text-green-600" />
@@ -355,7 +360,7 @@ export default function Tasks() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 w-6 p-0"
-                                    onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: 'cancelled' })}
+                                    onClick={() => setConfirmAction({ id: task.id, status: 'cancelled' })}
                                     disabled={updateTaskStatusMutation.isPending}
                                   >
                                     <XCircle className="h-3 w-3 text-red-600" />
@@ -378,6 +383,27 @@ export default function Tasks() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Action</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.status === 'completed' 
+                ? 'Mark this task as completed?' 
+                : 'Cancel this task? This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmAction && updateTaskStatusMutation.mutate(confirmAction)}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
