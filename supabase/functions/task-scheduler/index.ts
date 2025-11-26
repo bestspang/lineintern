@@ -94,6 +94,30 @@ serve(async (req) => {
           continue;
         }
 
+        // Validate LINE user IDs - skip test/invalid users
+        const createdByLineUserId = (task.users as any)?.line_user_id;
+        const isTestUser = createdByLineUserId && (
+          createdByLineUserId.startsWith("U_test") || 
+          createdByLineUserId.startsWith("test_") ||
+          !createdByLineUserId.startsWith("U")
+        );
+
+        if (isTestUser) {
+          console.warn(`[task-scheduler] ⚠️ Skipping task ${task.id} - invalid/test LINE user ID: ${createdByLineUserId}`);
+          
+          // Mark as cancelled to prevent future retries
+          await supabase
+            .from("tasks")
+            .update({ 
+              status: "cancelled",
+              updated_at: now.toISOString()
+            })
+            .eq("id", task.id);
+          
+          results.push({ taskId: task.id, status: "skipped_invalid_user" });
+          continue;
+        }
+
         // Determine recipient (group or DM)
         let recipientId = lineGroupId;
         if (lineGroupId.startsWith("dm_")) {
@@ -102,7 +126,6 @@ serve(async (req) => {
         }
 
         const createdBy = (task.users as any)?.display_name || "Someone";
-        const createdByLineUserId = (task.users as any)?.line_user_id;
         const assignedTo = (task.assigned as any)?.display_name;
         const assignedText = assignedTo ? ` (assigned to ${assignedTo})` : "";
 

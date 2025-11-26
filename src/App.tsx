@@ -12,6 +12,7 @@ import Overview from "./pages/Overview";
 import Groups from "./pages/Groups";
 import GroupDetail from "./pages/GroupDetail";
 import Users from "./pages/Users";
+import UserDetail from "./pages/UserDetail";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import Tasks from "./pages/Tasks";
 import Analytics from "./pages/Analytics";
@@ -87,6 +88,7 @@ const App = () => (
                     <Route path="/groups" element={<Groups />} />
                     <Route path="/groups/:id" element={<GroupDetail />} />
                     <Route path="/users" element={<Users />} />
+                    <Route path="/users/:id" element={<UserDetail />} />
                     <Route path="/knowledge" element={<KnowledgeBase />} />
                     <Route path="/faq-logs" element={<FaqLogs />} />
                     <Route path="/training" element={<Training />} />
