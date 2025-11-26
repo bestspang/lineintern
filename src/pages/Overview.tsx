@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { MessageSquare, Users, CheckSquare, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
+import { th } from 'date-fns/locale';
 
 export default function Overview() {
   const { data: stats, isLoading } = useQuery({
@@ -176,7 +176,7 @@ export default function Overview() {
                         </div>
                         <p className="text-xs sm:text-sm line-clamp-2">{alert.summary}</p>
                         <p className="text-[10px] text-muted-foreground mt-1">
-                          {format(toZonedTime(new Date(alert.created_at), 'Asia/Bangkok'), 'PPp', { locale: require('date-fns/locale/th').default })}
+                          {formatInTimeZone(new Date(alert.created_at), 'Asia/Bangkok', 'dd MMM yyyy HH:mm', { locale: th })}
                         </p>
                       </div>
                     </div>
