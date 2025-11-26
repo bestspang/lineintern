@@ -82,7 +82,7 @@ export default function HealthMonitoring() {
         recentErrors,
       };
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000, // Critical: Health monitoring needs frequent updates
   });
 
   // Fetch attendance system health
@@ -125,7 +125,7 @@ export default function HealthMonitoring() {
         pendingTokens: tokens?.length || 0,
       };
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 30000, // Critical: Attendance health monitoring
   });
 
   // Fetch database health
@@ -148,7 +148,7 @@ export default function HealthMonitoring() {
         message: error ? 'Database connection failed' : 'Database operational',
       };
     },
-    refetchInterval: 15000, // Refresh every 15 seconds
+    refetchInterval: 30000, // Critical: Database health check
   });
 
   // Overall system status

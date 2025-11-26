@@ -35,7 +35,7 @@ export default function OvertimeManagement() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000, // Normal: Overtime management auto-refresh
   });
 
   // Fetch auto-checkout logs
