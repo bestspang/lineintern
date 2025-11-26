@@ -682,7 +682,7 @@ async function checkPendingApprovalResponse(
       .from('users')
       .select('*')
       .eq('id', content.assignee_user_id)
-      .single();
+      .maybeSingle();
 
     if (user) {
       const enableFeedback = content.enable_feedback || false;
@@ -732,7 +732,7 @@ async function updatePersonalityOnWorkCompletion(
       .from('personality_state')
       .select('*')
       .eq('group_id', groupId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !personalityState) {
       console.error('[updatePersonalityOnWorkCompletion] Error fetching personality:', fetchError);
@@ -996,7 +996,7 @@ async function handleOTRequestCommand(
       .select('*, branch:branches(*)')
       .eq('line_user_id', lineUserId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
     
     if (empError || !employee) {
       console.log('[handleOTRequestCommand] Employee not found');
@@ -1768,8 +1768,8 @@ async function detectAndHandleProgressReport(
 
     if (assignerUser) {
       const notificationMsg = locale === 'th'
-        ? `📊 มีการอัพเดทความคืบหน้างาน!\n\n📝 งาน: "${task.title}"\n👤 โดย: @${(await supabase.from('users').select('display_name').eq('id', userId).single()).data?.display_name}\n${percentage !== null ? `📈 ความคืบหน้า: ${percentage}%\n` : ''}💬 รายละเอียด: ${progressText}\n\nดูรายละเอียดเพิ่มเติมในระบบ`
-        : `📊 Work Progress Update!\n\n📝 Task: "${task.title}"\n👤 By: @${(await supabase.from('users').select('display_name').eq('id', userId).single()).data?.display_name}\n${percentage !== null ? `📈 Progress: ${percentage}%\n` : ''}💬 Details: ${progressText}\n\nView more details in the system`;
+        ? `📊 มีการอัพเดทความคืบหน้างาน!\n\n📝 งาน: "${task.title}"\n👤 โดย: @${(await supabase.from('users').select('display_name').eq('id', userId).maybeSingle()).data?.display_name}\n${percentage !== null ? `📈 ความคืบหน้า: ${percentage}%\n` : ''}💬 รายละเอียด: ${progressText}\n\nดูรายละเอียดเพิ่มเติมในระบบ`
+        : `📊 Work Progress Update!\n\n📝 Task: "${task.title}"\n👤 By: @${(await supabase.from('users').select('display_name').eq('id', userId).maybeSingle()).data?.display_name}\n${percentage !== null ? `📈 Progress: ${percentage}%\n` : ''}💬 Details: ${progressText}\n\nView more details in the system`;
       
       // Send to assigner via LINE push API (if implemented)
       try {
@@ -2090,7 +2090,7 @@ async function createWorkTask(
     .from('users')
     .select('id')
     .eq('line_user_id', assignment.assigneeLineUserId)
-    .single();
+    .maybeSingle();
   
   if (!assigneeUser) {
     return { success: false, error: 'Assignee user not found' };
@@ -2117,7 +2117,7 @@ async function createWorkTask(
       assigned_to_user_id: assigneeUser.id,
     })
     .select()
-    .single();
+    .maybeSingle();
   
   if (error) {
     console.error('[createWorkTask] Error creating task:', error);
@@ -2496,7 +2496,7 @@ async function ensureUser(lineUserId: string, displayName?: string, groupId?: st
     .from("users")
     .select("*")
     .eq("line_user_id", lineUserId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     // ✅ Auto-fix: Detect generic names (LINE ID or "User 123abc" format) or missing avatar
@@ -2556,7 +2556,7 @@ async function ensureUser(lineUserId: string, displayName?: string, groupId?: st
       last_seen_at: new Date().toISOString(),
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(`[ensureUser] Error creating user:`, error);
@@ -2574,7 +2574,7 @@ async function ensureGroup(lineGroupId: string) {
     .from("groups")
     .select("*")
     .eq("line_group_id", lineGroupId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     // Update last_activity_at
@@ -2631,7 +2631,7 @@ async function ensureGroup(lineGroupId: string) {
       last_activity_at: new Date().toISOString(),
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(`[ensureGroup] Error creating group:`, error);
@@ -2650,7 +2650,7 @@ async function ensureGroupMember(groupId: string, userId: string) {
     .eq("group_id", groupId)
     .eq("user_id", userId)
     .is("left_at", null)
-    .single();
+    .maybeSingle();
 
   if (existingMember) {
     console.log(`[ensureGroupMember] Member already exists: ${userId} in group ${groupId}`);
@@ -2664,7 +2664,7 @@ async function ensureGroupMember(groupId: string, userId: string) {
     .eq("group_id", groupId)
     .eq("user_id", userId)
     .not("left_at", "is", null)
-    .single();
+    .maybeSingle();
 
   if (leftMember) {
     // User is rejoining, update left_at to null
@@ -2676,7 +2676,7 @@ async function ensureGroupMember(groupId: string, userId: string) {
       })
       .eq("id", leftMember.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error(`[ensureGroupMember] Error updating rejoined member:`, error);
@@ -2697,7 +2697,7 @@ async function ensureGroupMember(groupId: string, userId: string) {
       joined_at: new Date().toISOString(),
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(`[ensureGroupMember] Error creating member:`, error);
@@ -2735,7 +2735,7 @@ async function insertMessage(
     has_url: hasUrl,
     command_type: commandType,
     sent_at: new Date().toISOString(),
-  }).select("id").single();
+  }).select("id").maybeSingle();
 
   if (error) {
     console.error(`[insertMessage] Error:`, error);
@@ -2772,29 +2772,32 @@ async function insertMessage(
         threadId = threadData;
         console.log(`[insertMessage] Thread ID: ${threadId}`);
 
-        // Link message to thread
-        const { data: existingLink } = await supabase
-          .from('message_threads')
-          .select('id')
-          .eq('message_id', data.id)
-          .eq('thread_id', threadId)
-          .maybeSingle();
-
-        if (!existingLink) {
-          // Get position in thread
-          const { count } = await supabase
+        // Only link message to thread if data is not null
+        if (data) {
+          // Link message to thread
+          const { data: existingLink } = await supabase
             .from('message_threads')
-            .select('*', { count: 'exact', head: true })
-            .eq('thread_id', threadId);
+            .select('id')
+            .eq('message_id', data.id)
+            .eq('thread_id', threadId)
+            .maybeSingle();
 
-          await supabase.from('message_threads').insert({
-            message_id: data.id,
-            thread_id: threadId,
-            position_in_thread: (count || 0) + 1,
-            is_thread_starter: (count || 0) === 0,
-          });
+          if (!existingLink) {
+            // Get position in thread
+            const { count } = await supabase
+              .from('message_threads')
+              .select('*', { count: 'exact', head: true })
+              .eq('thread_id', threadId);
 
-          console.log(`[insertMessage] Linked message to thread at position ${(count || 0) + 1}`);
+            await supabase.from('message_threads').insert({
+              message_id: data.id,
+              thread_id: threadId,
+              position_in_thread: (count || 0) + 1,
+              is_thread_starter: (count || 0) === 0,
+            });
+
+            console.log(`[insertMessage] Linked message to thread at position ${(count || 0) + 1}`);
+          }
         }
       }
     } catch (threadErr) {
@@ -2802,7 +2805,7 @@ async function insertMessage(
     }
   }
 
-  return { id: data.id, threadId: threadId || '' };
+  return { id: data?.id || '', threadId: threadId || '' };
 }
 
 async function insertAlert(
@@ -3116,7 +3119,7 @@ async function checkMemorySettings(
     .from("memory_settings")
     .select("memory_enabled")
     .eq("scope", "global")
-    .single();
+    .maybeSingle();
 
   if (!globalSettings?.memory_enabled) return false;
 
@@ -3169,7 +3172,7 @@ async function loadRelevantMemories({
     .from("users")
     .select("memory_opt_out")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   if (user?.memory_opt_out) {
     return "N/A";
@@ -3747,7 +3750,7 @@ async function handleRemindersCommand(groupId: string, replyToken: string) {
       .from('groups')
       .select('language')
       .eq('id', groupId)
-      .single();
+      .maybeSingle();
 
     const locale = (group?.language === 'th' || group?.language === 'auto') ? 'th' : 'en';
 
@@ -4186,7 +4189,7 @@ async function handleMentionsCommand(
       .from('users')
       .select('display_name')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (!user) {
       await replyToLine(replyToken, 'Sorry, I couldn\'t find your user information.');
@@ -4271,7 +4274,7 @@ async function handleStatusCommand(
       .from('groups')
       .select('mode')
       .eq('id', groupId)
-      .single();
+      .maybeSingle();
 
     const mode = group?.mode || 'helper';
 
@@ -4897,7 +4900,7 @@ Content: ${messageText}`;
       status: 'pending',
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error('[handleTrainingCommand] Error creating request:', error);
@@ -4987,7 +4990,7 @@ async function handleTasksCommand(
       .from('groups')
       .select('language')
       .eq('id', groupId)
-      .single();
+      .maybeSingle();
 
     const locale = group?.language === 'th' || group?.language === 'auto' ? 'th' : 'en';
 
@@ -5194,7 +5197,7 @@ Example conversions:
         .select("id")
         .ilike("display_name", `%${assignedTo}%`)
         .limit(1)
-        .single();
+        .maybeSingle();
       
       if (assignedUser) {
         assignedToUserId = assignedUser.id;
@@ -5222,7 +5225,7 @@ Example conversions:
         mention_all: mentionAll,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error(`[handleTodoCommand] Error creating task:`, error);
@@ -5431,7 +5434,7 @@ Examples:
         due_at: nextOccurrence.toISOString(), // first occurrence
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (insertError) {
       console.error('[handleRecurringRemind] Insert error:', insertError);
@@ -5623,7 +5626,7 @@ Example conversions:
         mention_all: mentionAll,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error(`[handleRemindCommand] Error creating reminder:`, error);
@@ -5655,7 +5658,7 @@ async function getWorkContext(groupId: string, userId?: string, locale: 'th' | '
       .from('personality_state')
       .select('relationship_map')
       .eq('group_id', groupId)
-      .single();
+      .maybeSingle();
 
     const relationshipMap = (personalityState?.relationship_map as Record<string, any>) || {};
 
@@ -6360,7 +6363,7 @@ async function initializePersonalityState(groupId: string) {
       .from('personality_state')
       .select('id')
       .eq('group_id', groupId)
-      .single();
+      .maybeSingle();
     
     if (existing) {
       console.log(`[initializePersonalityState] Already exists for group ${groupId}`);
@@ -6401,7 +6404,7 @@ async function checkAndCreateAutoSummary(groupId: string) {
       .eq('group_id', groupId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
     let messageCount = 0;
     
@@ -6506,7 +6509,7 @@ async function handleAttendanceCommand(
       .select('*, branch:branches(*)')
       .eq('line_user_id', lineUserId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
     
     if (empError || !employee) {
       console.log('[handleAttendanceCommand] Employee not found, prompting for linking');
@@ -6520,7 +6523,7 @@ async function handleAttendanceCommand(
     // Get effective settings
     const { data: settings } = await supabase
       .rpc('get_effective_attendance_settings', { p_employee_id: employee.id })
-      .single();
+      .maybeSingle();
     
     const effectiveSettings = settings as { enable_attendance?: boolean; token_validity_minutes?: number } | null;
     
@@ -6600,7 +6603,7 @@ async function handleAttendanceCommand(
         expires_at: expiresAt.toISOString()
       })
       .select()
-      .single();
+      .maybeSingle();
     
     if (tokenError || !token) {
       console.error('[handleAttendanceCommand] Failed to create token:', tokenError);
@@ -6654,7 +6657,7 @@ async function handleLeaveEvent(event: LineEvent) {
       .from("groups")
       .select("id")
       .eq("line_group_id", event.source.groupId)
-      .single();
+      .maybeSingle();
 
     if (group) {
       await supabase
@@ -6736,7 +6739,7 @@ async function handleMemberLeftEvent(event: LineEvent) {
     .from("groups")
     .select("id")
     .eq("line_group_id", lineGroupId)
-    .single();
+    .maybeSingle();
   
   if (!group) {
     console.log(`[handleMemberLeftEvent] Group not found: ${lineGroupId}`);
@@ -6754,7 +6757,7 @@ async function handleMemberLeftEvent(event: LineEvent) {
           .from("users")
           .select("id")
           .eq("line_user_id", member.userId)
-          .single();
+          .maybeSingle();
         
         if (!user) {
           console.log(`[handleMemberLeftEvent] User not found: ${member.userId}`);
@@ -6872,7 +6875,7 @@ async function handleMessageEvent(event: LineEvent) {
       .from("groups")
       .select("*")
       .eq("line_group_id", `dm_${lineUserId}`)
-      .single();
+      .maybeSingle();
 
     if (dmGroup) {
       group = dmGroup;
@@ -6890,7 +6893,7 @@ async function handleMessageEvent(event: LineEvent) {
           last_activity_at: new Date().toISOString(),
         })
         .select()
-        .single();
+        .maybeSingle();
       group = newDmGroup;
     }
   }
