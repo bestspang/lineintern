@@ -115,7 +115,11 @@ export async function processPendingSubmissions(): Promise<{
 
   for (const submission of pending) {
     try {
-      // Attempt to submit
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      // Attempt to submit with retry logic
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-submit`,
         {
@@ -124,32 +128,87 @@ export async function processPendingSubmissions(): Promise<{
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: submission.data,
+          signal: controller.signal
         }
       );
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         await removeSubmission(submission.id);
         processed++;
+        console.log(`✅ Successfully processed queued submission ${submission.id}`);
       } else {
         // Increment retry count
-        await updateSubmissionRetries(submission.id, submission.retries + 1);
+        const newRetries = submission.retries + 1;
+        await updateSubmissionRetries(submission.id, newRetries);
         
         // Remove if too many retries (> 5) or too old (> 24 hours)
         if (
-          submission.retries >= 5 ||
+          newRetries >= 5 ||
+          Date.now() - submission.timestamp > 24 * 60 * 60 * 1000
+        ) {
+          await removeSubmission(submission.id);
+          failed++;
+          console.warn(`❌ Removed failed submission ${submission.id} after ${newRetries} retries`);
+        } else {
+          console.log(`⚠️ Submission ${submission.id} failed, will retry (${newRetries}/5)`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to process pending submission:', error);
+      
+      // Check if it's a network error
+      const isNetworkError = error instanceof TypeError || 
+                            (error instanceof Error && error.name === 'AbortError');
+      
+      if (isNetworkError) {
+        // Increment retry for network errors
+        const newRetries = submission.retries + 1;
+        await updateSubmissionRetries(submission.id, newRetries);
+        
+        // Remove if too many retries or too old
+        if (
+          newRetries >= 5 ||
           Date.now() - submission.timestamp > 24 * 60 * 60 * 1000
         ) {
           await removeSubmission(submission.id);
           failed++;
         }
+      } else {
+        // For non-network errors, remove immediately
+        await removeSubmission(submission.id);
+        failed++;
       }
-    } catch (error) {
-      console.error('Failed to process pending submission:', error);
-      await updateSubmissionRetries(submission.id, submission.retries + 1);
     }
   }
 
   return { processed, failed };
+}
+
+// Health check function
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/health`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        signal: controller.signal
+      }
+    );
+
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (error) {
+    console.warn('Backend health check failed:', error);
+    return false;
+  }
 }
 
 // Check if offline

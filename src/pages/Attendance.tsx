@@ -225,12 +225,15 @@ export default function Attendance() {
     await submitAttendance();
   };
 
-  const submitAttendance = async () => {
+  const submitAttendanceWithRetry = async (attempt: number = 1): Promise<void> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second base delay
+
     if (!tokenData) return;
 
     try {
       setSubmitting(true);
-      setSubmitProgress('กำลังเตรียมข้อมูล...');
+      setSubmitProgress(attempt > 1 ? `กำลังลองใหม่ครั้งที่ ${attempt}...` : 'กำลังเตรียมข้อมูล...');
 
       const formData = new FormData();
       formData.append('token', tokenData.token.id);
@@ -254,7 +257,7 @@ export default function Attendance() {
         formData.append('livenessData', JSON.stringify(livenessData));
       }
 
-      // Check if offline
+      // Check if offline before attempting
       if (!isOnline()) {
         setSubmitProgress('ไม่มีอินเทอร์เน็ต กำลังบันทึกลงคิว...');
         await queueAttendanceSubmission(tokenData.token.id, formData);
@@ -276,54 +279,92 @@ export default function Attendance() {
       }
 
       setSubmitProgress('กำลังส่งข้อมูล...');
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-submit`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: formData
+      
+      // Add timeout to fetch
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-submit`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: formData,
+            signal: controller.signal
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Submission failed');
         }
-      );
 
-      const result = await response.json();
+        setSubmitProgress('สำเร็จ!');
+        setSubmitResult(result);
+        setSubmitted(true);
+        
+        toast({
+          title: 'บันทึกการเข้างานสำเร็จ',
+          description: 'บันทึกเวลาเข้า-ออกงานเรียบร้อยแล้ว',
+        });
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Submission failed');
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
 
-      setSubmitProgress('สำเร็จ!');
-      setSubmitResult(result);
-      setSubmitted(true);
-      
-      toast({
-        title: 'Success!',
-        description: 'Attendance recorded successfully',
-      });
-
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error(`Submit error (attempt ${attempt}):`, err);
       
-      // If network error, offer to queue
-      if (err instanceof TypeError && err.message.includes('fetch')) {
+      // Check if it's a network error or timeout
+      const isNetworkError = err instanceof TypeError || 
+                            (err instanceof Error && err.name === 'AbortError') ||
+                            (err instanceof Error && err.message.includes('fetch'));
+      
+      // Retry logic
+      if (isNetworkError && attempt < MAX_RETRIES) {
         toast({
-          title: 'เกิดข้อผิดพลาดในการเชื่อมต่อ',
-          description: 'จะบันทึกข้อมูลลงคิวแทน',
+          title: 'เกิดข้อผิดพลาด',
+          description: `กำลังลองใหม่... (ครั้งที่ ${attempt}/${MAX_RETRIES})`,
+        });
+        
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
+        return submitAttendanceWithRetry(attempt + 1);
+      }
+      
+      // If all retries failed or non-network error, queue it
+      if (isNetworkError) {
+        toast({
+          title: 'ไม่สามารถเชื่อมต่อได้',
+          description: 'บันทึกข้อมูลลงคิวแล้ว จะส่งอัตโนมัติภายหลัง',
+          variant: 'default'
         });
         
         const formData = new FormData();
         formData.append('token', tokenData.token.id);
         formData.append('latitude', location?.lat.toString() || '');
         formData.append('longitude', location?.lon.toString() || '');
+        formData.append('deviceTime', new Date().toISOString());
+        if (photo) formData.append('photo', photo);
+        if (livenessData) formData.append('livenessData', JSON.stringify(livenessData));
+        
         await queueAttendanceSubmission(tokenData.token.id, formData);
         
         setSubmitted(true);
         setSubmitResult({ queued: true, log: { server_time: new Date().toISOString() } });
       } else {
+        // Show clear error message for non-network errors
+        const errorMessage = err instanceof Error ? err.message : 'การส่งข้อมูลล้มเหลว';
         toast({
-          title: 'Error',
-          description: err instanceof Error ? err.message : 'Failed to submit',
+          title: 'เกิดข้อผิดพลาด',
+          description: errorMessage,
           variant: 'destructive'
         });
       }
@@ -331,6 +372,10 @@ export default function Attendance() {
       setSubmitting(false);
       setSubmitProgress('');
     }
+  };
+
+  const submitAttendance = async () => {
+    await submitAttendanceWithRetry(1);
   };
 
   const handleOTRequest = async () => {
