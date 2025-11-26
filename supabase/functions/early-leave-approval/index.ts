@@ -93,7 +93,7 @@ serve(async (req) => {
         )
       `)
       .eq('id', request_id)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !leaveRequest) {
       logger.warn('Leave request not found', { request_id, error: fetchError });
@@ -120,7 +120,7 @@ serve(async (req) => {
         .from('users')
         .select('id')
         .eq('line_user_id', admin_line_user_id)
-        .single();
+        .maybeSingle();
 
       if (adminUser) {
         actualAdminId = adminUser.id;
@@ -212,9 +212,9 @@ serve(async (req) => {
           }
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (checkoutError) {
+      if (checkoutError || !checkoutLog) {
         logger.error('Auto-checkout failed for early leave', checkoutError);
       } else {
         logger.info('Auto-checkout successful for early leave', { employee_id: employee.id });

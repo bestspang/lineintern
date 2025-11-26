@@ -19,9 +19,9 @@ export async function ensureGroup(
     .from("groups")
     .select("*")
     .eq("line_group_id", lineGroupId)
-    .single();
+    .maybeSingle();
 
-  if (fetchError && fetchError.code !== "PGRST116") {
+  if (fetchError) {
     logger.error("Error fetching group", { error: fetchError });
     throw fetchError;
   }
@@ -63,9 +63,9 @@ export async function ensureUser(
     .from("users")
     .select("*")
     .eq("line_user_id", lineUserId)
-    .single();
+    .maybeSingle();
 
-  if (fetchError && fetchError.code !== "PGRST116") {
+  if (fetchError) {
     logger.error("Error fetching user", { error: fetchError });
     throw fetchError;
   }
@@ -122,9 +122,9 @@ export async function insertMessage(
       sent_at: new Date().toISOString(),
     })
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     logger.error("Error inserting message", { error });
     throw error;
   }

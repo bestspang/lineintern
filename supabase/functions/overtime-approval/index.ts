@@ -90,7 +90,7 @@ serve(async (req) => {
       .from('overtime_requests')
       .select('*, employees!inner(id, code, full_name, line_user_id, announcement_group_line_id)')
       .eq('id', body.request_id)
-      .single();
+      .maybeSingle();
 
     if (reqError || !otRequest) {
       logger.warn('OT request not found', { request_id: body.request_id, error: reqError });
