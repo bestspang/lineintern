@@ -81,6 +81,44 @@ serve(async (req) => {
       }
     }
 
+    const employeeIds = Array.from(latestCheckIns.keys());
+    
+    // ✅ FIX N+1: Batch fetch ALL checkouts for ALL employees at once
+    const { data: allCheckOuts } = await supabase
+      .from('attendance_logs')
+      .select('employee_id, server_time')
+      .in('employee_id', employeeIds)
+      .eq('event_type', 'check_out')
+      .gte('server_time', `${targetDate}T00:00:00`)
+      .order('server_time', { ascending: false });
+    
+    // Group checkouts by employee
+    const checkOutsByEmployee = new Map();
+    if (allCheckOuts) {
+      for (const checkout of allCheckOuts) {
+        if (!checkOutsByEmployee.has(checkout.employee_id)) {
+          checkOutsByEmployee.set(checkout.employee_id, []);
+        }
+        checkOutsByEmployee.get(checkout.employee_id).push(checkout);
+      }
+    }
+    
+    // ✅ FIX N+1: Batch fetch ALL OT approvals for target date
+    const { data: allOTApprovals } = await supabase
+      .from('overtime_requests')
+      .select('employee_id, id, status, request_date')
+      .in('employee_id', employeeIds)
+      .eq('request_date', targetDate)
+      .eq('status', 'approved');
+    
+    // Group OT approvals by employee
+    const otApprovalsByEmployee = new Set();
+    if (allOTApprovals) {
+      for (const ot of allOTApprovals) {
+        otApprovalsByEmployee.add(ot.employee_id);
+      }
+    }
+
     let autoCheckouts = 0;
     let skippedOT = 0;
     const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
@@ -89,42 +127,30 @@ serve(async (req) => {
       const employee = checkInLog.employees;
       if (!employee) continue;
 
-      // Check if they have checked out after this check-in
-      const { data: checkOuts } = await supabase
-        .from('attendance_logs')
-        .select('id, server_time')
-        .eq('employee_id', empId)
-        .eq('event_type', 'check_out')
-        .gt('server_time', checkInLog.server_time)
-        .order('server_time', { ascending: false })
-        .limit(1);
+      // Check if they have checked out after this check-in (from batched data)
+      const employeeCheckOuts = checkOutsByEmployee.get(empId) || [];
+      const hasCheckedOut = employeeCheckOuts.some(
+        (co: any) => new Date(co.server_time) > new Date(checkInLog.server_time)
+      );
 
       // If already checked out, skip
-      if (checkOuts && checkOuts.length > 0) {
+      if (hasCheckedOut) {
         console.log(`[auto-checkout-midnight] ${employee.full_name} already checked out`);
         continue;
       }
 
-      // Check if they have active OT approval
-      const checkInTime = new Date(checkInLog.server_time);
-      const checkInDate = getBangkokDateString(checkInTime);
-      
-      const { data: otApproval } = await supabase
-        .from('overtime_requests')
-        .select('id, status')
-        .eq('employee_id', empId)
-        .eq('request_date', checkInDate)
-        .eq('status', 'approved')
-        .limit(1);
+      // Check if they have active OT approval (from batched data)
+      const hasOTApproval = otApprovalsByEmployee.has(empId);
 
       // Skip auto-checkout if OT is approved or auto_ot is enabled
-      if ((otApproval && otApproval.length > 0) || employee.auto_ot_enabled) {
+      if (hasOTApproval || employee.auto_ot_enabled) {
         console.log(`[auto-checkout-midnight] ${employee.full_name} has OT approval or auto OT enabled, skipping auto checkout`);
         skippedOT++;
         continue;
       }
 
       // Calculate work hours
+      const checkInTime = new Date(checkInLog.server_time);
       const midnightTime = new Date(`${targetDate}T23:59:59`);
       const hoursWorked = (midnightTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
       const maxWorkHours = employee.max_work_hours_per_day || 8;
@@ -157,9 +183,9 @@ serve(async (req) => {
           device_info: { auto_checkout: true, reason: 'midnight_timeout' }
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (checkoutError) {
+      if (checkoutError || !checkoutLog) {
         console.error(`[auto-checkout-midnight] Error auto-checking out ${employee.full_name}:`, checkoutError);
         continue;
       }

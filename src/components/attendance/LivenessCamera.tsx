@@ -52,6 +52,11 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   const [waitingForCenterAfterStep1, setWaitingForCenterAfterStep1] = useState(false);
   const centerStartTimeRef = useRef<number | null>(null);
   const lastEyeStateRef = useRef<boolean>(true); // true = open, false = closed
+  
+  // ✅ Real-time feedback hints
+  const [feedbackHint, setFeedbackHint] = useState<string>("");
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDistance, setFaceDistance] = useState<"too_far" | "good" | "too_close">("good");
   const livenessDataRef = useRef<LivenessData>({
     blinked: false,
     headTurned: false,
@@ -219,6 +224,25 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
         const result = faceLandmarker.detectForVideo(video, Date.now());
         
         if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          setFaceDetected(true);
+          
+          // ✅ Check face distance for feedback
+          const landmarks = result.faceLandmarks[0];
+          const leftEye = landmarks[33];
+          const rightEye = landmarks[263];
+          const eyeDistance = Math.abs(rightEye.x - leftEye.x);
+          
+          if (eyeDistance < 0.15) {
+            setFaceDistance("too_far");
+            setFeedbackHint("ขยับเข้ามาใกล้ขึ้น");
+          } else if (eyeDistance > 0.35) {
+            setFaceDistance("too_close");
+            setFeedbackHint("ถอยห่างออกไปหน่อย");
+          } else {
+            setFaceDistance("good");
+            setFeedbackHint("");
+          }
+          
           // 1. Run liveness detection logic (blinks, head turns)
           detectLiveness(result);
           
@@ -226,6 +250,9 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
           if (waitingForCenter) {
             checkCenterHoldLogic(result);
           }
+        } else {
+          setFaceDetected(false);
+          setFeedbackHint("ไม่พบใบหน้า - กรุณาวางใบหน้าในกรอบ");
         }
       } catch (err) {
         console.error("Render loop error:", err);
@@ -575,6 +602,27 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                 {!faceLandmarker && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-sm">
                     กำลังโหลดระบบตรวจจับใบหน้า...
+                  </div>
+                )}
+                
+                {/* ✅ Real-time Feedback Hints */}
+                {faceLandmarker && feedbackHint && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+                    <Badge 
+                      variant={faceDetected ? "secondary" : "destructive"}
+                      className="px-4 py-2 text-sm font-medium shadow-lg animate-pulse"
+                    >
+                      {feedbackHint}
+                    </Badge>
+                  </div>
+                )}
+                
+                {/* Face detected indicator */}
+                {faceLandmarker && faceDetected && !feedbackHint && (
+                  <div className="absolute top-4 right-4 z-10">
+                    <Badge variant="default" className="bg-green-600">
+                      ✓ ตรวจพบใบหน้า
+                    </Badge>
                   </div>
                 )}
               </div>
