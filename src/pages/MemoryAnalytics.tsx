@@ -89,36 +89,52 @@ export default function MemoryAnalytics() {
     },
   });
 
-  // Memory Timeline (last 30 days)
+  // Memory Timeline (last 30 days) - Optimized with single query
   const { data: memoryTimeline } = useQuery({
     queryKey: ['memory-timeline'],
     queryFn: async () => {
       const days = 30;
-      const timeline = [];
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
       
+      // Fetch all data in parallel with single queries
+      const [workingData, longTermData] = await Promise.all([
+        supabase
+          .from('working_memory')
+          .select('created_at')
+          .gte('created_at', startDate.toISOString()),
+        supabase
+          .from('memory_items')
+          .select('created_at')
+          .eq('is_deleted', false)
+          .gte('created_at', startDate.toISOString()),
+      ]);
+
+      // Aggregate by date in JS (much faster than 30 sequential queries)
+      const workingByDate: Record<string, number> = {};
+      const longTermByDate: Record<string, number> = {};
+
+      workingData.data?.forEach(item => {
+        const dateStr = item.created_at.split('T')[0];
+        workingByDate[dateStr] = (workingByDate[dateStr] || 0) + 1;
+      });
+
+      longTermData.data?.forEach(item => {
+        const dateStr = item.created_at.split('T')[0];
+        longTermByDate[dateStr] = (longTermByDate[dateStr] || 0) + 1;
+      });
+
+      // Build timeline array
+      const timeline = [];
       for (let i = days - 1; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
         
-        const [workingRes, longTermRes] = await Promise.all([
-          supabase
-            .from('working_memory')
-            .select('id', { count: 'exact' })
-            .gte('created_at', `${dateStr}T00:00:00`)
-            .lt('created_at', `${dateStr}T23:59:59`),
-          supabase
-            .from('memory_items')
-            .select('id', { count: 'exact' })
-            .eq('is_deleted', false)
-            .gte('created_at', `${dateStr}T00:00:00`)
-            .lt('created_at', `${dateStr}T23:59:59`),
-        ]);
-
         timeline.push({
           date: dateStr.slice(5), // MM-DD
-          working: workingRes.count || 0,
-          longTerm: longTermRes.count || 0,
+          working: workingByDate[dateStr] || 0,
+          longTerm: longTermByDate[dateStr] || 0,
         });
       }
 

@@ -203,13 +203,13 @@ export default function Personality() {
     }
   };
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ["personality-states"] });
       queryClient.invalidateQueries({ queryKey: ["mood-history"] });
       setLastUpdated(new Date());
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [queryClient]);
 
@@ -239,11 +239,32 @@ export default function Personality() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>No Magic Mode Groups</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              No Magic Mode Groups
+            </CardTitle>
             <CardDescription>
-              There are no groups currently in Magic Mode. Switch a group to "magic" mode to enable personality tracking.
+              There are no groups currently in Magic Mode. Personality tracking is only available for groups set to "magic" mode.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                To enable personality tracking for a group:
+              </p>
+              <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-2 ml-2">
+                <li>Go to the Groups page</li>
+                <li>Select a group to edit</li>
+                <li>Change the mode to "Magic"</li>
+                <li>The AI will start learning personality traits after the first message</li>
+              </ol>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={() => window.location.href = '/groups'} variant="default">
+                  Go to Groups
+                </Button>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     );
