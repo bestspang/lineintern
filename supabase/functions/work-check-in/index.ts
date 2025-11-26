@@ -156,7 +156,7 @@ serve(async (req) => {
           .from("groups")
           .select("language")
           .eq("id", task.group_id)
-          .single();
+          .maybeSingle();
         
         const locale = group?.language === 'en' ? 'en' : 'th';
         
@@ -171,7 +171,7 @@ serve(async (req) => {
           .from("tasks")
           .select("work_metadata")
           .eq("id", task.task_id)
-          .single();
+          .maybeSingle();
         
         const metadata = currentTask?.work_metadata || {};
         const updatedMetadata = {

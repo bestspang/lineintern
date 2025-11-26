@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
       .from("groups")
       .select("id, mode")
       .eq("line_group_id", groupId)
-      .single();
+      .maybeSingle();
 
     let dbGroupId = existingGroup?.id;
     let mode = existingGroup?.mode || "helper";
@@ -298,9 +298,9 @@ Deno.serve(async (req) => {
           language: "auto",
         })
         .select("id, mode")
-        .single();
+        .maybeSingle();
 
-      if (groupError) throw groupError;
+      if (groupError || !newGroup) throw new Error('Failed to create group');
       dbGroupId = newGroup.id;
       mode = newGroup.mode;
     }
@@ -310,7 +310,7 @@ Deno.serve(async (req) => {
       .from("users")
       .select("id")
       .eq("line_user_id", userId)
-      .single();
+      .maybeSingle();
 
     let dbUserId = existingUser?.id;
 
@@ -322,9 +322,9 @@ Deno.serve(async (req) => {
           display_name: "Test User",
         })
         .select("id")
-        .single();
+        .maybeSingle();
 
-      if (userError) throw userError;
+      if (userError || !newUser) throw new Error('Failed to create user');
       dbUserId = newUser.id;
     }
 
