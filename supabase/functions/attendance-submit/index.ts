@@ -739,6 +739,48 @@ serve(async (req) => {
 
     const flagWarning = isFlagged ? `\n\n⚠️ คำเตือน: ${flagReasons.join(', ')}` : '';
     
+    // Billable hours warning
+    let billableWarning = '';
+    let billableWarningEn = '';
+    let billableHoursInfo = null;
+    
+    if (token.type === 'check_out' && token.employee.working_time_type === 'hours_based') {
+      // Get the updated session to check if hours were capped
+      const today = getBangkokDateString();
+      const { data: completedSession } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .eq('employee_id', token.employee.id)
+        .eq('work_date', today)
+        .eq('status', 'completed')
+        .order('session_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (completedSession && completedSession.hours_capped && completedSession.cap_reason === 'max_hours_exceeded') {
+        const actualHours = (completedSession.net_work_minutes / 60).toFixed(1);
+        const billableHours = (completedSession.billable_minutes / 60).toFixed(1);
+        const maxHours = token.employee.max_work_hours_per_day || 8;
+        
+        billableWarning = `\n\n⚠️ บันทึกเวลา ${actualHours} ชม. (คิดเงิน ${billableHours} ชม. เนื่องจากไม่มีขอ OT)`;
+        billableWarningEn = `\n\n⚠️ Worked ${actualHours} hrs (Paid ${billableHours} hrs - No OT approval)`;
+        
+        billableHoursInfo = {
+          hours_capped: true,
+          actual_hours: parseFloat(actualHours),
+          billable_hours: parseFloat(billableHours),
+          max_hours: maxHours,
+          reason: 'Hours capped due to max work hours limit without OT approval'
+        };
+        
+        logger.info('Billable hours capped notification sent', {
+          employee: token.employee.full_name,
+          actual_hours: actualHours,
+          billable_hours: billableHours
+        });
+      }
+    }
+    
     // Remote check-in info
     let remoteInfo = '';
     let remoteInfoEn = '';
@@ -814,7 +856,7 @@ serve(async (req) => {
         to: token.employee.line_user_id,
         messages: [{
           type: 'text',
-          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${remoteInfo}${otInfo}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${remoteInfoEn}${otInfoEn}${flagWarning}${nextActionHintEn}`,
+          text: `✅ ${actionText}สำเร็จ\n⏰ เวลา: ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${remoteInfo}${otInfo}${billableWarning}${flagWarning}${nextActionHint}\n\n---\n\n✅ Successfully ${actionTextEn}\n⏰ Time: ${timeStr}\n📍 Branch: ${token.employee.branch?.name || 'N/A'}${remoteInfoEn}${otInfoEn}${billableWarningEn}${flagWarning}${nextActionHintEn}`,
           quickReply: quickReply
         }]
       })
@@ -869,7 +911,8 @@ serve(async (req) => {
           is_flagged: logData?.is_flagged,
           flag_reason: logData?.flag_reason,
           is_remote_checkin: logData?.is_remote_checkin,
-        }
+        },
+        billable_hours: billableHoursInfo
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
