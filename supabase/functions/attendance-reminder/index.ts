@@ -91,9 +91,9 @@ Deno.serve(async (req) => {
         const preferredStart = new Date(now);
         preferredStart.setHours(hour, minute, 0, 0);
         const reminderTime = addMinutes(preferredStart, -reminderMinutesBefore);
-        const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
+        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
         
-        if (currentTime >= reminderTimeStr && currentTime < format(preferredStart, 'HH:mm:ss')) {
+        if (currentTime >= reminderTimeStr && currentTime < formatBangkokTime(preferredStart, 'HH:mm:ss')) {
           const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
           
           if (!hasCheckedIn) {
@@ -122,10 +122,10 @@ Deno.serve(async (req) => {
           
           const totalMinutes = (hoursPerDay + breakHours) * 60;
           const latestStartTime = addMinutes(workEnd, -totalMinutes);
-          const latestStartTimeStr = format(latestStartTime, 'HH:mm:ss');
+          const latestStartTimeStr = formatBangkokTime(latestStartTime, 'HH:mm:ss');
           
           const secondReminderTime = addMinutes(latestStartTime, -15);
-          const secondReminderTimeStr = format(secondReminderTime, 'HH:mm:ss');
+          const secondReminderTimeStr = formatBangkokTime(secondReminderTime, 'HH:mm:ss');
           
           if (currentTime >= secondReminderTimeStr && currentTime < latestStartTimeStr) {
             const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
         const shiftStart = new Date(now);
         shiftStart.setHours(startHour, startMinute, 0, 0);
         const reminderTime = addMinutes(shiftStart, gracePeriodMinutes);
-        const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
+        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
 
         console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_start=${shiftStartTime}, reminder_time=${reminderTimeStr}, current=${currentTime}`);
 
@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
           
           expectedCheckOutTime = addMinutes(new Date(checkInTime), totalMinutes);
 
-          console.log(`[attendance-reminder] Employee ${employee.full_name} (hours_based): check_in=${format(new Date(checkInTime), 'HH:mm:ss')}, hours=${hoursPerDay}, break=${breakHours}, expected_checkout=${format(expectedCheckOutTime, 'HH:mm:ss')}`);
+          console.log(`[attendance-reminder] Employee ${employee.full_name} (hours_based): check_in=${formatBangkokTime(new Date(checkInTime), 'HH:mm:ss')}, hours=${hoursPerDay}, break=${breakHours}, expected_checkout=${formatBangkokTime(expectedCheckOutTime, 'HH:mm:ss')}`);
         }
 
         if (!expectedCheckOutTime) {
@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
 
         const reminderAfterMinutes = prefs.check_out_reminder_after_minutes || 15;
         const reminderTime = addMinutes(expectedCheckOutTime, reminderAfterMinutes);
-        const reminderTimeStr = format(reminderTime, 'HH:mm:ss');
+        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
 
         if (currentTime >= reminderTimeStr) {
           // First check if they checked in
@@ -486,12 +486,12 @@ async function sendSecondCheckInReminder(
   lineAccessToken: string
 ) {
   const appUrl = Deno.env.get('APP_URL') || 'https://your-app.lovableproject.com';
-  const latestStartStr = format(latestStartTime, 'HH:mm');
+  const latestStartStr = formatBangkokTime(latestStartTime, 'HH:mm');
   const allowedEndStr = employee.allowed_work_end_time?.substring(0, 5) || '20:00';
   
   const privateMessage = `⚠️ แจ้งเตือนสำคัญ!\n\n` +
     `👤 คุณ${employee.full_name}\n` +
-    `⏰ ตอนนี้เวลา ${format(new Date(), 'HH:mm')}\n\n` +
+    `⏰ ตอนนี้เวลา ${formatBangkokTime(new Date(), 'HH:mm')}\n\n` +
     `📢 หากคุณยังไม่ Check-In ภายใน ${latestStartStr}\n` +
     `คุณจะไม่สามารถทำงานครบ ${employee.hours_per_day} ชั่วโมงได้\n` +
     `(เพราะสิ้นสุดการนับเวลาที่ ${allowedEndStr})\n\n` +

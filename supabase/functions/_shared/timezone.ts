@@ -8,7 +8,7 @@
  * to avoid timezone-related bugs in auto-checkout and reminder systems.
  */
 
-import { toZonedTime, fromZonedTime, format } from 'npm:date-fns-tz@3.2.0';
+import { toZonedTime, fromZonedTime, format, formatInTimeZone } from 'npm:date-fns-tz@3.2.0';
 import { parseISO, startOfDay, endOfDay, isAfter, isBefore, addMinutes, differenceInMinutes } from 'npm:date-fns@4.1.0';
 
 export const BANGKOK_TIMEZONE = 'Asia/Bangkok';
@@ -42,13 +42,14 @@ export function toUTC(bangkokDate: Date): Date {
 
 /**
  * Format date in Bangkok timezone
+ * FIXED: Use formatInTimeZone for single conversion (no double conversion)
  * @param date - Date to format
  * @param formatString - Format pattern (e.g., 'yyyy-MM-dd HH:mm:ss')
- * @returns Formatted string in Bangkok timezone
+ * @returns Formatted string in Bangkok timezone (24-hour format)
  */
 export function formatBangkokTime(date: Date | string, formatString: string = 'yyyy-MM-dd HH:mm:ss'): string {
-  const bangkokDate = toBangkokTime(date);
-  return format(bangkokDate, formatString, { timeZone: BANGKOK_TIMEZONE });
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  return formatInTimeZone(dateObj, BANGKOK_TIMEZONE, formatString);
 }
 
 /**
@@ -75,12 +76,13 @@ export function getBangkokEndOfDay(date?: Date | string): Date {
 
 /**
  * Get Bangkok date string in YYYY-MM-DD format
+ * FIXED: Use formatInTimeZone for single conversion
  * @param date - Optional date (defaults to now)
  * @returns Date string in Bangkok timezone
  */
 export function getBangkokDateString(date?: Date | string): string {
-  const bangkokDate = date ? toBangkokTime(date) : getBangkokNow();
-  return format(bangkokDate, 'yyyy-MM-dd', { timeZone: BANGKOK_TIMEZONE });
+  const dateObj = date ? (typeof date === 'string' ? parseISO(date) : date) : new Date();
+  return formatInTimeZone(dateObj, BANGKOK_TIMEZONE, 'yyyy-MM-dd');
 }
 
 /**
@@ -131,8 +133,9 @@ export function getDifferenceInMinutes(laterDate: Date | string, earlierDate: Da
 
 /**
  * Get Bangkok time components for logging
+ * FIXED: Use formatInTimeZone for single conversion (24-hour format)
  * @param date - Optional date (defaults to now)
- * @returns Object with Bangkok time components
+ * @returns Object with Bangkok time components in 24-hour format
  */
 export function getBangkokTimeComponents(date?: Date | string): {
   date: string;
@@ -140,12 +143,12 @@ export function getBangkokTimeComponents(date?: Date | string): {
   datetime: string;
   iso: string;
 } {
-  const bangkokDate = date ? toBangkokTime(date) : getBangkokNow();
+  const dateObj = date ? (typeof date === 'string' ? parseISO(date) : date) : new Date();
   
   return {
-    date: format(bangkokDate, 'yyyy-MM-dd', { timeZone: BANGKOK_TIMEZONE }),
-    time: format(bangkokDate, 'HH:mm:ss', { timeZone: BANGKOK_TIMEZONE }),
-    datetime: format(bangkokDate, 'yyyy-MM-dd HH:mm:ss', { timeZone: BANGKOK_TIMEZONE }),
-    iso: bangkokDate.toISOString(),
+    date: formatInTimeZone(dateObj, BANGKOK_TIMEZONE, 'yyyy-MM-dd'),
+    time: formatInTimeZone(dateObj, BANGKOK_TIMEZONE, 'HH:mm:ss'),
+    datetime: formatInTimeZone(dateObj, BANGKOK_TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+    iso: dateObj.toISOString(),
   };
 }
