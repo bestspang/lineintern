@@ -3203,6 +3203,7 @@ export type Database = {
           memory_type: string
         }[]
       }
+      has_admin_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -3259,6 +3260,7 @@ export type Database = {
         | "executive"
         | "manager"
         | "field"
+        | "owner"
       group_mode: "helper" | "faq" | "report" | "fun" | "safety" | "magic"
       group_status: "active" | "left" | "error" | "pending"
       knowledge_scope: "global" | "group"
@@ -3402,7 +3404,15 @@ export const Constants = {
         "rate_limit",
         "failed_reply",
       ],
-      app_role: ["admin", "moderator", "user", "executive", "manager", "field"],
+      app_role: [
+        "admin",
+        "moderator",
+        "user",
+        "executive",
+        "manager",
+        "field",
+        "owner",
+      ],
       group_mode: ["helper", "faq", "report", "fun", "safety", "magic"],
       group_status: ["active", "left", "error", "pending"],
       knowledge_scope: ["global", "group"],

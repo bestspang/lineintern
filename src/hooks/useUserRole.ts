@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'admin' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
+export type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
 
 interface MenuConfig {
   menu_group: string;
@@ -63,8 +63,8 @@ export function useUserRole() {
   });
 
   const canAccessMenuGroup = (menuGroup: string): boolean => {
-    // Admin can access everything
-    if (roleData === 'admin') return true;
+    // Admin and owner can access everything
+    if (roleData === 'admin' || roleData === 'owner') return true;
     
     // Default to true if menu config not loaded yet or empty
     if (!menuConfig || Object.keys(menuConfig).length === 0) {
@@ -75,10 +75,14 @@ export function useUserRole() {
     return menuConfig[menuGroup] ?? false;
   };
 
+  const hasFullAccess = roleData === 'admin' || roleData === 'owner';
+
   return {
     role: roleData,
     isLoading: isUserLoading || isRoleLoading || isMenuLoading,
     canAccessMenuGroup,
     isAdmin: roleData === 'admin',
+    isOwner: roleData === 'owner',
+    hasFullAccess,
   };
 }
