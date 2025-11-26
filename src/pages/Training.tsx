@@ -49,8 +49,11 @@ export default function Training() {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error('Error fetching training requests:', error);
+        return [];
+      }
+      return data || [];
     },
   });
 
@@ -254,9 +257,16 @@ export default function Training() {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-8 sm:py-12 text-muted-foreground p-3 sm:p-0">
-              <BookOpen className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-4 opacity-50" />
-              <p className="text-sm sm:text-base">No training requests found</p>
+            <div className="text-center py-12 px-4">
+              <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+              <p className="text-lg text-muted-foreground mb-2">No training requests found</p>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+                Training requests are created when users submit documents, URLs, or text for the bot to learn from. 
+                You can create knowledge items directly from the Knowledge Base page.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = '/knowledge-base'}>
+                Go to Knowledge Base
+              </Button>
             </div>
           )}
         </CardContent>
