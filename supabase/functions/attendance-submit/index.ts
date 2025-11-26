@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
 import { logger } from '../_shared/logger.ts';
 import { validateSchema, attendanceSubmitSchema } from '../_shared/validators.ts';
-import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
+import { formatBangkokTime, getBangkokDateString, getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,8 +77,8 @@ serve(async (req) => {
           );
         }
 
-        // Get today's check-in
-        const today = new Date().toISOString().split('T')[0];
+        // Get today's check-in (Bangkok date)
+        const today = getBangkokDateString();
         const { data: checkIns } = await supabase
           .from('attendance_logs')
           .select('server_time')
@@ -404,10 +404,10 @@ serve(async (req) => {
     }
 
     // Check for suspicious timing patterns
-    const currentTime = new Date();
-    const currentHour = currentTime.getUTCHours() + 7; // Bangkok time
-    const currentMinute = currentTime.getMinutes();
-    const currentSecond = currentTime.getSeconds();
+    const bangkokTime = getBangkokNow();
+    const currentHour = bangkokTime.getHours();
+    const currentMinute = bangkokTime.getMinutes();
+    const currentSecond = bangkokTime.getSeconds();
 
     // Check if time is too exact (e.g., 08:00:00 every day)
     if (currentSecond === 0 && currentMinute === 0) {
@@ -465,8 +465,8 @@ serve(async (req) => {
     let otPayAmount = 0;
 
     if (token.type === 'check_out') {
-      // Get today's check-in to calculate work hours
-      const today = new Date().toISOString().split('T')[0];
+      // Get today's check-in to calculate work hours (Bangkok date)
+      const today = getBangkokDateString();
       const { data: checkIns } = await supabase
         .from('attendance_logs')
         .select('server_time')

@@ -4,6 +4,7 @@
 
 import { supabase } from "./db-helpers.ts";
 import { logger } from "../../_shared/logger.ts";
+import { getBangkokDateString } from "../../_shared/timezone.ts";
 
 export interface RecentMessage {
   senderDisplayName: string;
@@ -140,7 +141,7 @@ export async function fetchAnalyticsSnapshot(
     const userCounts: Record<string, { displayName: string; count: number }> = {};
 
     messageStats?.forEach((msg: any) => {
-      const date = new Date(msg.sent_at).toISOString().split("T")[0];
+      const date = getBangkokDateString(msg.sent_at);
       messagesPerDay[date] = (messagesPerDay[date] || 0) + 1;
 
       if (msg.user_id && msg.users?.display_name) {
