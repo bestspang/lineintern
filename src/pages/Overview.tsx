@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageSquare, Users, CheckSquare, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 export default function Overview() {
   const { data: stats, isLoading } = useQuery({
@@ -28,6 +31,60 @@ export default function Overview() {
         unresolvedAlerts: alertsRes.count || 0,
       };
     },
+    refetchInterval: 60000, // Auto-refresh every 60 seconds
+  });
+
+  // Fetch recent unresolved alerts
+  const { data: recentAlerts, isLoading: alertsLoading } = useQuery({
+    queryKey: ['recent-alerts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('alerts')
+        .select('id, type, severity, summary, created_at, groups(display_name)')
+        .eq('resolved', false)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 60000,
+  });
+
+  // Check system health
+  const { data: systemHealth, isLoading: healthLoading } = useQuery({
+    queryKey: ['system-health'],
+    queryFn: async () => {
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      // Check recent message delivery failures
+      const { data: recentMessages, error: msgError } = await supabase
+        .from('bot_message_logs')
+        .select('delivery_status')
+        .gte('sent_at', fiveMinutesAgo.toISOString())
+        .order('sent_at', { ascending: false })
+        .limit(20);
+
+      if (msgError) {
+        return {
+          database: false,
+          webhook: false,
+          lineApi: false,
+        };
+      }
+
+      const failedMessages = recentMessages?.filter(m => m.delivery_status === 'failed').length || 0;
+      const totalMessages = recentMessages?.length || 0;
+      const successRate = totalMessages > 0 ? ((totalMessages - failedMessages) / totalMessages) : 1;
+
+      return {
+        database: true, // If we got here, DB is working
+        webhook: successRate > 0.8, // Webhook healthy if >80% success rate
+        lineApi: successRate > 0.8, // LINE API healthy if >80% success rate
+      };
+    },
+    refetchInterval: 30000, // Check health every 30 seconds
   });
 
   const statCards = [
@@ -98,9 +155,39 @@ export default function Overview() {
             <CardDescription className="text-xs sm:text-sm">Latest unresolved issues</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xs sm:text-sm text-muted-foreground">
-              No alerts to display
-            </div>
+            {alertsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            ) : recentAlerts && recentAlerts.length > 0 ? (
+              <div className="space-y-3">
+                {recentAlerts.map((alert) => (
+                  <div key={alert.id} className="border-l-2 border-primary pl-3 py-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant={alert.severity === 'high' ? 'destructive' : alert.severity === 'medium' ? 'default' : 'secondary'} className="text-[10px] sm:text-xs">
+                            {alert.severity}
+                          </Badge>
+                          <span className="text-[10px] sm:text-xs text-muted-foreground">
+                            {alert.type}
+                          </span>
+                        </div>
+                        <p className="text-xs sm:text-sm line-clamp-2">{alert.summary}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {format(toZonedTime(new Date(alert.created_at), 'Asia/Bangkok'), 'PPp', { locale: require('date-fns/locale/th').default })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs sm:text-sm text-muted-foreground">
+                ✅ No unresolved alerts
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -110,20 +197,28 @@ export default function Overview() {
             <CardDescription className="text-xs sm:text-sm">Bot health indicators</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm">Webhook Status</span>
-                <span className="h-2 w-2 rounded-full bg-green-500"></span>
+            {healthLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-full" />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm">Database</span>
-                <span className="h-2 w-2 rounded-full bg-green-500"></span>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm">Webhook Status</span>
+                  <span className={`h-2 w-2 rounded-full ${systemHealth?.webhook ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm">Database</span>
+                  <span className={`h-2 w-2 rounded-full ${systemHealth?.database ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm">LINE API</span>
+                  <span className={`h-2 w-2 rounded-full ${systemHealth?.lineApi ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm">LINE API</span>
-                <span className="h-2 w-2 rounded-full bg-green-500"></span>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
