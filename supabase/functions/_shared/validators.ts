@@ -30,7 +30,7 @@ export const otRequestSchema = z.object({
 // Early leave request validation
 export const earlyLeaveSchema = z.object({
   employee_id: z.string().uuid("Invalid employee ID"),
-  leave_type: z.enum(["personal", "sick", "vacation", "emergency", "other"]),
+  leave_type: z.enum(["personal", "sick", "emergency"]),
   leave_reason: z.string()
     .min(10, "Reason must be at least 10 characters")
     .max(500, "Reason too long (max 500 characters)"),
