@@ -297,14 +297,14 @@ export default function Memory() {
     },
   });
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ['memories'] });
       queryClient.invalidateQueries({ queryKey: ['working-memory'] });
       queryClient.invalidateQueries({ queryKey: ['memory-stats'] });
       setLastUpdated(new Date());
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [queryClient]);
   

@@ -79,12 +79,12 @@ export default function Summaries() {
   const [lastStats, setLastStats] = useState<SummaryStats | null>(null);
   const { toast } = useToast();
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchSummaries();
       setLastUpdated(new Date());
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 

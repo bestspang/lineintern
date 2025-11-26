@@ -19,11 +19,11 @@ export function useAdminRole() {
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
-        .eq('role', 'admin')
+        .in('role', ['admin', 'owner'])
         .maybeSingle();
       
       if (error) {
-        console.error('Error checking admin role:', error);
+        console.error('Error checking admin/owner role:', error);
         return false;
       }
       
