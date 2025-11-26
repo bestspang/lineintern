@@ -42,7 +42,14 @@ serve(async (req) => {
         )
       `)
       .eq('id', tokenId)
-      .single();
+      .maybeSingle();
+    
+    if (!token || !token.employee) {
+      return new Response(JSON.stringify({ valid: false, error: 'Token not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (tokenError || !token) {
       logger.warn('Token not found', { tokenId, error: tokenError });
@@ -93,7 +100,14 @@ serve(async (req) => {
     // Get effective settings
     const { data: settings } = await supabase
       .rpc('get_effective_attendance_settings', { p_employee_id: token.employee.id })
-      .single();
+      .maybeSingle();
+    
+    if (!settings) {
+      return new Response(JSON.stringify({ valid: false, error: 'Settings not found' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     return new Response(
       JSON.stringify({

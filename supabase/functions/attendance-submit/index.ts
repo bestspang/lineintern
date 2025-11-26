@@ -68,7 +68,7 @@ serve(async (req) => {
           .eq('id', tokenId)
           .eq('status', 'pending')
           .eq('type', 'check_out')
-          .single();
+          .maybeSingle();
 
         if (tokenError || !token) {
           return new Response(
@@ -175,8 +175,8 @@ serve(async (req) => {
       `)
       .eq('id', claimedToken.employee_id)
       .eq('branch.is_deleted', false)
-      .single();
-
+      .maybeSingle();
+    
     if (empError || !fullEmployee) {
       logger.error('Failed to fetch employee data', empError);
       return new Response(
@@ -226,7 +226,14 @@ serve(async (req) => {
     // Get settings
     const { data: settings } = await supabase
       .rpc('get_effective_attendance_settings', { p_employee_id: token.employee.id })
-      .single();
+      .maybeSingle();
+    
+    if (!settings) {
+      return new Response(JSON.stringify({ error: 'Failed to fetch attendance settings' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const effectiveSettings = settings as { 
       enable_attendance?: boolean;
@@ -602,9 +609,9 @@ serve(async (req) => {
         is_remote_checkin: isRemoteCheckin,
       })
       .select()
-      .single();
-
-    if (logError) {
+      .maybeSingle();
+    
+    if (logError || !logData) {
       console.error('Log insert error:', logError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to record attendance' }),

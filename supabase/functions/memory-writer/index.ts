@@ -123,7 +123,7 @@ async function checkMemorySettings(
     .from("memory_settings")
     .select("memory_enabled")
     .eq("scope", "global")
-    .single();
+    .maybeSingle();
 
   if (!globalSettings?.memory_enabled) return false;
 
@@ -157,7 +157,7 @@ async function checkUserOptOut(userId: string): Promise<boolean> {
     .from("users")
     .select("memory_opt_out")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   return data?.memory_opt_out || false;
 }
@@ -310,7 +310,7 @@ async function enforceMemoryLimits(userId: string, groupId: string) {
     .from("memory_settings")
     .select("*")
     .eq("scope", "global")
-    .single();
+    .maybeSingle();
 
   if (!settings) return;
 

@@ -89,7 +89,14 @@ serve(async (req) => {
         )
       `)
       .eq('id', employee_id)
-      .single();
+      .maybeSingle();
+    
+    if (!employee) {
+      return new Response(JSON.stringify({ error: 'Employee not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (empError || !employee) {
       return new Response(
@@ -195,9 +202,9 @@ serve(async (req) => {
         requested_at: now.toISOString()
       })
       .select()
-      .single();
-
-    if (insertError) {
+      .maybeSingle();
+    
+    if (insertError || !leaveRequest) {
       console.error('[early-checkout-request] Insert error:', insertError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to create request' }),
