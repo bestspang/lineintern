@@ -332,22 +332,57 @@ Deno.serve(async (req) => {
     let commandType = "ask";
     let cleanedMessage = sanitizedMessage;
 
-    if (sanitizedMessage.toLowerCase().startsWith("/summary")) {
+    const lowerMessage = sanitizedMessage.toLowerCase();
+    
+    if (lowerMessage.startsWith("/summary") || lowerMessage.startsWith("/สรุป")) {
       commandType = "summary";
-      cleanedMessage = sanitizedMessage.substring(8).trim();
-    } else if (sanitizedMessage.toLowerCase().startsWith("/faq")) {
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/summary") ? 8 : 5).trim();
+    } else if (lowerMessage.startsWith("/faq") || lowerMessage.startsWith("/ถามตอบ")) {
       commandType = "faq";
-      cleanedMessage = sanitizedMessage.substring(4).trim();
-    } else if (sanitizedMessage.toLowerCase().startsWith("/todo")) {
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/faq") ? 4 : 8).trim();
+    } else if (lowerMessage.startsWith("/todo")) {
       commandType = "todo";
       cleanedMessage = sanitizedMessage.substring(5).trim();
-    } else if (sanitizedMessage.toLowerCase().startsWith("/report")) {
+    } else if (lowerMessage.startsWith("/report") || lowerMessage.startsWith("/รายงาน")) {
       commandType = "report";
-      cleanedMessage = sanitizedMessage.substring(7).trim();
-    } else if (sanitizedMessage.toLowerCase().startsWith("/help")) {
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/report") ? 7 : 8).trim();
+    } else if (lowerMessage.startsWith("/help") || lowerMessage.startsWith("/ช่วยเหลือ")) {
       commandType = "help";
-      cleanedMessage = sanitizedMessage.substring(5).trim();
-    } else if (sanitizedMessage.toLowerCase().startsWith("@intern")) {
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/help") ? 5 : 10).trim();
+    } else if (lowerMessage.startsWith("/find") || lowerMessage.startsWith("/ค้นหา")) {
+      commandType = "find";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/find") ? 5 : 6).trim();
+    } else if (lowerMessage.startsWith("/mentions")) {
+      commandType = "mentions";
+      cleanedMessage = sanitizedMessage.substring(9).trim();
+    } else if (lowerMessage.startsWith("/tasks")) {
+      commandType = "tasks";
+      cleanedMessage = sanitizedMessage.substring(6).trim();
+    } else if (lowerMessage.startsWith("/remind") || lowerMessage.startsWith("/เตือน")) {
+      commandType = "remind";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/remind") ? 7 : 6).trim();
+    } else if (lowerMessage.startsWith("/reminders")) {
+      commandType = "reminders";
+      cleanedMessage = sanitizedMessage.substring(10).trim();
+    } else if (lowerMessage.startsWith("/status")) {
+      commandType = "status";
+      cleanedMessage = sanitizedMessage.substring(7).trim();
+    } else if (lowerMessage.startsWith("/train") || lowerMessage.startsWith("/เทรน")) {
+      commandType = "train";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/train") ? 6 : 5).trim();
+    } else if (lowerMessage.startsWith("/progress")) {
+      commandType = "progress";
+      cleanedMessage = sanitizedMessage.substring(9).trim();
+    } else if (lowerMessage.startsWith("/confirm")) {
+      commandType = "confirm";
+      cleanedMessage = sanitizedMessage.substring(8).trim();
+    } else if (lowerMessage.startsWith("/ot") || lowerMessage.startsWith("/โอที")) {
+      commandType = "ot";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/ot") ? 3 : 5).trim();
+    } else if (lowerMessage.startsWith("/menu") || lowerMessage === "เมนู") {
+      commandType = "menu";
+      cleanedMessage = "";
+    } else if (lowerMessage.startsWith("@intern")) {
       commandType = "ask";
       cleanedMessage = sanitizedMessage.substring(7).trim();
     }
