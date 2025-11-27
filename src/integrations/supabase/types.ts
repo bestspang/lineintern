@@ -3244,6 +3244,10 @@ export type Database = {
         }[]
       }
       soft_delete_branch: { Args: { p_branch_id: string }; Returns: Json }
+      update_cron_job_command: {
+        Args: { p_command: string; p_jobid: number }
+        Returns: boolean
+      }
     }
     Enums: {
       alert_severity: "low" | "medium" | "high"

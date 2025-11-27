@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { 
+  getBangkokNow, 
+  toBangkokTime, 
+  toUTC,
+  BANGKOK_TIMEZONE 
+} from "../_shared/timezone.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -9,7 +15,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 serve(async (req) => {
@@ -35,8 +41,10 @@ serve(async (req) => {
     // Find all pending tasks that are due now or overdue
     // Use UTC for all time comparisons
     const now = new Date();
+    const bangkokNow = getBangkokNow();
     
     console.log(`[task-scheduler] 🕐 Current time (UTC): ${now.toISOString()}`);
+    console.log(`[task-scheduler] 🕐 Current time (Bangkok): ${bangkokNow.toISOString()}`);
     console.log(`[task-scheduler] 🔍 Checking tasks due before: ${now.toISOString()}`);
 
     const { data: dueTasks, error: fetchError } = await supabase
@@ -294,7 +302,7 @@ serve(async (req) => {
         try {
           console.log(`[task-scheduler] Processing recurring task ${task.id}: ${task.title}`);
           
-          // Calculate next occurrence
+          // Calculate next occurrence using proper timezone handling
           const nextOccurrence = calculateNextOccurrence(
             task.recurrence_pattern,
             task.recurrence_time,
@@ -382,20 +390,19 @@ serve(async (req) => {
   }
 });
 
-// Helper for calculating next occurrence
+// Helper for calculating next occurrence using proper Bangkok timezone
 function calculateNextOccurrence(
   pattern: string,
   time: string,
   dayOfWeek: number | null,
   dayOfMonth: number | null
 ): Date {
-  const now = new Date();
-  const bangkokOffset = 7 * 60 * 60 * 1000;
-  const localOffset = now.getTimezoneOffset() * 60 * 1000;
-  const bangkokNow = new Date(now.getTime() + bangkokOffset + localOffset);
+  // Use shared timezone utility for consistent Bangkok time handling
+  const bangkokNow = getBangkokNow();
   
   const [hours, minutes] = time.split(':').map(Number);
   
+  // Create date in Bangkok timezone
   let next = new Date(bangkokNow);
   next.setHours(hours, minutes, 0, 0);
   
@@ -425,11 +432,13 @@ function calculateNextOccurrence(
         next.setMonth(next.getMonth() + 1);
       }
       
+      // Handle edge case where day doesn't exist in month
       while (next.getDate() !== dayOfMonth!) {
         next.setDate(0);
       }
       break;
   }
   
-  return new Date(next.getTime() - bangkokOffset - localOffset);
+  // Convert back to UTC for storage
+  return toUTC(next);
 }
