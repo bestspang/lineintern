@@ -7257,9 +7257,27 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // PHASE 4: Handle /tasks command - list work assignments for a user
+  /**
+   * Handle /tasks command
+   * - /tasks (no @user) → Show all pending tasks for the group
+   * - /tasks @user → Show pending tasks for specific user
+   */
   if (parsed.commandType === 'tasks') {
-    await handleTasksCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    const mentionMatch = parsed.userMessage.match(/@(\w+)/);
+    
+    if (mentionMatch) {
+      // Has @user → show tasks for specific user
+      await handleTasksCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    } else {
+      // No @user → show all pending tasks for the group
+      const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+      const result = await detectAndHandleRemindersList(
+        event.message.text,
+        group.id,
+        locale
+      );
+      await replyToLine(event.replyToken, result.message);
+    }
     return;
   }
 
@@ -7275,31 +7293,9 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // PHASE 7: Handle /tasks command (includes urgency check)
-  if (parsed.commandType === 'tasks') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const reminderResult = await detectAndHandleRemindersList(
-      event.message.text,
-      group.id,
-      locale
-    );
-    if (reminderResult.detected) {
-      await replyToLine(event.replyToken, reminderResult.message);
-    } else {
-      await handleTasksCommand(group.id, user.id, parsed.userMessage, event.replyToken);
-    }
-    return;
-  }
-
   // PHASE 7: Handle /reminders command (reminder schedules)
   if (parsed.commandType === 'list_reminders') {
     await handleRemindersCommand(group.id, event.replyToken);
-    return;
-  }
-
-  // PHASE 7: Handle /remind command (create new reminder)
-  if (parsed.commandType === 'remind') {
-    await handleRemindCommand(parsed.userMessage, group.id, user.id, event.replyToken);
     return;
   }
 
@@ -7338,11 +7334,6 @@ async function handleMessageEvent(event: LineEvent) {
     }
   }
 
-  // PHASE 2: Handle explicit /list_reminders command (already handled via /reminders above)
-  if (parsed.commandType === 'list_reminders') {
-    await handleRemindersCommand(group.id, event.replyToken);
-    return;
-  }
 
   // PHASE 2: Handle /confirm with feedback command
   if (parsed.commandType === 'confirm_with_feedback') {
