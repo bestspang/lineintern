@@ -1,9 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
-import { format, addMinutes, startOfDay, endOfDay } from 'https://esm.sh/date-fns@4.1.0';
+import { addMinutes } from 'https://esm.sh/date-fns@4.1.0';
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
 import { logBotMessage } from '../_shared/bot-logger.ts';
-import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
+import { formatBangkokTime, getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -95,24 +95,35 @@ Deno.serve(async (req) => {
       const workingTimeType = employee.working_time_type || 'time_based';
 
       // SOFT CHECK-IN REMINDER for hours_based
+      // FIX: Use string-based time comparison instead of setHours() to avoid timezone issues
       if (workingTimeType === 'hours_based' && prefs.soft_checkin_reminder_enabled && employee.preferred_start_time) {
-        const preferredStartTime = employee.preferred_start_time;
+        const preferredStartTime = employee.preferred_start_time; // "09:00:00" format
         const reminderMinutesBefore = prefs.soft_checkin_reminder_minutes_before || 15;
         
+        // Parse the time string and calculate reminder time using string arithmetic
         const [hour, minute] = preferredStartTime.split(':').map(Number);
-        const preferredStart = new Date(now);
-        preferredStart.setHours(hour, minute, 0, 0);
-        const reminderTime = addMinutes(preferredStart, -reminderMinutesBefore);
-        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
+        let reminderHour = hour;
+        let reminderMinute = minute - reminderMinutesBefore;
         
-        if (currentTime >= reminderTimeStr && currentTime < formatBangkokTime(preferredStart, 'HH:mm:ss')) {
+        // Handle minute underflow
+        if (reminderMinute < 0) {
+          reminderHour -= Math.ceil(Math.abs(reminderMinute) / 60);
+          reminderMinute = 60 + (reminderMinute % 60);
+          if (reminderMinute === 60) reminderMinute = 0;
+        }
+        if (reminderHour < 0) reminderHour += 24;
+        
+        const reminderTimeStr = `${String(reminderHour).padStart(2, '0')}:${String(reminderMinute).padStart(2, '0')}:00`;
+        const preferredTimeStr = preferredStartTime.substring(0, 8); // Ensure HH:mm:ss format
+        
+        if (currentTime >= reminderTimeStr && currentTime < preferredTimeStr) {
           const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
           
           if (!hasCheckedIn) {
             const reminderSent = await hasReminderSentToday(supabase, employee.id, 'soft_check_in', today);
             
             if (!reminderSent) {
-              console.log(`[reminder] Sending soft check-in reminder to ${employee.full_name}`);
+              console.log(`[reminder] Sending soft check-in reminder to ${employee.full_name} (current: ${currentTime}, window: ${reminderTimeStr}-${preferredTimeStr})`);
               await sendSoftCheckInReminder(employee, prefs.notification_type, lineAccessToken);
               await logReminder(supabase, employee.id, 'soft_check_in', today, prefs.notification_type);
               checkInReminders++;
@@ -122,22 +133,41 @@ Deno.serve(async (req) => {
       }
 
       // SECOND CHECK-IN REMINDER for hours_based (before allowed_work_end_time)
+      // FIX: Use string-based time calculation instead of setHours() to avoid timezone issues
       if (workingTimeType === 'hours_based' && prefs.second_checkin_reminder_enabled && employee.enable_second_checkin_reminder) {
         const allowedWorkEndTime = employee.allowed_work_end_time;
         const hoursPerDay = employee.hours_per_day || 8;
         const breakHours = employee.break_hours || 1;
         
         if (allowedWorkEndTime) {
+          // Parse end time and calculate latest start time using string arithmetic
           const [endHour, endMinute] = allowedWorkEndTime.split(':').map(Number);
-          const workEnd = new Date(now);
-          workEnd.setHours(endHour, endMinute, 0, 0);
-          
           const totalMinutes = (hoursPerDay + breakHours) * 60;
-          const latestStartTime = addMinutes(workEnd, -totalMinutes);
-          const latestStartTimeStr = formatBangkokTime(latestStartTime, 'HH:mm:ss');
           
-          const secondReminderTime = addMinutes(latestStartTime, -15);
-          const secondReminderTimeStr = formatBangkokTime(secondReminderTime, 'HH:mm:ss');
+          // Calculate latest start time by subtracting totalMinutes from end time
+          let latestStartHour = endHour;
+          let latestStartMinute = endMinute - (totalMinutes % 60);
+          latestStartHour -= Math.floor(totalMinutes / 60);
+          
+          if (latestStartMinute < 0) {
+            latestStartHour -= 1;
+            latestStartMinute += 60;
+          }
+          if (latestStartHour < 0) latestStartHour += 24;
+          
+          const latestStartTimeStr = `${String(latestStartHour).padStart(2, '0')}:${String(latestStartMinute).padStart(2, '0')}:00`;
+          
+          // Calculate second reminder time (15 minutes before latest start)
+          let reminderHour = latestStartHour;
+          let reminderMinute = latestStartMinute - 15;
+          
+          if (reminderMinute < 0) {
+            reminderHour -= 1;
+            reminderMinute += 60;
+          }
+          if (reminderHour < 0) reminderHour += 24;
+          
+          const secondReminderTimeStr = `${String(reminderHour).padStart(2, '0')}:${String(reminderMinute).padStart(2, '0')}:00`;
           
           if (currentTime >= secondReminderTimeStr && currentTime < latestStartTimeStr) {
             const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
@@ -146,8 +176,10 @@ Deno.serve(async (req) => {
               const reminderSent = await hasReminderSentToday(supabase, employee.id, 'second_check_in', today);
               
               if (!reminderSent) {
-                console.log(`[reminder] Sending second check-in reminder to ${employee.full_name}`);
-                await sendSecondCheckInReminder(employee, latestStartTime, prefs.notification_type, lineAccessToken);
+                console.log(`[reminder] Sending second check-in reminder to ${employee.full_name} (current: ${currentTime}, latest: ${latestStartTimeStr})`);
+                // Create a proper Date for the message by constructing it correctly
+                const latestStartDate = new Date(`${today}T${latestStartTimeStr}+07:00`);
+                await sendSecondCheckInReminder(employee, latestStartDate, prefs.notification_type, lineAccessToken);
                 await logReminder(supabase, employee.id, 'second_check_in', today, prefs.notification_type);
                 checkInReminders++;
               }
@@ -157,21 +189,29 @@ Deno.serve(async (req) => {
       }
 
       // CHECK-IN REMINDER LOGIC (only for time_based employees)
+      // FIX: Use string-based time calculation instead of setHours() to avoid timezone issues
       if (workingTimeType === 'time_based' && prefs.check_in_reminder_enabled) {
         // Skip if no shift start time defined
         if (!employee.shift_start_time) {
           continue;
         }
 
-        const shiftStartTime = employee.shift_start_time;
+        const shiftStartTime = employee.shift_start_time; // "09:00:00" format
         const gracePeriodMinutes = prefs.grace_period_minutes || 15;
         
-        // Parse shift start time and add grace period
+        // Calculate reminder time using string arithmetic
         const [startHour, startMinute] = shiftStartTime.split(':').map(Number);
-        const shiftStart = new Date(now);
-        shiftStart.setHours(startHour, startMinute, 0, 0);
-        const reminderTime = addMinutes(shiftStart, gracePeriodMinutes);
-        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
+        let reminderHour = startHour;
+        let reminderMinute = startMinute + gracePeriodMinutes;
+        
+        // Handle minute overflow
+        if (reminderMinute >= 60) {
+          reminderHour += Math.floor(reminderMinute / 60);
+          reminderMinute = reminderMinute % 60;
+        }
+        if (reminderHour >= 24) reminderHour -= 24;
+        
+        const reminderTimeStr = `${String(reminderHour).padStart(2, '0')}:${String(reminderMinute).padStart(2, '0')}:00`;
 
         console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_start=${shiftStartTime}, reminder_time=${reminderTimeStr}, current=${currentTime}`);
 
@@ -184,7 +224,7 @@ Deno.serve(async (req) => {
             const reminderSent = await hasReminderSentToday(supabase, employee.id, 'check_in', today);
             
             if (!reminderSent) {
-              console.log(`[attendance-reminder] Sending check-in reminder to ${employee.full_name}`);
+              console.log(`[attendance-reminder] Sending check-in reminder to ${employee.full_name} (current: ${currentTime} >= ${reminderTimeStr})`);
               await sendCheckInReminder(employee, prefs.notification_type, lineAccessToken);
               await logReminder(supabase, employee.id, 'check_in', today, prefs.notification_type);
               checkInReminders++;
@@ -307,18 +347,23 @@ Deno.serve(async (req) => {
 });
 
 // Helper function: Check if employee checked in today
+// FIX: Use proper UTC boundaries for Bangkok day to avoid missing early morning records
 async function hasEmployeeCheckedInToday(
   supabase: any,
   employeeId: string,
   date: string
 ): Promise<boolean> {
+  // Convert Bangkok date string to proper UTC boundaries
+  const startOfDay = getBangkokStartOfDay(new Date(`${date}T12:00:00+07:00`));
+  const endOfDay = getBangkokEndOfDay(new Date(`${date}T12:00:00+07:00`));
+  
   const { data, error } = await supabase
     .from('attendance_logs')
     .select('id')
     .eq('employee_id', employeeId)
     .eq('event_type', 'check_in')
-    .gte('server_time', `${date}T00:00:00`)
-    .lte('server_time', `${date}T23:59:59`)
+    .gte('server_time', startOfDay.toISOString())
+    .lte('server_time', endOfDay.toISOString())
     .limit(1);
 
   if (error) {
@@ -330,18 +375,22 @@ async function hasEmployeeCheckedInToday(
 }
 
 // Helper function: Check if employee checked out today
+// FIX: Use proper UTC boundaries for Bangkok day
 async function hasEmployeeCheckedOutToday(
   supabase: any,
   employeeId: string,
   date: string
 ): Promise<boolean> {
+  const startOfDay = getBangkokStartOfDay(new Date(`${date}T12:00:00+07:00`));
+  const endOfDay = getBangkokEndOfDay(new Date(`${date}T12:00:00+07:00`));
+  
   const { data, error } = await supabase
     .from('attendance_logs')
     .select('id')
     .eq('employee_id', employeeId)
     .eq('event_type', 'check_out')
-    .gte('server_time', `${date}T00:00:00`)
-    .lte('server_time', `${date}T23:59:59`)
+    .gte('server_time', startOfDay.toISOString())
+    .lte('server_time', endOfDay.toISOString())
     .limit(1);
 
   if (error) {
@@ -353,18 +402,22 @@ async function hasEmployeeCheckedOutToday(
 }
 
 // Helper function: Get employee's check-in time today (for hours_based calculation)
+// FIX: Use proper UTC boundaries for Bangkok day
 async function getEmployeeCheckInTime(
   supabase: any,
   employeeId: string,
   date: string
 ): Promise<string | null> {
+  const startOfDay = getBangkokStartOfDay(new Date(`${date}T12:00:00+07:00`));
+  const endOfDay = getBangkokEndOfDay(new Date(`${date}T12:00:00+07:00`));
+  
   const { data, error } = await supabase
     .from('attendance_logs')
     .select('server_time')
     .eq('employee_id', employeeId)
     .eq('event_type', 'check_in')
-    .gte('server_time', `${date}T00:00:00`)
-    .lte('server_time', `${date}T23:59:59`)
+    .gte('server_time', startOfDay.toISOString())
+    .lte('server_time', endOfDay.toISOString())
     .order('server_time', { ascending: true })
     .limit(1);
 

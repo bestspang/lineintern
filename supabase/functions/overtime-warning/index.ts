@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
-import { getBangkokDateString, formatBangkokTime } from '../_shared/timezone.ts';
+import { getBangkokDateString, formatBangkokTime, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,9 +36,12 @@ serve(async (req) => {
 
     const today = getBangkokDateString();
     const now = new Date();
-    console.log(`[overtime-warning] Current time (Bangkok): ${formatBangkokTime(now)}`);
+    const startOfDay = getBangkokStartOfDay();
+    const endOfDay = getBangkokEndOfDay();
+    console.log(`[overtime-warning] Current time (Bangkok): ${formatBangkokTime(now)}, date range: ${startOfDay.toISOString()} - ${endOfDay.toISOString()}`);
 
     // Get all employees who are currently checked in
+    // FIX: Use proper UTC boundaries for Bangkok day
     const { data: currentlyCheckedIn, error: fetchError } = await supabase
       .from('attendance_logs')
       .select(`
@@ -58,7 +61,8 @@ serve(async (req) => {
         )
       `)
       .eq('event_type', 'check_in')
-      .gte('server_time', `${today}T00:00:00`)
+      .gte('server_time', startOfDay.toISOString())
+      .lte('server_time', endOfDay.toISOString())
       .order('server_time', { ascending: false });
 
     if (fetchError) {
@@ -92,13 +96,14 @@ serve(async (req) => {
       if (!employee || !employee.line_user_id) continue;
 
       // Check if they have checked out after this check-in
+      // FIX: Use proper UTC boundaries for Bangkok day
       const { data: checkOuts } = await supabase
         .from('attendance_logs')
         .select('server_time')
         .eq('employee_id', empId)
         .eq('event_type', 'check_out')
         .gt('server_time', checkInLog.server_time)
-        .gte('server_time', `${today}T00:00:00`)
+        .gte('server_time', startOfDay.toISOString())
         .order('server_time', { ascending: false })
         .limit(1);
 
