@@ -7080,22 +7080,8 @@ async function handleMessageEvent(event: LineEvent) {
     }
   }
 
-  // PHASE 2.9: List Pending Reminders (runs for EVERY message)
-  if (!isDM) {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const remindersResult = await detectAndHandleRemindersList(event.message.text, group.id, locale);
-    
-    if (remindersResult.detected) {
-      console.log(`[handleMessageEvent] Detected reminders list command for group ${group.id}`);
-      try {
-        await replyToLine(event.replyToken, remindersResult.message);
-        console.log('[handleMessageEvent] Sent reminders list');
-        return; // Don't continue to AI response since we already replied
-      } catch (error) {
-        console.error('[handleMessageEvent] Error sending reminders list:', error);
-      }
-    }
-  }
+  // PHASE 2.9: REMOVED - Pattern-based reminder detection
+  // Now handled via command routing (see PHASE 7 for /tasks and /reminders)
 
   // PHASE 2.95: Attendance Command Detection (DM only)
   if (isDM) {
@@ -7289,9 +7275,31 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // PHASE 7: Handle /reminders command
-  if (parsed.commandType === 'reminders') {
+  // PHASE 7: Handle /tasks command (includes urgency check)
+  if (parsed.commandType === 'tasks') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const reminderResult = await detectAndHandleRemindersList(
+      event.message.text,
+      group.id,
+      locale
+    );
+    if (reminderResult.detected) {
+      await replyToLine(event.replyToken, reminderResult.message);
+    } else {
+      await handleTasksCommand(group.id, user.id, parsed.userMessage, event.replyToken);
+    }
+    return;
+  }
+
+  // PHASE 7: Handle /reminders command (reminder schedules)
+  if (parsed.commandType === 'list_reminders') {
     await handleRemindersCommand(group.id, event.replyToken);
+    return;
+  }
+
+  // PHASE 7: Handle /remind command (create new reminder)
+  if (parsed.commandType === 'remind') {
+    await handleRemindCommand(parsed.userMessage, group.id, user.id, event.replyToken);
     return;
   }
 

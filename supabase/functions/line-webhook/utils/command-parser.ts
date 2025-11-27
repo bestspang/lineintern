@@ -3,7 +3,10 @@
 // =============================
 
 export interface ParsedCommand {
-  commandType: 'ask' | 'summary' | 'faq' | 'todo' | 'report' | 'help' | 'tasks' | 'checkin' | 'checkout' | 'work' | null;
+  commandType: 'ask' | 'summary' | 'faq' | 'todo' | 'report' | 'help' | 'tasks' 
+    | 'checkin' | 'checkout' | 'work' | 'remind' | 'list_reminders' 
+    | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
+    | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | null;
   userQuestion: string;
   rawText: string;
   isMentioned: boolean;
@@ -41,6 +44,33 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/checkout': 'checkout',
     '/ออกงาน': 'checkout',
     '/work': 'work',
+    '/remind': 'remind',
+    '/ตั้งเตือน': 'remind',
+    '/reminders': 'list_reminders',
+    '/reminder': 'list_reminders',
+    '/เตือน': 'list_reminders',
+    '/mentions': 'mentions',
+    '/แท็ก': 'mentions',
+    '/imagine': 'imagine',
+    '/วาดรูป': 'imagine',
+    '/สร้างภาพ': 'imagine',
+    '/mode': 'mode',
+    '/โหมด': 'mode',
+    '/status': 'status',
+    '/สถานะ': 'status',
+    '/progress': 'progress_report',
+    '/อัพเดท': 'progress_report',
+    '/ความคืบหน้า': 'progress_report',
+    '/confirm': 'confirm_with_feedback',
+    '/ยืนยัน': 'confirm_with_feedback',
+    '/find': 'find',
+    '/ค้นหา': 'find',
+    '/train': 'train',
+    '/ฝึก': 'train',
+    '/ot': 'ot',
+    '/ทำล่วงเวลา': 'ot',
+    '/menu': 'menu',
+    '/เมนู': 'menu',
   };
   
   let commandType: ParsedCommand['commandType'] = null;
