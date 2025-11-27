@@ -89,3 +89,9 @@ verify_jwt = false
 
 [functions.refresh-member-count]
 verify_jwt = false
+
+[functions.backfill-work-sessions]
+verify_jwt = false
+
+[functions.employee-menu-validate]
+verify_jwt = false
