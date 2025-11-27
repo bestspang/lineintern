@@ -119,26 +119,41 @@ export default function AttendanceSummaries() {
     }
   });
 
-  // Fetch daily summaries (all_branches scope for live dashboard)
+  // Fetch daily summaries (all scopes, prioritize all_branches)
   const { data: dailySummaries, isLoading: loadingDaily } = useQuery({
     queryKey: ['daily-summaries', dateRange],
     queryFn: async () => {
       let query = supabase
         .from('daily_attendance_summaries')
-        .select('*')
-        .eq('scope', 'all_branches')
+        .select('*, branches(name)')
         .order('summary_date', { ascending: false });
       
       if (dateRange?.from && dateRange?.to) {
         query = query.gte('summary_date', format(dateRange.from, 'yyyy-MM-dd'))
                      .lte('summary_date', format(dateRange.to, 'yyyy-MM-dd'));
       } else {
-        query = query.limit(30);
+        query = query.limit(100); // More records since multiple scopes per day
       }
       
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      
+      // Group by date and prioritize all_branches scope
+      const summaryByDate = new Map<string, any>();
+      
+      for (const summary of data || []) {
+        const date = summary.summary_date;
+        const existing = summaryByDate.get(date);
+        
+        // Use all_branches if available, otherwise keep existing (per_branch)
+        if (!existing || summary.scope === 'all_branches') {
+          summaryByDate.set(date, summary);
+        }
+      }
+      
+      // Convert back to array sorted by date
+      return Array.from(summaryByDate.values())
+        .sort((a, b) => new Date(b.summary_date).getTime() - new Date(a.summary_date).getTime());
     },
     refetchInterval: 60000 // Auto-refresh every 1 minute
   });
@@ -1109,13 +1124,22 @@ export default function AttendanceSummaries() {
                   <CardHeader className="p-4">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base">
-                        📊 สรุปรวมทุกสาขา - {format(new Date(summary.summary_date), 'dd MMM yyyy')}
+                        {summary.scope === 'all_branches' 
+                          ? `📊 สรุปรวมทุกสาขา - ${format(new Date(summary.summary_date), 'dd MMM yyyy')}`
+                          : `📍 ${summary.branches?.name || 'Branch'} - ${format(new Date(summary.summary_date), 'dd MMM yyyy')}`}
                       </CardTitle>
-                      {summary.updated_at && (
-                        <Badge variant="outline" className="text-xs">
-                          อัพเดท: {format(new Date(summary.updated_at), 'HH:mm')}
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {summary.scope === 'all_branches' && (
+                          <Badge variant="default" className="text-xs">
+                            Live
+                          </Badge>
+                        )}
+                        {summary.updated_at && (
+                          <Badge variant="outline" className="text-xs">
+                            อัพเดท: {format(new Date(summary.updated_at), 'HH:mm')}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-muted-foreground mt-2">
                       <div className="flex items-center gap-1">
