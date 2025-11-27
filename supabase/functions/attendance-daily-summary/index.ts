@@ -380,10 +380,23 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const today = getBangkokDateString(new Date());
-    const currentTime = formatBangkokTime(new Date(), 'HH:mm');
+    // Parse request body for manual triggers
+    let targetDate: string | null = null;
+    let forceSend = false;
+    
+    try {
+      const body = await req.json();
+      targetDate = body.target_date || null;
+      forceSend = body.force_send === true;
+    } catch {
+      // No body or invalid JSON - use defaults
+    }
 
-    console.log(`[Daily Summary] Running at ${currentTime} for date ${today}`);
+    const today = targetDate || getBangkokDateString(new Date());
+    const currentTime = formatBangkokTime(new Date(), 'HH:mm');
+    const isManualTrigger = !!targetDate || forceSend;
+
+    console.log(`[Daily Summary] Running at ${currentTime} for date ${today}${isManualTrigger ? ' (MANUAL TRIGGER)' : ''}`);
 
     // Get enabled delivery configs
     const { data: configs, error: configError } = await supabase
@@ -412,7 +425,8 @@ serve(async (req) => {
       const configTime = config.send_time?.substring(0, 5); // "21:00"
       
       // Check if current time matches config send_time (±20 minutes window)
-      if (configTime && !isWithinTimeWindow(currentTime, configTime, 20)) {
+      // Skip time check for manual triggers
+      if (!isManualTrigger && configTime && !isWithinTimeWindow(currentTime, configTime, 20)) {
         console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 20min of ${configTime}`);
         skippedCount++;
         continue;
