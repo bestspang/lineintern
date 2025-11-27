@@ -47,6 +47,7 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/find': 'find',
     '/search': 'find',
     '/ค้นหา': 'find',
+    'ค้นหา': 'find',  // non-slash natural language
     '/train': 'train',
     '/ฝึก': 'train',
     '/เทรน': 'train',
@@ -57,6 +58,7 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/summarize': 'summary',
     '/สรุป': 'summary',
     'สรุป': 'summary',
+    'สรุปหน่อย': 'summary',  // non-slash natural language
     '/report': 'report',
     '/รายงาน': 'report',
     
@@ -70,6 +72,8 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/reminders': 'list_reminders',
     '/reminder': 'list_reminders',
     '/เตือน': 'list_reminders',
+    'reminders': 'list_reminders',  // non-slash natural language
+    'เตือน': 'list_reminders',  // non-slash natural language
     
     // Work Management
     '/work': 'work',

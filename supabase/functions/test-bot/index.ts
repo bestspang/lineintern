@@ -328,65 +328,117 @@ Deno.serve(async (req) => {
       dbUserId = newUser.id;
     }
 
-    // Parse command (use sanitized message)
+    // Parse command (use sanitized message) - comprehensive alias support
     let commandType = "ask";
     let cleanedMessage = sanitizedMessage;
 
     const lowerMessage = sanitizedMessage.toLowerCase();
     
-    if (lowerMessage.startsWith("/summary") || lowerMessage.startsWith("/สรุป")) {
-      commandType = "summary";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/summary") ? 8 : 5).trim();
-    } else if (lowerMessage.startsWith("/faq") || lowerMessage.startsWith("/ถามตอบ")) {
+    // Core commands
+    if (lowerMessage.startsWith("/help") || lowerMessage.startsWith("/ช่วยเหลือ")) {
+      commandType = "help";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/help") ? 5 : 10).trim();
+    } else if (lowerMessage.startsWith("/status") || lowerMessage.startsWith("/สถานะ")) {
+      commandType = "status";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/status") ? 7 : 7).trim();
+    }
+    
+    // Chat & Knowledge
+    else if (lowerMessage.startsWith("/ask") || lowerMessage.startsWith("/ถาม")) {
+      commandType = "ask";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/ask") ? 4 : 4).trim();
+    } else if (lowerMessage.startsWith("/faq") || lowerMessage.startsWith("/ถามตอบ") || lowerMessage.startsWith("/คำถาม")) {
       commandType = "faq";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/faq") ? 4 : 8).trim();
-    } else if (lowerMessage.startsWith("/todo")) {
-      commandType = "todo";
-      cleanedMessage = sanitizedMessage.substring(5).trim();
+      const prefixLen = lowerMessage.startsWith("/faq") ? 4 : lowerMessage.startsWith("/ถามตอบ") ? 8 : 7;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/find") || lowerMessage.startsWith("/search") || lowerMessage.startsWith("/ค้นหา") || lowerMessage.startsWith("ค้นหา")) {
+      commandType = "find";
+      const prefixLen = lowerMessage.startsWith("/find") ? 5 : lowerMessage.startsWith("/search") ? 7 : lowerMessage.startsWith("/ค้นหา") ? 6 : 5;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/train") || lowerMessage.startsWith("/ฝึก") || lowerMessage.startsWith("/เทรน")) {
+      commandType = "train";
+      const prefixLen = lowerMessage.startsWith("/train") ? 6 : lowerMessage.startsWith("/ฝึก") ? 4 : 5;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    }
+    
+    // Summaries & Reports
+    else if (lowerMessage.startsWith("/summary") || lowerMessage.startsWith("/recap") || lowerMessage.startsWith("/summarize") || lowerMessage.startsWith("/สรุป") || lowerMessage === "สรุป" || lowerMessage.startsWith("สรุปหน่อย")) {
+      commandType = "summary";
+      const prefixLen = lowerMessage.startsWith("/summary") ? 8 : lowerMessage.startsWith("/recap") ? 6 : lowerMessage.startsWith("/summarize") ? 10 : lowerMessage.startsWith("/สรุป") ? 5 : lowerMessage === "สรุป" ? 4 : 9;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
     } else if (lowerMessage.startsWith("/report") || lowerMessage.startsWith("/รายงาน")) {
       commandType = "report";
       cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/report") ? 7 : 8).trim();
-    } else if (lowerMessage.startsWith("/help") || lowerMessage.startsWith("/ช่วยเหลือ")) {
-      commandType = "help";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/help") ? 5 : 10).trim();
-    } else if (lowerMessage.startsWith("/find") || lowerMessage.startsWith("/ค้นหา")) {
-      commandType = "find";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/find") ? 5 : 6).trim();
-    } else if (lowerMessage.startsWith("/mentions")) {
-      commandType = "mentions";
-      cleanedMessage = sanitizedMessage.substring(9).trim();
-    } else if (lowerMessage.startsWith("/tasks")) {
+    }
+    
+    // Tasks & Reminders
+    else if (lowerMessage.startsWith("/todo") || lowerMessage.startsWith("/task ")) {
+      commandType = "todo";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/todo") ? 5 : 6).trim();
+    } else if (lowerMessage.startsWith("/tasks") || lowerMessage.startsWith("/งาน")) {
       commandType = "tasks";
-      cleanedMessage = sanitizedMessage.substring(6).trim();
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/tasks") ? 6 : 4).trim();
     } else if (lowerMessage.startsWith("/remind") || lowerMessage.startsWith("/ตั้งเตือน")) {
       commandType = "remind";
       cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/remind") ? 7 : 10).trim();
-    } else if (lowerMessage.startsWith("/reminders")) {
+    } else if (lowerMessage.startsWith("/reminders") || lowerMessage.startsWith("/reminder") || lowerMessage.startsWith("/เตือน") || lowerMessage === "reminders" || lowerMessage === "เตือน") {
       commandType = "list_reminders";
-      cleanedMessage = sanitizedMessage.substring(10).trim();
-    } else if (lowerMessage.startsWith("/status")) {
-      commandType = "status";
-      cleanedMessage = sanitizedMessage.substring(7).trim();
-    } else if (lowerMessage.startsWith("/train") || lowerMessage.startsWith("/เทรน")) {
-      commandType = "train";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/train") ? 6 : 5).trim();
-    } else if (lowerMessage.startsWith("/progress") || lowerMessage.startsWith("/อัพเดท")) {
-      commandType = "progress_report"; // Fixed: use progress_report instead of progress
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/progress") ? 9 : 8).trim();
-    } else if (lowerMessage.startsWith("/imagine") || lowerMessage.startsWith("/วาดรูป") || lowerMessage.startsWith("/สร้างภาพ")) {
-      commandType = "imagine";
-      const prefixLength = lowerMessage.startsWith("/imagine") ? 8 : lowerMessage.startsWith("/วาดรูป") ? 8 : 9;
-      cleanedMessage = sanitizedMessage.substring(prefixLength).trim();
+      const prefixLen = lowerMessage.startsWith("/reminders") ? 10 : lowerMessage.startsWith("/reminder") ? 9 : lowerMessage.startsWith("/เตือน") ? 6 : 0;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    }
+    
+    // Work Management
+    else if (lowerMessage.startsWith("/work")) {
+      commandType = "work";
+      cleanedMessage = sanitizedMessage.substring(5).trim();
+    } else if (lowerMessage.startsWith("/checkin") || lowerMessage.startsWith("/เข้างาน") || lowerMessage.startsWith("/เช็คอิน") || lowerMessage === "checkin") {
+      commandType = "checkin";
+      const prefixLen = lowerMessage.startsWith("/checkin") ? 8 : lowerMessage.startsWith("/เข้างาน") ? 8 : lowerMessage.startsWith("/เช็คอิน") ? 9 : 7;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/checkout") || lowerMessage.startsWith("/ออกงาน") || lowerMessage.startsWith("/เช็คเอาต์") || lowerMessage === "checkout") {
+      commandType = "checkout";
+      const prefixLen = lowerMessage.startsWith("/checkout") ? 9 : lowerMessage.startsWith("/ออกงาน") ? 8 : lowerMessage.startsWith("/เช็คเอาต์") ? 10 : 8;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/history") || lowerMessage.startsWith("/ประวัติ") || lowerMessage === "history" || lowerMessage === "ประวัติ") {
+      commandType = "history";
+      const prefixLen = lowerMessage.startsWith("/history") ? 8 : lowerMessage.startsWith("/ประวัติ") ? 7 : 0;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/ot") || lowerMessage.startsWith("/ทำล่วงเวลา") || lowerMessage.startsWith("/โอที")) {
+      commandType = "ot";
+      const prefixLen = lowerMessage.startsWith("/ot") ? 3 : lowerMessage.startsWith("/ทำล่วงเวลา") ? 12 : 5;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/progress") || lowerMessage.startsWith("/update") || lowerMessage.startsWith("/อัพเดท") || lowerMessage.startsWith("/ความคืบหน้า")) {
+      commandType = "progress_report";
+      const prefixLen = lowerMessage.startsWith("/progress") ? 9 : lowerMessage.startsWith("/update") ? 7 : lowerMessage.startsWith("/อัพเดท") ? 8 : 13;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
     } else if (lowerMessage.startsWith("/confirm") || lowerMessage.startsWith("/ยืนยัน")) {
       commandType = "confirm_with_feedback";
       cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/confirm") ? 8 : 7).trim();
-    } else if (lowerMessage.startsWith("/ot") || lowerMessage.startsWith("/โอที")) {
-      commandType = "ot";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/ot") ? 3 : 5).trim();
-    } else if (lowerMessage.startsWith("/menu") || lowerMessage === "เมนู") {
+    }
+    
+    // Creative & Social
+    else if (lowerMessage.startsWith("/imagine") || lowerMessage.startsWith("/draw") || lowerMessage.startsWith("/gen") || lowerMessage.startsWith("/image") || lowerMessage.startsWith("/วาดรูป") || lowerMessage.startsWith("/สร้างภาพ")) {
+      commandType = "imagine";
+      const prefixLen = lowerMessage.startsWith("/imagine") ? 8 : lowerMessage.startsWith("/draw") ? 5 : lowerMessage.startsWith("/gen") ? 4 : lowerMessage.startsWith("/image") ? 6 : lowerMessage.startsWith("/วาดรูป") ? 8 : 9;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/mentions") || lowerMessage.startsWith("/แท็ก") || lowerMessage.startsWith("กล่าวถึง")) {
+      commandType = "mentions";
+      const prefixLen = lowerMessage.startsWith("/mentions") ? 9 : lowerMessage.startsWith("/แท็ก") ? 5 : 8;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    } else if (lowerMessage.startsWith("/menu") || lowerMessage.startsWith("/เมนู") || lowerMessage === "เมนู") {
       commandType = "menu";
       cleanedMessage = "";
-    } else if (lowerMessage.startsWith("@intern")) {
+    }
+    
+    // Mode switching
+    else if (lowerMessage.startsWith("/mode") || lowerMessage.startsWith("/m ") || lowerMessage.startsWith("/setmode") || lowerMessage.startsWith("/โหมด")) {
+      commandType = "mode";
+      const prefixLen = lowerMessage.startsWith("/mode") ? 5 : lowerMessage.startsWith("/m ") ? 3 : lowerMessage.startsWith("/setmode") ? 8 : 5;
+      cleanedMessage = sanitizedMessage.substring(prefixLen).trim();
+    }
+    
+    // Mention handling
+    else if (lowerMessage.startsWith("@intern")) {
       commandType = "ask";
       cleanedMessage = sanitizedMessage.substring(7).trim();
     }
