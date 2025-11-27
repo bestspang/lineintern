@@ -63,7 +63,17 @@ export default function EarlyLeaveRequests() {
         }
       });
 
-      if (error) throw error;
+      // Handle edge function errors (returns error in data when status is not 2xx)
+      if (error) {
+        const errorMessage = error.message || 'Unknown error';
+        throw new Error(errorMessage);
+      }
+      
+      // Check if response indicates failure
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Operation failed');
+      }
+      
       return data;
     },
     onSuccess: (data, variables) => {
@@ -74,7 +84,9 @@ export default function EarlyLeaveRequests() {
       setApprovalNotes('');
     },
     onError: (error: Error) => {
-      toast.error("เกิดข้อผิดพลาด: " + error.message);
+      // Refresh data in case status changed
+      queryClient.invalidateQueries({ queryKey: ["early-leave-requests"] });
+      toast.error(error.message);
     },
   });
 
