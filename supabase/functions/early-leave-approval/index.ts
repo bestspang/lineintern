@@ -153,25 +153,36 @@ serve(async (req) => {
 
     // 🚨 VALIDATION: Check minimum work hours BEFORE approving (skip for rejection)
     // Minimum is 0.1 hours (6 minutes) - just to ensure they actually checked in
+    // Skip validation if employee has test mode enabled
     if (action === 'approve') {
-      const minRequiredHours = 0.1; // 6 minutes minimum to ensure check-in happened
-      const actualHours = leaveRequest.actual_work_hours || 0;
+      const isTestMode = (employee as any)?.is_test_mode === true;
       
-      if (actualHours < minRequiredHours) {
-        logger.warn('Early leave approval blocked - insufficient work hours', {
+      if (isTestMode) {
+        logger.info('[TEST MODE] Bypassing hours validation for early leave approval', {
           request_id,
-          actual_hours: actualHours,
-          min_required: minRequiredHours
+          employee_id: employee?.id,
+          employee_name: employee?.full_name
         });
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `⚠️ ไม่สามารถอนุมัติได้\n\nพนักงานยังไม่ได้ Check-in หรือทำงานน้อยกว่า 6 นาที\n\n💡 กรุณาตรวจสอบว่าพนักงานได้ Check-in แล้ว`,
+      } else {
+        const minRequiredHours = 0.1; // 6 minutes minimum to ensure check-in happened
+        const actualHours = leaveRequest.actual_work_hours || 0;
+        
+        if (actualHours < minRequiredHours) {
+          logger.warn('Early leave approval blocked - insufficient work hours', {
+            request_id,
             actual_hours: actualHours,
             min_required: minRequiredHours
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+          });
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `⚠️ ไม่สามารถอนุมัติได้\n\nพนักงานยังไม่ได้ Check-in หรือทำงานน้อยกว่า 6 นาที\n\n💡 กรุณาตรวจสอบว่าพนักงานได้ Check-in แล้ว`,
+              actual_hours: actualHours,
+              min_required: minRequiredHours
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 

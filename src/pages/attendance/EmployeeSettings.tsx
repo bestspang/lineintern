@@ -9,11 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-
+import { useUserRole } from "@/hooks/useUserRole";
 interface ReminderPreferences {
   check_in_reminder_enabled: boolean;
   check_out_reminder_enabled: boolean;
@@ -74,7 +74,13 @@ export default function EmployeeSettings() {
     // === Attendance Settings (moved from Employees.tsx) ===
     allow_remote_checkin: false,
     require_photo: null as boolean | null,
+    
+    // === Test Mode (Admin/Owner Only) ===
+    is_test_mode: false,
   });
+
+  // Check if current user is admin/owner
+  const { hasFullAccess } = useUserRole();
 
   // Fetch employee data
   const { data: employee, isLoading } = useQuery({
@@ -141,6 +147,9 @@ export default function EmployeeSettings() {
         // Attendance Settings
         allow_remote_checkin: employee.allow_remote_checkin || false,
         require_photo: employee.require_photo ?? null,
+        
+        // Test Mode
+        is_test_mode: (employee as any).is_test_mode || false,
       });
     }
   }, [employee]);
@@ -168,6 +177,9 @@ export default function EmployeeSettings() {
         // Attendance Settings
         allow_remote_checkin: data.allow_remote_checkin,
         require_photo: data.require_photo,
+        
+        // Test Mode (only include if user has access)
+        is_test_mode: data.is_test_mode,
       };
 
       // Handle fields based on working_time_type
@@ -719,6 +731,35 @@ export default function EmployeeSettings() {
                 onCheckedChange={(checked) => setFormData({ ...formData, require_photo: checked })}
               />
             </div>
+
+            {/* Test Mode - Only visible to Admin/Owner */}
+            {hasFullAccess && (
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-start gap-3">
+                    <FlaskConical className="h-5 w-5 text-orange-500 mt-0.5" />
+                    <div>
+                      <Label className="text-orange-600 dark:text-orange-400 font-medium">
+                        🧪 Test Mode (Admin Only)
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        เปิดใช้งานสำหรับทดสอบระบบ:
+                      </p>
+                      <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside">
+                        <li>Check-in/out ได้ตลอดเวลา (ไม่จำกัดเวลา)</li>
+                        <li>ไม่ต้องทำงานครบ 8 ชม. (ถือว่าครบเสมอ)</li>
+                        <li>ไม่ต้องขออนุมัติ OT/Early Leave</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <Switch
+                    id="is_test_mode"
+                    checked={formData.is_test_mode}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_test_mode: checked })}
+                  />
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
