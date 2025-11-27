@@ -119,13 +119,14 @@ export default function AttendanceSummaries() {
     }
   });
 
-  // Fetch daily summaries
+  // Fetch daily summaries (all_branches scope for live dashboard)
   const { data: dailySummaries, isLoading: loadingDaily } = useQuery({
-    queryKey: ['daily-summaries', dateRange, selectedBranch],
+    queryKey: ['daily-summaries', dateRange],
     queryFn: async () => {
       let query = supabase
         .from('daily_attendance_summaries')
-        .select('*, branch:branches(name)')
+        .select('*')
+        .eq('scope', 'all_branches')
         .order('summary_date', { ascending: false });
       
       if (dateRange?.from && dateRange?.to) {
@@ -134,15 +135,12 @@ export default function AttendanceSummaries() {
       } else {
         query = query.limit(30);
       }
-
-      if (selectedBranch !== 'all') {
-        query = query.eq('branch_id', selectedBranch);
-      }
       
       const { data, error } = await query;
       if (error) throw error;
       return data;
-    }
+    },
+    refetchInterval: 60000 // Auto-refresh every 1 minute
   });
 
   // Fetch OT summary
@@ -1093,27 +1091,53 @@ export default function AttendanceSummaries() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Daily Attendance Summaries</CardTitle>
-              <CardDescription>
-                Automated daily summaries sent to LINE groups
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    Daily Attendance Summaries
+                    <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                  </CardTitle>
+                  <CardDescription>
+                    อัพเดททุก 30 นาที (รวมทุกสาขา) • Auto-refresh ทุก 1 นาที
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {dailySummaries?.map((summary) => (
-                <Card key={summary.id}>
+              {dailySummaries?.map((summary: any) => (
+                <Card key={summary.id} className="border-l-4 border-l-primary">
                   <CardHeader className="p-4">
-                    <CardTitle className="text-base">
-                      {summary.branch?.name} - {format(new Date(summary.summary_date), 'MMM dd, yyyy')}
-                    </CardTitle>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-muted-foreground">
-                      <div>✅ Checked In: {summary.checked_in}/{summary.total_employees}</div>
-                      <div>🏁 Checked Out: {summary.checked_out}/{summary.total_employees}</div>
-                      <div>⏰ Late: {summary.late_count}</div>
-                      <div>🚩 Flagged: {summary.flagged_count}</div>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">
+                        📊 สรุปรวมทุกสาขา - {format(new Date(summary.summary_date), 'dd MMM yyyy')}
+                      </CardTitle>
+                      {summary.updated_at && (
+                        <Badge variant="outline" className="text-xs">
+                          อัพเดท: {format(new Date(summary.updated_at), 'HH:mm')}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-muted-foreground mt-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600">✅</span> 
+                        Checked In: {summary.checked_in || 0}/{summary.total_employees || 0}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>🏁</span> 
+                        Checked Out: {summary.checked_out || 0}/{summary.total_employees || 0}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-amber-500">⏰</span> 
+                        Late: {summary.late_count || 0}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-red-500">🚩</span> 
+                        Flagged: {summary.flagged_count || 0}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-4 pt-0">
-                    <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-3 rounded-md">
+                    <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-3 rounded-md max-h-96 overflow-y-auto">
                       {summary.summary_text}
                     </pre>
                   </CardContent>
@@ -1121,7 +1145,9 @@ export default function AttendanceSummaries() {
               ))}
               {!dailySummaries?.length && (
                 <div className="text-center py-8 text-muted-foreground">
-                  No daily summaries found for selected period
+                  <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>ยังไม่มีข้อมูลสรุป</p>
+                  <p className="text-sm">ระบบจะสร้างสรุปอัตโนมัติทุก 30 นาที</p>
                 </div>
               )}
             </CardContent>
