@@ -56,6 +56,7 @@ serve(async (req) => {
           ot_warning_minutes,
           auto_ot_enabled,
           hours_per_day,
+          break_hours,
           working_time_type,
           shift_end_time
         )
@@ -118,12 +119,23 @@ serve(async (req) => {
       
       console.log(`[overtime-warning] ${employee.full_name}: check-in=${checkInTime.toISOString()}, now=${now.toISOString()}, hours=${hoursWorked.toFixed(2)}`);
 
-      // Get max work hours (use employee setting or default to 8)
-      const maxWorkHours = employee.max_work_hours_per_day || 8;
+      // Calculate max work hours based on employee type
+      let maxWorkHours: number;
+      
+      if (employee.working_time_type === 'hours_based') {
+        // For hours_based: max hours = hours_per_day + break_hours (total expected time)
+        const hoursPerDay = employee.hours_per_day || 8;
+        const breakHours = 1; // Default break hours (not stored in employee select)
+        maxWorkHours = hoursPerDay + breakHours;
+      } else {
+        // For time_based: use max_work_hours_per_day or default 8
+        maxWorkHours = employee.max_work_hours_per_day || 8;
+      }
+      
       const warningMinutes = employee.ot_warning_minutes || 15;
       const warningThresholdHours = maxWorkHours - (warningMinutes / 60);
 
-      console.log(`[overtime-warning] Employee ${employee.full_name}: worked ${hoursWorked.toFixed(2)}h, max ${maxWorkHours}h, warning at ${warningThresholdHours.toFixed(2)}h`);
+      console.log(`[overtime-warning] Employee ${employee.full_name} (${employee.working_time_type}): worked ${hoursWorked.toFixed(2)}h, max ${maxWorkHours}h, warning at ${warningThresholdHours.toFixed(2)}h`);
 
       // Check if approaching max hours (within warning threshold)
       if (hoursWorked >= warningThresholdHours && hoursWorked < maxWorkHours) {

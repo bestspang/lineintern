@@ -1163,12 +1163,14 @@ export type Database = {
           break_hours: number | null
           code: string
           created_at: string | null
+          earliest_checkin_time: string | null
           enable_pattern_learning: boolean | null
           enable_second_checkin_reminder: boolean | null
           full_name: string
           hours_per_day: number | null
           id: string
           is_active: boolean | null
+          latest_checkin_time: string | null
           line_user_id: string | null
           max_work_hours_per_day: number | null
           minimum_work_hours: number | null
@@ -1196,12 +1198,14 @@ export type Database = {
           break_hours?: number | null
           code: string
           created_at?: string | null
+          earliest_checkin_time?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
           full_name: string
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
+          latest_checkin_time?: string | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
           minimum_work_hours?: number | null
@@ -1229,12 +1233,14 @@ export type Database = {
           break_hours?: number | null
           code?: string
           created_at?: string | null
+          earliest_checkin_time?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
           full_name?: string
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
+          latest_checkin_time?: string | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
           minimum_work_hours?: number | null
@@ -2838,6 +2844,7 @@ export type Database = {
         Row: {
           actual_end_time: string | null
           actual_start_time: string | null
+          admin_notified_at: string | null
           auto_checkout_grace_expires_at: string | null
           auto_checkout_performed: boolean | null
           auto_checkout_warning_sent_at: string | null
@@ -2850,6 +2857,9 @@ export type Database = {
           employee_id: string
           hours_capped: boolean | null
           id: string
+          is_suspicious_absence: boolean | null
+          missing_check_count: number | null
+          missing_warning_sent_at: string | null
           net_work_minutes: number | null
           session_number: number
           status: string | null
@@ -2860,6 +2870,7 @@ export type Database = {
         Insert: {
           actual_end_time?: string | null
           actual_start_time?: string | null
+          admin_notified_at?: string | null
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null
           auto_checkout_warning_sent_at?: string | null
@@ -2872,6 +2883,9 @@ export type Database = {
           employee_id: string
           hours_capped?: boolean | null
           id?: string
+          is_suspicious_absence?: boolean | null
+          missing_check_count?: number | null
+          missing_warning_sent_at?: string | null
           net_work_minutes?: number | null
           session_number?: number
           status?: string | null
@@ -2882,6 +2896,7 @@ export type Database = {
         Update: {
           actual_end_time?: string | null
           actual_start_time?: string | null
+          admin_notified_at?: string | null
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null
           auto_checkout_warning_sent_at?: string | null
@@ -2894,6 +2909,9 @@ export type Database = {
           employee_id?: string
           hours_capped?: boolean | null
           id?: string
+          is_suspicious_absence?: boolean | null
+          missing_check_count?: number | null
+          missing_warning_sent_at?: string | null
           net_work_minutes?: number | null
           session_number?: number
           status?: string | null

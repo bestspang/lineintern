@@ -266,20 +266,35 @@ serve(async (req) => {
       );
     }
 
-    // Validate allowed work time for hours_based employees
-    if (token.employee.working_time_type === 'hours_based') {
+    // Validate check-in time window for hours_based employees
+    if (token.type === 'check_in' && token.employee.working_time_type === 'hours_based') {
       const currentTime = new Date();
       const currentTimeStr = formatBangkokTime(currentTime, 'HH:mm:ss');
       
-      const allowedStart = token.employee.allowed_work_start_time || '06:00:00';
-      const allowedEnd = token.employee.allowed_work_end_time || '20:00:00';
+      // Use new time window columns with fallback to allowed_work_start/end_time
+      const earliestCheckin = token.employee.earliest_checkin_time || token.employee.allowed_work_start_time || '06:00:00';
+      const latestCheckin = token.employee.latest_checkin_time || '11:00:00';
       
-      if (currentTimeStr < allowedStart || currentTimeStr > allowedEnd) {
+      if (currentTimeStr < earliestCheckin) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: `ไม่สามารถ check-in นอกเวลาที่กำหนด (${allowedStart.substring(0,5)} - ${allowedEnd.substring(0,5)})`,
-            error_en: `Check-in is not allowed outside the designated hours (${allowedStart.substring(0,5)} - ${allowedEnd.substring(0,5)})`
+            error: `⏰ ยังไม่ถึงเวลา Check-in\n\nสามารถ Check-in ได้ตั้งแต่เวลา ${earliestCheckin.substring(0,5)} น.\n\nกรุณารอก่อนนะครับ`,
+            error_en: `Check-in time has not started yet. You can check in from ${earliestCheckin.substring(0,5)}.`
+          }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      if (currentTimeStr > latestCheckin) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `⏰ เลยเวลา Check-in แล้ว\n\nสามารถ Check-in ได้ถึงเวลา ${latestCheckin.substring(0,5)} น. เท่านั้น\n\nกรุณาติดต่อหัวหน้างาน`,
+            error_en: `Check-in time has passed. You can only check in until ${latestCheckin.substring(0,5)}. Please contact your supervisor.`
           }),
           { 
             status: 400, 
@@ -503,8 +518,116 @@ serve(async (req) => {
 
         const maxWorkHours = token.employee.max_work_hours_per_day || 8;
 
-        // 🚨 CRITICAL VALIDATION: Block check-out if overtime without approval
-        if (totalWorkHours > maxWorkHours) {
+        // 🚨 MINIMUM HOURS VALIDATION for hours_based employees
+        if (token.employee.working_time_type === 'hours_based') {
+          const hoursPerDay = token.employee.hours_per_day || 8;
+          const breakHours = token.employee.break_hours || 1;
+          const minimumWorkHours = token.employee.minimum_work_hours || (hoursPerDay + breakHours);
+          
+          if (totalWorkHours < minimumWorkHours) {
+            // Check for approved early leave request
+            const { data: approvedEarlyLeave } = await supabase
+              .from('early_leave_requests')
+              .select('id, status')
+              .eq('employee_id', token.employee.id)
+              .eq('request_date', today)
+              .eq('status', 'approved')
+              .maybeSingle();
+            
+            if (!approvedEarlyLeave) {
+              const hoursShort = (minimumWorkHours - totalWorkHours).toFixed(1);
+              const hoursWorkedStr = totalWorkHours.toFixed(1);
+              
+              logger.warn('Check-out blocked: Minimum hours not met (hours_based)', {
+                employee_id: token.employee.id,
+                hours_worked: totalWorkHours,
+                minimum_hours: minimumWorkHours,
+                hours_short: hoursShort
+              });
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: `⚠️ ยังทำงานไม่ครบกำหนด\n\n⏱️ ทำงานมาแล้ว: ${hoursWorkedStr} ชั่วโมง\n📋 ต้องทำงานอย่างน้อย: ${minimumWorkHours} ชั่วโมง\n⏳ ขาดอีก: ${hoursShort} ชั่วโมง\n\nหากต้องการออกก่อน กรุณา:\n• พิมพ์ "/ลาก่อน [เหตุผล]" เพื่อขออนุมัติ\n• หรือติดต่อหัวหน้างาน`,
+                  error_en: `⚠️ Minimum work hours not met\n\nWorked: ${hoursWorkedStr} hours\nMinimum required: ${minimumWorkHours} hours\nShort by: ${hoursShort} hours\n\nTo leave early, please:\n• Type "/ลาก่อน [reason]" for approval\n• Or contact your supervisor`,
+                  hours_worked: totalWorkHours,
+                  minimum_hours: minimumWorkHours,
+                  hours_short: parseFloat(hoursShort),
+                  requires_early_leave_approval: true
+                }),
+                { 
+                  status: 403, 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            } else {
+              // Has approved early leave
+              earlyLeaveRequestId = approvedEarlyLeave.id;
+              logger.info('Early leave approved, allowing checkout', {
+                employee_id: token.employee.id,
+                early_leave_id: approvedEarlyLeave.id
+              });
+            }
+          }
+        }
+
+        // 🚨 OT VALIDATION for hours_based employees
+        if (token.employee.working_time_type === 'hours_based') {
+          const hoursPerDay = token.employee.hours_per_day || 8;
+          const breakHours = token.employee.break_hours || 1;
+          const expectedWorkHours = hoursPerDay + breakHours;
+          
+          // OT starts after expected work hours
+          if (totalWorkHours > expectedWorkHours) {
+            // Check for approved OT request
+            const { data: approvedOT } = await supabase
+              .from('overtime_requests')
+              .select('id, estimated_hours')
+              .eq('employee_id', token.employee.id)
+              .eq('request_date', today)
+              .eq('status', 'approved')
+              .maybeSingle();
+            
+            // If no OT approval and auto_ot disabled - BLOCK CHECK-OUT
+            if (!approvedOT && !token.employee.auto_ot_enabled) {
+              const overtimeHoursBlocked = totalWorkHours - expectedWorkHours;
+              
+              logger.warn('Check-out blocked: Overtime without approval (hours_based)', {
+                employee_id: token.employee.id,
+                hours_worked: totalWorkHours,
+                expected_hours: expectedWorkHours,
+                overtime: overtimeHoursBlocked
+              });
+
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHoursBlocked.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout`,
+                  error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHoursBlocked.toFixed(1)} hours overtime\nbut don't have OT approval`,
+                  hours_worked: totalWorkHours,
+                  expected_hours: expectedWorkHours,
+                  overtime_hours: overtimeHoursBlocked,
+                  requires_ot_approval: true
+                }),
+                { 
+                  status: 403, 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            }
+            
+            // Calculate overtime
+            overtimeHours = totalWorkHours - expectedWorkHours;
+            isOvertime = true;
+            
+            if (approvedOT) {
+              overtimeRequestId = approvedOT.id;
+            }
+          }
+        }
+
+        // 🚨 CRITICAL VALIDATION for time_based: Block check-out if overtime without approval
+        if (token.employee.working_time_type === 'time_based' && totalWorkHours > maxWorkHours) {
           // Check for approved OT request for today
           const { data: approvedOT } = await supabase
             .from('overtime_requests')
