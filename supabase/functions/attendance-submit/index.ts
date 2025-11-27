@@ -62,7 +62,8 @@ serve(async (req) => {
               working_time_type,
               hours_per_day,
               shift_start_time,
-              shift_end_time
+              shift_end_time,
+              is_test_mode
             )
           `)
           .eq('id', tokenId)
@@ -74,6 +75,20 @@ serve(async (req) => {
           return new Response(
             JSON.stringify({ success: false, error: 'Invalid token' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // ✅ Test Mode bypass - always return hours_insufficient: false
+        if (token.employee.is_test_mode) {
+          console.log(`[TEST MODE] Bypassing hours check for employee ${token.employee.id}`);
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              hours_insufficient: false,
+              test_mode: true,
+              message: '🧪 Test mode - hours check bypassed'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
