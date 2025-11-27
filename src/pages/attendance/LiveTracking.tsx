@@ -162,23 +162,19 @@ export default function LiveTracking() {
           const totalMinutes = (hoursPerDay + breakHours) * 60;
           expectedCheckOut = addMinutes(checkInTime, totalMinutes);
         } else {
-          // Use shift_end_time with proper Bangkok timezone handling
+          // time_based employees: use shift_end_time
           if (employee.shift_end_time) {
             // Get the Bangkok date string from check-in time
             const bangkokDateStr = formatInTimeZone(checkInTime, BANGKOK_TZ, 'yyyy-MM-dd');
-            // Construct the expected checkout time in Bangkok timezone
-            const expectedCheckoutStr = `${bangkokDateStr}T${employee.shift_end_time}`;
-            // Convert from Bangkok time to UTC Date
-            expectedCheckOut = toZonedTime(expectedCheckoutStr, BANGKOK_TZ);
             
-            // Convert to proper UTC for comparison
-            const [hour, minute] = employee.shift_end_time.split(':').map(Number);
-            const offsetMs = 7 * 60 * 60 * 1000; // Bangkok is UTC+7
-            expectedCheckOut = new Date(new Date(`${bangkokDateStr}T${employee.shift_end_time}`).getTime() - offsetMs);
+            // Create ISO string with Bangkok timezone offset (+07:00)
+            // This ensures correct parsing regardless of browser timezone
+            const shiftEndISO = `${bangkokDateStr}T${employee.shift_end_time}+07:00`;
+            expectedCheckOut = new Date(shiftEndISO);
             
-            // If shift end is before check-in time, it's next day
+            // If shift end is before check-in time, assume next day
             if (expectedCheckOut < checkInTime) {
-              expectedCheckOut = new Date(expectedCheckOut.getTime() + 24 * 60 * 60 * 1000);
+              expectedCheckOut = addMinutes(expectedCheckOut, 24 * 60);
             }
           } else {
             expectedCheckOut = addMinutes(checkInTime, 8 * 60); // Default 8 hours
