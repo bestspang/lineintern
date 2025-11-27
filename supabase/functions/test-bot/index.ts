@@ -370,9 +370,13 @@ Deno.serve(async (req) => {
     } else if (lowerMessage.startsWith("/train") || lowerMessage.startsWith("/เทรน")) {
       commandType = "train";
       cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/train") ? 6 : 5).trim();
-    } else if (lowerMessage.startsWith("/progress")) {
-      commandType = "progress";
-      cleanedMessage = sanitizedMessage.substring(9).trim();
+    } else if (lowerMessage.startsWith("/progress") || lowerMessage.startsWith("/อัพเดท")) {
+      commandType = "progress_report"; // Fixed: use progress_report instead of progress
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/progress") ? 9 : 8).trim();
+    } else if (lowerMessage.startsWith("/imagine") || lowerMessage.startsWith("/วาดรูป") || lowerMessage.startsWith("/สร้างภาพ")) {
+      commandType = "imagine";
+      const prefixLength = lowerMessage.startsWith("/imagine") ? 8 : lowerMessage.startsWith("/วาดรูป") ? 8 : 9;
+      cleanedMessage = sanitizedMessage.substring(prefixLength).trim();
     } else if (lowerMessage.startsWith("/confirm")) {
       commandType = "confirm";
       cleanedMessage = sanitizedMessage.substring(8).trim();

@@ -7320,6 +7320,38 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
+  // PHASE 2: Handle explicit /progress command (progress_report)
+  if (parsed.commandType === 'progress_report') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const progressResult = await detectAndHandleProgressReport(parsed.userMessage, user.id, group.id, locale);
+    if (progressResult.detected) {
+      await replyToLine(event.replyToken, progressResult.message);
+      return;
+    }
+  }
+
+  // PHASE 2: Handle explicit /list_reminders command (already handled via /reminders above)
+  if (parsed.commandType === 'list_reminders') {
+    await handleRemindersCommand(group.id, event.replyToken);
+    return;
+  }
+
+  // PHASE 2: Handle /confirm with feedback command
+  if (parsed.commandType === 'confirm_with_feedback') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    // Extract username from message
+    const usernameMatch = parsed.userMessage.match(/@(\w+)/);
+    if (usernameMatch) {
+      // Construct approval message with feedback flag
+      const approvalText = `@${usernameMatch[1]} feedback`;
+      const approvalResult = await detectAndHandleWorkApproval(approvalText, user.id, group.id, locale);
+      if (approvalResult.detected) {
+        await replyToLine(event.replyToken, approvalResult.message);
+        return;
+      }
+    }
+  }
+
   // Check if we should respond
   if (!parsed.shouldRespond) {
     console.log(`[handleMessageEvent] Not triggered, ignoring message`);
