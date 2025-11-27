@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export default function EmployeeSettings() {
   const { id } = useParams();
@@ -22,6 +23,12 @@ export default function EmployeeSettings() {
     auto_ot_enabled: false,
     max_work_hours_per_day: "8.0",
     ot_warning_minutes: "15",
+    // Time settings
+    working_time_type: "time_based" as "time_based" | "hours_based",
+    earliest_checkin_time: "06:00",
+    latest_checkin_time: "11:00",
+    allowed_work_start_time: "06:00",
+    allowed_work_end_time: "20:00",
   });
 
   // Fetch employee data
@@ -45,6 +52,12 @@ export default function EmployeeSettings() {
     },
   });
 
+  // Helper to format time from DB (HH:mm:ss) to input (HH:mm)
+  const formatTimeForInput = (time: string | null, fallback: string): string => {
+    if (!time) return fallback;
+    return time.substring(0, 5); // "06:00:00" -> "06:00"
+  };
+
   // Update form when employee data loads
   useEffect(() => {
     if (employee) {
@@ -54,6 +67,12 @@ export default function EmployeeSettings() {
         auto_ot_enabled: employee.auto_ot_enabled || false,
         max_work_hours_per_day: employee.max_work_hours_per_day?.toString() || "8.0",
         ot_warning_minutes: employee.ot_warning_minutes?.toString() || "15",
+        // Time settings
+        working_time_type: (employee.working_time_type as "time_based" | "hours_based") || "time_based",
+        earliest_checkin_time: formatTimeForInput(employee.earliest_checkin_time, "06:00"),
+        latest_checkin_time: formatTimeForInput(employee.latest_checkin_time, "11:00"),
+        allowed_work_start_time: formatTimeForInput(employee.allowed_work_start_time, "06:00"),
+        allowed_work_end_time: formatTimeForInput(employee.allowed_work_end_time, "20:00"),
       });
     }
   }, [employee]);
@@ -69,6 +88,12 @@ export default function EmployeeSettings() {
           auto_ot_enabled: data.auto_ot_enabled,
           max_work_hours_per_day: parseFloat(data.max_work_hours_per_day),
           ot_warning_minutes: parseInt(data.ot_warning_minutes),
+          // Time settings - append :00 for seconds
+          working_time_type: data.working_time_type,
+          earliest_checkin_time: data.earliest_checkin_time + ":00",
+          latest_checkin_time: data.latest_checkin_time + ":00",
+          allowed_work_start_time: data.allowed_work_start_time + ":00",
+          allowed_work_end_time: data.allowed_work_end_time + ":00",
         })
         .eq("id", id);
 
@@ -122,14 +147,137 @@ export default function EmployeeSettings() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">ตั้งค่า OT & เงินเดือน</h1>
+          <h1 className="text-3xl font-bold">ตั้งค่า OT & เวลาทำงาน</h1>
           <p className="text-muted-foreground">
             {employee.full_name} ({employee.code})
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Time Settings Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              ตั้งค่าเวลา Check-in
+            </CardTitle>
+            <CardDescription>
+              กำหนดรูปแบบการคำนวณเวลาและช่วงเวลาที่อนุญาตให้ Check-in
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Working Time Type */}
+            <div className="space-y-3">
+              <Label>รูปแบบการคำนวณเวลาทำงาน</Label>
+              <RadioGroup
+                value={formData.working_time_type}
+                onValueChange={(value: "time_based" | "hours_based") =>
+                  setFormData({ ...formData, working_time_type: value })
+                }
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                <div className="flex items-start space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="time_based" id="time_based" className="mt-1" />
+                  <Label htmlFor="time_based" className="cursor-pointer space-y-1">
+                    <span className="font-medium">กำหนดเวลาเข้า-ออก</span>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      สำหรับพนักงานประจำที่มีเวลาเข้างานชัดเจน (เช่น 08:00-17:00)
+                    </p>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="hours_based" id="hours_based" className="mt-1" />
+                  <Label htmlFor="hours_based" className="cursor-pointer space-y-1">
+                    <span className="font-medium">กำหนดจำนวนชั่วโมง</span>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      สำหรับพนักงานที่ยืดหยุ่นเวลา นับจากชั่วโมงทำงานจริง
+                    </p>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Time fields based on working_time_type */}
+            {formData.working_time_type === "time_based" ? (
+              <div className="space-y-4 p-4 rounded-lg bg-muted/30 border">
+                <h4 className="font-medium text-sm">⏰ เวลา Check-in ที่อนุญาต (time_based)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="earliest_checkin">Check-in เร็วสุด</Label>
+                    <Input
+                      id="earliest_checkin"
+                      type="time"
+                      value={formData.earliest_checkin_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, earliest_checkin_time: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      พนักงานจะไม่สามารถ check-in ก่อนเวลานี้ได้
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="latest_checkin">Check-in ช้าสุด</Label>
+                    <Input
+                      id="latest_checkin"
+                      type="time"
+                      value={formData.latest_checkin_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, latest_checkin_time: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      พนักงานจะไม่สามารถ check-in หลังเวลานี้ได้
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  💡 ตัวอย่าง: ถ้าตั้ง 06:00 - 11:00 พนักงานจะ check-in ได้ตั้งแต่ 06:00 ถึง 11:00 เท่านั้น
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4 p-4 rounded-lg bg-muted/30 border">
+                <h4 className="font-medium text-sm">⏰ ช่วงเวลาทำงานที่อนุญาต (hours_based)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="work_start">เวลาเริ่มงาน</Label>
+                    <Input
+                      id="work_start"
+                      type="time"
+                      value={formData.allowed_work_start_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, allowed_work_start_time: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      เวลาที่เร็วที่สุดที่อนุญาตให้เริ่มงาน
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="work_end">เวลาสิ้นสุดงาน</Label>
+                    <Input
+                      id="work_end"
+                      type="time"
+                      value={formData.allowed_work_end_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, allowed_work_end_time: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      เวลาที่ช้าที่สุดที่อนุญาตให้ทำงาน (และ check-in)
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  💡 ตัวอย่าง: ถ้าตั้ง 06:00 - 22:00 พนักงานสามารถ check-in ได้ตลอดช่วงเวลานี้ และระบบจะนับชั่วโมงทำงานจริง
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* OT Settings Card */}
         <Card>
           <CardHeader>
             <CardTitle>การตั้งค่าเงินเดือนและ OT</CardTitle>
