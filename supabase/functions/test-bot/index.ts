@@ -358,11 +358,11 @@ Deno.serve(async (req) => {
     } else if (lowerMessage.startsWith("/tasks")) {
       commandType = "tasks";
       cleanedMessage = sanitizedMessage.substring(6).trim();
-    } else if (lowerMessage.startsWith("/remind") || lowerMessage.startsWith("/เตือน")) {
+    } else if (lowerMessage.startsWith("/remind") || lowerMessage.startsWith("/ตั้งเตือน")) {
       commandType = "remind";
-      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/remind") ? 7 : 6).trim();
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/remind") ? 7 : 10).trim();
     } else if (lowerMessage.startsWith("/reminders")) {
-      commandType = "reminders";
+      commandType = "list_reminders";
       cleanedMessage = sanitizedMessage.substring(10).trim();
     } else if (lowerMessage.startsWith("/status")) {
       commandType = "status";
@@ -377,9 +377,9 @@ Deno.serve(async (req) => {
       commandType = "imagine";
       const prefixLength = lowerMessage.startsWith("/imagine") ? 8 : lowerMessage.startsWith("/วาดรูป") ? 8 : 9;
       cleanedMessage = sanitizedMessage.substring(prefixLength).trim();
-    } else if (lowerMessage.startsWith("/confirm")) {
-      commandType = "confirm";
-      cleanedMessage = sanitizedMessage.substring(8).trim();
+    } else if (lowerMessage.startsWith("/confirm") || lowerMessage.startsWith("/ยืนยัน")) {
+      commandType = "confirm_with_feedback";
+      cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/confirm") ? 8 : 7).trim();
     } else if (lowerMessage.startsWith("/ot") || lowerMessage.startsWith("/โอที")) {
       commandType = "ot";
       cleanedMessage = sanitizedMessage.substring(lowerMessage.startsWith("/ot") ? 3 : 5).trim();
