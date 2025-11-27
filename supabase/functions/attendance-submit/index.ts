@@ -367,9 +367,10 @@ serve(async (req) => {
       const currentTime = new Date();
       const currentTimeStr = formatBangkokTime(currentTime, 'HH:mm:ss');
       
-      // Use new time window columns with fallback to allowed_work_start/end_time
+      // Use appropriate time window based on working_time_type
       const earliestCheckin = token.employee.earliest_checkin_time || token.employee.allowed_work_start_time || '06:00:00';
-      const latestCheckin = token.employee.latest_checkin_time || '11:00:00';
+      // For hours_based: use allowed_work_end_time (ช่วงเวลาที่อนุญาตให้นับชั่วโมง)
+      const latestCheckin = token.employee.allowed_work_end_time || '22:00:00';
       
       if (currentTimeStr < earliestCheckin) {
         return new Response(
