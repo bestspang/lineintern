@@ -148,6 +148,32 @@ serve(async (req) => {
       );
     }
 
+    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+    const employee = leaveRequest.employees;
+
+    // 🚨 VALIDATION: Check minimum work hours BEFORE approving (skip for rejection)
+    // Minimum is 0.1 hours (6 minutes) - just to ensure they actually checked in
+    if (action === 'approve') {
+      const minRequiredHours = 0.1; // 6 minutes minimum to ensure check-in happened
+      const actualHours = leaveRequest.actual_work_hours || 0;
+      
+      if (actualHours < minRequiredHours) {
+        logger.warn('Early leave approval blocked - insufficient work hours', {
+          request_id,
+          actual_hours: actualHours,
+          min_required: minRequiredHours
+        });
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `⚠️ ไม่สามารถอนุมัติได้\n\nพนักงานยังไม่ได้ Check-in หรือทำงานน้อยกว่า 6 นาที\n\n💡 กรุณาตรวจสอบว่าพนักงานได้ Check-in แล้ว`,
+            actual_hours: actualHours,
+            min_required: minRequiredHours
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     const now = new Date();
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
@@ -192,26 +218,6 @@ serve(async (req) => {
       });
 
     console.log(`[early-leave-approval] Request ${newStatus}`);
-
-    const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
-    const employee = leaveRequest.employees;
-
-    // 🚨 CRITICAL VALIDATION: Check if worked enough hours before approval
-    if (action === 'approve') {
-      const minRequiredHours = (leaveRequest.required_work_hours || 8) * 0.5; // At least 50% of required hours
-      
-      if ((leaveRequest.actual_work_hours || 0) < minRequiredHours) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `⚠️ ไม่สามารถอนุมัติได้\n\nพนักงานทำงานแค่ ${leaveRequest.actual_work_hours?.toFixed(1)} ชม.\n(ต้องทำอย่างน้อย ${minRequiredHours.toFixed(1)} ชม.)\n\n💡 กรุณาตรวจสอบเวลาทำงานจริงก่อนอนุมัติ`,
-            actual_hours: leaveRequest.actual_work_hours,
-            min_required: minRequiredHours
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
 
     // If approved, perform checkout
     if (action === 'approve' && employee) {
