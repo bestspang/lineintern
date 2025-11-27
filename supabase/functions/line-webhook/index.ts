@@ -6448,9 +6448,9 @@ async function handleAttendanceCommand(
   locale: 'en' | 'th'
 ): Promise<{ detected: boolean; type?: string; message: string; quickReply?: any }> {
   const attendanceCommands = {
-    checkIn: ['checkin', 'เช็คอิน', 'เข้างาน', 'check in'],
-    checkOut: ['checkout', 'เช็คเอาต์', 'ออกงาน', 'check out'],
-    history: ['history', 'ประวัติ', 'ประวัติการเข้างาน']
+    checkIn: ['checkin', '/checkin', 'เช็คอิน', '/เช็คอิน', 'เข้างาน', 'check in'],
+    checkOut: ['checkout', '/checkout', 'เช็คเอาต์', '/เช็คเอาต์', 'ออกงาน', 'check out'],
+    history: ['history', '/history', 'ประวัติ', '/ประวัติ', 'ประวัติการเข้างาน']
   };
 
   const messageTextLower = messageText.toLowerCase().trim();

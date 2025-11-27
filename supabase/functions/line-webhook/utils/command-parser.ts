@@ -4,7 +4,7 @@
 
 export interface ParsedCommand {
   commandType: 'ask' | 'summary' | 'faq' | 'todo' | 'report' | 'help' | 'tasks' 
-    | 'checkin' | 'checkout' | 'work' | 'remind' | 'list_reminders' 
+    | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
     | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | null;
   userQuestion: string;
@@ -86,6 +86,18 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     }
   }
   
+  // Add /history mapping if not already present
+  if (!commandType) {
+    const historyCommands = ['/history', '/ประวัติ'];
+    for (const cmd of historyCommands) {
+      if (lowerText.startsWith(cmd)) {
+        commandType = 'history';
+        userQuestion = trimmedText.slice(cmd.length).trim();
+        break;
+      }
+    }
+  }
+  
   // If mentioned but no command, treat as 'ask'
   if (isMentioned && !commandType) {
     commandType = 'ask';
@@ -104,7 +116,6 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
   if (!isCommand && (lowerText.includes('work') || lowerText.includes('งาน'))) {
     if (lowerText.includes('assign') || lowerText.includes('มอบหมาย')) {
       commandType = 'work';
-      isCommand;
     }
   }
   
