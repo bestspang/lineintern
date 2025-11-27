@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings, HelpCircle, FileUser, Building2, Users, History } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Loader2, Calendar, Download, X, DollarSign, Clock, AlertTriangle, TrendingUp, Globe, Send, Plus, Edit, Trash2, Mail, MessageSquare, User, Settings, HelpCircle, FileUser, Building2, Users, History, ChevronDown } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -37,6 +39,9 @@ export default function AttendanceSummaries() {
   const [customLineId, setCustomLineId] = useState('');
   const [sendTime, setSendTime] = useState('21:00');
   const [includeWorkHours, setIncludeWorkHours] = useState(true);
+  
+  // Dialog state for See More summaries
+  const [showAllSummaries, setShowAllSummaries] = useState(false);
 
   // Fetch branches
   const { data: branches } = useQuery({
@@ -157,6 +162,16 @@ export default function AttendanceSummaries() {
     },
     refetchInterval: 60000 // Auto-refresh every 1 minute
   });
+  
+  // Helper to check if date is today
+  const isToday = (dateString: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    return dateString === today;
+  };
+  
+  // Split summaries into recent (2) and older
+  const recentSummaries = useMemo(() => dailySummaries?.slice(0, 2) || [], [dailySummaries]);
+  const olderSummaries = useMemo(() => dailySummaries?.slice(2) || [], [dailySummaries]);
 
   // Fetch OT summary
   const { data: otLogs, isLoading: loadingOT } = useQuery({
@@ -1119,7 +1134,8 @@ export default function AttendanceSummaries() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {dailySummaries?.map((summary: any) => (
+              {/* แสดงเฉพาะ 2 cards ล่าสุด (วันนี้ + วันก่อนหน้า) */}
+              {recentSummaries.map((summary: any) => (
                 <Card key={summary.id} className="border-l-4 border-l-primary">
                   <CardHeader className="p-4">
                     <div className="flex items-center justify-between">
@@ -1129,9 +1145,15 @@ export default function AttendanceSummaries() {
                           : `📍 ${summary.branches?.name || 'Branch'} - ${format(new Date(summary.summary_date), 'dd MMM yyyy')}`}
                       </CardTitle>
                       <div className="flex items-center gap-2">
-                        {summary.scope === 'all_branches' && (
-                          <Badge variant="default" className="text-xs">
+                        {/* แสดง Live badge เฉพาะวันปัจจุบัน */}
+                        {isToday(summary.summary_date) ? (
+                          <Badge className="text-xs bg-green-500 text-white">
+                            <span className="h-1.5 w-1.5 bg-white rounded-full animate-pulse mr-1" />
                             Live
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            Final
                           </Badge>
                         )}
                         {summary.updated_at && (
@@ -1167,6 +1189,19 @@ export default function AttendanceSummaries() {
                   </CardContent>
                 </Card>
               ))}
+              
+              {/* ปุ่ม See More - แสดงเมื่อมีข้อมูลมากกว่า 2 วัน */}
+              {olderSummaries.length > 0 && (
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => setShowAllSummaries(true)}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  See More ({olderSummaries.length} more days)
+                </Button>
+              )}
+              
               {!dailySummaries?.length && (
                 <div className="text-center py-8 text-muted-foreground">
                   <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -1176,6 +1211,71 @@ export default function AttendanceSummaries() {
               )}
             </CardContent>
           </Card>
+          
+          {/* Dialog แสดง summaries ทั้งหมด */}
+          <Dialog open={showAllSummaries} onOpenChange={setShowAllSummaries}>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Daily Attendance History
+                </DialogTitle>
+                <DialogDescription>
+                  ประวัติสรุปการเข้างานรายวัน (รวมทุกสาขา)
+                </DialogDescription>
+              </DialogHeader>
+              
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-3">
+                  {dailySummaries?.map((summary: any) => (
+                    <Card key={summary.id} className="border-l-4 border-l-primary">
+                      <CardHeader className="p-4">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base">
+                            📊 {format(new Date(summary.summary_date), 'dd MMM yyyy (EEE)')}
+                          </CardTitle>
+                          <div className="flex items-center gap-2">
+                            {isToday(summary.summary_date) ? (
+                              <Badge className="text-xs bg-green-500 text-white">Live</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">Final</Badge>
+                            )}
+                            {summary.updated_at && (
+                              <Badge variant="outline" className="text-xs">
+                                {format(new Date(summary.updated_at), 'HH:mm')}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {/* Stats row */}
+                        <div className="grid grid-cols-4 gap-2 text-sm text-muted-foreground mt-2">
+                          <div>✅ {summary.checked_in || 0}/{summary.total_employees || 0}</div>
+                          <div>🏁 {summary.checked_out || 0}/{summary.total_employees || 0}</div>
+                          <div>⏰ {summary.late_count || 0}</div>
+                          <div>🚩 {summary.flagged_count || 0}</div>
+                        </div>
+                      </CardHeader>
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="w-full">
+                            <ChevronDown className="h-4 w-4 mr-2" />
+                            ดูรายละเอียด
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <CardContent className="p-4 pt-0">
+                            <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-3 rounded-md max-h-48 overflow-y-auto">
+                              {summary.summary_text}
+                            </pre>
+                          </CardContent>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </Card>
+                  ))}
+                </div>
+              </ScrollArea>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* Tab 2: OT Summary */}
