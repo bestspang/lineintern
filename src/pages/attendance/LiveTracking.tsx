@@ -422,13 +422,14 @@ export default function LiveTracking() {
                           <span className="font-medium text-primary">
                             ⏱️ Working: {formatWorkingHours(employee.working_minutes_elapsed)}
                           </span>
-                          <span className="hidden sm:inline">•</span>
-                          <span>
-                            {employee.working_time_type === 'hours_based' 
-                              ? `⏱️ ${employee.hours_per_day}h + ${employee.break_hours}h break`
-                              : `⏰ ${employee.shift_end_time?.substring(0, 5)}`
-                            }
-                          </span>
+                          {employee.working_time_type === 'hours_based' && (
+                            <>
+                              <span className="hidden sm:inline">•</span>
+                              <span className="text-muted-foreground">
+                                📋 {employee.hours_per_day}h/day + {employee.break_hours}h break
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
