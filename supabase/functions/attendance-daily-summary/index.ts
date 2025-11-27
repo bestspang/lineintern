@@ -411,9 +411,9 @@ serve(async (req) => {
     for (const config of configs as DeliveryConfig[]) {
       const configTime = config.send_time?.substring(0, 5); // "21:00"
       
-      // Check if current time matches config send_time (±10 minutes window)
-      if (configTime && !isWithinTimeWindow(currentTime, configTime, 10)) {
-        console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 10min of ${configTime}`);
+      // Check if current time matches config send_time (±20 minutes window)
+      if (configTime && !isWithinTimeWindow(currentTime, configTime, 20)) {
+        console.log(`[Config: ${config.name}] Skipping - current time ${currentTime} not within 20min of ${configTime}`);
         skippedCount++;
         continue;
       }
