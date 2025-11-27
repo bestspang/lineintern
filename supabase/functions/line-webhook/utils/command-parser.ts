@@ -28,55 +28,88 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
   
   // Check for explicit commands
   const commandMap: Record<string, ParsedCommand['commandType']> = {
-    '/summary': 'summary',
-    '/สรุป': 'summary',
-    '/faq': 'faq',
-    '/ถามตอบ': 'faq',
-    '/todo': 'todo',
-    '/tasks': 'tasks',
-    '/งาน': 'tasks',
-    '/report': 'report',
-    '/รายงาน': 'report',
+    // Core commands
     '/help': 'help',
     '/ช่วยเหลือ': 'help',
-    '/checkin': 'checkin',
-    '/เข้างาน': 'checkin',
-    '/checkout': 'checkout',
-    '/ออกงาน': 'checkout',
-    '/work': 'work',
+    '/mode': 'mode',
+    '/m': 'mode',
+    '/setmode': 'mode',
+    '/โหมด': 'mode',
+    '/status': 'status',
+    '/สถานะ': 'status',
+    
+    // Chat & Knowledge
+    '/ask': 'ask',
+    '/ถาม': 'ask',
+    '/faq': 'faq',
+    '/ถามตอบ': 'faq',
+    '/คำถาม': 'faq',
+    '/find': 'find',
+    '/search': 'find',
+    '/ค้นหา': 'find',
+    '/train': 'train',
+    '/ฝึก': 'train',
+    '/เทรน': 'train',
+    
+    // Summaries & Reports
+    '/summary': 'summary',
+    '/recap': 'summary',
+    '/summarize': 'summary',
+    '/สรุป': 'summary',
+    'สรุป': 'summary',
+    '/report': 'report',
+    '/รายงาน': 'report',
+    
+    // Tasks & Reminders
+    '/todo': 'todo',
+    '/task': 'todo',
+    '/tasks': 'tasks',
+    '/งาน': 'tasks',
     '/remind': 'remind',
     '/ตั้งเตือน': 'remind',
     '/reminders': 'list_reminders',
     '/reminder': 'list_reminders',
     '/เตือน': 'list_reminders',
-    '/mentions': 'mentions',
-    '/แท็ก': 'mentions',
-    '/imagine': 'imagine',
-    '/วาดรูป': 'imagine',
-    '/สร้างภาพ': 'imagine',
-    '/mode': 'mode',
-    '/โหมด': 'mode',
-    '/status': 'status',
-    '/สถานะ': 'status',
+    
+    // Work Management
+    '/work': 'work',
+    '/checkin': 'checkin',
+    '/เข้างาน': 'checkin',
+    '/เช็คอิน': 'checkin',
+    'checkin': 'checkin',
+    '/checkout': 'checkout',
+    '/ออกงาน': 'checkout',
+    '/เช็คเอาต์': 'checkout',
+    'checkout': 'checkout',
+    '/ot': 'ot',
+    '/ทำล่วงเวลา': 'ot',
+    '/โอที': 'ot',
     '/progress': 'progress_report',
+    '/update': 'progress_report',
     '/อัพเดท': 'progress_report',
     '/ความคืบหน้า': 'progress_report',
     '/confirm': 'confirm_with_feedback',
     '/ยืนยัน': 'confirm_with_feedback',
-    '/find': 'find',
-    '/ค้นหา': 'find',
-    '/train': 'train',
-    '/ฝึก': 'train',
-    '/ot': 'ot',
-    '/ทำล่วงเวลา': 'ot',
+    
+    // Creative & Social
+    '/imagine': 'imagine',
+    '/draw': 'imagine',
+    '/gen': 'imagine',
+    '/image': 'imagine',
+    '/วาดรูป': 'imagine',
+    '/สร้างภาพ': 'imagine',
+    '/mentions': 'mentions',
+    '/แท็ก': 'mentions',
+    'กล่าวถึง': 'mentions',
     '/menu': 'menu',
     '/เมนู': 'menu',
+    'เมนู': 'menu',
   };
   
   let commandType: ParsedCommand['commandType'] = null;
   let userQuestion = trimmedText;
   
-  // Check for explicit command
+  // Check for explicit command with full commandMap sync
   for (const [cmd, type] of Object.entries(commandMap)) {
     if (lowerText.startsWith(cmd)) {
       commandType = type;
