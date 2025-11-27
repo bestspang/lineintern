@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from '../_shared/bot-logger.ts';
-import { formatBangkokTime, getBangkokDateString } from '../_shared/timezone.ts';
+import { formatBangkokTime, getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -130,12 +130,16 @@ const generatePersonalSummary = async (
   today: string,
   includeWorkHours: boolean
 ): Promise<string> => {
+  // FIX: Use proper UTC boundaries for Bangkok day
+  const startOfDay = getBangkokStartOfDay(new Date(`${today}T12:00:00+07:00`));
+  const endOfDay = getBangkokEndOfDay(new Date(`${today}T12:00:00+07:00`));
+  
   const { data: logs } = await supabase
     .from('attendance_logs')
     .select('*')
     .eq('employee_id', employee.id)
-    .gte('server_time', `${today}T00:00:00`)
-    .lte('server_time', `${today}T23:59:59`)
+    .gte('server_time', startOfDay.toISOString())
+    .lte('server_time', endOfDay.toISOString())
     .order('server_time', { ascending: true });
 
   const checkIn = logs?.find((l: any) => l.event_type === 'check_in');
@@ -192,6 +196,10 @@ const generateSummary = async (
   today: string,
   includeWorkHours: boolean
 ): Promise<string> => {
+  // FIX: Use proper UTC boundaries for Bangkok day
+  const startOfDay = getBangkokStartOfDay(new Date(`${today}T12:00:00+07:00`));
+  const endOfDay = getBangkokEndOfDay(new Date(`${today}T12:00:00+07:00`));
+  
   const branchSummaries: string[] = [];
   let totalCheckedIn = 0;
   let totalCheckedOut = 0;
@@ -224,8 +232,8 @@ const generateSummary = async (
         .from('attendance_logs')
         .select('*')
         .eq('employee_id', employee.id)
-        .gte('server_time', `${today}T00:00:00`)
-        .lte('server_time', `${today}T23:59:59`)
+        .gte('server_time', startOfDay.toISOString())
+        .lte('server_time', endOfDay.toISOString())
         .order('server_time', { ascending: true });
 
       if (!logs || logs.length === 0) {

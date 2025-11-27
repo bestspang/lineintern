@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { fetchWithRetry } from '../_shared/retry.ts';
-import { getBangkokDateString, formatBangkokTime } from '../_shared/timezone.ts';
+import { getBangkokDateString, formatBangkokTime, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +43,12 @@ serve(async (req) => {
       ? getBangkokDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000))
       : today;
 
-    console.log(`[auto-checkout-midnight] Checking date: ${targetDate}`);
+    // FIX: Use proper UTC boundaries for Bangkok target date
+    const targetDateObj = new Date(`${targetDate}T12:00:00+07:00`);
+    const startOfTargetDay = getBangkokStartOfDay(targetDateObj);
+    const endOfTargetDay = getBangkokEndOfDay(targetDateObj);
+
+    console.log(`[auto-checkout-midnight] Checking date: ${targetDate}, range: ${startOfTargetDay.toISOString()} - ${endOfTargetDay.toISOString()}`);
 
     // Get all check-ins from target date that haven't been checked out
     const { data: checkIns, error: fetchError } = await supabase
@@ -67,8 +72,8 @@ serve(async (req) => {
         )
       `)
       .eq('event_type', 'check_in')
-      .gte('server_time', `${targetDate}T00:00:00`)
-      .lt('server_time', `${targetDate}T23:59:59`)
+      .gte('server_time', startOfTargetDay.toISOString())
+      .lt('server_time', endOfTargetDay.toISOString())
       .order('server_time', { ascending: false });
 
     if (fetchError) {
@@ -96,12 +101,13 @@ serve(async (req) => {
     const employeeIds = Array.from(latestCheckIns.keys());
     
     // ✅ FIX N+1: Batch fetch ALL checkouts for ALL employees at once
+    // FIX: Use proper UTC boundaries for Bangkok target date
     const { data: allCheckOuts } = await supabase
       .from('attendance_logs')
       .select('employee_id, server_time')
       .in('employee_id', employeeIds)
       .eq('event_type', 'check_out')
-      .gte('server_time', `${targetDate}T00:00:00`)
+      .gte('server_time', startOfTargetDay.toISOString())
       .order('server_time', { ascending: false });
     
     // Group checkouts by employee

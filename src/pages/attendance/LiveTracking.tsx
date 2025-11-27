@@ -10,8 +10,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Clock, Users, TrendingUp, Calendar, LogOut } from 'lucide-react';
 import { format, addMinutes, differenceInMinutes } from 'date-fns';
+import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { useToast } from '@/hooks/use-toast';
 import { useAdminRole } from '@/hooks/useAdminRole';
+
+const BANGKOK_TZ = 'Asia/Bangkok';
 
 interface CheckedInEmployee {
   employee_id: string;
@@ -146,6 +149,7 @@ export default function LiveTracking() {
       });
 
       // Calculate expected check-out times
+      // FIX: Use proper Bangkok timezone handling for shift_end_time
       const result: CheckedInEmployee[] = currentlyCheckedIn.map(checkIn => {
         const employee = checkIn.employees;
         const checkInTime = new Date(checkIn.server_time);
@@ -158,15 +162,23 @@ export default function LiveTracking() {
           const totalMinutes = (hoursPerDay + breakHours) * 60;
           expectedCheckOut = addMinutes(checkInTime, totalMinutes);
         } else {
-          // Use shift_end_time
+          // Use shift_end_time with proper Bangkok timezone handling
           if (employee.shift_end_time) {
+            // Get the Bangkok date string from check-in time
+            const bangkokDateStr = formatInTimeZone(checkInTime, BANGKOK_TZ, 'yyyy-MM-dd');
+            // Construct the expected checkout time in Bangkok timezone
+            const expectedCheckoutStr = `${bangkokDateStr}T${employee.shift_end_time}`;
+            // Convert from Bangkok time to UTC Date
+            expectedCheckOut = toZonedTime(expectedCheckoutStr, BANGKOK_TZ);
+            
+            // Convert to proper UTC for comparison
             const [hour, minute] = employee.shift_end_time.split(':').map(Number);
-            expectedCheckOut = new Date(checkInTime);
-            expectedCheckOut.setHours(hour, minute, 0, 0);
+            const offsetMs = 7 * 60 * 60 * 1000; // Bangkok is UTC+7
+            expectedCheckOut = new Date(new Date(`${bangkokDateStr}T${employee.shift_end_time}`).getTime() - offsetMs);
             
             // If shift end is before check-in time, it's next day
             if (expectedCheckOut < checkInTime) {
-              expectedCheckOut.setDate(expectedCheckOut.getDate() + 1);
+              expectedCheckOut = new Date(expectedCheckOut.getTime() + 24 * 60 * 60 * 1000);
             }
           } else {
             expectedCheckOut = addMinutes(checkInTime, 8 * 60); // Default 8 hours
