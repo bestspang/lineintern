@@ -951,7 +951,7 @@ export type Database = {
       daily_attendance_summaries: {
         Row: {
           absent_count: number | null
-          branch_id: string
+          branch_id: string | null
           checked_in: number | null
           checked_out: number | null
           created_at: string | null
@@ -959,14 +959,16 @@ export type Database = {
           id: string
           late_count: number | null
           line_message_id: string | null
+          scope: string | null
           sent_at: string | null
           summary_date: string
           summary_text: string
           total_employees: number | null
+          updated_at: string | null
         }
         Insert: {
           absent_count?: number | null
-          branch_id: string
+          branch_id?: string | null
           checked_in?: number | null
           checked_out?: number | null
           created_at?: string | null
@@ -974,14 +976,16 @@ export type Database = {
           id?: string
           late_count?: number | null
           line_message_id?: string | null
+          scope?: string | null
           sent_at?: string | null
           summary_date: string
           summary_text: string
           total_employees?: number | null
+          updated_at?: string | null
         }
         Update: {
           absent_count?: number | null
-          branch_id?: string
+          branch_id?: string | null
           checked_in?: number | null
           checked_out?: number | null
           created_at?: string | null
@@ -989,10 +993,12 @@ export type Database = {
           id?: string
           late_count?: number | null
           line_message_id?: string | null
+          scope?: string | null
           sent_at?: string | null
           summary_date?: string
           summary_text?: string
           total_employees?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {

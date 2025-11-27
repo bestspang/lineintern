@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.missing-employee-checker]
 verify_jwt = false
+
+[functions.attendance-snapshot-update]
+verify_jwt = false
