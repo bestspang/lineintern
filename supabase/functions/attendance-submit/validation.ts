@@ -1,5 +1,97 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { toBangkokTime, formatBangkokTime } from '../_shared/timezone.ts';
+import { toBangkokTime, formatBangkokTime, getBangkokNow } from '../_shared/timezone.ts';
+
+/**
+ * Validates if an hours_based employee can check in
+ * - Validates against earliest_checkin_time and latest_checkin_time
+ */
+export async function validateHoursBasedCheckIn(
+  employee: any
+): Promise<{ valid: boolean; error?: string; warning?: string }> {
+  const bangkokNow = getBangkokNow();
+  const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+  
+  const earliestCheckin = employee.earliest_checkin_time || '06:00:00';
+  const latestCheckin = employee.latest_checkin_time || '11:00:00';
+  
+  // Check if current time is within allowed window
+  if (currentTimeStr < earliestCheckin) {
+    return {
+      valid: false,
+      error: `⏰ ยังไม่ถึงเวลา Check-in\n\nสามารถ Check-in ได้ตั้งแต่เวลา ${earliestCheckin.substring(0, 5)} น.\n\nกรุณารอก่อนนะครับ`,
+    };
+  }
+  
+  if (currentTimeStr > latestCheckin) {
+    return {
+      valid: false,
+      error: `⏰ เลยเวลา Check-in แล้ว\n\nสามารถ Check-in ได้ถึงเวลา ${latestCheckin.substring(0, 5)} น. เท่านั้น\n\nกรุณาติดต่อหัวหน้างาน`,
+    };
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Validates if an hours_based employee can check out
+ * - Checks minimum work hours requirement
+ * - Requires early leave approval if not meeting minimum
+ */
+export async function validateHoursBasedCheckOut(
+  supabase: SupabaseClient,
+  employeeId: string,
+  employee: any,
+  checkInTime: Date
+): Promise<{ valid: boolean; error?: string; warning?: string }> {
+  const bangkokNow = getBangkokNow();
+  const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
+  
+  // Calculate actual work duration
+  const workDurationMs = bangkokNow.getTime() - checkInTime.getTime();
+  const workDurationHours = workDurationMs / (1000 * 60 * 60);
+  
+  // Get minimum work hours requirement
+  // For hours_based: minimum = hours_per_day + break_hours
+  const hoursPerDay = employee.hours_per_day || 8;
+  const breakHours = employee.break_hours || 1;
+  const minimumWorkHours = employee.minimum_work_hours || (hoursPerDay + breakHours);
+  
+  // If worked less than minimum
+  if (workDurationHours < minimumWorkHours) {
+    // Check for approved early leave request
+    const { data: approvedEarlyLeave } = await supabase
+      .from('early_leave_requests')
+      .select('id, status')
+      .eq('employee_id', employeeId)
+      .eq('request_date', bangkokDate)
+      .eq('status', 'approved')
+      .maybeSingle();
+    
+    if (!approvedEarlyLeave) {
+      const hoursShort = (minimumWorkHours - workDurationHours).toFixed(1);
+      const hoursWorked = workDurationHours.toFixed(1);
+      
+      return {
+        valid: false,
+        error: `⚠️ ยังทำงานไม่ครบกำหนด\n\n` +
+               `⏱️ ทำงานมาแล้ว: ${hoursWorked} ชั่วโมง\n` +
+               `📋 ต้องทำงานอย่างน้อย: ${minimumWorkHours} ชั่วโมง\n` +
+               `⏳ ขาดอีก: ${hoursShort} ชั่วโมง\n\n` +
+               `หากต้องการออกก่อน กรุณา:\n` +
+               `• พิมพ์ "/ลาก่อน [เหตุผล]" เพื่อขออนุมัติ\n` +
+               `• หรือติดต่อหัวหน้างาน`,
+      };
+    }
+    
+    // Has approved early leave
+    return {
+      valid: true,
+      warning: `ℹ️ Check-out ก่อนเวลา (ได้รับอนุมัติแล้ว)`,
+    };
+  }
+  
+  return { valid: true };
+}
 
 /**
  * Validates if an employee can check out
@@ -45,12 +137,18 @@ export async function validateCheckOut(
     return { valid: false, error: 'Check-out แล้ววันนี้' };
   }
 
-  // 3. Calculate work hours
+  // 3. For hours_based employees, validate minimum work hours
+  if (employee.working_time_type === 'hours_based') {
+    const checkInTime = toBangkokTime(checkInLog.server_time);
+    return validateHoursBasedCheckOut(supabase, employeeId, employee, checkInTime);
+  }
+
+  // 4. For time_based: Calculate work hours
   const checkInTime = toBangkokTime(checkInLog.server_time);
   const hoursWorked = (bangkokNow.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
   const maxWorkHours = employee.max_work_hours_per_day || 8;
 
-  // 4. If working overtime, require OT approval
+  // 5. If working overtime, require OT approval
   if (hoursWorked > maxWorkHours) {
     const { data: otApproval } = await supabase
       .from('overtime_requests')
@@ -78,7 +176,7 @@ export async function validateCheckOut(
     }
   }
 
-  // 5. For time_based: check if before allowed_work_end_time
+  // 6. For time_based: check if before allowed_work_end_time
   if (employee.working_time_type === 'time_based' && employee.allowed_work_end_time) {
     const [hour, minute] = employee.allowed_work_end_time.split(':').map(Number);
     const allowedEndTime = toBangkokTime(bangkokNow);
@@ -96,11 +194,17 @@ export async function validateCheckOut(
 /**
  * Validates if an employee can check in
  * - For time_based: validates against allowed_work_start_time
+ * - For hours_based: validates against earliest_checkin_time and latest_checkin_time
  */
 export async function validateCheckIn(
   employee: any
 ): Promise<{ valid: boolean; error?: string; warning?: string }> {
   const bangkokNow = toBangkokTime(new Date());
+
+  // For hours_based: check time window
+  if (employee.working_time_type === 'hours_based') {
+    return validateHoursBasedCheckIn(employee);
+  }
 
   // For time_based: check if before allowed_work_start_time
   if (employee.working_time_type === 'time_based') {

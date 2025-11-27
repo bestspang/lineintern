@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.employee-menu-validate]
 verify_jwt = false
+
+[functions.missing-employee-checker]
+verify_jwt = false
