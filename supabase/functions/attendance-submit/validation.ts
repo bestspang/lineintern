@@ -4,10 +4,17 @@ import { toBangkokTime, formatBangkokTime, getBangkokNow } from '../_shared/time
 /**
  * Validates if an hours_based employee can check in
  * - Validates against earliest_checkin_time and latest_checkin_time
+ * - Bypasses validation if is_test_mode is enabled
  */
 export async function validateHoursBasedCheckIn(
   employee: any
 ): Promise<{ valid: boolean; error?: string; warning?: string }> {
+  // Test mode bypass
+  if (employee.is_test_mode) {
+    console.log(`[TEST MODE] Bypassing check-in time validation for ${employee.full_name || employee.id}`);
+    return { valid: true, warning: '🧪 Test mode - time validation bypassed' };
+  }
+
   const bangkokNow = getBangkokNow();
   const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
   
@@ -43,6 +50,12 @@ export async function validateHoursBasedCheckOut(
   employee: any,
   checkInTime: Date
 ): Promise<{ valid: boolean; error?: string; warning?: string }> {
+  // Test mode bypass
+  if (employee.is_test_mode) {
+    console.log(`[TEST MODE] Bypassing check-out hours validation for ${employee.full_name || employeeId}`);
+    return { valid: true, warning: '🧪 Test mode - hours validation bypassed (treated as 8h)' };
+  }
+
   const bangkokNow = getBangkokNow();
   const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
   
@@ -199,6 +212,12 @@ export async function validateCheckOut(
 export async function validateCheckIn(
   employee: any
 ): Promise<{ valid: boolean; error?: string; warning?: string }> {
+  // Test mode bypass
+  if (employee.is_test_mode) {
+    console.log(`[TEST MODE] Bypassing all check-in validation for ${employee.full_name || employee.id}`);
+    return { valid: true, warning: '🧪 Test mode - all validation bypassed' };
+  }
+
   const bangkokNow = toBangkokTime(new Date());
 
   // For hours_based: check time window

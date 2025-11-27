@@ -173,10 +173,17 @@ serve(async (req) => {
     }
 
     // Pre-validate checkout for time_based employees (OT check)
+    // Skip validation if test mode is enabled
     if (tokenPreCheck.type === 'check_out' && tokenPreCheck.employee) {
       const emp = tokenPreCheck.employee as any;
       
-      if (emp.working_time_type === 'time_based') {
+      // Test mode bypass - skip all OT pre-validation
+      if (emp.is_test_mode) {
+        logger.info('[TEST MODE] Bypassing OT pre-validation for checkout', {
+          employee_id: emp.id,
+          employee_name: emp.full_name
+        });
+      } else if (emp.working_time_type === 'time_based') {
         const today = getBangkokDateString();
         const maxWorkHours = emp.max_work_hours_per_day || 8;
         
@@ -363,41 +370,50 @@ serve(async (req) => {
     }
 
     // Validate check-in time window for hours_based employees
+    // Skip validation if test mode is enabled
     if (token.type === 'check_in' && token.employee.working_time_type === 'hours_based') {
-      const currentTime = new Date();
-      const currentTimeStr = formatBangkokTime(currentTime, 'HH:mm:ss');
-      
-      // Use appropriate time window based on working_time_type
-      const earliestCheckin = token.employee.earliest_checkin_time || token.employee.allowed_work_start_time || '06:00:00';
-      // For hours_based: use allowed_work_end_time (ช่วงเวลาที่อนุญาตให้นับชั่วโมง)
-      const latestCheckin = token.employee.allowed_work_end_time || '22:00:00';
-      
-      if (currentTimeStr < earliestCheckin) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `⏰ ยังไม่ถึงเวลา Check-in\n\nสามารถ Check-in ได้ตั้งแต่เวลา ${earliestCheckin.substring(0,5)} น.\n\nกรุณารอก่อนนะครับ`,
-            error_en: `Check-in time has not started yet. You can check in from ${earliestCheckin.substring(0,5)}.`
-          }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-      
-      if (currentTimeStr > latestCheckin) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `⏰ เลยเวลา Check-in แล้ว\n\nสามารถ Check-in ได้ถึงเวลา ${latestCheckin.substring(0,5)} น. เท่านั้น\n\nกรุณาติดต่อหัวหน้างาน`,
-            error_en: `Check-in time has passed. You can only check in until ${latestCheckin.substring(0,5)}. Please contact your supervisor.`
-          }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
+      // Test mode bypass
+      if (token.employee.is_test_mode) {
+        logger.info('[TEST MODE] Bypassing check-in time window validation', {
+          employee_id: token.employee.id,
+          employee_name: token.employee.full_name
+        });
+      } else {
+        const currentTime = new Date();
+        const currentTimeStr = formatBangkokTime(currentTime, 'HH:mm:ss');
+        
+        // Use appropriate time window based on working_time_type
+        const earliestCheckin = token.employee.earliest_checkin_time || token.employee.allowed_work_start_time || '06:00:00';
+        // For hours_based: use allowed_work_end_time (ช่วงเวลาที่อนุญาตให้นับชั่วโมง)
+        const latestCheckin = token.employee.allowed_work_end_time || '22:00:00';
+        
+        if (currentTimeStr < earliestCheckin) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `⏰ ยังไม่ถึงเวลา Check-in\n\nสามารถ Check-in ได้ตั้งแต่เวลา ${earliestCheckin.substring(0,5)} น.\n\nกรุณารอก่อนนะครับ`,
+              error_en: `Check-in time has not started yet. You can check in from ${earliestCheckin.substring(0,5)}.`
+            }),
+            { 
+              status: 400, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+        
+        if (currentTimeStr > latestCheckin) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `⏰ เลยเวลา Check-in แล้ว\n\nสามารถ Check-in ได้ถึงเวลา ${latestCheckin.substring(0,5)} น. เท่านั้น\n\nกรุณาติดต่อหัวหน้างาน`,
+              error_en: `Check-in time has passed. You can only check in until ${latestCheckin.substring(0,5)}. Please contact your supervisor.`
+            }),
+            { 
+              status: 400, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
       }
     }
 

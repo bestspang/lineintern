@@ -1176,6 +1176,7 @@ export type Database = {
           hours_per_day: number | null
           id: string
           is_active: boolean | null
+          is_test_mode: boolean | null
           latest_checkin_time: string | null
           line_user_id: string | null
           max_work_hours_per_day: number | null
@@ -1211,6 +1212,7 @@ export type Database = {
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
+          is_test_mode?: boolean | null
           latest_checkin_time?: string | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
@@ -1246,6 +1248,7 @@ export type Database = {
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
+          is_test_mode?: boolean | null
           latest_checkin_time?: string | null
           line_user_id?: string | null
           max_work_hours_per_day?: number | null
