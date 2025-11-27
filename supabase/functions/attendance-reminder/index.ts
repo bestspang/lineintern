@@ -195,21 +195,34 @@ Deno.serve(async (req) => {
 
       // CHECK-OUT REMINDER LOGIC
       if (prefs.check_out_reminder_enabled) {
-        let expectedCheckOutTime: Date | null = null;
+        let expectedCheckOutTimeStr: string | null = null;
 
         if (workingTimeType === 'time_based') {
-          // Time-based: use shift_end_time
+          // Time-based: use shift_end_time directly (already in Bangkok time format HH:mm:ss)
           if (!employee.shift_end_time) {
             continue;
           }
 
-          const shiftEndTime = employee.shift_end_time;
+          // shift_end_time is already in Bangkok local time (e.g., "18:30:00")
+          // We just need to add reminder_after_minutes to it
+          const shiftEndTime = employee.shift_end_time; // "18:30:00"
           const [endHour, endMinute] = shiftEndTime.split(':').map(Number);
-          const shiftEnd = new Date(now);
-          shiftEnd.setHours(endHour, endMinute, 0, 0);
-          expectedCheckOutTime = shiftEnd;
+          
+          // Calculate reminder time by adding minutes to the Bangkok time
+          const reminderAfterMinutes = prefs.check_out_reminder_after_minutes || 15;
+          let reminderHour = endHour;
+          let reminderMinute = endMinute + reminderAfterMinutes;
+          
+          // Handle minute overflow
+          if (reminderMinute >= 60) {
+            reminderHour += Math.floor(reminderMinute / 60);
+            reminderMinute = reminderMinute % 60;
+          }
+          
+          // Format as HH:mm:ss for comparison
+          expectedCheckOutTimeStr = `${String(reminderHour).padStart(2, '0')}:${String(reminderMinute).padStart(2, '0')}:00`;
 
-          console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_end=${shiftEndTime}`);
+          console.log(`[attendance-reminder] Employee ${employee.full_name} (time_based): shift_end=${shiftEndTime}, reminder_time=${expectedCheckOutTimeStr}, current=${currentTime}`);
         } else if (workingTimeType === 'hours_based') {
           // Hours-based: calculate from check-in time + hours_per_day + break_hours
           if (!employee.hours_per_day) {
@@ -228,20 +241,22 @@ Deno.serve(async (req) => {
           const breakHours = employee.break_hours || 0;
           const totalMinutes = (hoursPerDay + breakHours) * 60;
           
-          expectedCheckOutTime = addMinutes(new Date(checkInTime), totalMinutes);
+          const expectedCheckOutTime = addMinutes(new Date(checkInTime), totalMinutes);
+          const reminderAfterMinutes = prefs.check_out_reminder_after_minutes || 15;
+          const reminderTime = addMinutes(expectedCheckOutTime, reminderAfterMinutes);
+          
+          // Convert to Bangkok time string for comparison
+          expectedCheckOutTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
 
-          console.log(`[attendance-reminder] Employee ${employee.full_name} (hours_based): check_in=${formatBangkokTime(new Date(checkInTime), 'HH:mm:ss')}, hours=${hoursPerDay}, break=${breakHours}, expected_checkout=${formatBangkokTime(expectedCheckOutTime, 'HH:mm:ss')}`);
+          console.log(`[attendance-reminder] Employee ${employee.full_name} (hours_based): check_in=${formatBangkokTime(new Date(checkInTime), 'HH:mm:ss')}, hours=${hoursPerDay}, break=${breakHours}, expected_checkout=${formatBangkokTime(expectedCheckOutTime, 'HH:mm:ss')}, reminder_time=${expectedCheckOutTimeStr}`);
         }
 
-        if (!expectedCheckOutTime) {
+        if (!expectedCheckOutTimeStr) {
           continue;
         }
 
-        const reminderAfterMinutes = prefs.check_out_reminder_after_minutes || 15;
-        const reminderTime = addMinutes(expectedCheckOutTime, reminderAfterMinutes);
-        const reminderTimeStr = formatBangkokTime(reminderTime, 'HH:mm:ss');
-
-        if (currentTime >= reminderTimeStr) {
+        // Compare Bangkok time strings directly (both are in HH:mm:ss format)
+        if (currentTime >= expectedCheckOutTimeStr) {
           // First check if they checked in
           const hasCheckedIn = await hasEmployeeCheckedInToday(supabase, employee.id, today);
           
@@ -254,7 +269,7 @@ Deno.serve(async (req) => {
               const reminderSent = await hasReminderSentToday(supabase, employee.id, 'check_out', today);
               
               if (!reminderSent) {
-                console.log(`[attendance-reminder] Sending check-out reminder to ${employee.full_name}`);
+                console.log(`[attendance-reminder] Sending check-out reminder to ${employee.full_name} (current: ${currentTime} >= reminder: ${expectedCheckOutTimeStr})`);
                 await sendCheckOutReminder(employee, prefs.notification_type, lineAccessToken);
                 await logReminder(supabase, employee.id, 'check_out', today, prefs.notification_type);
                 checkOutReminders++;
