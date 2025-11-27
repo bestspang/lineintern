@@ -146,6 +146,102 @@ serve(async (req) => {
       }
     }
 
+    // ============================================================
+    // PRE-VALIDATION: Check OT requirements BEFORE claiming token
+    // This prevents token from being wasted if validation fails
+    // ============================================================
+    const { data: tokenPreCheck } = await supabase
+      .from('attendance_tokens')
+      .select(`
+        id, type, status, expires_at,
+        employee:employees(
+          id, full_name, working_time_type, 
+          auto_ot_enabled, max_work_hours_per_day, hours_per_day
+        )
+      `)
+      .eq('id', tokenId)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    if (!tokenPreCheck) {
+      logger.warn('Token pre-check failed - invalid or expired', { tokenId });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid or expired token' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Pre-validate checkout for time_based employees (OT check)
+    if (tokenPreCheck.type === 'check_out' && tokenPreCheck.employee) {
+      const emp = tokenPreCheck.employee as any;
+      
+      if (emp.working_time_type === 'time_based') {
+        const today = getBangkokDateString();
+        const maxWorkHours = emp.max_work_hours_per_day || 8;
+        
+        // Get today's check-in to calculate hours worked
+        const { data: checkIns } = await supabase
+          .from('attendance_logs')
+          .select('server_time')
+          .eq('employee_id', emp.id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', `${today}T00:00:00`)
+          .order('server_time', { ascending: false })
+          .limit(1);
+
+        if (checkIns && checkIns.length > 0) {
+          const checkInTime = new Date(checkIns[0].server_time);
+          const now = new Date();
+          const totalWorkHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+          
+          // If overtime and auto_ot disabled, check for approval
+          if (totalWorkHours > maxWorkHours && !emp.auto_ot_enabled) {
+            const { data: approvedOT } = await supabase
+              .from('overtime_requests')
+              .select('id')
+              .eq('employee_id', emp.id)
+              .eq('request_date', today)
+              .eq('status', 'approved')
+              .maybeSingle();
+
+            if (!approvedOT) {
+              const overtimeHours = totalWorkHours - maxWorkHours;
+              
+              logger.warn('Pre-validation: OT not approved - blocking before token claim', {
+                employee_id: emp.id,
+                employee_name: emp.full_name,
+                hours_worked: totalWorkHours.toFixed(2),
+                max_hours: maxWorkHours,
+                overtime: overtimeHours.toFixed(2)
+              });
+
+              // Return error WITHOUT consuming the token
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHours.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout\n\n💡 Token ยังใช้ได้ - รอ OT อนุมัติแล้วกดลิงค์เดิมได้เลย`,
+                  error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHours.toFixed(1)} hours overtime\nbut don't have OT approval\n\nPlease:\n1. Request OT approval first (/ot [reason])\n2. Or contact your supervisor`,
+                  hours_worked: totalWorkHours,
+                  max_hours: maxWorkHours,
+                  overtime_hours: overtimeHours,
+                  requires_ot_approval: true,
+                  token_still_valid: true  // Signal that token is NOT consumed
+                }),
+                { 
+                  status: 403, 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            }
+          }
+        }
+      }
+    }
+    // ============================================================
+    // END PRE-VALIDATION - Safe to claim token now
+    // ============================================================
+
     // Validate token using ATOMIC claim function
     const { data: claimedTokens, error: tokenError } = await supabase
       .rpc('claim_attendance_token', { p_token_id: tokenId });

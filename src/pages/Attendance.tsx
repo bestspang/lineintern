@@ -301,6 +301,23 @@ export default function Attendance() {
 
         const result = await response.json();
 
+        // Handle 403 OT approval required - token is NOT consumed
+        if (response.status === 403 && result.requires_ot_approval) {
+          setSubmitting(false);
+          setSubmitProgress('');
+          
+          toast({
+            title: '⚠️ ต้องขออนุมัติ OT ก่อน',
+            description: `คุณทำงานเกิน ${result.overtime_hours?.toFixed(1) || ''} ชั่วโมง กรุณาขอ OT ใน LINE แล้วกดลิงค์เดิมได้เลย`,
+            variant: 'destructive',
+            duration: 15000,
+          });
+          
+          // Show OT request dialog
+          setShowOTRequestDialog(true);
+          return;
+        }
+
         if (!response.ok || !result.success) {
           throw new Error(result.error || 'Submission failed');
         }
