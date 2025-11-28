@@ -669,7 +669,7 @@ export default function Memory() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-xs sm:text-sm text-muted-foreground">
-            Last updated: {lastUpdated.toLocaleTimeString()}
+            Last updated: {lastUpdated.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}
           </div>
           <Button 
             variant="outline" 

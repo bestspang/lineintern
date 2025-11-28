@@ -392,7 +392,7 @@ export default function EarlyLeaveRequests() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {new Date(request.requested_at).toLocaleString('th-TH')}
+                            {new Date(request.requested_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}
                           </TableCell>
                             <TableCell className="text-right">
                               {!isBulkMode && (
@@ -488,7 +488,7 @@ export default function EarlyLeaveRequests() {
                             {request.actual_work_hours?.toFixed(1)} / {request.required_work_hours?.toFixed(1)} ชม.
                           </TableCell>
                           <TableCell>
-                            {request.approved_at ? new Date(request.approved_at).toLocaleString('th-TH') : '-'}
+                            {request.approved_at ? new Date(request.approved_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '-'}
                           </TableCell>
                         </TableRow>
                       ))}
