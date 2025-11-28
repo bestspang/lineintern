@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from '../_shared/bot-logger.ts';
+import { getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +37,7 @@ serve(async (req) => {
   try {
     console.log('[work-reminder] Starting hourly work reminder check...');
     
-    const now = new Date();
+    const now = getBangkokNow();
     const results: Array<{ taskId: string; status: string; remindersSent: number }> = [];
 
     // Fetch all pending work assignments

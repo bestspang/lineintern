@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokNow } from '../_shared/timezone.ts';
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -124,6 +125,18 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Validate CRON_SECRET
+  const cronSecret = req.headers.get('x-cron-secret');
+  const expectedSecret = Deno.env.get('CRON_SECRET');
+
+  if (!cronSecret || cronSecret !== expectedSecret) {
+    console.error('[work-check-in] Unauthorized: Invalid or missing CRON_SECRET');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     console.log("[work-check-in] Starting daily check-in job...");
 
@@ -177,7 +190,7 @@ serve(async (req) => {
         const updatedMetadata = {
           ...metadata,
           check_in_count: (metadata.check_in_count || 0) + 1,
-          last_check_in_at: new Date().toISOString(),
+          last_check_in_at: getBangkokNow().toISOString(),
         };
         
         await supabase

@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from '../_shared/bot-logger.ts';
-import { formatBangkokTime } from '../_shared/timezone.ts';
+import { formatBangkokTime, getBangkokNow, getBangkokStartOfDay, getBangkokEndOfDay, toBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +18,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Validate CRON_SECRET
+  const cronSecret = req.headers.get('x-cron-secret');
+  const expectedSecret = Deno.env.get('CRON_SECRET');
+
+  if (!cronSecret || cronSecret !== expectedSecret) {
+    console.error('[work-summary] Unauthorized: Invalid or missing CRON_SECRET');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
@@ -150,17 +162,19 @@ async function generateWorkSummary(
   locale: 'th' | 'en'
 ): Promise<string | null> {
   try {
-    const now = new Date();
+    const now = getBangkokNow();
+    const todayStart = getBangkokStartOfDay();
+    const todayEnd = getBangkokEndOfDay();
     
-    // Categorize tasks
-    const overdueTasks = workTasks.filter(t => new Date(t.due_at) < now);
+    // Categorize tasks (using Bangkok timezone)
+    const overdueTasks = workTasks.filter(t => toBangkokTime(t.due_at) < now);
     const todayTasks = workTasks.filter(t => {
-      const dueDate = new Date(t.due_at);
-      return dueDate >= now && dueDate < new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const dueDate = toBangkokTime(t.due_at);
+      return dueDate >= now && dueDate <= todayEnd;
     });
     const upcomingTasks = workTasks.filter(t => {
-      const dueDate = new Date(t.due_at);
-      return dueDate >= new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const dueDate = toBangkokTime(t.due_at);
+      return dueDate > todayEnd;
     });
 
     // Fetch personality state for work relationships
