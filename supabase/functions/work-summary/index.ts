@@ -15,6 +15,8 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+type SummaryPeriod = 'morning' | 'evening';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -33,7 +35,18 @@ serve(async (req) => {
   }
 
   try {
-    console.log('[work-summary] Starting daily work summary generation...');
+    // Parse request body for period (default to 'morning')
+    let period: SummaryPeriod = 'morning';
+    try {
+      const body = await req.json();
+      if (body.period === 'evening') {
+        period = 'evening';
+      }
+    } catch {
+      // No body or invalid JSON, use default
+    }
+
+    console.log(`[work-summary] Starting ${period} work summary generation...`);
 
     // Fetch all active groups with work assignments enabled
     const { data: groups, error: groupsError } = await supabase
@@ -58,7 +71,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[work-summary] Processing ${groups.length} active groups`);
+    console.log(`[work-summary] Processing ${groups.length} active groups for ${period} summary`);
     const results: Array<{ groupId: string; status: string; message?: string }> = [];
 
     for (const group of groups) {
@@ -87,8 +100,8 @@ serve(async (req) => {
           continue;
         }
 
-        // Generate work summary
-        const summary = await generateWorkSummary(group.id, workTasks, locale);
+        // Generate work summary with period context
+        const summary = await generateWorkSummary(group.id, workTasks, locale, period);
         
         if (!summary) {
           console.error(`[work-summary] Failed to generate summary for group ${group.id}`);
@@ -96,7 +109,7 @@ serve(async (req) => {
           continue;
         }
 
-        console.log(`[work-summary] ✅ Generated summary for group ${group.id} (${group.display_name}):`, summary);
+        console.log(`[work-summary] ✅ Generated ${period} summary for group ${group.id} (${group.display_name}):`, summary);
 
         // Send summary to LINE group (will fail for test groups with fake LINE IDs)
         let lineMessageId: string | null = null;
@@ -104,7 +117,7 @@ serve(async (req) => {
         
         try {
           lineMessageId = await sendLineMessage(group.line_group_id, summary);
-          console.log(`[work-summary] Sent work summary to group ${group.id} (${group.display_name})`);
+          console.log(`[work-summary] Sent ${period} work summary to group ${group.id} (${group.display_name})`);
           results.push({ groupId: group.id, status: 'success' });
         } catch (sendError) {
           deliveryStatus = 'failed';
@@ -120,6 +133,7 @@ serve(async (req) => {
           groupId: group.id,
           messageText: summary,
           messageType: 'summary',
+          commandType: period === 'morning' ? 'morning_summary' : 'evening_summary',
           triggeredBy: 'cron',
           edgeFunctionName: 'work-summary',
           lineMessageId: lineMessageId || undefined,
@@ -134,10 +148,11 @@ serve(async (req) => {
     }
 
     const successCount = results.filter(r => r.status === 'success').length;
-    console.log(`[work-summary] Completed: ${successCount}/${groups.length} groups successful`);
+    console.log(`[work-summary] Completed ${period}: ${successCount}/${groups.length} groups successful`);
 
     return new Response(JSON.stringify({ 
-      message: 'Work summaries processed',
+      message: `${period} work summaries processed`,
+      period,
       total: groups.length,
       successful: successCount,
       results 
@@ -159,7 +174,8 @@ serve(async (req) => {
 async function generateWorkSummary(
   groupId: string,
   workTasks: any[],
-  locale: 'th' | 'en'
+  locale: 'th' | 'en',
+  period: SummaryPeriod
 ): Promise<string | null> {
   try {
     const now = getBangkokNow();
@@ -195,11 +211,14 @@ async function generateWorkSummary(
 
     const userMap = new Map(users?.map(u => [u.id, u]) || []);
 
-    // Build context for AI
+    // Build context for AI - different headers based on period
     const contextParts: string[] = [];
     
     if (locale === 'th') {
-      contextParts.push('# สรุปงานประจำวัน 📋\n');
+      const header = period === 'morning' 
+        ? '# ☀️ สรุปงานประจำวัน (ตอนเช้า) 📋\n'
+        : '# 🌙 สรุปงานประจำวัน (ตอนเย็น) 📋\n';
+      contextParts.push(header);
       
       if (overdueTasks.length > 0) {
         contextParts.push(`\n**งานที่เลยกำหนด (${overdueTasks.length} งาน):**`);
@@ -214,7 +233,10 @@ async function generateWorkSummary(
       }
 
       if (todayTasks.length > 0) {
-        contextParts.push(`\n**งานที่ต้องส่งวันนี้ (${todayTasks.length} งาน):**`);
+        const todayHeader = period === 'morning' 
+          ? `\n**งานที่ต้องส่งวันนี้ (${todayTasks.length} งาน):**`
+          : `\n**งานที่ยังต้องทำให้เสร็จวันนี้ (${todayTasks.length} งาน):**`;
+        contextParts.push(todayHeader);
         for (const task of todayTasks.slice(0, 5)) {
           const assigneeId = task.work_metadata?.assignee_user_id;
           const user = userMap.get(assigneeId);
@@ -234,7 +256,10 @@ async function generateWorkSummary(
         }
       }
     } else {
-      contextParts.push('# Daily Work Summary 📋\n');
+      const header = period === 'morning'
+        ? '# ☀️ Daily Work Summary (Morning) 📋\n'
+        : '# 🌙 Daily Work Summary (Evening) 📋\n';
+      contextParts.push(header);
       
       if (overdueTasks.length > 0) {
         contextParts.push(`\n**Overdue Tasks (${overdueTasks.length}):**`);
@@ -249,7 +274,10 @@ async function generateWorkSummary(
       }
 
       if (todayTasks.length > 0) {
-        contextParts.push(`\n**Due Today (${todayTasks.length}):**`);
+        const todayHeader = period === 'morning'
+          ? `\n**Due Today (${todayTasks.length}):**`
+          : `\n**Still To Complete Today (${todayTasks.length}):**`;
+        contextParts.push(todayHeader);
         for (const task of todayTasks.slice(0, 5)) {
           const assigneeId = task.work_metadata?.assignee_user_id;
           const user = userMap.get(assigneeId);
@@ -272,36 +300,8 @@ async function generateWorkSummary(
 
     const workContext = contextParts.join('\n');
 
-    // Generate AI summary
-    const aiPrompt = locale === 'th' 
-      ? `คุณคือ AI ผู้ช่วยที่กำลังสรุปงานประจำวันให้กับกลุ่มในตอนเช้า (9:00 น.)
-
-${workContext}
-
-**คำแนะนำ:**
-1. เริ่มด้วยทักทายและบอกสรุปภาพรวม (1-2 ประโยค)
-2. เน้นงานที่เร่งด่วนและควรทำก่อน
-3. หากมีงานเลยกำหนด ให้เตือนอย่างนุ่มนวลแต่ชัดเจน พูดถึงความเชื่อถือของผู้ทำงาน
-4. ให้คำแนะนำในการจัดลำดับความสำคัญ
-5. จบด้วยกำลังใจหรือคำแนะนำสั้นๆ
-6. ใช้อีโมจิอย่างเหมาะสม
-7. รวมความยาวไม่เกิน 300 คำ
-
-โทนเสียง: เป็นกันเอง มีไมตรีจิต แต่ตรงไปตรงมาเรื่องงานที่ล่าช้า`
-      : `You are an AI assistant providing a morning work summary (9:00 AM) to a group.
-
-${workContext}
-
-**Instructions:**
-1. Start with a greeting and overall summary (1-2 sentences)
-2. Highlight urgent tasks and priorities
-3. If there are overdue tasks, remind diplomatically but clearly, mentioning reliability scores
-4. Provide advice on task prioritization
-5. End with encouragement or brief advice
-6. Use emojis appropriately
-7. Keep under 300 words total
-
-Tone: Friendly, supportive, but direct about delays`;
+    // Generate AI summary with period-specific prompts
+    const aiPrompt = getAiPrompt(locale, period, workContext);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -329,9 +329,7 @@ Tone: Friendly, supportive, but direct about delays`;
       console.error('[generateWorkSummary] Lovable AI error:', response.status, errorText);
       
       // Fallback to simple summary
-      return locale === 'th'
-        ? `☀️ สวัสดีตอนเช้า!\n\n${workContext}\n\n💪 ขอให้ทุกคนโชคดีกับงานวันนี้!`
-        : `☀️ Good morning!\n\n${workContext}\n\n💪 Good luck with today's tasks!`;
+      return getFallbackSummary(locale, period, workContext);
     }
 
     const data = await response.json();
@@ -347,6 +345,90 @@ Tone: Friendly, supportive, but direct about delays`;
   } catch (error) {
     console.error('[generateWorkSummary] Error:', error);
     return null;
+  }
+}
+
+function getAiPrompt(locale: 'th' | 'en', period: SummaryPeriod, workContext: string): string {
+  if (locale === 'th') {
+    if (period === 'morning') {
+      return `คุณคือ AI ผู้ช่วยที่กำลังสรุปงานประจำวันให้กับกลุ่มในตอนเช้า (09:00 น.)
+
+${workContext}
+
+**คำแนะนำ:**
+1. เริ่มด้วยทักทายตอนเช้า "สวัสดีตอนเช้า" และบอกสรุปภาพรวม (1-2 ประโยค)
+2. เน้นงานที่เร่งด่วนและควรทำก่อนในวันนี้
+3. หากมีงานเลยกำหนด ให้เตือนอย่างนุ่มนวลแต่ชัดเจน พูดถึงความเชื่อถือของผู้ทำงาน
+4. ให้คำแนะนำในการจัดลำดับความสำคัญสำหรับวันนี้
+5. จบด้วยกำลังใจเพื่อเริ่มต้นวันใหม่
+6. ใช้อีโมจิอย่างเหมาะสม
+7. รวมความยาวไม่เกิน 300 คำ
+
+โทนเสียง: สดใส กระตือรือร้น เป็นกันเอง มีไมตรีจิต`;
+    } else {
+      return `คุณคือ AI ผู้ช่วยที่กำลังสรุปงานประจำวันให้กับกลุ่มในตอนเย็น (18:00 น.)
+
+${workContext}
+
+**คำแนะนำ:**
+1. เริ่มด้วยทักทายตอนเย็น "สวัสดีตอนเย็น" และสรุปว่าวันนี้เป็นอย่างไรบ้าง
+2. สรุปงานที่ทำสำเร็จวันนี้ (ถ้ามี) หรือเน้นงานที่ยังค้างอยู่
+3. หากมีงานเลยกำหนด ให้เตือนอย่างจริงจังแต่สุภาพ
+4. แนะนำการเตรียมตัวสำหรับวันพรุ่งนี้
+5. จบด้วยการให้กำลังใจและขอให้พักผ่อน
+6. ใช้อีโมจิอย่างเหมาะสม
+7. รวมความยาวไม่เกิน 300 คำ
+
+โทนเสียง: ผ่อนคลาย เข้าใจ แต่ยังคงตรงประเด็นเรื่องงานที่ค้าง`;
+    }
+  } else {
+    if (period === 'morning') {
+      return `You are an AI assistant providing a morning work summary (9:00 AM) to a group.
+
+${workContext}
+
+**Instructions:**
+1. Start with "Good morning" greeting and overall summary (1-2 sentences)
+2. Highlight urgent tasks and priorities for today
+3. If there are overdue tasks, remind diplomatically but clearly, mentioning reliability scores
+4. Provide advice on task prioritization for the day
+5. End with encouragement to start the day strong
+6. Use emojis appropriately
+7. Keep under 300 words total
+
+Tone: Bright, energetic, friendly, supportive`;
+    } else {
+      return `You are an AI assistant providing an evening work summary (6:00 PM) to a group.
+
+${workContext}
+
+**Instructions:**
+1. Start with "Good evening" greeting and summarize how the day went
+2. Highlight what was accomplished today (if any) or emphasize remaining tasks
+3. If there are overdue tasks, remind seriously but politely
+4. Suggest preparation for tomorrow
+5. End with encouragement and wish for rest
+6. Use emojis appropriately
+7. Keep under 300 words total
+
+Tone: Relaxed, understanding, but still direct about pending work`;
+    }
+  }
+}
+
+function getFallbackSummary(locale: 'th' | 'en', period: SummaryPeriod, workContext: string): string {
+  if (locale === 'th') {
+    if (period === 'morning') {
+      return `☀️ สวัสดีตอนเช้า!\n\n${workContext}\n\n💪 ขอให้ทุกคนโชคดีกับงานวันนี้!`;
+    } else {
+      return `🌙 สวัสดีตอนเย็น!\n\n${workContext}\n\n🌟 ขอให้ทุกคนพักผ่อนให้เต็มที่ แล้วพรุ่งนี้มาลุยกันต่อ!`;
+    }
+  } else {
+    if (period === 'morning') {
+      return `☀️ Good morning!\n\n${workContext}\n\n💪 Good luck with today's tasks!`;
+    } else {
+      return `🌙 Good evening!\n\n${workContext}\n\n🌟 Get some rest and let's tackle more tomorrow!`;
+    }
   }
 }
 
