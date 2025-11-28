@@ -432,18 +432,29 @@ serve(async (req) => {
         continue;
       }
 
-      // DEDUPLICATION: Check if we already sent a summary for this config today
+      // DEDUPLICATION: Check if we already sent within ±30 minutes of this config's send_time
+      // This prevents blocking scheduled sends if a manual trigger happened at a different time
+      
+      // Create target datetime in Bangkok timezone for today's send_time
+      const targetBangkok = new Date(`${today}T${configTime || '00:00'}:00+07:00`);
+      
+      // Create ±30 minute window around the scheduled send time
+      const windowStart = new Date(targetBangkok.getTime() - 30 * 60 * 1000);
+      const windowEnd = new Date(targetBangkok.getTime() + 30 * 60 * 1000);
+      
+      console.log(`[Config: ${config.name}] Dedup window: ${windowStart.toISOString()} to ${windowEnd.toISOString()}`);
+      
       const { data: existingLog } = await supabase
         .from('summary_delivery_logs')
         .select('id, sent_at')
         .eq('config_id', config.id)
-        .gte('sent_at', `${today}T00:00:00`)
-        .lte('sent_at', `${today}T23:59:59`)
+        .gte('sent_at', windowStart.toISOString())
+        .lte('sent_at', windowEnd.toISOString())
         .gt('success_count', 0) // Only consider successful deliveries
         .maybeSingle();
 
       if (existingLog) {
-        console.log(`[Config: ${config.name}] Skipping - already sent today at ${existingLog.sent_at}`);
+        console.log(`[Config: ${config.name}] Skipping - already sent at ${existingLog.sent_at} within ±30min window of ${configTime}`);
         skippedCount++;
         continue;
       }
