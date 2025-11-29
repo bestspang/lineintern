@@ -217,45 +217,19 @@ serve(async (req) => {
           const now = new Date();
           const totalWorkHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
           
-          // If overtime and auto_ot disabled, check for approval
+          // ✅ NO LONGER BLOCKING - Allow checkout regardless of OT approval
+          // If no OT approval, we'll cap work hours at max_work_hours later
           if (totalWorkHours > maxWorkHours && !emp.auto_ot_enabled) {
-            const { data: approvedOT } = await supabase
-              .from('overtime_requests')
-              .select('id')
-              .eq('employee_id', emp.id)
-              .eq('request_date', today)
-              .eq('status', 'approved')
-              .maybeSingle();
-
-            if (!approvedOT) {
-              const overtimeHours = totalWorkHours - maxWorkHours;
-              
-              logger.warn('Pre-validation: OT not approved - blocking before token claim', {
-                employee_id: emp.id,
-                employee_name: emp.full_name,
-                hours_worked: totalWorkHours.toFixed(2),
-                max_hours: maxWorkHours,
-                overtime: overtimeHours.toFixed(2)
-              });
-
-              // Return error WITHOUT consuming the token
-              return new Response(
-                JSON.stringify({ 
-                  success: false, 
-                  error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHours.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout\n\n💡 Token ยังใช้ได้ - รอ OT อนุมัติแล้วกดลิงค์เดิมได้เลย`,
-                  error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHours.toFixed(1)} hours overtime\nbut don't have OT approval\n\nPlease:\n1. Request OT approval first (/ot [reason])\n2. Or contact your supervisor`,
-                  hours_worked: totalWorkHours,
-                  max_hours: maxWorkHours,
-                  overtime_hours: overtimeHours,
-                  requires_ot_approval: true,
-                  token_still_valid: true  // Signal that token is NOT consumed
-                }),
-                { 
-                  status: 403, 
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-                }
-              );
-            }
+            const uncountedOvertime = totalWorkHours - maxWorkHours;
+            
+            logger.info('Pre-validation: OT without approval - will cap hours at max', {
+              employee_id: emp.id,
+              employee_name: emp.full_name,
+              hours_worked: totalWorkHours.toFixed(2),
+              max_hours: maxWorkHours,
+              uncounted_overtime: uncountedOvertime.toFixed(2)
+            });
+            // Continue to allow checkout - OT hours won't be counted
           }
         }
       }
@@ -699,7 +673,7 @@ serve(async (req) => {
           }
         }
 
-        // 🚨 OT VALIDATION for hours_based employees
+        // ✅ OT HANDLING for hours_based employees (NO LONGER BLOCKING)
         if (token.employee.working_time_type === 'hours_based') {
           const hoursPerDay = token.employee.hours_per_day || 8;
           const breakHours = token.employee.break_hours || 1;
@@ -716,45 +690,30 @@ serve(async (req) => {
               .eq('status', 'approved')
               .maybeSingle();
             
-            // If no OT approval and auto_ot disabled - BLOCK CHECK-OUT
+            // ✅ NO BLOCKING - If no OT approval, just don't count as OT
             if (!approvedOT && !token.employee.auto_ot_enabled) {
-              const overtimeHoursBlocked = totalWorkHours - expectedWorkHours;
+              const uncountedOT = totalWorkHours - expectedWorkHours;
               
-              logger.warn('Check-out blocked: Overtime without approval (hours_based)', {
+              logger.info('Hours-based: Overtime without approval - not counting OT hours', {
                 employee_id: token.employee.id,
-                hours_worked: totalWorkHours,
+                actual_hours: totalWorkHours,
                 expected_hours: expectedWorkHours,
-                overtime: overtimeHoursBlocked
+                uncounted_overtime: uncountedOT
               });
-
-              return new Response(
-                JSON.stringify({ 
-                  success: false, 
-                  error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHoursBlocked.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout`,
-                  error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHoursBlocked.toFixed(1)} hours overtime\nbut don't have OT approval`,
-                  hours_worked: totalWorkHours,
-                  expected_hours: expectedWorkHours,
-                  overtime_hours: overtimeHoursBlocked,
-                  requires_ot_approval: true
-                }),
-                { 
-                  status: 403, 
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-                }
-              );
-            }
-            
-            // Calculate overtime
-            overtimeHours = totalWorkHours - expectedWorkHours;
-            isOvertime = true;
-            
-            if (approvedOT) {
-              overtimeRequestId = approvedOT.id;
+              // Don't set isOvertime or overtimeHours - OT won't be counted
+            } else {
+              // Has OT approval or auto_ot enabled - count overtime
+              overtimeHours = totalWorkHours - expectedWorkHours;
+              isOvertime = true;
+              
+              if (approvedOT) {
+                overtimeRequestId = approvedOT.id;
+              }
             }
           }
         }
 
-        // 🚨 CRITICAL VALIDATION for time_based: Block check-out if overtime without approval
+        // ✅ OT HANDLING for time_based (NO LONGER BLOCKING)
         if (token.employee.working_time_type === 'time_based' && totalWorkHours > maxWorkHours) {
           // Check for approved OT request for today
           const { data: approvedOT } = await supabase
@@ -765,36 +724,19 @@ serve(async (req) => {
             .eq('status', 'approved')
             .maybeSingle();
 
-          // If no OT approval and auto_ot disabled - BLOCK CHECK-OUT
+          // ✅ NO BLOCKING - If no OT approval, just don't count as OT
           if (!approvedOT && !token.employee.auto_ot_enabled) {
-            const overtimeHoursBlocked = totalWorkHours - maxWorkHours;
+            const uncountedOT = totalWorkHours - maxWorkHours;
             
-            logger.warn('Check-out blocked: Overtime without approval', {
+            logger.info('Time-based: Overtime without approval - not counting OT hours', {
               employee_id: token.employee.id,
-              hours_worked: totalWorkHours,
+              actual_hours: totalWorkHours,
               max_hours: maxWorkHours,
-              overtime: overtimeHoursBlocked
+              uncounted_overtime: uncountedOT
             });
-
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                error: `⚠️ ไม่สามารถ Check-out ได้\n\nคุณทำงานเกิน ${overtimeHoursBlocked.toFixed(1)} ชั่วโมง\nแต่ยังไม่ได้รับอนุมัติ OT\n\nกรุณา:\n1. ขออนุมัติ OT ก่อน (พิมพ์: /ot [เหตุผล])\n2. หรือติดต่อหัวหน้างานเพื่อขอ Auto-checkout`,
-                error_en: `⚠️ Cannot Check-out\n\nYou have worked ${overtimeHoursBlocked.toFixed(1)} hours overtime\nbut don't have OT approval\n\nPlease:\n1. Request OT approval first (/ot [reason])\n2. Or contact your supervisor`,
-                hours_worked: totalWorkHours,
-                max_hours: maxWorkHours,
-                overtime_hours: overtimeHoursBlocked,
-                requires_ot_approval: true
-              }),
-              { 
-                status: 403, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-              }
-            );
-          }
-
-          // Has OT approval or auto_ot enabled - calculate overtime
-          if (totalWorkHours > maxWorkHours) {
+            // Don't set isOvertime or overtimeHours - OT won't be counted
+          } else {
+            // Has OT approval or auto_ot enabled - calculate overtime
             overtimeHours = totalWorkHours - maxWorkHours;
             isOvertime = true;
             
