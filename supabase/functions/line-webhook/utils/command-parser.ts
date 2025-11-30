@@ -1,3 +1,28 @@
+/**
+ * ⚠️ CRITICAL COMMAND PARSING - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This file defines how user commands are parsed and mapped to actions.
+ * Changes here affect ALL bot command handling across the entire system.
+ * 
+ * INVARIANTS:
+ * 1. commandMap keys must match bot_commands table entries
+ * 2. ParsedCommand['commandType'] must include all command types
+ * 3. Command aliases (Thai/English) must be kept in sync
+ * 4. Non-slash natural language triggers should be minimal and specific
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Adding a command type without handling it in line-webhook/index.ts = silent failure
+ * - Removing a command alias = users' muscle memory broken
+ * - Case sensitivity issues (use toLowerCase consistently)
+ * - Overlapping prefixes (e.g., '/task' vs '/tasks') - longer prefix first!
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ New command type added to ParsedCommand interface?
+ * □ Handler exists in line-webhook/index.ts?
+ * □ Entry exists in bot_commands table for /help display?
+ * □ Both Thai and English aliases provided?
+ */
+
 // =============================
 // COMMAND PARSING UTILITIES
 // =============================

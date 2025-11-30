@@ -1,3 +1,28 @@
+/**
+ * ⚠️ CRITICAL AI PROMPTS - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This file defines the AI persona and behavior for LINE Intern.
+ * Changes here affect the bot's personality, capabilities, and responses.
+ * 
+ * INVARIANTS:
+ * 1. SYSTEM_KNOWLEDGE_PROMPT defines the core AI persona - changes are GLOBAL
+ * 2. Mode-specific instructions in buildCommonBehaviorPrompt must match group.mode values
+ * 3. Command-specific prompts must match parsed command types
+ * 4. Language handling: AI should respond in user's language (Thai/English)
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Adding mode instructions without valid mode in database = ignored
+ * - Changing tone/personality affects ALL conversations
+ * - Removing capabilities from prompt = AI may refuse to help
+ * - Overly restrictive safety rules = poor user experience
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ Mode instruction matches database enum values?
+ * □ Command instruction matches ParsedCommand types?
+ * □ Language handling preserved (Thai/English)?
+ * □ Tested with sample conversations?
+ */
+
 // =============================
 // AI PROMPT TEMPLATES
 // =============================
