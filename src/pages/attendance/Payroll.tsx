@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -765,76 +766,129 @@ export default function Payroll() {
     }
   };
 
-  // Bank Transfer Export
-  const handleBankTransferExport = () => {
+  // Bank format options
+  const [selectedBankFormat, setSelectedBankFormat] = useState<string>("generic");
+
+  // Bank Transfer Export with format options
+  const handleBankTransferExport = (bankFormat: string = selectedBankFormat) => {
     if (!payrollRecords?.length) {
       toast.error("ไม่มีข้อมูลให้ Export");
       return;
     }
     
-    // Group by bank
-    const headers = ["ลำดับ", "ชื่อ-นามสกุล", "ธนาคาร", "เลขบัญชี", "สาขา", "จำนวนเงิน"];
-    const rows = payrollRecords.map((r, index) => [
-      index + 1,
-      r.employee?.full_name,
-      (r.employee as any)?.bank_name || "-",
-      (r.employee as any)?.bank_account_number || "-",
-      (r.employee as any)?.bank_branch || "-",
-      r.net_pay.toFixed(2),
-    ]);
+    // Fetch employee bank info
+    const employeeIds = payrollRecords.map(r => r.employee_id);
     
-    // Add summary row
-    const totalAmount = payrollRecords.reduce((sum, r) => sum + (r.net_pay || 0), 0);
-    rows.push(["", "", "", "", "รวมทั้งหมด", totalAmount.toFixed(2)]);
-    
-    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bank_transfer_${format(currentMonth, "yyyy-MM")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast.success("Export Bank Transfer สำเร็จ");
+    supabase
+      .from("employees")
+      .select("id, full_name, bank_name, bank_account_number, bank_branch")
+      .in("id", employeeIds)
+      .then(({ data: empData }) => {
+        const empMap = new Map(empData?.map(e => [e.id, e]) || []);
+        const totalAmount = payrollRecords.reduce((sum, r) => sum + (r.net_pay || 0), 0);
+        
+        let content = "";
+        let filename = "";
+        
+        switch (bankFormat) {
+          case "scb": {
+            // SCB Direct format
+            const header = `HDR,${format(new Date(), "yyyyMMdd")},${payrollRecords.length},${totalAmount.toFixed(2)}`;
+            const rows = payrollRecords.map((r, index) => {
+              const emp = empMap.get(r.employee_id);
+              return `DTL,${String(index + 1).padStart(6, '0')},${emp?.bank_account_number || ''},${emp?.full_name || ''},${r.net_pay.toFixed(2)},SAL`;
+            });
+            content = [header, ...rows].join("\n");
+            filename = `scb_transfer_${format(currentMonth, "yyyyMM")}.txt`;
+            break;
+          }
+          case "kbank": {
+            // KBank format
+            const rows = payrollRecords.map(r => {
+              const emp = empMap.get(r.employee_id);
+              const accNo = (emp?.bank_account_number || '').replace(/-/g, '').padEnd(10, ' ');
+              const amount = r.net_pay.toFixed(2).padStart(13, '0');
+              const name = (emp?.full_name || '').substring(0, 50).padEnd(50, ' ');
+              return `${accNo}${amount}${name}`;
+            });
+            content = rows.join("\n");
+            filename = `kbank_transfer_${format(currentMonth, "yyyyMM")}.txt`;
+            break;
+          }
+          case "bbl": {
+            // Bangkok Bank format
+            const header = "H,SALARY," + format(new Date(), "dd/MM/yyyy") + "," + payrollRecords.length;
+            const rows = payrollRecords.map((r, index) => {
+              const emp = empMap.get(r.employee_id);
+              return `D,${index + 1},${emp?.bank_account_number || ''},${emp?.full_name || ''},${r.net_pay.toFixed(2)}`;
+            });
+            const footer = `T,${totalAmount.toFixed(2)}`;
+            content = [header, ...rows, footer].join("\n");
+            filename = `bbl_transfer_${format(currentMonth, "yyyyMM")}.txt`;
+            break;
+          }
+          default: {
+            // Generic CSV
+            const headers = ["ลำดับ", "ชื่อ-นามสกุล", "ธนาคาร", "เลขบัญชี", "สาขา", "จำนวนเงิน"];
+            const rows = payrollRecords.map((r, index) => {
+              const emp = empMap.get(r.employee_id);
+              return [
+                index + 1,
+                emp?.full_name || r.employee?.full_name,
+                emp?.bank_name || "-",
+                emp?.bank_account_number || "-",
+                emp?.bank_branch || "-",
+                r.net_pay.toFixed(2),
+              ];
+            });
+            rows.push(["", "", "", "", "รวมทั้งหมด", totalAmount.toFixed(2)]);
+            content = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+            filename = `bank_transfer_${format(currentMonth, "yyyy-MM")}.csv`;
+          }
+        }
+        
+        const blob = new Blob([content], { type: bankFormat === "generic" ? "text/csv;charset=utf-8" : "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        toast.success(`Export ${bankFormat.toUpperCase()} สำเร็จ`);
+      });
   };
 
-  // Send LINE notifications to all employees
+  // Send LINE notifications via secure edge function
   const sendLineNotifications = async () => {
     if (!payrollRecords?.length || !currentPeriod) return;
     
-    const LINE_CHANNEL_ACCESS_TOKEN = import.meta.env.VITE_LINE_CHANNEL_ACCESS_TOKEN;
-    if (!LINE_CHANNEL_ACCESS_TOKEN) {
-      console.warn("LINE_CHANNEL_ACCESS_TOKEN not configured");
-      return;
-    }
-    
-    // Get employees with LINE user IDs
-    const { data: employeeData } = await supabase
-      .from("employees")
-      .select("id, line_user_id, full_name")
-      .in("id", payrollRecords.map(r => r.employee_id));
-    
-    if (!employeeData?.length) return;
-    
-    for (const record of payrollRecords) {
-      const employee = employeeData.find(e => e.id === record.employee_id);
-      if (!employee?.line_user_id) continue;
+    try {
+      toast.loading("กำลังส่งแจ้งเตือน LINE...", { id: "line-notify" });
       
-      const message = `💰 แจ้งเตือนเงินเดือน\n\nคุณ ${employee.full_name}\nรอบเงินเดือน: ${currentPeriod.name}\n\nเงินเดือน: ฿${record.base_salary.toLocaleString()}\nOT: ฿${record.ot_pay.toLocaleString()}\nเบี้ยเลี้ยง: ฿${record.total_allowances.toLocaleString()}\nหักรวม: -฿${record.total_deductions.toLocaleString()}\n\n✅ สุทธิ: ฿${record.net_pay.toLocaleString()}`;
+      const { data, error } = await supabase.functions.invoke('payroll-notification', {
+        body: {
+          action: 'send_payroll_notification',
+          period_id: currentPeriod.id,
+          employee_ids: payrollRecords.map(r => r.employee_id),
+        }
+      });
       
-      try {
-        // Use push message API via edge function or direct call
-        await supabase.functions.invoke('work-reminder', {
-          body: {
-            action: 'push_message',
-            line_user_id: employee.line_user_id,
-            message: message,
-          }
-        });
-      } catch (err) {
-        console.error(`Failed to send LINE to ${employee.full_name}:`, err);
+      if (error) {
+        console.error("LINE notification error:", error);
+        toast.error("เกิดข้อผิดพลาดในการส่งแจ้งเตือน", { id: "line-notify" });
+        return;
       }
+      
+      const results = data?.results;
+      if (results) {
+        toast.success(`ส่งแจ้งเตือนสำเร็จ ${results.sent} คน (ข้าม ${results.skipped}, ล้มเหลว ${results.failed})`, { id: "line-notify" });
+      } else {
+        toast.success("ส่งแจ้งเตือนสำเร็จ", { id: "line-notify" });
+      }
+    } catch (err) {
+      console.error("Error sending LINE notifications:", err);
+      toast.error("เกิดข้อผิดพลาดในการส่งแจ้งเตือน", { id: "line-notify" });
     }
   };
 
@@ -869,10 +923,18 @@ export default function Payroll() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <DollarSign className="h-8 w-8 text-primary" />
-            Payroll Dashboard
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <DollarSign className="h-8 w-8 text-primary" />
+              Payroll Dashboard
+            </h1>
+            <Link to="/attendance/payroll/ytd">
+              <Button variant="outline" size="sm">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Year-to-Date
+              </Button>
+            </Link>
+          </div>
           <p className="text-muted-foreground mt-1">
             จัดการเงินเดือนและสรุปการทำงานพนักงาน
           </p>
@@ -1039,10 +1101,23 @@ export default function Payroll() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button variant="outline" onClick={handleBankTransferExport}>
-                <FileText className="h-4 w-4 mr-2" />
-                Bank Transfer
-              </Button>
+              <div className="flex gap-1">
+                <Select value={selectedBankFormat} onValueChange={setSelectedBankFormat}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="generic">CSV</SelectItem>
+                    <SelectItem value="scb">SCB</SelectItem>
+                    <SelectItem value="kbank">KBank</SelectItem>
+                    <SelectItem value="bbl">BBL</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={() => handleBankTransferExport()}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Bank
+                </Button>
+              </div>
               {currentPeriod.status !== 'completed' && (
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
