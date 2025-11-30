@@ -1,3 +1,23 @@
+/**
+ * ⚠️ CRITICAL ATTENDANCE LOGS PAGE - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This page displays historical attendance records with filtering capabilities.
+ * 
+ * INVARIANTS:
+ * 1. All date queries MUST include timezone offset (+07:00) for Bangkok time
+ * 2. Pagination uses pageSize of 50 records
+ * 3. Filters are controlled components that reset on handleReset()
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using ${dateStr}T00:00:00 without +07:00 causes timezone boundary issues
+ * - Modifying pagination logic can cause data gaps
+ * - Changing filter state without updating queryKey causes stale data
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * [ ] All .gte() and .lte() queries include +07:00 timezone offset
+ * [ ] Pagination calculations are preserved
+ * [ ] Filter state management is intact
+ */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -69,8 +89,8 @@ export default function AttendanceLogs() {
             id, name
           )
         `, { count: 'exact' })
-        .gte('server_time', `${dateFromStr}T00:00:00`)
-        .lte('server_time', `${dateToStr}T23:59:59`)
+        .gte('server_time', `${dateFromStr}T00:00:00+07:00`)
+        .lte('server_time', `${dateToStr}T23:59:59+07:00`)
         .order('server_time', { ascending: false });
 
       if (employeeId) {

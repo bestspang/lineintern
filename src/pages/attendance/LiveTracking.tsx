@@ -1,3 +1,24 @@
+/**
+ * ⚠️ CRITICAL LIVE TRACKING PAGE - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This page provides real-time monitoring of currently checked-in employees.
+ * 
+ * INVARIANTS:
+ * 1. All date queries MUST include timezone offset (+07:00) for Bangkok time
+ * 2. Expected check-out calculation uses shift_end_time with proper timezone handling
+ * 3. RefetchInterval is set to 30000ms (30s) for live tracking
+ * 4. OT status check uses otApprovedMap from approved overtime requests
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using ${today}T00:00:00 without +07:00 causes timezone boundary issues
+ * - Modifying shift_end_time parsing breaks expected checkout calculation
+ * - Changing realtime subscription breaks live updates
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * [ ] All .gte() and .lte() queries include +07:00 timezone offset
+ * [ ] shift_end_time parsing uses +07:00 offset (line ~172)
+ * [ ] RefetchInterval values are preserved
+ */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -97,8 +118,8 @@ export default function LiveTracking() {
           )
         `)
         .eq('event_type', 'check_in')
-        .gte('server_time', `${today}T00:00:00`)
-        .lte('server_time', `${today}T23:59:59`)
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lte('server_time', `${today}T23:59:59+07:00`)
         .order('server_time', { ascending: true });
 
       if (checkInError) throw checkInError;
@@ -108,8 +129,8 @@ export default function LiveTracking() {
         .from('attendance_logs')
         .select('employee_id, server_time')
         .eq('event_type', 'check_out')
-        .gte('server_time', `${today}T00:00:00`)
-        .lte('server_time', `${today}T23:59:59`);
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lte('server_time', `${today}T23:59:59+07:00`);
 
       if (checkOutError) throw checkOutError;
 

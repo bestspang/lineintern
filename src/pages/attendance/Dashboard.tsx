@@ -1,3 +1,24 @@
+/**
+ * ⚠️ CRITICAL ATTENDANCE DASHBOARD - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This page displays real-time attendance status for all employees.
+ * 
+ * INVARIANTS:
+ * 1. All date queries MUST include timezone offset (+07:00) for Bangkok time
+ * 2. Grace period calculation uses attendanceSettings.grace_period_minutes
+ * 3. Realtime subscription filters by today's date
+ * 4. Admin checkout mutation calls admin-checkout edge function
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using ${today}T00:00:00 without +07:00 causes timezone boundary issues
+ * - Modifying grace period calculation affects late detection
+ * - Changing realtime filter breaks live updates
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * [ ] All .gte() and .lte() queries include +07:00 timezone offset
+ * [ ] Grace period logic is preserved
+ * [ ] Realtime subscription channel is properly cleaned up
+ */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -191,8 +212,8 @@ export default function AttendanceDashboard() {
             )
           )
         `)
-        .gte('server_time', `${today}T00:00:00`)
-        .lte('server_time', `${today}T23:59:59`)
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lte('server_time', `${today}T23:59:59+07:00`)
         .order('server_time', { ascending: false });
 
       if (error) throw error;
@@ -215,8 +236,8 @@ export default function AttendanceDashboard() {
             .from('attendance_logs')
             .select('id, server_time, employee_id, employees!inner(working_time_type, shift_start_time)')
             .eq('event_type', 'check_in')
-            .gte('server_time', `${date}T00:00:00`)
-            .lte('server_time', `${date}T23:59:59`);
+            .gte('server_time', `${date}T00:00:00+07:00`)
+            .lte('server_time', `${date}T23:59:59+07:00`);
 
           let onTime = 0;
           let late = 0;
