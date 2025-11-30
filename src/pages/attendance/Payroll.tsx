@@ -30,7 +30,10 @@ import {
   FileText,
   TrendingUp,
   TrendingDown,
-  Building
+  Building,
+  Edit,
+  Send,
+  Printer
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
@@ -83,6 +86,15 @@ export default function Payroll() {
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [isCreatePeriodOpen, setIsCreatePeriodOpen] = useState(false);
   const [newPeriodCutoffDay, setNewPeriodCutoffDay] = useState("25");
+  
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<PayrollRecord | null>(null);
+  const [editDeductions, setEditDeductions] = useState<any[]>([]);
+  const [editAllowances, setEditAllowances] = useState<any[]>([]);
+  
+  // LINE notification state
+  const [sendLineNotification, setSendLineNotification] = useState(true);
 
   // Fetch current payroll period
   const { data: currentPeriod, isLoading: isPeriodLoading } = useQuery({
@@ -623,9 +635,14 @@ export default function Payroll() {
         .from("payroll_records")
         .update({ status: 'completed' })
         .eq("period_id", currentPeriod.id);
+      
+      // Send LINE notifications if enabled
+      if (sendLineNotification) {
+        await sendLineNotifications();
+      }
     },
     onSuccess: () => {
-      toast.success("อนุมัติรอบเงินเดือนสำเร็จ");
+      toast.success("อนุมัติรอบเงินเดือนสำเร็จ" + (sendLineNotification ? " และส่งแจ้งเตือน LINE แล้ว" : ""));
       queryClient.invalidateQueries({ queryKey: ["payroll-period"] });
       queryClient.invalidateQueries({ queryKey: ["payroll-records"] });
     },
@@ -672,6 +689,153 @@ export default function Payroll() {
     URL.revokeObjectURL(url);
     
     toast.success("Export สำเร็จ");
+  };
+
+  // Update payroll record (inline edit)
+  const updateRecordMutation = useMutation({
+    mutationFn: async ({ recordId, deductions, allowances }: { recordId: string; deductions: any[]; allowances: any[] }) => {
+      const totalDeductions = deductions.reduce((sum, d) => sum + (d.amount || 0), 0);
+      const totalAllowances = allowances.reduce((sum, a) => sum + (a.amount || 0), 0);
+      
+      // Get current record
+      const { data: currentRecord } = await supabase
+        .from("payroll_records")
+        .select("gross_pay")
+        .eq("id", recordId)
+        .single();
+      
+      const netPay = (currentRecord?.gross_pay || 0) + totalAllowances - totalDeductions;
+      
+      const { error } = await supabase
+        .from("payroll_records")
+        .update({
+          deductions,
+          allowances,
+          total_deductions: totalDeductions,
+          total_allowances: totalAllowances,
+          net_pay: netPay,
+        })
+        .eq("id", recordId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("บันทึกการแก้ไขสำเร็จ");
+      setEditDialogOpen(false);
+      setEditingRecord(null);
+      queryClient.invalidateQueries({ queryKey: ["payroll-records"] });
+    },
+    onError: (error) => {
+      toast.error("เกิดข้อผิดพลาด: " + error.message);
+    },
+  });
+
+  // Open edit dialog
+  const handleOpenEdit = (record: PayrollRecord) => {
+    setEditingRecord(record);
+    setEditDeductions([...(record.deductions || [])]);
+    setEditAllowances([...(record.allowances || [])]);
+    setEditDialogOpen(true);
+  };
+
+  // Generate and download payslip
+  const handleDownloadPayslip = async (employeeId: string) => {
+    if (!currentPeriod) return;
+    
+    try {
+      toast.loading("กำลังสร้างสลิป...", { id: "payslip" });
+      
+      const { data, error } = await supabase.functions.invoke('payslip-generator', {
+        body: { employee_id: employeeId, period_id: currentPeriod.id }
+      });
+      
+      if (error) throw error;
+      
+      // Open HTML in new window for printing
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(data.html);
+        printWindow.document.close();
+        printWindow.print();
+      }
+      
+      toast.success("สร้างสลิปสำเร็จ", { id: "payslip" });
+    } catch (error: any) {
+      toast.error("เกิดข้อผิดพลาด: " + error.message, { id: "payslip" });
+    }
+  };
+
+  // Bank Transfer Export
+  const handleBankTransferExport = () => {
+    if (!payrollRecords?.length) {
+      toast.error("ไม่มีข้อมูลให้ Export");
+      return;
+    }
+    
+    // Group by bank
+    const headers = ["ลำดับ", "ชื่อ-นามสกุล", "ธนาคาร", "เลขบัญชี", "สาขา", "จำนวนเงิน"];
+    const rows = payrollRecords.map((r, index) => [
+      index + 1,
+      r.employee?.full_name,
+      (r.employee as any)?.bank_name || "-",
+      (r.employee as any)?.bank_account_number || "-",
+      (r.employee as any)?.bank_branch || "-",
+      r.net_pay.toFixed(2),
+    ]);
+    
+    // Add summary row
+    const totalAmount = payrollRecords.reduce((sum, r) => sum + (r.net_pay || 0), 0);
+    rows.push(["", "", "", "", "รวมทั้งหมด", totalAmount.toFixed(2)]);
+    
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bank_transfer_${format(currentMonth, "yyyy-MM")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success("Export Bank Transfer สำเร็จ");
+  };
+
+  // Send LINE notifications to all employees
+  const sendLineNotifications = async () => {
+    if (!payrollRecords?.length || !currentPeriod) return;
+    
+    const LINE_CHANNEL_ACCESS_TOKEN = import.meta.env.VITE_LINE_CHANNEL_ACCESS_TOKEN;
+    if (!LINE_CHANNEL_ACCESS_TOKEN) {
+      console.warn("LINE_CHANNEL_ACCESS_TOKEN not configured");
+      return;
+    }
+    
+    // Get employees with LINE user IDs
+    const { data: employeeData } = await supabase
+      .from("employees")
+      .select("id, line_user_id, full_name")
+      .in("id", payrollRecords.map(r => r.employee_id));
+    
+    if (!employeeData?.length) return;
+    
+    for (const record of payrollRecords) {
+      const employee = employeeData.find(e => e.id === record.employee_id);
+      if (!employee?.line_user_id) continue;
+      
+      const message = `💰 แจ้งเตือนเงินเดือน\n\nคุณ ${employee.full_name}\nรอบเงินเดือน: ${currentPeriod.name}\n\nเงินเดือน: ฿${record.base_salary.toLocaleString()}\nOT: ฿${record.ot_pay.toLocaleString()}\nเบี้ยเลี้ยง: ฿${record.total_allowances.toLocaleString()}\nหักรวม: -฿${record.total_deductions.toLocaleString()}\n\n✅ สุทธิ: ฿${record.net_pay.toLocaleString()}`;
+      
+      try {
+        // Use push message API via edge function or direct call
+        await supabase.functions.invoke('work-reminder', {
+          body: {
+            action: 'push_message',
+            line_user_id: employee.line_user_id,
+            message: message,
+          }
+        });
+      } catch (err) {
+        console.error(`Failed to send LINE to ${employee.full_name}:`, err);
+      }
+    }
   };
 
   const getStatusIcon = (status: DailyAttendance['status']) => {
@@ -875,14 +1039,30 @@ export default function Payroll() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
+              <Button variant="outline" onClick={handleBankTransferExport}>
+                <FileText className="h-4 w-4 mr-2" />
+                Bank Transfer
+              </Button>
               {currentPeriod.status !== 'completed' && (
-                <Button 
-                  onClick={() => approvePeriodMutation.mutate()}
-                  disabled={approvePeriodMutation.isPending || !payrollRecords?.length}
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {approvePeriodMutation.isPending ? "กำลังอนุมัติ..." : "อนุมัติและล็อค"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={sendLineNotification}
+                      onChange={(e) => setSendLineNotification(e.target.checked)}
+                      className="rounded border-input"
+                    />
+                    <Send className="h-3 w-3" />
+                    แจ้ง LINE
+                  </label>
+                  <Button 
+                    onClick={() => approvePeriodMutation.mutate()}
+                    disabled={approvePeriodMutation.isPending || !payrollRecords?.length}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    {approvePeriodMutation.isPending ? "กำลังอนุมัติ..." : "อนุมัติและล็อค"}
+                  </Button>
+                </div>
               )}
             </>
           )}
@@ -922,6 +1102,7 @@ export default function Payroll() {
                       <th className="text-right p-3 font-medium">เงินได้</th>
                       <th className="text-right p-3 font-medium">หัก</th>
                       <th className="text-right p-3 font-medium">สุทธิ</th>
+                      <th className="text-center p-3 font-medium w-[100px]">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1001,6 +1182,51 @@ export default function Payroll() {
                             <span className="font-bold text-sm">
                               ฿{(record?.net_pay || 0).toLocaleString()}
                             </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {record && (
+                                <>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenEdit(record);
+                                          }}
+                                          disabled={currentPeriod?.status === 'completed'}
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>แก้ไข</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDownloadPayslip(emp.id);
+                                          }}
+                                        >
+                                          <Printer className="h-3 w-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>พิมพ์สลิป</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1165,6 +1391,133 @@ export default function Payroll() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Inline Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>แก้ไขรายการหัก/เบี้ยเลี้ยง</DialogTitle>
+            <DialogDescription>
+              {editingRecord?.employee?.full_name} - แก้ไขรายการแล้วกดบันทึก
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Deductions */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">รายการหัก</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditDeductions([...editDeductions, { name: '', amount: 0 }])}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> เพิ่ม
+                </Button>
+              </div>
+              {editDeductions.map((item, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <Input
+                    placeholder="ชื่อรายการ"
+                    value={item.name}
+                    onChange={(e) => {
+                      const updated = [...editDeductions];
+                      updated[index].name = e.target.value;
+                      setEditDeductions(updated);
+                    }}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="จำนวน"
+                    value={item.amount}
+                    onChange={(e) => {
+                      const updated = [...editDeductions];
+                      updated[index].amount = parseFloat(e.target.value) || 0;
+                      setEditDeductions(updated);
+                    }}
+                    className="w-24"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setEditDeductions(editDeductions.filter((_, i) => i !== index))}
+                  >
+                    <XCircle className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {/* Allowances */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">เบี้ยเลี้ยง</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditAllowances([...editAllowances, { name: '', amount: 0 }])}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> เพิ่ม
+                </Button>
+              </div>
+              {editAllowances.map((item, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <Input
+                    placeholder="ชื่อรายการ"
+                    value={item.name}
+                    onChange={(e) => {
+                      const updated = [...editAllowances];
+                      updated[index].name = e.target.value;
+                      setEditAllowances(updated);
+                    }}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="จำนวน"
+                    value={item.amount}
+                    onChange={(e) => {
+                      const updated = [...editAllowances];
+                      updated[index].amount = parseFloat(e.target.value) || 0;
+                      setEditAllowances(updated);
+                    }}
+                    className="w-24"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setEditAllowances(editAllowances.filter((_, i) => i !== index))}
+                  >
+                    <XCircle className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={() => {
+                  if (editingRecord) {
+                    updateRecordMutation.mutate({
+                      recordId: editingRecord.id,
+                      deductions: editDeductions,
+                      allowances: editAllowances,
+                    });
+                  }
+                }}
+                disabled={updateRecordMutation.isPending}
+              >
+                {updateRecordMutation.isPending ? "กำลังบันทึก..." : "บันทึก"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

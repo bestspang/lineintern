@@ -1230,6 +1230,9 @@ export type Database = {
           announcement_group_line_id: string | null
           auto_checkout_grace_period_minutes: number | null
           auto_ot_enabled: boolean | null
+          bank_account_number: string | null
+          bank_branch: string | null
+          bank_name: string | null
           branch_id: string | null
           break_hours: number | null
           code: string
@@ -1266,6 +1269,9 @@ export type Database = {
           announcement_group_line_id?: string | null
           auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_name?: string | null
           branch_id?: string | null
           break_hours?: number | null
           code: string
@@ -1302,6 +1308,9 @@ export type Database = {
           announcement_group_line_id?: string | null
           auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_name?: string | null
           branch_id?: string | null
           break_hours?: number | null
           code?: string
