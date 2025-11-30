@@ -169,8 +169,17 @@ serve(async (req) => {
 
       // Calculate work hours
       const checkInTime = new Date(checkInLog.server_time);
-      const midnightTime = new Date(`${targetDate}T23:59:59`);
+      // ⚠️ CRITICAL: Use +07:00 offset for Bangkok midnight to prevent UTC interpretation bug
+      // Without +07:00: "2025-11-29T23:59:59" is interpreted as UTC = 06:59:59 Bangkok NEXT DAY
+      // With +07:00: "2025-11-29T23:59:59+07:00" is correctly 23:59:59 Bangkok = 16:59:59 UTC
+      const midnightTime = new Date(`${targetDate}T23:59:59+07:00`);
       const hoursWorked = (midnightTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+      
+      // 🛡️ VALIDATION: Ensure work hours are non-negative
+      if (hoursWorked < 0) {
+        console.error(`[auto-checkout-midnight] Invalid session: negative hours (${hoursWorked.toFixed(2)}) for ${employee.full_name}. CheckIn: ${checkInTime.toISOString()}, Midnight: ${midnightTime.toISOString()}`);
+        continue;
+      }
       const maxWorkHours = employee.max_work_hours_per_day || 8;
       const overtimeHours = Math.max(0, hoursWorked - maxWorkHours);
 

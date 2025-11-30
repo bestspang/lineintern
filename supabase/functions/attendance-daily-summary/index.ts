@@ -56,10 +56,22 @@ const isWithinTimeWindow = (currentTime: string, targetTime: string, windowMinut
   return diff <= windowMinutes;
 };
 
+/**
+ * ⚠️ CRITICAL: Calculate work hours with validation guards
+ * - Returns 0 if checkout is before or equal to checkin (prevents negative hours)
+ * - Always returns non-negative value
+ */
 const calculateWorkHours = (checkIn: any, checkOut: any): number => {
   if (!checkIn || !checkOut) return 0;
   const start = new Date(checkIn.server_time);
   const end = new Date(checkOut.server_time);
+  
+  // 🛡️ VALIDATION: Checkout must be after checkin
+  if (end <= start) {
+    console.error(`[calculateWorkHours] Invalid session: checkout (${end.toISOString()}) <= checkin (${start.toISOString()})`);
+    return 0;
+  }
+  
   const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
   return Math.max(0, hours);
 };
@@ -142,8 +154,16 @@ const generatePersonalSummary = async (
     .lte('server_time', endOfDay.toISOString())
     .order('server_time', { ascending: true });
 
-  const checkIn = logs?.find((l: any) => l.event_type === 'check_in');
-  const checkOut = logs?.find((l: any) => l.event_type === 'check_out');
+      const checkIn = logs?.find((l: any) => l.event_type === 'check_in');
+      // ⚠️ CRITICAL: Ensure checkout is AFTER checkin to prevent cross-day session mixing
+      // Previous bug: .find() could pick auto-checkout from previous day (06:59 Bangkok)
+      // before the actual checkin (08:38 Bangkok), causing negative work hours
+      const checkOut = checkIn
+        ? logs?.find((l: any) => 
+            l.event_type === 'check_out' && 
+            new Date(l.server_time) > new Date(checkIn.server_time)
+          )
+        : null;
 
   const checkInTime = checkIn
     ? formatBangkokTime(checkIn.server_time, 'HH:mm')
@@ -242,7 +262,13 @@ const generateSummary = async (
       }
 
       const checkIn = logs.find((l: any) => l.event_type === 'check_in');
-      const checkOut = logs.find((l: any) => l.event_type === 'check_out');
+      // ⚠️ CRITICAL: Ensure checkout is AFTER checkin to prevent cross-day session mixing
+      const checkOut = checkIn
+        ? logs.find((l: any) => 
+            l.event_type === 'check_out' && 
+            new Date(l.server_time) > new Date(checkIn.server_time)
+          )
+        : null;
 
       if (checkIn) checkedInCount++;
       if (checkOut) checkedOutCount++;
