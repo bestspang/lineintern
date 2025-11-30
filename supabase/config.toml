@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.attendance-snapshot-update]
 verify_jwt = false
+
+[functions.payslip-generator]
+verify_jwt = false

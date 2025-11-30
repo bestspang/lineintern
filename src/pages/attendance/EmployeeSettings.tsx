@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -143,6 +143,11 @@ export default function EmployeeSettings() {
     
     // === Test Mode (Admin/Owner Only) ===
     is_test_mode: false,
+    
+    // === Bank Account Info ===
+    bank_name: "",
+    bank_account_number: "",
+    bank_branch: "",
   });
 
   // Payroll settings state (separate for clarity)
@@ -272,6 +277,11 @@ export default function EmployeeSettings() {
         
         // Test Mode
         is_test_mode: (employee as any).is_test_mode || false,
+        
+        // Bank Account Info
+        bank_name: (employee as any).bank_name || "",
+        bank_account_number: (employee as any).bank_account_number || "",
+        bank_branch: (employee as any).bank_branch || "",
       });
     }
   }, [employee]);
@@ -322,6 +332,11 @@ export default function EmployeeSettings() {
         
         // Test Mode (only include if user has access)
         is_test_mode: data.is_test_mode,
+        
+        // Bank Account Info
+        bank_name: data.bank_name || null,
+        bank_account_number: data.bank_account_number || null,
+        bank_branch: data.bank_branch || null,
       };
 
       // Handle fields based on working_time_type
@@ -1460,6 +1475,72 @@ export default function EmployeeSettings() {
                 <li>ชม./วัน = จำนวนชั่วโมงทำงานที่คาดหวังต่อวัน</li>
               </ul>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* 10. Bank Account Info Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              ข้อมูลบัญชีธนาคาร
+            </CardTitle>
+            <CardDescription>
+              สำหรับโอนเงินเดือนและ Export ไฟล์ Bank Transfer
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="bank_name">ธนาคาร</Label>
+              <Select
+                value={formData.bank_name}
+                onValueChange={(value) => setFormData({ ...formData, bank_name: value })}
+              >
+                <SelectTrigger id="bank_name">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="เลือกธนาคาร" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="กรุงเทพ (BBL)">ธนาคารกรุงเทพ (BBL)</SelectItem>
+                  <SelectItem value="กสิกรไทย (KBANK)">ธนาคารกสิกรไทย (KBANK)</SelectItem>
+                  <SelectItem value="ไทยพาณิชย์ (SCB)">ธนาคารไทยพาณิชย์ (SCB)</SelectItem>
+                  <SelectItem value="กรุงไทย (KTB)">ธนาคารกรุงไทย (KTB)</SelectItem>
+                  <SelectItem value="กรุงศรีอยุธยา (BAY)">ธนาคารกรุงศรีอยุธยา (BAY)</SelectItem>
+                  <SelectItem value="ทหารไทยธนชาต (TTB)">ธนาคารทหารไทยธนชาต (TTB)</SelectItem>
+                  <SelectItem value="ออมสิน (GSB)">ธนาคารออมสิน (GSB)</SelectItem>
+                  <SelectItem value="ธ.ก.ส. (BAAC)">ธ.ก.ส. (BAAC)</SelectItem>
+                  <SelectItem value="อื่นๆ">อื่นๆ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bank_account_number">เลขบัญชี</Label>
+              <Input
+                id="bank_account_number"
+                placeholder="เช่น 123-4-56789-0"
+                value={formData.bank_account_number}
+                onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bank_branch">สาขา</Label>
+              <Input
+                id="bank_branch"
+                placeholder="เช่น สาขาสยามพารากอน"
+                value={formData.bank_branch}
+                onChange={(e) => setFormData({ ...formData, bank_branch: e.target.value })}
+              />
+            </div>
+
+            {formData.bank_name && formData.bank_account_number && (
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  ✅ ข้อมูลบัญชีครบถ้วน - พร้อมสำหรับ Export Bank Transfer
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
