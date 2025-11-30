@@ -168,6 +168,23 @@ export default function Payroll() {
     enabled: !!selectedEmployee,
   });
 
+  // Fetch work schedules for selected employee
+  const { data: selectedEmployeeSchedules } = useQuery({
+    queryKey: ["employee-work-schedules", selectedEmployee],
+    queryFn: async () => {
+      if (!selectedEmployee) return null;
+      
+      const { data, error } = await supabase
+        .from("work_schedules")
+        .select("*")
+        .eq("employee_id", selectedEmployee);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedEmployee,
+  });
+
   // Fetch payroll records for current period
   const { data: payrollRecords, isLoading: isRecordsLoading } = useQuery({
     queryKey: ["payroll-records", currentPeriod?.id],
@@ -243,15 +260,26 @@ export default function Payroll() {
     return eachDayOfInterval({ start, end });
   }, [currentMonth]);
 
-  // Process attendance data into daily map
+  // Process attendance data into daily map (using work_schedules for late detection)
   const dailyAttendanceMap = useMemo(() => {
     if (!attendanceData) return new Map<string, DailyAttendance>();
     
     const map = new Map<string, DailyAttendance>();
     const today = new Date();
     
+    // Build schedule map from work_schedules
+    const workingDaysSet = new Set<number>(
+      selectedEmployeeSchedules?.filter(s => s.is_working_day).map(s => s.day_of_week) || 
+      [1, 2, 3, 4, 5] // Default Mon-Fri
+    );
+    const scheduleMap = new Map<number, { start_time: string | null; end_time: string | null }>(
+      selectedEmployeeSchedules?.map(s => [s.day_of_week, { start_time: s.start_time, end_time: s.end_time }]) || []
+    );
+    
     calendarDays.forEach(day => {
       const dateStr = format(day, "yyyy-MM-dd");
+      const dayOfWeek = getDay(day);
+      const isWorkingDay = workingDaysSet.has(dayOfWeek);
       const dayLogs = attendanceData.filter(log => 
         format(parseISO(log.server_time), "yyyy-MM-dd") === dateStr
       );
@@ -263,13 +291,20 @@ export default function Payroll() {
       
       if (day > today) {
         status = 'future';
-      } else if (isWeekend(day)) {
+      } else if (!isWorkingDay) {
         status = checkIn ? 'present' : 'weekend';
       } else if (checkIn) {
-        // Check if late (after 09:00)
+        // Check if late using work_schedules start_time
         const checkInTime = parseISO(checkIn.server_time);
+        const schedule = scheduleMap.get(dayOfWeek);
+        const startTime = schedule?.start_time || '09:00';
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        
         const checkInHour = checkInTime.getHours();
-        status = checkInHour >= 9 ? 'late' : 'present';
+        const checkInMinute = checkInTime.getMinutes();
+        
+        const isLate = (checkInHour > startHour) || (checkInHour === startHour && checkInMinute > startMinute);
+        status = isLate ? 'late' : 'present';
       }
       
       map.set(dateStr, {
@@ -285,7 +320,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [attendanceData, calendarDays]);
+  }, [attendanceData, calendarDays, selectedEmployeeSchedules]);
 
   // Create payroll period
   const createPeriodMutation = useMutation({
@@ -337,15 +372,45 @@ export default function Payroll() {
           .gte("server_time", startDate)
           .lte("server_time", endDate + "T23:59:59");
         
+        // Fetch work schedules for this employee
+        const { data: workSchedules } = await supabase
+          .from("work_schedules")
+          .select("*")
+          .eq("employee_id", emp.id);
+        
+        // Create working days set from work_schedules (default Mon-Fri if no schedules)
+        const workingDaysSet = new Set<number>(
+          workSchedules?.filter(s => s.is_working_day).map(s => s.day_of_week) || 
+          [1, 2, 3, 4, 5] // Default: Monday to Friday
+        );
+        
+        // Create schedule map for start times
+        const scheduleMap = new Map<number, { start_time: string | null; end_time: string | null }>(
+          workSchedules?.map(s => [s.day_of_week, { start_time: s.start_time, end_time: s.end_time }]) || []
+        );
+        
         // Calculate metrics
         const checkIns = logs?.filter(l => l.event_type === "check_in") || [];
         const checkOuts = logs?.filter(l => l.event_type === "check_out") || [];
         
         const actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
         const totalOTHours = logs?.reduce((sum, l) => sum + (l.overtime_hours || 0), 0) || 0;
+        
+        // Late detection using work_schedules start_time
         const lateCount = checkIns.filter(l => {
-          const hour = parseISO(l.server_time).getHours();
-          return hour >= 9;
+          const checkInDate = parseISO(l.server_time);
+          const dayOfWeek = getDay(checkInDate);
+          const schedule = scheduleMap.get(dayOfWeek);
+          
+          // If no schedule, use default 09:00
+          const startTime = schedule?.start_time || '09:00';
+          const [startHour, startMinute] = startTime.split(':').map(Number);
+          
+          const checkInHour = checkInDate.getHours();
+          const checkInMinute = checkInDate.getMinutes();
+          
+          // Compare time: late if check-in is after start_time
+          return (checkInHour > startHour) || (checkInHour === startHour && checkInMinute > startMinute);
         }).length;
         
         // Calculate total work hours
@@ -367,11 +432,11 @@ export default function Payroll() {
         const baseSalary = payrollSettings?.salary_per_month || emp.salary_per_month || 0;
         const hourlyRate = payrollSettings?.hourly_rate || 0;
         
-        // Calculate scheduled work days (weekdays in period)
+        // Calculate scheduled work days using actual work_schedules
         const periodStart = parseISO(startDate);
         const periodEnd = parseISO(endDate);
         const periodDays = eachDayOfInterval({ start: periodStart, end: periodEnd });
-        const scheduledWorkDays = periodDays.filter(d => !isWeekend(d)).length;
+        const scheduledWorkDays = periodDays.filter(d => workingDaysSet.has(getDay(d))).length;
         
         // Calculate pay
         let grossPay = 0;
@@ -481,6 +546,37 @@ export default function Payroll() {
       toast.success("คำนวณ Payroll สำเร็จ");
       queryClient.invalidateQueries({ queryKey: ["payroll-records"] });
       queryClient.invalidateQueries({ queryKey: ["payroll-period"] });
+    },
+    onError: (error) => {
+      toast.error("เกิดข้อผิดพลาด: " + error.message);
+    },
+  });
+
+  // Approve and lock payroll period
+  const approvePeriodMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentPeriod) return;
+      
+      const { error } = await supabase
+        .from("payroll_periods")
+        .update({ 
+          status: 'completed', 
+          processed_at: new Date().toISOString() 
+        })
+        .eq("id", currentPeriod.id);
+      
+      if (error) throw error;
+      
+      // Also update all payroll records to completed
+      await supabase
+        .from("payroll_records")
+        .update({ status: 'completed' })
+        .eq("period_id", currentPeriod.id);
+    },
+    onSuccess: () => {
+      toast.success("อนุมัติรอบเงินเดือนสำเร็จ");
+      queryClient.invalidateQueries({ queryKey: ["payroll-period"] });
+      queryClient.invalidateQueries({ queryKey: ["payroll-records"] });
     },
     onError: (error) => {
       toast.error("เกิดข้อผิดพลาด: " + error.message);
@@ -716,7 +812,7 @@ export default function Payroll() {
               <Button 
                 variant="outline" 
                 onClick={() => calculatePayrollMutation.mutate()}
-                disabled={calculatePayrollMutation.isPending}
+                disabled={calculatePayrollMutation.isPending || currentPeriod.status === 'completed'}
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${calculatePayrollMutation.isPending ? 'animate-spin' : ''}`} />
                 คำนวณใหม่
@@ -725,6 +821,15 @@ export default function Payroll() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
+              {currentPeriod.status !== 'completed' && (
+                <Button 
+                  onClick={() => approvePeriodMutation.mutate()}
+                  disabled={approvePeriodMutation.isPending || !payrollRecords?.length}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  {approvePeriodMutation.isPending ? "กำลังอนุมัติ..." : "อนุมัติและล็อค"}
+                </Button>
+              )}
             </>
           )}
         </div>
