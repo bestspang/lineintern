@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -73,6 +73,35 @@ const defaultPayrollSettings: PayrollSettings = {
   custom_allowances: [],
 };
 
+interface WorkScheduleDay {
+  day_of_week: number;
+  day_key: string;
+  is_working_day: boolean;
+  start_time: string;
+  end_time: string;
+  expected_hours: number;
+}
+
+const dayLabels: { [key: number]: { key: string; label: string } } = {
+  0: { key: 'sun', label: 'อาทิตย์' },
+  1: { key: 'mon', label: 'จันทร์' },
+  2: { key: 'tue', label: 'อังคาร' },
+  3: { key: 'wed', label: 'พุธ' },
+  4: { key: 'thu', label: 'พฤหัสบดี' },
+  5: { key: 'fri', label: 'ศุกร์' },
+  6: { key: 'sat', label: 'เสาร์' },
+};
+
+const defaultWorkSchedule: WorkScheduleDay[] = [
+  { day_of_week: 1, day_key: 'mon', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 2, day_key: 'tue', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 3, day_key: 'wed', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 4, day_key: 'thu', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 5, day_key: 'fri', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 6, day_key: 'sat', is_working_day: false, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+  { day_of_week: 0, day_key: 'sun', is_working_day: false, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
+];
+
 export default function EmployeeSettings() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -119,6 +148,9 @@ export default function EmployeeSettings() {
   // Payroll settings state (separate for clarity)
   const [payrollData, setPayrollData] = useState<PayrollSettings>({ ...defaultPayrollSettings });
 
+  // Work schedule state
+  const [workSchedule, setWorkSchedule] = useState<WorkScheduleDay[]>([...defaultWorkSchedule]);
+
   // Check if current user is admin/owner
   const { hasFullAccess } = useUserRole();
 
@@ -157,6 +189,41 @@ export default function EmployeeSettings() {
       return data;
     },
   });
+
+  // Fetch work schedules
+  const { data: workSchedulesData } = useQuery({
+    queryKey: ["work-schedules", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_schedules")
+        .select("*")
+        .eq("employee_id", id);
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Update work schedule when data loads
+  useEffect(() => {
+    if (workSchedulesData && workSchedulesData.length > 0) {
+      const scheduleMap = new Map(workSchedulesData.map(s => [s.day_of_week, s]));
+      setWorkSchedule(defaultWorkSchedule.map(day => {
+        const existing = scheduleMap.get(day.day_of_week);
+        if (existing) {
+          return {
+            day_of_week: day.day_of_week,
+            day_key: day.day_key,
+            is_working_day: existing.is_working_day ?? true,
+            start_time: existing.start_time?.substring(0, 5) || '08:00',
+            end_time: existing.end_time?.substring(0, 5) || '17:00',
+            expected_hours: Number(existing.expected_hours) || 8,
+          };
+        }
+        return day;
+      }));
+    }
+  }, [workSchedulesData]);
 
   // Helper to format time from DB (HH:mm:ss) to input (HH:mm)
   const formatTimeForInput = (time: string | null, fallback: string): string => {
@@ -312,12 +379,31 @@ export default function EmployeeSettings() {
         .upsert(payrollUpdateData, { onConflict: 'employee_id' } as any);
 
       if (payrollError) throw payrollError;
+
+      // Save work schedules
+      for (const schedule of workSchedule) {
+        const scheduleData = {
+          employee_id: id,
+          day_of_week: schedule.day_of_week,
+          is_working_day: schedule.is_working_day,
+          start_time: schedule.start_time + ':00',
+          end_time: schedule.end_time + ':00',
+          expected_hours: schedule.expected_hours,
+        };
+
+        const { error: scheduleError } = await supabase
+          .from("work_schedules")
+          .upsert(scheduleData, { onConflict: 'employee_id,day_of_week' } as any);
+
+        if (scheduleError) throw scheduleError;
+      }
     },
     onSuccess: () => {
       toast.success("บันทึกการตั้งค่าสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ["employee", id] });
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["payroll-settings", id] });
+      queryClient.invalidateQueries({ queryKey: ["work-schedules", id] });
     },
     onError: (error) => {
       toast.error("เกิดข้อผิดพลาด: " + error.message);
@@ -1269,6 +1355,110 @@ export default function EmployeeSettings() {
                   </div>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 8. Work Schedule Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" />
+              ตารางงานประจำสัปดาห์
+            </CardTitle>
+            <CardDescription>
+              กำหนดวันทำงานและเวลาเข้า-ออกสำหรับแต่ละวันในสัปดาห์
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3">
+              {workSchedule.map((day, index) => (
+                <div 
+                  key={day.day_of_week} 
+                  className={`flex items-center gap-4 p-3 rounded-lg border ${
+                    day.is_working_day ? 'bg-muted/30' : 'bg-muted/10 opacity-60'
+                  }`}
+                >
+                  {/* Day Toggle */}
+                  <div className="flex items-center gap-3 min-w-[140px]">
+                    <Switch
+                      checked={day.is_working_day}
+                      onCheckedChange={(checked) => {
+                        const updated = [...workSchedule];
+                        updated[index].is_working_day = checked;
+                        setWorkSchedule(updated);
+                      }}
+                    />
+                    <span className={`font-medium ${day.is_working_day ? '' : 'text-muted-foreground'}`}>
+                      {dayLabels[day.day_of_week]?.label || day.day_key}
+                    </span>
+                  </div>
+
+                  {/* Time Inputs */}
+                  {day.is_working_day && (
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground whitespace-nowrap">เข้า</Label>
+                        <Input
+                          type="time"
+                          value={day.start_time}
+                          onChange={(e) => {
+                            const updated = [...workSchedule];
+                            updated[index].start_time = e.target.value;
+                            setWorkSchedule(updated);
+                          }}
+                          className="h-8 w-[110px]"
+                        />
+                      </div>
+                      <span className="text-muted-foreground">-</span>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground whitespace-nowrap">ออก</Label>
+                        <Input
+                          type="time"
+                          value={day.end_time}
+                          onChange={(e) => {
+                            const updated = [...workSchedule];
+                            updated[index].end_time = e.target.value;
+                            setWorkSchedule(updated);
+                          }}
+                          className="h-8 w-[110px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Label className="text-xs text-muted-foreground whitespace-nowrap">ชม./วัน</Label>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          max="12"
+                          value={day.expected_hours}
+                          onChange={(e) => {
+                            const updated = [...workSchedule];
+                            updated[index].expected_hours = parseFloat(e.target.value) || 8;
+                            setWorkSchedule(updated);
+                          }}
+                          className="h-8 w-[70px]"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {!day.is_working_day && (
+                    <div className="flex-1 text-sm text-muted-foreground">
+                      วันหยุด
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg bg-muted p-4 space-y-2">
+              <h4 className="font-medium text-sm">ℹ️ หมายเหตุ</h4>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>ตารางงานใช้สำหรับคำนวณวันทำงานและ Payroll</li>
+                <li>ปิด Switch = วันหยุด (ไม่นับเป็นวันทำงาน)</li>
+                <li>ชม./วัน = จำนวนชั่วโมงทำงานที่คาดหวังต่อวัน</li>
+              </ul>
             </div>
           </CardContent>
         </Card>
