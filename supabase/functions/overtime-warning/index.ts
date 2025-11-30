@@ -1,3 +1,29 @@
+/**
+ * ⚠️ CRITICAL OVERTIME WARNING SYSTEM - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This edge function sends OT warnings to employees approaching/exceeding work hours.
+ * Runs via cron job every 15 minutes during work hours.
+ * 
+ * INVARIANTS:
+ * 1. Uses timezone.ts utilities for Bangkok date boundaries
+ * 2. Calculates max work hours based on working_time_type (hours_based vs time_based)
+ * 3. Warning sent at (maxWorkHours - warningMinutes) threshold
+ * 4. Prevents duplicate warnings by checking attendance_reminders table
+ * 5. Different messages for auto_ot_enabled true vs false
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using local time instead of UTC for DB queries
+ * - Wrong max hours for hours_based employees (should be hours_per_day + break)
+ * - Missing check for existing checkout (employee already left)
+ * - Duplicate warnings (always check attendance_reminders first)
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ Date boundaries use getBangkokStartOfDay/EndOfDay?
+ * □ Max work hours calculated correctly for both employee types?
+ * □ Existing warning check includes both 'ot_warning' and 'ot_exceeded'?
+ * □ LINE message format is correct Thai?
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
