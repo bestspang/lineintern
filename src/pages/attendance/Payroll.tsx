@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { 
   DollarSign, 
@@ -32,7 +32,7 @@ import {
   TrendingDown,
   Building
 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
 
 interface PayrollRecord {
@@ -396,8 +396,10 @@ export default function Payroll() {
         const actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
         const totalOTHours = logs?.reduce((sum, l) => sum + (l.overtime_hours || 0), 0) || 0;
         
-        // Late detection using work_schedules start_time
-        const lateCount = checkIns.filter(l => {
+        // Late detection using work_schedules start_time + calculate late_minutes
+        let lateCount = 0;
+        let totalLateMinutes = 0;
+        checkIns.forEach(l => {
           const checkInDate = parseISO(l.server_time);
           const dayOfWeek = getDay(checkInDate);
           const schedule = scheduleMap.get(dayOfWeek);
@@ -409,9 +411,55 @@ export default function Payroll() {
           const checkInHour = checkInDate.getHours();
           const checkInMinute = checkInDate.getMinutes();
           
-          // Compare time: late if check-in is after start_time
-          return (checkInHour > startHour) || (checkInHour === startHour && checkInMinute > startMinute);
-        }).length;
+          // Calculate expected minutes from midnight
+          const expectedMinutes = startHour * 60 + startMinute;
+          const actualMinutes = checkInHour * 60 + checkInMinute;
+          
+          // If late, add to count and minutes
+          if (actualMinutes > expectedMinutes) {
+            lateCount++;
+            totalLateMinutes += (actualMinutes - expectedMinutes);
+          }
+        });
+        
+        // Fetch approved leave requests for this employee in period
+        const { data: leaveRequests } = await supabase
+          .from("leave_requests")
+          .select("*")
+          .eq("employee_id", emp.id)
+          .eq("status", "approved")
+          .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
+        
+        // Calculate total leave days (overlap with current period)
+        let leaveDays = 0;
+        (leaveRequests || []).forEach(lr => {
+          const leaveStart = parseISO(lr.start_date);
+          const leaveEnd = parseISO(lr.end_date);
+          const periodStart = parseISO(startDate);
+          const periodEnd = parseISO(endDate);
+          
+          // Calculate overlap
+          const overlapStart = leaveStart > periodStart ? leaveStart : periodStart;
+          const overlapEnd = leaveEnd < periodEnd ? leaveEnd : periodEnd;
+          
+          if (overlapStart <= overlapEnd) {
+            // Count only working days in the overlap
+            const overlapDays = eachDayOfInterval({ start: overlapStart, end: overlapEnd });
+            const workingLeaveDays = overlapDays.filter(d => workingDaysSet.has(getDay(d))).length;
+            leaveDays += workingLeaveDays;
+          }
+        });
+        
+        // Fetch approved early leave requests
+        const { data: earlyLeaveRequests } = await supabase
+          .from("early_leave_requests")
+          .select("*")
+          .eq("employee_id", emp.id)
+          .eq("status", "approved")
+          .gte("request_date", startDate)
+          .lte("request_date", endDate);
+        
+        const earlyLeaveCount = earlyLeaveRequests?.length || 0;
         
         // Calculate total work hours
         let totalWorkHours = 0;
@@ -494,6 +542,9 @@ export default function Payroll() {
         
         const netPay = grossPay + totalAllowances - totalDeductions;
         
+        // Calculate absent days (scheduled - actual - leave)
+        const absentDays = Math.max(0, scheduledWorkDays - actualWorkDays - leaveDays);
+        
         // Upsert payroll record
         await supabase
           .from("payroll_records")
@@ -505,10 +556,10 @@ export default function Payroll() {
             actual_work_days: actualWorkDays,
             total_work_hours: totalWorkHours,
             late_count: lateCount,
-            late_minutes: 0,
-            absent_days: scheduledWorkDays - actualWorkDays,
-            leave_days: 0,
-            early_leave_count: 0,
+            late_minutes: totalLateMinutes,
+            absent_days: absentDays,
+            leave_days: leaveDays,
+            early_leave_count: earlyLeaveCount,
             ot_hours: totalOTHours,
             ot_pay: otPay,
             base_salary: baseSalary,
@@ -590,7 +641,7 @@ export default function Payroll() {
       return;
     }
     
-    const headers = ["รหัส", "ชื่อ", "สาขา", "ประเภท", "วันทำงาน", "ชม.รวม", "สาย", "ขาด", "OT ชม.", "เงินเดือน", "OT", "เบี้ยเลี้ยง", "หัก", "สุทธิ"];
+    const headers = ["รหัส", "ชื่อ", "สาขา", "ประเภท", "วันทำงาน", "ชม.รวม", "สาย(ครั้ง)", "สาย(นาที)", "วันลา", "ออกก่อน", "ขาด", "OT ชม.", "เงินเดือน", "OT", "เบี้ยเลี้ยง", "หัก", "สุทธิ"];
     const rows = payrollRecords.map(r => [
       r.employee?.code,
       r.employee?.full_name,
@@ -599,6 +650,9 @@ export default function Payroll() {
       r.actual_work_days,
       r.total_work_hours.toFixed(2),
       r.late_count,
+      r.late_minutes || 0,
+      r.leave_days || 0,
+      r.early_leave_count || 0,
       r.absent_days,
       r.ot_hours.toFixed(2),
       r.base_salary.toFixed(2),
@@ -862,6 +916,8 @@ export default function Payroll() {
                     <tr className="text-xs text-muted-foreground">
                       <th className="text-left p-3 font-medium">พนักงาน</th>
                       <th className="text-center p-3 font-medium">วันมา</th>
+                      <th className="text-center p-3 font-medium">สาย</th>
+                      <th className="text-center p-3 font-medium">ลา/ออกก่อน</th>
                       <th className="text-center p-3 font-medium">OT</th>
                       <th className="text-right p-3 font-medium">เงินได้</th>
                       <th className="text-right p-3 font-medium">หัก</th>
@@ -896,6 +952,41 @@ export default function Payroll() {
                             <Badge variant="outline" className="text-xs">
                               {record?.actual_work_days || 0}/{record?.scheduled_work_days || '-'}
                             </Badge>
+                          </td>
+                          <td className="p-3 text-center">
+                            {(record?.late_count || 0) > 0 ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                      {record?.late_count}ครั้ง
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>สายรวม {record?.late_minutes || 0} นาที</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {(record?.leave_days || 0) > 0 && (
+                                <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                  ลา {record?.leave_days}
+                                </Badge>
+                              )}
+                              {(record?.early_leave_count || 0) > 0 && (
+                                <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                                  ก่อน {record?.early_leave_count}
+                                </Badge>
+                              )}
+                              {!(record?.leave_days || 0) && !(record?.early_leave_count || 0) && (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-center text-sm">
                             {record?.ot_hours?.toFixed(1) || 0} ชม.
