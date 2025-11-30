@@ -1,3 +1,29 @@
+/**
+ * ⚠️ CRITICAL PAYROLL NOTIFICATION - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This edge function sends payroll notifications to employees via LINE.
+ * Called when admin approves/processes payroll period.
+ * 
+ * INVARIANTS:
+ * 1. Only sends to employees with valid line_user_id
+ * 2. Message format includes: base salary, OT, allowances, deductions, net pay
+ * 3. All monetary values formatted with Thai locale (฿ symbol, comma separators)
+ * 4. Logs all sent messages to bot_message_logs table
+ * 5. Returns detailed results (sent, failed, skipped counts)
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Sending to employees without LINE user ID (causes LINE API error)
+ * - Wrong number formatting (use .toLocaleString() not .toFixed())
+ * - Missing period name in message
+ * - Not logging failed sends to bot_message_logs
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ Employee LINE user ID checked before send?
+ * □ All monetary values properly formatted?
+ * □ Bot message logged with correct destination_type?
+ * □ Error handling for LINE API failures?
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 

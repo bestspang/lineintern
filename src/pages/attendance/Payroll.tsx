@@ -1,3 +1,30 @@
+/**
+ * ⚠️ CRITICAL PAYROLL CALCULATION - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This file handles payroll calculations, deductions, allowances, and LINE notifications.
+ * Changes here directly affect employee salary calculations.
+ * 
+ * INVARIANTS:
+ * 1. All monetary values use DECIMAL with proper rounding
+ * 2. Social security capped at 750 THB (5% of 15,000 base)
+ * 3. Work hours must be non-negative (negative = invalid checkout pairing)
+ * 4. OT calculation uses employee's ot_rate_multiplier (default 1.5x)
+ * 5. Late detection uses work_schedules.start_time, not hardcoded 09:00
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Division by zero in hourly rate calculation (check hoursPerDay > 0)
+ * - Negative net pay (should clamp to 0 minimum)
+ * - Wrong timezone in attendance date comparison (use UTC consistently)
+ * - Duplicate payroll records (check existing before insert)
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ Monetary calculations preserve precision?
+ * □ Social security cap applied correctly?
+ * □ Leave days calculated using work_schedules, not hardcoded Mon-Fri?
+ * □ Late detection uses employee's scheduled start time?
+ * □ LINE notification format matches expected output?
+ */
+
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";

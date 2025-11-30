@@ -1,3 +1,29 @@
+/**
+ * ⚠️ CRITICAL AUTO-CHECKOUT GRACE PERIOD - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This edge function handles automatic checkout after grace period expiration.
+ * Runs via cron job to close work sessions that exceeded grace period.
+ * 
+ * INVARIANTS:
+ * 1. Uses timezone.ts utilities for ALL Bangkok time operations
+ * 2. Compares UTC timestamps directly (not fake Bangkok ISO strings)
+ * 3. Checks for existing early_leave checkout before auto-checkout
+ * 4. Updates work_session status to 'auto_closed' (not 'completed')
+ * 5. Sends LINE notification to both employee and announcement group
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using getBangkokNow().toISOString() for DB comparison (wrong! use new Date())
+ * - Creating duplicate checkouts (check existingCheckout first)
+ * - Forgetting to update work_session.checkout_log_id
+ * - Missing error handling for LINE push failures
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * □ All date comparisons use UTC consistently?
+ * □ Existing checkout check uses maybeSingle() not single()?
+ * □ Work session status updated correctly?
+ * □ LINE notifications logged to bot_message_logs?
+ */
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import { fetchWithRetry } from '../_shared/retry.ts';
 import { logger } from '../_shared/logger.ts';
