@@ -1,3 +1,20 @@
+/**
+ * ⚠️ CRITICAL NAVIGATION STRUCTURE - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This file defines the main navigation structure for the LINE Intern Control Panel.
+ * 
+ * INVARIANTS:
+ * 1. All navigation items must have corresponding routes in App.tsx
+ * 2. Icon imports must match the icon used in navigationGroups
+ * 3. Do NOT remove or rename existing navigation items without updating related routes
+ * 4. New items should be added at the end of their respective group
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Adding a nav item without a corresponding route = 404 error
+ * - Removing a nav item that users bookmark = broken links
+ * - Changing URLs breaks existing bookmarks and shared links
+ */
+
 import { ReactNode } from 'react';
 import { 
   LayoutDashboard, 
@@ -30,7 +47,8 @@ import {
   DollarSign,
   CalendarDays,
   UserCog,
-  Wallet
+  Wallet,
+  TrendingUp
 } from 'lucide-react';
 import {
   Sidebar,
@@ -102,6 +120,7 @@ const navigationGroups = [
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
       { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
+      { title: 'Payroll YTD', url: '/attendance/payroll/ytd', icon: TrendingUp },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Employee Roles', url: '/attendance/roles', icon: UserCog },
