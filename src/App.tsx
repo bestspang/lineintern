@@ -59,6 +59,7 @@ import WorkSummary from "./pages/attendance/WorkSummary";
 import WorkHistory from "./pages/attendance/WorkHistory";
 import LeaveBalance from "./pages/attendance/LeaveBalance";
 import AttendanceRoles from "./pages/attendance/Roles";
+import Payroll from "./pages/attendance/Payroll";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
@@ -121,6 +122,7 @@ const App = () => (
                     <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
                     <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
                     <Route path="/attendance/roles" element={<AttendanceRoles />} />
+                    <Route path="/attendance/payroll" element={<Payroll />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/health-monitoring" element={<HealthMonitoring />} />

@@ -29,7 +29,8 @@ import {
   AlertTriangle,
   DollarSign,
   CalendarDays,
-  UserCog
+  UserCog,
+  Wallet
 } from 'lucide-react';
 import {
   Sidebar,
@@ -100,6 +101,7 @@ const navigationGroups = [
       { title: 'Dashboard', url: '/attendance/dashboard', icon: Gauge },
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
+      { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Employee Roles', url: '/attendance/roles', icon: UserCog },

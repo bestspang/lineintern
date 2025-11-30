@@ -1127,6 +1127,71 @@ export type Database = {
           },
         ]
       }
+      employee_payroll_settings: {
+        Row: {
+          created_at: string | null
+          custom_allowances: Json | null
+          custom_deductions: Json | null
+          employee_id: string
+          has_social_security: boolean | null
+          has_transportation: boolean | null
+          has_withholding_tax: boolean | null
+          hourly_rate: number | null
+          id: string
+          pay_type: string
+          salary_per_month: number | null
+          social_security_cap: number | null
+          social_security_rate: number | null
+          transportation_allowance: number | null
+          updated_at: string | null
+          withholding_tax_rate: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_allowances?: Json | null
+          custom_deductions?: Json | null
+          employee_id: string
+          has_social_security?: boolean | null
+          has_transportation?: boolean | null
+          has_withholding_tax?: boolean | null
+          hourly_rate?: number | null
+          id?: string
+          pay_type?: string
+          salary_per_month?: number | null
+          social_security_cap?: number | null
+          social_security_rate?: number | null
+          transportation_allowance?: number | null
+          updated_at?: string | null
+          withholding_tax_rate?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_allowances?: Json | null
+          custom_deductions?: Json | null
+          employee_id?: string
+          has_social_security?: boolean | null
+          has_transportation?: boolean | null
+          has_withholding_tax?: boolean | null
+          hourly_rate?: number | null
+          id?: string
+          pay_type?: string
+          salary_per_month?: number | null
+          social_security_cap?: number | null
+          social_security_rate?: number | null
+          transportation_allowance?: number | null
+          updated_at?: string | null
+          withholding_tax_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_payroll_settings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_roles: {
         Row: {
           created_at: string | null
@@ -1988,6 +2053,153 @@ export type Database = {
           },
         ]
       }
+      payroll_periods: {
+        Row: {
+          created_at: string | null
+          cutoff_day: number | null
+          end_date: string
+          id: string
+          name: string
+          processed_at: string | null
+          processed_by: string | null
+          start_date: string
+          status: string | null
+          total_employees: number | null
+          total_gross_pay: number | null
+          total_net_pay: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          cutoff_day?: number | null
+          end_date: string
+          id?: string
+          name: string
+          processed_at?: string | null
+          processed_by?: string | null
+          start_date: string
+          status?: string | null
+          total_employees?: number | null
+          total_gross_pay?: number | null
+          total_net_pay?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          cutoff_day?: number | null
+          end_date?: string
+          id?: string
+          name?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          start_date?: string
+          status?: string | null
+          total_employees?: number | null
+          total_gross_pay?: number | null
+          total_net_pay?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      payroll_records: {
+        Row: {
+          absent_days: number | null
+          actual_work_days: number | null
+          allowances: Json | null
+          base_salary: number | null
+          created_at: string | null
+          deductions: Json | null
+          early_leave_count: number | null
+          employee_id: string
+          gross_pay: number | null
+          id: string
+          late_count: number | null
+          late_minutes: number | null
+          leave_days: number | null
+          net_pay: number | null
+          notes: string | null
+          ot_hours: number | null
+          ot_pay: number | null
+          pay_type: string
+          period_id: string
+          scheduled_work_days: number | null
+          status: string | null
+          total_allowances: number | null
+          total_deductions: number | null
+          total_work_hours: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          absent_days?: number | null
+          actual_work_days?: number | null
+          allowances?: Json | null
+          base_salary?: number | null
+          created_at?: string | null
+          deductions?: Json | null
+          early_leave_count?: number | null
+          employee_id: string
+          gross_pay?: number | null
+          id?: string
+          late_count?: number | null
+          late_minutes?: number | null
+          leave_days?: number | null
+          net_pay?: number | null
+          notes?: string | null
+          ot_hours?: number | null
+          ot_pay?: number | null
+          pay_type?: string
+          period_id: string
+          scheduled_work_days?: number | null
+          status?: string | null
+          total_allowances?: number | null
+          total_deductions?: number | null
+          total_work_hours?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          absent_days?: number | null
+          actual_work_days?: number | null
+          allowances?: Json | null
+          base_salary?: number | null
+          created_at?: string | null
+          deductions?: Json | null
+          early_leave_count?: number | null
+          employee_id?: string
+          gross_pay?: number | null
+          id?: string
+          late_count?: number | null
+          late_minutes?: number | null
+          leave_days?: number | null
+          net_pay?: number | null
+          notes?: string | null
+          ot_hours?: number | null
+          ot_pay?: number | null
+          pay_type?: string
+          period_id?: string
+          scheduled_work_days?: number | null
+          status?: string | null
+          total_allowances?: number | null
+          total_deductions?: number | null
+          total_work_hours?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_records_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_records_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       personality_state: {
         Row: {
           created_at: string
@@ -2845,6 +3057,50 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_schedules: {
+        Row: {
+          created_at: string | null
+          day_of_week: number
+          employee_id: string
+          end_time: string | null
+          expected_hours: number | null
+          id: string
+          is_working_day: boolean | null
+          start_time: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: number
+          employee_id: string
+          end_time?: string | null
+          expected_hours?: number | null
+          id?: string
+          is_working_day?: boolean | null
+          start_time?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number
+          employee_id?: string
+          end_time?: string | null
+          expected_hours?: number | null
+          id?: string
+          is_working_day?: boolean | null
+          start_time?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_schedules_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
