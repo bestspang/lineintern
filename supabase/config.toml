@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.payslip-generator]
 verify_jwt = false
+
+[functions.payroll-notification]
+verify_jwt = false
