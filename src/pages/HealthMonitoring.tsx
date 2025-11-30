@@ -1,3 +1,23 @@
+/**
+ * ⚠️ CRITICAL HEALTH MONITORING PAGE - DO NOT MODIFY WITHOUT REVIEW
+ * 
+ * This page displays real-time system health metrics for the LINE Intern system.
+ * 
+ * INVARIANTS:
+ * 1. All date queries MUST include timezone offset (+07:00) for Bangkok time
+ * 2. RefetchInterval is set to 30000ms (30s) for real-time monitoring
+ * 3. Do NOT change the systemStatus calculation logic without testing
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Using ${today}T00:00:00 without +07:00 causes timezone boundary issues
+ * - Changing refetchInterval too high causes stale data
+ * - Modifying success rate thresholds affects system status display
+ * 
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * [ ] All .gte() and .lte() queries include +07:00 timezone offset
+ * [ ] RefetchInterval values are preserved
+ * [ ] System status logic remains unchanged
+ */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,12 +111,12 @@ export default function HealthMonitoring() {
     queryFn: async () => {
       const today = format(new Date(), 'yyyy-MM-dd');
       
-      // Check today's logs
+      // Check today's logs - CRITICAL: Must use +07:00 for Bangkok timezone
       const { data: todayLogs } = await supabase
         .from('attendance_logs')
         .select('id, event_type, is_flagged, fraud_score')
-        .gte('server_time', `${today}T00:00:00`)
-        .lte('server_time', `${today}T23:59:59`);
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lte('server_time', `${today}T23:59:59+07:00`);
 
       // Check active employees
       const { data: employees } = await supabase
