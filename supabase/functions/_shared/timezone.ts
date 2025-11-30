@@ -1,11 +1,60 @@
 /**
- * Timezone Utility Module
+ * ⚠️⚠️⚠️ CRITICAL TIMEZONE HANDLING - DO NOT MODIFY WITHOUT REVIEW ⚠️⚠️⚠️
+ * 
+ * Timezone Utility Module for Bangkok (Asia/Bangkok, UTC+7)
  * 
  * Provides consistent timezone handling across all edge functions.
  * Uses date-fns-tz for proper Bangkok time conversion.
  * 
- * CRITICAL: Always use these utilities instead of Date.toLocaleString() or manual timezone math
- * to avoid timezone-related bugs in auto-checkout and reminder systems.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INVARIANTS (MUST FOLLOW):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * 1. All server_time values in database are stored in UTC (ISO 8601)
+ * 
+ * 2. Use formatBangkokTime() for display - NEVER use toLocaleString()
+ * 
+ * 3. Use getBangkokStartOfDay/getBangkokEndOfDay for date boundaries
+ * 
+ * 4. When creating Bangkok midnight/specific time manually:
+ *    ✅ CORRECT: new Date("2025-01-01T23:59:59+07:00")  // Bangkok midnight
+ *    ❌ WRONG:   new Date("2025-01-01T23:59:59")        // This is UTC!
+ * 
+ * 5. checkout.server_time MUST be > checkin.server_time for valid sessions
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * COMMON BUGS TO AVOID:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * BUG #1: Midnight without timezone offset
+ *   ❌ new Date("2025-11-29T23:59:59")
+ *      → Interpreted as UTC 23:59:59
+ *      → In Bangkok = 06:59:59 NEXT DAY (Nov 30)
+ *   ✅ new Date("2025-11-29T23:59:59+07:00")
+ *      → Bangkok 23:59:59 = UTC 16:59:59 (Same day)
+ * 
+ * BUG #2: Using .find() for checkout without checking time order
+ *   ❌ logs.find(l => l.event_type === 'check_out')
+ *      → May find auto-checkout from previous day
+ *   ✅ logs.find(l => l.event_type === 'check_out' && 
+ *        new Date(l.server_time) > new Date(checkIn.server_time))
+ * 
+ * BUG #3: Negative work hours
+ *   ❌ Allowing checkout < checkin to calculate hours
+ *   ✅ Always validate: if (end <= start) return 0;
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Before modifying any timezone-related code:
+ * [ ] Are you using +07:00 offset for Bangkok times?
+ * [ ] Are you checking checkout > checkin for session validity?
+ * [ ] Are you using Math.max(0, hours) to prevent negative values?
+ * [ ] Are you using formatBangkokTime() instead of toLocaleString()?
+ * [ ] Are you using getBangkokStartOfDay/EndOfDay for date boundaries?
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { toZonedTime, fromZonedTime, format, formatInTimeZone } from 'npm:date-fns-tz@3.2.0';

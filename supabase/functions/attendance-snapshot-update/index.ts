@@ -22,6 +22,11 @@ interface Employee {
   break_hours: number | null;
 }
 
+/**
+ * ⚠️ CRITICAL: Calculate work hours with validation guards
+ * - Returns zeros if checkout is before or equal to checkin
+ * - Always returns non-negative values
+ */
 const calculateWorkHoursDetailed = async (
   supabase: any,
   employeeId: string,
@@ -37,6 +42,13 @@ const calculateWorkHoursDetailed = async (
 
   const start = new Date(checkIn.server_time);
   const end = new Date(checkOut.server_time);
+  
+  // 🛡️ VALIDATION: Checkout must be after checkin
+  if (end <= start) {
+    console.error(`[calculateWorkHoursDetailed] Invalid session: checkout (${end.toISOString()}) <= checkin (${start.toISOString()}) for employee ${employeeId}`);
+    return { grossHours: 0, netHours: 0, countedHours: 0, overtimeHours: 0, hasApprovedOT: false };
+  }
+  
   const grossHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
   const netHours = Math.max(0, grossHours - breakHours);
   
@@ -112,7 +124,14 @@ const generateAllBranchesSummary = async (
       }
 
       const checkIn = logs.find((l: any) => l.event_type === 'check_in');
-      const checkOut = logs.find((l: any) => l.event_type === 'check_out');
+      // ⚠️ CRITICAL: Ensure checkout is AFTER checkin to prevent cross-day session mixing
+      // Previous bug: .find() could pick auto-checkout from previous day before actual checkin
+      const checkOut = checkIn
+        ? logs.find((l: any) => 
+            l.event_type === 'check_out' && 
+            new Date(l.server_time) > new Date(checkIn.server_time)
+          )
+        : null;
 
       if (checkIn) checkedInCount++;
       if (checkOut) checkedOutCount++;
