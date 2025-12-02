@@ -227,11 +227,11 @@ export async function validateCheckIn(
 
   // For time_based: check if before allowed_work_start_time
   if (employee.working_time_type === 'time_based') {
+    // Fallback to earliest_checkin_time or default if allowed_work_start_time is missing
     if (!employee.allowed_work_start_time) {
-      return {
-        valid: false,
-        error: 'ข้อมูลการตั้งค่าไม่ครบถ้วน (allowed_work_start_time)',
-      };
+      const fallbackTime = employee.earliest_checkin_time || '06:00:00';
+      employee.allowed_work_start_time = fallbackTime;
+      console.log(`[FALLBACK] Using ${fallbackTime} for allowed_work_start_time (employee: ${employee.full_name || employee.id})`);
     }
 
     const [startHour, startMinute] = employee.allowed_work_start_time.split(':').map(Number);
