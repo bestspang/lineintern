@@ -25,7 +25,7 @@
  * □ LINE notification format matches expected output?
  */
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -61,10 +61,13 @@ import {
   Building,
   Edit,
   Send,
-  Printer
+  Printer,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
+import { PayrollMiniCalendar, PayrollCalendarLegend, type DayStatus } from "@/components/attendance/PayrollMiniCalendar";
 
 interface PayrollRecord {
   id: string;
@@ -114,6 +117,7 @@ export default function Payroll() {
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [isCreatePeriodOpen, setIsCreatePeriodOpen] = useState(false);
   const [newPeriodCutoffDay, setNewPeriodCutoffDay] = useState("25");
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -123,6 +127,17 @@ export default function Payroll() {
   
   // LINE notification state
   const [sendLineNotification, setSendLineNotification] = useState(true);
+  
+  // Toggle row expansion
+  const toggleRowExpansion = (employeeId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(employeeId)) {
+      newExpanded.delete(employeeId);
+    } else {
+      newExpanded.add(employeeId);
+    }
+    setExpandedRows(newExpanded);
+  };
 
   // Fetch current payroll period
   const { data: currentPeriod, isLoading: isPeriodLoading } = useQuery({
@@ -250,6 +265,126 @@ export default function Payroll() {
     },
     enabled: !!currentPeriod,
   });
+
+  // Fetch ALL employees' attendance data for mini calendars
+  const { data: allAttendanceData } = useQuery({
+    queryKey: ["all-employees-attendance", format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("attendance_logs")
+        .select("employee_id, server_time, event_type, is_overtime, overtime_hours")
+        .gte("server_time", startDate)
+        .lte("server_time", endDate + "T23:59:59")
+        .order("server_time");
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch ALL employees' work schedules
+  const { data: allWorkSchedules } = useQuery({
+    queryKey: ["all-work-schedules"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_schedules")
+        .select("employee_id, day_of_week, is_working_day, start_time, end_time");
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Build attendance data map per employee for mini calendars
+  const employeeAttendanceMap = useMemo(() => {
+    if (!allAttendanceData || !employees) return new Map<string, DayStatus[]>();
+    
+    const map = new Map<string, DayStatus[]>();
+    const today = new Date();
+    const calDays = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
+    
+    // Build schedule map per employee
+    const employeeScheduleMap = new Map<string, Map<number, { start_time: string | null }>>();
+    const employeeWorkingDaysMap = new Map<string, Set<number>>();
+    
+    allWorkSchedules?.forEach(ws => {
+      if (!employeeScheduleMap.has(ws.employee_id)) {
+        employeeScheduleMap.set(ws.employee_id, new Map());
+        employeeWorkingDaysMap.set(ws.employee_id, new Set());
+      }
+      employeeScheduleMap.get(ws.employee_id)!.set(ws.day_of_week, { start_time: ws.start_time });
+      if (ws.is_working_day) {
+        employeeWorkingDaysMap.get(ws.employee_id)!.add(ws.day_of_week);
+      }
+    });
+    
+    employees.forEach(emp => {
+      const empLogs = allAttendanceData.filter(l => l.employee_id === emp.id);
+      const scheduleMap = employeeScheduleMap.get(emp.id) || new Map();
+      const workingDays = employeeWorkingDaysMap.get(emp.id) || new Set([1, 2, 3, 4, 5]);
+      
+      const dailyStatuses: DayStatus[] = calDays.map(day => {
+        const dateStr = format(day, "yyyy-MM-dd");
+        const dayOfWeek = getDay(day);
+        const isWorkingDay = workingDays.has(dayOfWeek);
+        
+        const dayLogs = empLogs.filter(l => 
+          format(parseISO(l.server_time), "yyyy-MM-dd") === dateStr
+        );
+        
+        const checkIn = dayLogs.find(l => l.event_type === "check_in");
+        const checkOut = dayLogs.find(l => l.event_type === "check_out");
+        
+        let status: DayStatus['status'] = 'absent';
+        let lateMinutes = 0;
+        
+        if (day > today) {
+          status = 'future';
+        } else if (!isWorkingDay) {
+          status = checkIn ? 'present' : 'weekend';
+        } else if (checkIn) {
+          const checkInTime = parseISO(checkIn.server_time);
+          const schedule = scheduleMap.get(dayOfWeek);
+          const startTime = schedule?.start_time || '09:00';
+          const [startHour, startMinute] = startTime.split(':').map(Number);
+          
+          const checkInHour = checkInTime.getHours();
+          const checkInMinute = checkInTime.getMinutes();
+          
+          const expectedMins = startHour * 60 + startMinute;
+          const actualMins = checkInHour * 60 + checkInMinute;
+          
+          if (actualMins > expectedMins) {
+            status = 'late';
+            lateMinutes = actualMins - expectedMins;
+          } else {
+            status = 'present';
+          }
+        }
+        
+        const workHours = checkIn && checkOut 
+          ? (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60)
+          : undefined;
+        
+        return {
+          date: dateStr,
+          status,
+          check_in: checkIn?.server_time,
+          check_out: checkOut?.server_time,
+          work_hours: workHours,
+          is_overtime: checkIn?.is_overtime || checkOut?.is_overtime,
+          late_minutes: lateMinutes,
+        };
+      });
+      
+      map.set(emp.id, dailyStatuses);
+    });
+    
+    return map;
+  }, [allAttendanceData, allWorkSchedules, employees, currentMonth]);
 
   // Calculate payroll summaries
   const payrollSummary = useMemo(() => {
@@ -1211,150 +1346,249 @@ export default function Payroll() {
                 ))}
               </div>
             ) : (
-              <ScrollArea className="h-[500px]">
-                <table className="w-full">
-                  <thead className="sticky top-0 bg-background border-b">
-                    <tr className="text-xs text-muted-foreground">
-                      <th className="text-left p-3 font-medium">พนักงาน</th>
-                      <th className="text-center p-3 font-medium">วันมา</th>
-                      <th className="text-center p-3 font-medium">สาย</th>
-                      <th className="text-center p-3 font-medium">ลา/ออกก่อน</th>
-                      <th className="text-center p-3 font-medium">OT</th>
-                      <th className="text-right p-3 font-medium">เงินได้</th>
-                      <th className="text-right p-3 font-medium">หัก</th>
-                      <th className="text-right p-3 font-medium">สุทธิ</th>
-                      <th className="text-center p-3 font-medium w-[100px]">จัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredEmployees.map((emp) => {
-                      const record = payrollRecords?.find(r => r.employee_id === emp.id);
-                      const isSelected = selectedEmployee === emp.id;
+              <>
+                <div className="px-3 py-2 border-b bg-muted/30">
+                  <PayrollCalendarLegend />
+                </div>
+                <ScrollArea className="h-[600px]">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-background border-b z-10">
+                      <tr className="text-xs text-muted-foreground">
+                        <th className="text-left p-3 font-medium w-10"></th>
+                        <th className="text-left p-3 font-medium">พนักงาน</th>
+                        <th className="text-left p-3 font-medium min-w-[200px]">ปฏิทิน</th>
+                        <th className="text-center p-3 font-medium">วันมา</th>
+                        <th className="text-center p-3 font-medium">สาย</th>
+                        <th className="text-right p-3 font-medium">สุทธิ</th>
+                        <th className="text-center p-3 font-medium w-[80px]">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredEmployees.map((emp) => {
+                        const record = payrollRecords?.find(r => r.employee_id === emp.id);
+                        const isSelected = selectedEmployee === emp.id;
+                        const isExpanded = expandedRows.has(emp.id);
+                        const empAttendance = employeeAttendanceMap.get(emp.id) || [];
                       
                       return (
-                        <tr 
-                          key={emp.id}
-                          className={`hover:bg-muted/50 cursor-pointer transition-colors ${isSelected ? 'bg-primary/10' : ''}`}
-                          onClick={() => setSelectedEmployee(isSelected ? null : emp.id)}
-                        >
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                                {emp.full_name.charAt(0)}
-                              </div>
-                              <div>
-                                <div className="font-medium text-sm">{emp.full_name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {emp.code} • {(emp as any).branches?.name || '-'}
+                        <React.Fragment key={emp.id}>
+                          <tr 
+                            className={`hover:bg-muted/50 cursor-pointer transition-colors ${isSelected ? 'bg-primary/10' : ''}`}
+                            onClick={() => toggleRowExpansion(emp.id)}
+                          >
+                            <td className="p-2 text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleRowExpansion(emp.id);
+                                }}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                              </Button>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+                                  {emp.full_name.charAt(0)}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-sm">{emp.full_name}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {emp.code} • {(emp as any).branches?.name || '-'}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="p-3 text-center">
-                            <Badge variant="outline" className="text-xs">
-                              {record?.actual_work_days || 0}/{record?.scheduled_work_days || '-'}
-                            </Badge>
-                          </td>
-                          <td className="p-3 text-center">
-                            {(record?.late_count || 0) > 0 ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-                                      {record?.late_count}ครั้ง
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>สายรวม {record?.late_minutes || 0} นาที</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {(record?.leave_days || 0) > 0 && (
-                                <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                  ลา {record?.leave_days}
-                                </Badge>
-                              )}
-                              {(record?.early_leave_count || 0) > 0 && (
-                                <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                                  ก่อน {record?.early_leave_count}
-                                </Badge>
-                              )}
-                              {!(record?.leave_days || 0) && !(record?.early_leave_count || 0) && (
+                            </td>
+                            <td className="p-3">
+                              <PayrollMiniCalendar 
+                                currentMonth={currentMonth}
+                                attendanceData={empAttendance}
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <Badge variant="outline" className="text-xs">
+                                {record?.actual_work_days || 0}/{record?.scheduled_work_days || '-'}
+                              </Badge>
+                            </td>
+                            <td className="p-3 text-center">
+                              {(record?.late_count || 0) > 0 ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                        {record?.late_count}ครั้ง
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>สายรวม {record?.late_minutes || 0} นาที</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
                                 <span className="text-xs text-muted-foreground">-</span>
                               )}
-                            </div>
-                          </td>
-                          <td className="p-3 text-center text-sm">
-                            {record?.ot_hours?.toFixed(1) || 0} ชม.
-                          </td>
-                          <td className="p-3 text-right text-sm font-medium text-green-600">
-                            ฿{(record?.gross_pay || 0).toLocaleString()}
-                          </td>
-                          <td className="p-3 text-right text-sm text-red-600">
-                            -฿{(record?.total_deductions || 0).toLocaleString()}
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className="font-bold text-sm">
-                              ฿{(record?.net_pay || 0).toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {record && (
-                                <>
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenEdit(record);
-                                          }}
-                                          disabled={currentPeriod?.status === 'completed'}
-                                        >
-                                          <Edit className="h-3 w-3" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>แก้ไข</TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDownloadPayslip(emp.id);
-                                          }}
-                                        >
-                                          <Printer className="h-3 w-3" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>พิมพ์สลิป</TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="font-bold text-sm">
+                                ฿{(record?.net_pay || 0).toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {record && (
+                                  <>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenEdit(record);
+                                            }}
+                                            disabled={currentPeriod?.status === 'completed'}
+                                          >
+                                            <Edit className="h-3 w-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>แก้ไข</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDownloadPayslip(emp.id);
+                                            }}
+                                          >
+                                            <Printer className="h-3 w-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>พิมพ์สลิป</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          
+                          {/* Expanded Row - Details */}
+                          {isExpanded && record && (
+                            <tr className="bg-muted/30">
+                              <td colSpan={7} className="p-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {/* Work Info */}
+                                  <div className="space-y-2">
+                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">การทำงาน</h5>
+                                    <div className="space-y-1 text-sm">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">วันทำงาน:</span>
+                                        <span>{record.actual_work_days}/{record.scheduled_work_days}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">ชั่วโมงรวม:</span>
+                                        <span>{record.total_work_hours?.toFixed(1) || 0} ชม.</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">OT:</span>
+                                        <span className="text-orange-600">{record.ot_hours?.toFixed(1) || 0} ชม.</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Leave & Absent */}
+                                  <div className="space-y-2">
+                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">ขาด/ลา/สาย</h5>
+                                    <div className="space-y-1 text-sm">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">ขาด:</span>
+                                        <span className="text-red-600">{record.absent_days || 0} วัน</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">ลา:</span>
+                                        <span className="text-blue-600">{record.leave_days || 0} วัน</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">สาย:</span>
+                                        <span className="text-yellow-600">{record.late_count || 0} ครั้ง ({record.late_minutes || 0} นาที)</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">ออกก่อน:</span>
+                                        <span>{record.early_leave_count || 0} ครั้ง</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Income */}
+                                  <div className="space-y-2">
+                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">รายได้</h5>
+                                    <div className="space-y-1 text-sm">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">เงินเดือน:</span>
+                                        <span>฿{(record.base_salary || 0).toLocaleString()}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">ค่า OT:</span>
+                                        <span className="text-green-600">+฿{(record.ot_pay || 0).toLocaleString()}</span>
+                                      </div>
+                                      {(record.allowances || []).map((a: any, i: number) => (
+                                        <div key={i} className="flex justify-between">
+                                          <span className="text-muted-foreground">{a.name}:</span>
+                                          <span className="text-green-600">+฿{(a.amount || 0).toLocaleString()}</span>
+                                        </div>
+                                      ))}
+                                      <div className="flex justify-between font-medium border-t pt-1">
+                                        <span>รวมรายได้:</span>
+                                        <span className="text-green-600">฿{(record.gross_pay || 0).toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Deductions */}
+                                  <div className="space-y-2">
+                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">หัก</h5>
+                                    <div className="space-y-1 text-sm">
+                                      {(record.deductions || []).map((d: any, i: number) => (
+                                        <div key={i} className="flex justify-between">
+                                          <span className="text-muted-foreground">{d.name}:</span>
+                                          <span className="text-red-600">-฿{(d.amount || 0).toLocaleString()}</span>
+                                        </div>
+                                      ))}
+                                      {(record.deductions || []).length === 0 && (
+                                        <span className="text-muted-foreground text-xs">ไม่มีรายการหัก</span>
+                                      )}
+                                      <div className="flex justify-between font-medium border-t pt-1">
+                                        <span>รวมหัก:</span>
+                                        <span className="text-red-600">-฿{(record.total_deductions || 0).toLocaleString()}</span>
+                                      </div>
+                                      <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                                        <span>สุทธิ:</span>
+                                        <span className="text-primary">฿{(record.net_pay || 0).toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
                 </table>
               </ScrollArea>
+              </>
             )}
           </CardContent>
         </Card>
