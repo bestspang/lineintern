@@ -368,13 +368,13 @@ export default function EmployeeSettings() {
         updateData.enable_pattern_learning = data.enable_pattern_learning;
         updateData.enable_second_checkin_reminder = data.enable_second_checkin_reminder;
       } else {
-        // time_based
+        // time_based - AUTO-SYNC allowed_work fields from earliest_checkin_time
         updateData.shift_start_time = data.shift_start_time ? data.shift_start_time + ":00" : null;
         updateData.shift_end_time = data.shift_end_time ? data.shift_end_time + ":00" : null;
         updateData.hours_per_day = null;
         updateData.break_hours = null;
-        updateData.allowed_work_start_time = null;
-        updateData.allowed_work_end_time = null;
+        updateData.allowed_work_start_time = data.earliest_checkin_time + ":00"; // Auto-sync from earliest_checkin_time
+        updateData.allowed_work_end_time = '20:00:00'; // Default end time
         updateData.preferred_start_time = null;
         updateData.auto_checkout_grace_period_minutes = 60;
         updateData.enable_pattern_learning = true;
