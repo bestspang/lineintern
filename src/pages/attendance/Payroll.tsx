@@ -1045,85 +1045,104 @@ export default function Payroll() {
         </Card>
       </div>
 
+      {/* Warning when no period */}
+      {!currentPeriod && !isPeriodLoading && (
+        <Card className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-full bg-orange-100 dark:bg-orange-900/30">
+                <AlertCircle className="h-8 w-8 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 mb-2">
+                  ยังไม่มีรอบเงินเดือนสำหรับเดือนนี้
+                </h3>
+                <p className="text-sm text-orange-700 dark:text-orange-300 mb-4">
+                  คุณต้องสร้างรอบเงินเดือนสำหรับ {format(currentMonth, "MMMM yyyy", { locale: th })} ก่อนจึงจะสามารถคำนวณและจัดการเงินเดือนได้
+                </p>
+                <Dialog open={isCreatePeriodOpen} onOpenChange={setIsCreatePeriodOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="lg" className="bg-orange-600 hover:bg-orange-700">
+                      <Plus className="h-5 w-5 mr-2" />
+                      สร้างรอบเงินเดือนทันที
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>สร้างรอบเงินเดือนใหม่</DialogTitle>
+                      <DialogDescription>
+                        สร้างรอบเงินเดือนสำหรับ {format(currentMonth, "MMMM yyyy", { locale: th })}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>วันตัดรอบ</Label>
+                        <Select value={newPeriodCutoffDay} onValueChange={setNewPeriodCutoffDay}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                              <SelectItem key={day} value={day.toString()}>
+                                วันที่ {day} ของทุกเดือน
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button 
+                        onClick={() => createPeriodMutation.mutate()} 
+                        className="w-full"
+                        disabled={createPeriodMutation.isPending}
+                      >
+                        {createPeriodMutation.isPending ? "กำลังสร้าง..." : "สร้างรอบเงินเดือน"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Actions Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="ค้นหาพนักงาน..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-[200px]"
-            />
+      {currentPeriod && (
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="ค้นหาพนักงาน..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-[200px]"
+              />
+            </div>
+            
+            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+              <SelectTrigger className="w-[150px]">
+                <Building className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="สาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกสาขา</SelectItem>
+                {branches?.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
-          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-            <SelectTrigger className="w-[150px]">
-              <Building className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="สาขา" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">ทุกสาขา</SelectItem>
-              {branches?.map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="flex gap-2">
-          {!currentPeriod ? (
-            <Dialog open={isCreatePeriodOpen} onOpenChange={setIsCreatePeriodOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  สร้างรอบเงินเดือน
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>สร้างรอบเงินเดือนใหม่</DialogTitle>
-                  <DialogDescription>
-                    สร้างรอบเงินเดือนสำหรับ {format(currentMonth, "MMMM yyyy", { locale: th })}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>วันตัดรอบ</Label>
-                    <Select value={newPeriodCutoffDay} onValueChange={setNewPeriodCutoffDay}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                          <SelectItem key={day} value={day.toString()}>
-                            วันที่ {day} ของทุกเดือน
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button 
-                    onClick={() => createPeriodMutation.mutate()} 
-                    className="w-full"
-                    disabled={createPeriodMutation.isPending}
-                  >
-                    {createPeriodMutation.isPending ? "กำลังสร้าง..." : "สร้างรอบเงินเดือน"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <>
-              <Button 
-                variant="outline" 
-                onClick={() => calculatePayrollMutation.mutate()}
-                disabled={calculatePayrollMutation.isPending || currentPeriod.status === 'completed'}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${calculatePayrollMutation.isPending ? 'animate-spin' : ''}`} />
-                คำนวณใหม่
-              </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => calculatePayrollMutation.mutate()}
+              disabled={calculatePayrollMutation.isPending || currentPeriod?.status === 'completed'}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${calculatePayrollMutation.isPending ? 'animate-spin' : ''}`} />
+              คำนวณใหม่
+            </Button>
               <Button variant="outline" onClick={handleExport}>
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -1145,34 +1164,34 @@ export default function Payroll() {
                   Bank
                 </Button>
               </div>
-              {currentPeriod.status !== 'completed' && (
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={sendLineNotification}
-                      onChange={(e) => setSendLineNotification(e.target.checked)}
-                      className="rounded border-input"
-                    />
-                    <Send className="h-3 w-3" />
-                    แจ้ง LINE
-                  </label>
-                  <Button 
-                    onClick={() => approvePeriodMutation.mutate()}
-                    disabled={approvePeriodMutation.isPending || !payrollRecords?.length}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    {approvePeriodMutation.isPending ? "กำลังอนุมัติ..." : "อนุมัติและล็อค"}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
+            {currentPeriod.status !== 'completed' && (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={sendLineNotification}
+                    onChange={(e) => setSendLineNotification(e.target.checked)}
+                    className="rounded border-input"
+                  />
+                  <Send className="h-3 w-3" />
+                  แจ้ง LINE
+                </label>
+                <Button 
+                  onClick={() => approvePeriodMutation.mutate()}
+                  disabled={approvePeriodMutation.isPending || !payrollRecords?.length}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  {approvePeriodMutation.isPending ? "กำลังอนุมัติ..." : "อนุมัติและล็อค"}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {currentPeriod && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Employee Table */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
@@ -1493,6 +1512,7 @@ export default function Payroll() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       {/* Inline Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
