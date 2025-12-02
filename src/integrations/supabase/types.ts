@@ -1517,6 +1517,57 @@ export type Database = {
         }
         Relationships: []
       }
+      holidays: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          date: string
+          id: string
+          is_national: boolean | null
+          is_recurring: boolean | null
+          name: string
+          name_en: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          date: string
+          id?: string
+          is_national?: boolean | null
+          is_recurring?: boolean | null
+          name: string
+          name_en?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          is_national?: boolean | null
+          is_recurring?: boolean | null
+          name?: string
+          name_en?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holidays_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "holidays_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_items: {
         Row: {
           category: string

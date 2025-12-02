@@ -298,6 +298,67 @@ export default function Payroll() {
     },
   });
 
+  // Fetch ALL approved leave requests for the period
+  const { data: allLeaveRequests } = useQuery({
+    queryKey: ["all-leave-requests", format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("leave_requests")
+        .select("employee_id, start_date, end_date, leave_type, status")
+        .eq("status", "approved")
+        .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch holidays for the period
+  const { data: holidays } = useQuery({
+    queryKey: ["holidays", format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("holidays")
+        .select("date, name, is_national, branch_id")
+        .gte("date", startDate)
+        .lte("date", endDate);
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Build holidays set for quick lookup
+  const holidaysSet = useMemo(() => {
+    const set = new Map<string, { name: string; branch_id: string | null }>();
+    holidays?.forEach(h => {
+      set.set(h.date, { name: h.name, branch_id: h.branch_id });
+    });
+    return set;
+  }, [holidays]);
+
+  // Build leave requests map per employee
+  const employeeLeaveMap = useMemo(() => {
+    const map = new Map<string, { start_date: string; end_date: string; leave_type: string }[]>();
+    allLeaveRequests?.forEach(lr => {
+      if (!map.has(lr.employee_id)) {
+        map.set(lr.employee_id, []);
+      }
+      map.get(lr.employee_id)!.push({
+        start_date: lr.start_date,
+        end_date: lr.end_date,
+        leave_type: lr.leave_type,
+      });
+    });
+    return map;
+  }, [allLeaveRequests]);
+
   // Build attendance data map per employee for mini calendars
   const employeeAttendanceMap = useMemo(() => {
     if (!allAttendanceData || !employees) return new Map<string, DayStatus[]>();
@@ -323,6 +384,7 @@ export default function Payroll() {
     
     employees.forEach(emp => {
       const empLogs = allAttendanceData.filter(l => l.employee_id === emp.id);
+      const empLeaves = employeeLeaveMap.get(emp.id) || [];
       const scheduleMap = employeeScheduleMap.get(emp.id) || new Map();
       const workingDays = employeeWorkingDaysMap.get(emp.id) || new Set([1, 2, 3, 4, 5]);
       
@@ -330,6 +392,17 @@ export default function Payroll() {
         const dateStr = format(day, "yyyy-MM-dd");
         const dayOfWeek = getDay(day);
         const isWorkingDay = workingDays.has(dayOfWeek);
+        
+        // Check if this day is a holiday (national or branch-specific)
+        const holiday = holidaysSet.get(dateStr);
+        const isHoliday = holiday && (holiday.branch_id === null || holiday.branch_id === emp.branch_id);
+        
+        // Check if employee is on leave this day
+        const isOnLeave = empLeaves.some(lr => {
+          const leaveStart = parseISO(lr.start_date);
+          const leaveEnd = parseISO(lr.end_date);
+          return day >= leaveStart && day <= leaveEnd;
+        });
         
         const dayLogs = empLogs.filter(l => 
           format(parseISO(l.server_time), "yyyy-MM-dd") === dateStr
@@ -343,6 +416,10 @@ export default function Payroll() {
         
         if (day > today) {
           status = 'future';
+        } else if (isHoliday) {
+          status = 'holiday';
+        } else if (isOnLeave && !checkIn) {
+          status = 'leave';
         } else if (!isWorkingDay) {
           status = checkIn ? 'present' : 'weekend';
         } else if (checkIn) {
@@ -384,7 +461,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [allAttendanceData, allWorkSchedules, employees, currentMonth]);
+  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet]);
 
   // Calculate payroll summaries
   const payrollSummary = useMemo(() => {
