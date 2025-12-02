@@ -114,6 +114,7 @@ serve(async (req) => {
         // Send summary to LINE group (will fail for test groups with fake LINE IDs)
         let lineMessageId: string | null = null;
         let deliveryStatus: 'sent' | 'failed' = 'sent';
+        let errorMsg: string | undefined;
         
         try {
           lineMessageId = await sendLineMessage(group.line_group_id, summary);
@@ -121,8 +122,9 @@ serve(async (req) => {
           results.push({ groupId: group.id, status: 'success' });
         } catch (sendError) {
           deliveryStatus = 'failed';
-          console.log(`[work-summary] ⚠️ Could not send to LINE (expected for test data), but summary was generated successfully`);
-          results.push({ groupId: group.id, status: 'generated_but_not_sent', message: 'Summary generated but LINE send failed (test data)' });
+          errorMsg = sendError instanceof Error ? sendError.message : 'Unknown LINE send error';
+          console.log(`[work-summary] ⚠️ Could not send to LINE: ${errorMsg} (expected for test data)`);
+          results.push({ groupId: group.id, status: 'generated_but_not_sent', message: errorMsg });
         }
 
         // Log bot message
@@ -137,7 +139,8 @@ serve(async (req) => {
           triggeredBy: 'cron',
           edgeFunctionName: 'work-summary',
           lineMessageId: lineMessageId || undefined,
-          deliveryStatus: deliveryStatus
+          deliveryStatus: deliveryStatus,
+          errorMessage: errorMsg
         });
 
       } catch (error) {

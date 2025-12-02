@@ -266,10 +266,22 @@ serve(async (req) => {
     // Generate all-branches summary
     const { summaryText, stats } = await generateAllBranchesSummary(supabase, branches, today);
 
-    // Upsert into daily_attendance_summaries
-    const { error: upsertError } = await supabase
+    // Delete + Insert pattern (more reliable than upsert with partial index)
+    // Delete existing record for today if exists
+    const { error: deleteError } = await supabase
       .from('daily_attendance_summaries')
-      .upsert({
+      .delete()
+      .eq('summary_date', today)
+      .eq('scope', 'all_branches');
+    
+    if (deleteError) {
+      console.log(`[Snapshot Update] Delete warning (may not exist): ${deleteError.message}`);
+    }
+    
+    // Insert new record
+    const { error: insertError } = await supabase
+      .from('daily_attendance_summaries')
+      .insert({
         summary_date: today,
         scope: 'all_branches',
         branch_id: null,
@@ -280,42 +292,11 @@ serve(async (req) => {
         late_count: stats.lateCount,
         flagged_count: stats.flaggedCount,
         updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'summary_date,scope',
-        ignoreDuplicates: false
       });
 
-    if (upsertError) {
-      // Try with explicit conflict handling for partial index
-      console.log('First upsert failed, trying with delete + insert...');
-      
-      // Delete existing record for today
-      await supabase
-        .from('daily_attendance_summaries')
-        .delete()
-        .eq('summary_date', today)
-        .eq('scope', 'all_branches');
-      
-      // Insert new record
-      const { error: insertError } = await supabase
-        .from('daily_attendance_summaries')
-        .insert({
-          summary_date: today,
-          scope: 'all_branches',
-          branch_id: null,
-          summary_text: summaryText,
-          total_employees: stats.totalEmployees,
-          checked_in: stats.checkedIn,
-          checked_out: stats.checkedOut,
-          late_count: stats.lateCount,
-          flagged_count: stats.flaggedCount,
-          updated_at: new Date().toISOString()
-        });
-
-      if (insertError) {
-        console.error('Error inserting snapshot:', insertError);
-        throw insertError;
-      }
+    if (insertError) {
+      console.error('[Snapshot Update] Error inserting snapshot:', insertError);
+      throw insertError;
     }
 
     console.log(`[Snapshot Update] Successfully updated summary for ${today}`);
