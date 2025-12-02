@@ -2,6 +2,10 @@
 
 This document provides instructions for deploying and configuring the LINE Intern bot backend.
 
+<!-- SYNC STATUS: Last verified 2025-12-02 -->
+<!-- AI MODEL: google/gemini-2.5-flash -->
+<!-- API KEY: LOVABLE_API_KEY (auto-provisioned) -->
+
 ## Architecture Overview
 
 The LINE Intern backend consists of multiple Supabase Edge Functions:
@@ -11,22 +15,25 @@ The LINE Intern backend consists of multiple Supabase Edge Functions:
 3. **attendance-validate-token** - Validates attendance submission tokens
 4. **attendance-submit** - Processes photo and location submissions
 5. **attendance-daily-summary** - Sends daily attendance summaries (cron job)
+6. **work-reminder** - Sends work assignment reminders
+7. **work-summary** - Generates work summary reports
 
 ## Prerequisites
 
 1. LINE Messaging API Channel (from LINE Developers Console)
-2. OpenAI API Key
+2. Lovable Cloud enabled (provides AI Gateway - no external API key needed)
 3. Supabase Project (already configured in this project)
 
 ## Environment Variables / Secrets
 
-The following secrets are required and have been configured in Supabase:
+The following secrets are required and have been configured:
 
 - `LINE_CHANNEL_SECRET` - Your LINE channel secret
 - `LINE_CHANNEL_ACCESS_TOKEN` - Your LINE channel access token
-- `OPENAI_API_KEY` - Your OpenAI API key
-- `OPENAI_MODEL` (optional) - Defaults to "gpt-4o-mini"
+- `LOVABLE_API_KEY` - Auto-provisioned by Lovable Cloud
 - `APP_ENV` (optional) - "sandbox" or "production"
+
+> **Note:** AI capabilities are provided through Lovable AI Gateway, which supports multiple models without requiring external API keys.
 
 ## Deployment
 
@@ -72,6 +79,7 @@ https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/health
 **✅ Tasks & Work Management:**
 - `/todo [task]` - Create a task/todo
 - `/remind [task] [time]` - Set a reminder
+- `/work @user [task]` or `/มอบหมายงาน` - Assign work to someone
 - `/tasks @user` - List pending work for a specific user
 - `/confirm @user [keywords]` - Approve work (supports: all, overdue, urgent, feedback)
   - Examples: `/confirm @Alice overdue`, `/confirm @Bob feedback`
@@ -82,6 +90,9 @@ https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/health
 **🕐 Attendance (DM only):**
 - `checkin` or `เช็คอิน` or `เข้างาน` - Check in to work
 - `checkout` or `เช็คเอาต์` or `ออกงาน` - Check out from work
+- `ขอ OT [hours]` or `OT request [hours]` - Request overtime
+- `menu` or `เมนู` - Open employee self-service menu
+- `history` or `ประวัติ` - View attendance history
   - ⚠️ Must be sent in DM (private message) only
   - Generates a one-time link to take photo and confirm location
   - Posts confirmation to configured announcement LINE group
@@ -210,11 +221,12 @@ The `/health` endpoint is called by the dashboard's "Integrations" page to show:
 - Ensure `LINE_CHANNEL_SECRET` is correct
 - Check LINE Console for the correct value
 
-### OpenAI errors
+### AI errors
 
-- Verify `OPENAI_API_KEY` is valid
-- Check OpenAI account has credits
-- Review model name (should be "gpt-4o-mini" or similar)
+- Verify `LOVABLE_API_KEY` is configured (auto-provisioned by Lovable Cloud)
+- Check Lovable Cloud status in project settings
+- Review edge function logs for specific error messages
+- Try different AI model in prompts.ts if needed
 
 ### Database errors
 
@@ -224,25 +236,37 @@ The `/health` endpoint is called by the dashboard's "Integrations" page to show:
 
 ## Advanced Configuration
 
-### Changing OpenAI Model
+### Changing AI Model
 
-Update the `OPENAI_MODEL` secret in Supabase to use a different model:
-- `gpt-4o-mini` - Fast and cost-effective (default)
-- `gpt-4o` - More powerful
-- `gpt-4-turbo` - Latest GPT-4 model
+Update the model in `supabase/functions/line-webhook/utils/prompts.ts`:
+
+```typescript
+body: JSON.stringify({
+  model: "google/gemini-2.5-flash", // Change this
+  // ...
+})
+```
+
+Available models via Lovable AI:
+- `google/gemini-2.5-flash` - Fast and efficient (default)
+- `google/gemini-2.5-pro` - More powerful reasoning
+- `google/gemini-2.5-flash-lite` - Fastest, best for simple tasks
+- `openai/gpt-5-mini` - Alternative option
+- `openai/gpt-5` - Most powerful (slower)
 
 ### Customizing Behavior
 
-Edit the prompts in `supabase/functions/line-webhook/index.ts`:
+Edit the prompts in `supabase/functions/line-webhook/utils/prompts.ts`:
 - `SYSTEM_KNOWLEDGE_PROMPT` - The bot's personality and role
-- `COMMON_BEHAVIOR_PROMPT` - How the bot interprets commands
+- `buildCommonBehaviorPrompt()` - How the bot interprets commands
 
 ### Adding New Commands
 
-1. Update `parseCommand()` function to detect new command
-2. Update `handleMessageEvent()` to handle new command type
+1. Update `parseCommand()` function in `utils/command-parser.ts` to detect new command
+2. Update `handleMessageEvent()` in `index.ts` to handle new command type
 3. Update context collection if needed
 4. Update prompts to explain new command
+5. Add command to `bot_commands` table with aliases in `command_aliases` table
 
 ## API Endpoints
 
@@ -290,7 +314,7 @@ Returns health status.
 - Parallel event handling
 - Message context limited to 50 recent messages
 - Knowledge base queries limited to 10 items
-- OpenAI requests timeout after 30 seconds
+- AI requests timeout after 30 seconds
 
 ## Future Enhancements
 
