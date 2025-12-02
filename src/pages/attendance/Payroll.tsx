@@ -1964,7 +1964,7 @@ export default function Payroll() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">ชั่วโมงทำงาน:</span>
-                          <span className="font-medium">{record.total_work_hours.toFixed(1)} ชม.</span>
+                          <span className="font-medium">{(record.total_work_hours ?? 0).toFixed(1)} ชม.</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">ขาด:</span>
@@ -1972,19 +1972,19 @@ export default function Payroll() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">OT:</span>
-                          <span className="text-orange-600">{record.ot_hours.toFixed(1)} ชม.</span>
+                          <span className="text-orange-600">{(record.ot_hours ?? 0).toFixed(1)} ชม.</span>
                         </div>
                       </div>
                       
                       <div className="space-y-1 pt-2 border-t">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">เงินเดือน:</span>
-                          <span>฿{record.base_salary.toLocaleString()}</span>
+                          <span>฿{(record.base_salary ?? 0).toLocaleString()}</span>
                         </div>
-                        {record.ot_pay > 0 && (
+                        {(record.ot_pay ?? 0) > 0 && (
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">OT:</span>
-                            <span className="text-green-600">+฿{record.ot_pay.toLocaleString()}</span>
+                            <span className="text-green-600">+฿{(record.ot_pay ?? 0).toLocaleString()}</span>
                           </div>
                         )}
                         {record.total_allowances > 0 && (
@@ -2001,7 +2001,7 @@ export default function Payroll() {
                         )}
                         <div className="flex justify-between font-bold pt-1 border-t">
                           <span>สุทธิ:</span>
-                          <span className="text-primary">฿{record.net_pay.toLocaleString()}</span>
+                          <span className="text-primary">฿{(record.net_pay ?? 0).toLocaleString()}</span>
                         </div>
                       </div>
                     </div>
