@@ -16,6 +16,8 @@ export interface DayStatus {
   work_hours?: number;
   is_overtime?: boolean;
   late_minutes?: number;
+  leave_type?: string;
+  holiday_name?: string;
 }
 
 interface PayrollMiniCalendarProps {
@@ -25,13 +27,13 @@ interface PayrollMiniCalendarProps {
 }
 
 const statusColors: Record<DayStatus['status'], string> = {
-  present: 'bg-green-500',
-  late: 'bg-yellow-500',
+  present: 'bg-emerald-500',
+  late: 'bg-amber-500',
   absent: 'bg-red-500',
-  leave: 'bg-blue-500',
+  leave: 'bg-sky-500',
   weekend: 'bg-muted',
-  future: 'bg-muted/50',
-  holiday: 'bg-purple-500',
+  future: 'bg-muted/30',
+  holiday: 'bg-violet-500',
 };
 
 const statusLabels: Record<DayStatus['status'], string> = {
@@ -41,7 +43,7 @@ const statusLabels: Record<DayStatus['status'], string> = {
   leave: 'ลา',
   weekend: 'วันหยุด',
   future: 'ยังไม่ถึง',
-  holiday: 'วันหยุดพิเศษ',
+  holiday: 'วันหยุดนักขัตฤกษ์',
 };
 
 export function PayrollMiniCalendar({ 
@@ -137,11 +139,12 @@ export function PayrollCalendarLegend({ className = "" }: { className?: string }
     { status: 'late', label: 'สาย' },
     { status: 'absent', label: 'ขาด' },
     { status: 'leave', label: 'ลา' },
+    { status: 'holiday', label: 'นักขัตฤกษ์' },
     { status: 'weekend', label: 'หยุด' },
   ] as const;
 
   return (
-    <div className={`flex gap-3 items-center text-xs text-muted-foreground ${className}`}>
+    <div className={`flex flex-wrap gap-3 items-center text-xs text-muted-foreground ${className}`}>
       {legendItems.map(({ status, label }) => (
         <div key={status} className="flex items-center gap-1">
           <div className={`w-2 h-2 rounded-sm ${statusColors[status]}`} />
