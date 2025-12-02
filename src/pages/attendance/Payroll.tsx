@@ -106,8 +106,11 @@ interface DailyAttendance {
   status: 'present' | 'late' | 'absent' | 'leave' | 'weekend' | 'future';
   check_in?: string;
   check_out?: string;
-  work_hours?: number;
+  work_hours?: number;      // raw hours (รวม break)
+  net_hours?: number;       // หัก break แล้ว
+  billable_hours?: number;  // cap ตาม max + OT approved
   is_overtime?: boolean;
+  has_approved_ot?: boolean;
 }
 
 export default function Payroll() {
@@ -175,6 +178,8 @@ export default function Payroll() {
           working_time_type,
           hours_per_day,
           ot_rate_multiplier,
+          max_work_hours_per_day,
+          break_hours,
           branches (name),
           employee_payroll_settings (*)
         `)
@@ -240,6 +245,34 @@ export default function Payroll() {
     },
     enabled: !!selectedEmployee,
   });
+
+  // Fetch approved OT requests for selected employee
+  const { data: approvedOTRequests } = useQuery({
+    queryKey: ["employee-approved-ot", selectedEmployee, format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      if (!selectedEmployee) return [];
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("overtime_requests")
+        .select("request_date, estimated_hours")
+        .eq("employee_id", selectedEmployee)
+        .eq("status", "approved")
+        .gte("request_date", startDate)
+        .lte("request_date", endDate);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedEmployee,
+  });
+
+  // Get selected employee details (for max_work_hours_per_day, break_hours)
+  const selectedEmployeeDetails = useMemo(() => {
+    if (!selectedEmployee || !employees) return null;
+    return employees.find(e => e.id === selectedEmployee);
+  }, [selectedEmployee, employees]);
 
   // Fetch payroll records for current period
   const { data: payrollRecords, isLoading: isRecordsLoading } = useQuery({
@@ -601,6 +634,15 @@ export default function Payroll() {
       selectedEmployeeSchedules?.map(s => [s.day_of_week, { start_time: s.start_time, end_time: s.end_time }]) || []
     );
     
+    // Build set of approved OT dates
+    const approvedOTDates = new Map<string, number>(
+      approvedOTRequests?.map(ot => [ot.request_date, ot.estimated_hours]) || []
+    );
+    
+    // Get employee settings for billable hours calculation
+    const breakHours = selectedEmployeeDetails?.break_hours ?? 1;
+    const maxWorkHours = selectedEmployeeDetails?.max_work_hours_per_day ?? 8;
+    
     calendarDays.forEach(day => {
       const dateStr = format(day, "yyyy-MM-dd");
       const dayOfWeek = getDay(day);
@@ -632,20 +674,37 @@ export default function Payroll() {
         status = isLate ? 'late' : 'present';
       }
       
+      // Calculate work hours
+      const rawHours = checkIn && checkOut 
+        ? (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60)
+        : undefined;
+      
+      // Net hours (หัก break)
+      const netHours = rawHours ? Math.max(0, rawHours - breakHours) : undefined;
+      
+      // Billable hours (cap ตาม max ยกเว้นมี approved OT)
+      const approvedOTHours = approvedOTDates.get(dateStr);
+      const hasApprovedOT = approvedOTHours !== undefined;
+      const effectiveMaxHours = hasApprovedOT ? maxWorkHours + approvedOTHours : maxWorkHours;
+      const billableHours = netHours
+        ? Math.min(netHours, effectiveMaxHours)
+        : undefined;
+      
       map.set(dateStr, {
         date: dateStr,
         status,
         check_in: checkIn?.server_time,
         check_out: checkOut?.server_time,
-        work_hours: checkIn && checkOut 
-          ? (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60)
-          : undefined,
-        is_overtime: checkIn?.is_overtime || checkOut?.is_overtime,
+        work_hours: rawHours,
+        net_hours: netHours,
+        billable_hours: billableHours,
+        is_overtime: checkIn?.is_overtime || checkOut?.is_overtime || hasApprovedOT,
+        has_approved_ot: hasApprovedOT,
       });
     });
     
     return map;
-  }, [attendanceData, calendarDays, selectedEmployeeSchedules]);
+  }, [attendanceData, calendarDays, selectedEmployeeSchedules, approvedOTRequests, selectedEmployeeDetails]);
 
   // Create payroll period
   const createPeriodMutation = useMutation({
@@ -1909,10 +1968,25 @@ export default function Payroll() {
                               {attendance?.work_hours && (
                                 <>
                                   <div>รวม: {attendance.work_hours.toFixed(1)} ชม.</div>
-                                  <div className="text-primary font-medium">ใช้คำนวณ: {attendance.work_hours.toFixed(1)} ชม.</div>
+                                  {attendance.net_hours !== undefined && (
+                                    <div className="text-muted-foreground">หัก break: {attendance.net_hours.toFixed(1)} ชม.</div>
+                                  )}
+                                  <div className="text-primary font-medium">
+                                    ใช้คำนวณ: {(attendance.billable_hours ?? attendance.net_hours ?? attendance.work_hours).toFixed(1)} ชม.
+                                  </div>
+                                  {attendance.billable_hours !== undefined && 
+                                   attendance.net_hours !== undefined &&
+                                   attendance.billable_hours < attendance.net_hours && (
+                                    <div className="text-xs text-yellow-600">
+                                      ⚠️ ถูก cap {attendance.has_approved_ot ? '(รวม OT แล้ว)' : '(ไม่มี OT)'}
+                                    </div>
+                                  )}
                                 </>
                               )}
-                              {attendance?.is_overtime && (
+                              {attendance?.has_approved_ot && (
+                                <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700">OT อนุมัติ</Badge>
+                              )}
+                              {attendance?.is_overtime && !attendance?.has_approved_ot && (
                                 <Badge variant="secondary" className="text-[10px]">OT</Badge>
                               )}
                               {status === 'late' && (
