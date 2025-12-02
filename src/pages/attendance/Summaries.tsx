@@ -1,3 +1,12 @@
+/*
+ * DO NOT MODIFY - Attendance Summaries Page
+ * 
+ * CRITICAL: Uses fallback logic for salary in OT calculation
+ * - Primary: employee_payroll_settings.salary_per_month
+ * - Fallback: employees.salary_per_month
+ * - Default: 0
+ */
+
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -193,7 +202,8 @@ export default function AttendanceSummaries() {
             ot_rate_multiplier,
             hours_per_day,
             branch_id,
-            branches (name)
+            branches (name),
+            employee_payroll_settings(salary_per_month)
           )
         `)
         .eq('is_overtime', true)
@@ -209,16 +219,23 @@ export default function AttendanceSummaries() {
       const { data, error } = await query;
       if (error) throw error;
       
-      // Calculate OT pay for each log
-      return data.map(log => ({
-        ...log,
-        ot_pay: calculateOTPay(
-          log.employees?.salary_per_month || 0,
-          log.employees?.ot_rate_multiplier || 1.5,
-          log.employees?.hours_per_day || 8,
-          log.overtime_hours || 0
-        )
-      }));
+      // Calculate OT pay for each log with FALLBACK LOGIC
+      return data.map(log => {
+        // Use payroll settings first, then employees table
+        const salary = log.employees?.employee_payroll_settings?.[0]?.salary_per_month 
+          || log.employees?.salary_per_month 
+          || 0;
+        
+        return {
+          ...log,
+          ot_pay: calculateOTPay(
+            salary,
+            log.employees?.ot_rate_multiplier || 1.5,
+            log.employees?.hours_per_day || 8,
+            log.overtime_hours || 0
+          )
+        };
+      });
     }
   });
 
