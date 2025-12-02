@@ -147,9 +147,17 @@ Keep it structured with bullets and short sections.\n`;
 
 If analytics data is missing, give qualitative impression from recent messages.\n`;
   } else if (command === "help") {
-    prompt += `TASK: Briefly list main capabilities:
-- Q&A, summaries, FAQs, todos/reminders, reports, light drafting
-Keep it short and friendly.\n`;
+    prompt += `TASK: Briefly list main capabilities organized by category:
+- **General**: Q&A (@intern), /help
+- **Conversations**: /summary, /find, /mentions  
+- **Tasks & Work**: /todo, /remind, /work (assign), /tasks, /confirm, /progress, /reminders
+- **Attendance (DM)**: checkin/checkout, OT request, menu, history
+- **Knowledge**: /faq, /train
+- **Analytics**: /report
+- **Creative**: /imagine (AI images)
+- **Settings**: /mode, /status
+
+Keep it short, friendly, and in the user's language (Thai or English).\n`;
   }
 
   return prompt;
