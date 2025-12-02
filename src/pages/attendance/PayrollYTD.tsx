@@ -4,10 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { toast } from "sonner";
 import { 
   DollarSign, 
@@ -17,10 +25,13 @@ import {
   Building,
   FileText,
   TrendingUp,
-  Calendar
+  Calendar,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface YTDRecord {
   employee_id: string;
@@ -43,6 +54,7 @@ export default function PayrollYTD() {
   const [selectedYear, setSelectedYear] = useState(currentYear.toString());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [comboboxOpen, setComboboxOpen] = useState(false);
 
   // Fetch all payroll records for the year
   const { data: payrollData, isLoading } = useQuery({
@@ -380,15 +392,77 @@ export default function PayrollYTD() {
               </SelectContent>
             </Select>
             
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="ค้นหาชื่อหรือรหัสพนักงาน..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={comboboxOpen}
+                  className="flex-1 justify-between min-w-[250px]"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {searchQuery || "ค้นหาชื่อหรือรหัสพนักงาน..."}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="พิมพ์ชื่อหรือรหัส..."
+                    value={searchQuery}
+                    onValueChange={setSearchQuery}
+                  />
+                  <CommandList>
+                    <CommandEmpty>ไม่พบพนักงาน</CommandEmpty>
+                    <CommandGroup>
+                      {searchQuery && (
+                        <CommandItem
+                          value="__clear__"
+                          onSelect={() => {
+                            setSearchQuery("");
+                            setComboboxOpen(false);
+                          }}
+                        >
+                          <Search className="mr-2 h-4 w-4" />
+                          แสดงทั้งหมด
+                        </CommandItem>
+                      )}
+                      {ytdRecords
+                        .filter(r =>
+                          r.employee_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          r.employee_code.toLowerCase().includes(searchQuery.toLowerCase())
+                        )
+                        .slice(0, 10)
+                        .map((record) => (
+                          <CommandItem
+                            key={record.employee_id}
+                            value={record.employee_name}
+                            onSelect={() => {
+                              setSearchQuery(record.employee_name);
+                              setComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                searchQuery === record.employee_name ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span>{record.employee_name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {record.employee_code} • {record.branch_name}
+                              </span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
         </CardContent>
       </Card>
