@@ -49,6 +49,7 @@ import {
   Plus,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   XCircle,
   Search,
   Filter,
@@ -463,7 +464,7 @@ export default function Payroll() {
     return map;
   }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet]);
 
-  // Calculate payroll summaries
+  // Calculate payroll summaries and warnings
   const payrollSummary = useMemo(() => {
     if (!payrollRecords?.length) {
       return {
@@ -473,8 +474,19 @@ export default function Payroll() {
         totalOT: 0,
         employeeCount: employees?.length || 0,
         totalOTHours: 0,
+        warnings: {
+          highAbsent: 0,
+          excessiveOT: 0,
+          negativePay: 0,
+          total: 0,
+        },
       };
     }
+    
+    // Calculate warnings
+    const highAbsentCount = payrollRecords.filter(r => (r.absent_days || 0) > 5).length;
+    const excessiveOTCount = payrollRecords.filter(r => (r.ot_hours || 0) > 36).length;
+    const negativePayCount = payrollRecords.filter(r => (r.net_pay || 0) < 0).length;
     
     return {
       totalGross: payrollRecords.reduce((sum, r) => sum + (r.gross_pay || 0), 0),
@@ -483,8 +495,44 @@ export default function Payroll() {
       totalOT: payrollRecords.reduce((sum, r) => sum + (r.ot_pay || 0), 0),
       employeeCount: payrollRecords.length,
       totalOTHours: payrollRecords.reduce((sum, r) => sum + (r.ot_hours || 0), 0),
+      warnings: {
+        highAbsent: highAbsentCount,
+        excessiveOT: excessiveOTCount,
+        negativePay: negativePayCount,
+        total: highAbsentCount + excessiveOTCount + negativePayCount,
+      },
     };
   }, [payrollRecords, employees]);
+
+  // Get warnings for a specific employee
+  const getEmployeeWarnings = (record: PayrollRecord | undefined) => {
+    if (!record) return [];
+    const warnings: { type: string; message: string; severity: 'warning' | 'error' }[] = [];
+    
+    if ((record.absent_days || 0) > 5) {
+      warnings.push({ 
+        type: 'absent', 
+        message: `ขาดงาน ${record.absent_days} วัน (เกิน 5 วัน)`, 
+        severity: 'error' 
+      });
+    }
+    if ((record.ot_hours || 0) > 36) {
+      warnings.push({ 
+        type: 'ot', 
+        message: `OT ${record.ot_hours?.toFixed(1)} ชม. (เกิน 36 ชม.)`, 
+        severity: 'warning' 
+      });
+    }
+    if ((record.net_pay || 0) < 0) {
+      warnings.push({ 
+        type: 'negative', 
+        message: `เงินสุทธิติดลบ ฿${record.net_pay?.toLocaleString()}`, 
+        severity: 'error' 
+      });
+    }
+    
+    return warnings;
+  };
 
   // Filter employees
   const filteredEmployees = useMemo(() => {
@@ -1257,6 +1305,53 @@ export default function Payroll() {
         </Card>
       </div>
 
+      {/* Warnings Summary Card */}
+      {currentPeriod && payrollSummary.warnings.total > 0 && (
+        <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-amber-900 dark:text-amber-100">
+                    พบ {payrollSummary.warnings.total} รายการที่ต้องตรวจสอบ
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    {payrollSummary.warnings.highAbsent > 0 && `ขาดเกิน 5 วัน: ${payrollSummary.warnings.highAbsent} คน`}
+                    {payrollSummary.warnings.highAbsent > 0 && payrollSummary.warnings.excessiveOT > 0 && ' • '}
+                    {payrollSummary.warnings.excessiveOT > 0 && `OT เกิน 36 ชม.: ${payrollSummary.warnings.excessiveOT} คน`}
+                    {(payrollSummary.warnings.highAbsent > 0 || payrollSummary.warnings.excessiveOT > 0) && payrollSummary.warnings.negativePay > 0 && ' • '}
+                    {payrollSummary.warnings.negativePay > 0 && `เงินติดลบ: ${payrollSummary.warnings.negativePay} คน`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {payrollSummary.warnings.highAbsent > 0 && (
+                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    {payrollSummary.warnings.highAbsent} ขาดมาก
+                  </Badge>
+                )}
+                {payrollSummary.warnings.excessiveOT > 0 && (
+                  <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {payrollSummary.warnings.excessiveOT} OT สูง
+                  </Badge>
+                )}
+                {payrollSummary.warnings.negativePay > 0 && (
+                  <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400">
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                    {payrollSummary.warnings.negativePay} ติดลบ
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Warning when no period */}
       {!currentPeriod && !isPeriodLoading && (
         <Card className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
@@ -1471,8 +1566,27 @@ export default function Payroll() {
                                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
                                   {emp.full_name.charAt(0)}
                                 </div>
-                                <div>
-                                  <div className="font-medium text-sm">{emp.full_name}</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-sm truncate">{emp.full_name}</span>
+                                    {/* Warning badges */}
+                                    {getEmployeeWarnings(record).map((w, i) => (
+                                      <TooltipProvider key={i}>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${
+                                              w.severity === 'error' ? 'bg-red-500' : 'bg-amber-500'
+                                            }`}>
+                                              <AlertTriangle className="h-2.5 w-2.5 text-white" />
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">{w.message}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    ))}
+                                  </div>
                                   <div className="text-xs text-muted-foreground">
                                     {emp.code} • {(emp as any).branches?.name || '-'}
                                   </div>
