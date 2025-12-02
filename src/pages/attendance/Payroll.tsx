@@ -466,6 +466,8 @@ export default function Payroll() {
 
   // Calculate payroll summaries and warnings
   const payrollSummary = useMemo(() => {
+    const emptyBranchSummary: { branchId: string; branchName: string; employeeCount: number; totalNet: number; totalOTHours: number }[] = [];
+    
     if (!payrollRecords?.length) {
       return {
         totalGross: 0,
@@ -480,6 +482,7 @@ export default function Payroll() {
           negativePay: 0,
           total: 0,
         },
+        branchSummary: emptyBranchSummary,
       };
     }
     
@@ -487,6 +490,27 @@ export default function Payroll() {
     const highAbsentCount = payrollRecords.filter(r => (r.absent_days || 0) > 5).length;
     const excessiveOTCount = payrollRecords.filter(r => (r.ot_hours || 0) > 36).length;
     const negativePayCount = payrollRecords.filter(r => (r.net_pay || 0) < 0).length;
+    
+    // Calculate branch summary
+    const branchMap = new Map<string, { branchName: string; employeeCount: number; totalNet: number; totalOTHours: number }>();
+    
+    payrollRecords.forEach(record => {
+      const branchId = record.employee?.branch_id || 'no-branch';
+      const branchName = record.employee?.branches?.name || 'ไม่ระบุสาขา';
+      
+      if (!branchMap.has(branchId)) {
+        branchMap.set(branchId, { branchName, employeeCount: 0, totalNet: 0, totalOTHours: 0 });
+      }
+      
+      const branch = branchMap.get(branchId)!;
+      branch.employeeCount += 1;
+      branch.totalNet += record.net_pay || 0;
+      branch.totalOTHours += record.ot_hours || 0;
+    });
+    
+    const branchSummary = Array.from(branchMap.entries())
+      .map(([branchId, data]) => ({ branchId, ...data }))
+      .sort((a, b) => b.totalNet - a.totalNet);
     
     return {
       totalGross: payrollRecords.reduce((sum, r) => sum + (r.gross_pay || 0), 0),
@@ -501,6 +525,7 @@ export default function Payroll() {
         negativePay: negativePayCount,
         total: highAbsentCount + excessiveOTCount + negativePayCount,
       },
+      branchSummary,
     };
   }, [payrollRecords, employees]);
 
@@ -1347,6 +1372,44 @@ export default function Payroll() {
                   </Badge>
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Branch Summary Card */}
+      {currentPeriod && payrollSummary.branchSummary.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building className="h-5 w-5 text-primary" />
+              สรุปตามสาขา
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {payrollSummary.branchSummary.map((branch) => (
+                <div 
+                  key={branch.branchId} 
+                  className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate text-sm">{branch.branchName}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{branch.employeeCount} คน</span>
+                      {branch.totalOTHours > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-orange-600">OT {branch.totalOTHours.toFixed(1)} ชม.</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right pl-3">
+                    <p className="font-bold text-sm text-primary">฿{branch.totalNet.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
