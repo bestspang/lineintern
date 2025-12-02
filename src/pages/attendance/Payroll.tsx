@@ -1404,7 +1404,7 @@ export default function Payroll() {
                               {getStatusIcon(status)}
                             </div>
                           </TooltipTrigger>
-                          <TooltipContent>
+                           <TooltipContent>
                             <div className="text-xs space-y-1">
                               <div className="font-medium">{format(day, "d MMMM yyyy", { locale: th })}</div>
                               {attendance?.check_in && (
@@ -1414,10 +1414,19 @@ export default function Payroll() {
                                 <div>ออกงาน: {format(parseISO(attendance.check_out), "HH:mm")}</div>
                               )}
                               {attendance?.work_hours && (
-                                <div>รวม: {attendance.work_hours.toFixed(1)} ชม.</div>
+                                <>
+                                  <div>รวม: {attendance.work_hours.toFixed(1)} ชม.</div>
+                                  <div className="text-primary font-medium">ใช้คำนวณ: {attendance.work_hours.toFixed(1)} ชม.</div>
+                                </>
                               )}
                               {attendance?.is_overtime && (
                                 <Badge variant="secondary" className="text-[10px]">OT</Badge>
+                              )}
+                              {status === 'late' && (
+                                <div className="text-yellow-600">สถานะ: มาสาย</div>
+                              )}
+                              {status === 'absent' && (
+                                <div className="text-red-600">สถานะ: ขาด</div>
                               )}
                             </div>
                           </TooltipContent>
@@ -1459,6 +1468,10 @@ export default function Payroll() {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">มาสาย:</span>
                           <span className="text-yellow-600">{record.late_count} ครั้ง</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">ชั่วโมงทำงาน:</span>
+                          <span className="font-medium">{record.total_work_hours.toFixed(1)} ชม.</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">ขาด:</span>
