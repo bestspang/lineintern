@@ -450,7 +450,7 @@ export default function Personality() {
                       </Badge>
                       {state.last_mood_change && (
                         <p className="text-xs text-muted-foreground">
-                          Changed: {new Date(state.last_mood_change).toLocaleString()}
+                          Changed: {new Date(state.last_mood_change).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}
                         </p>
                       )}
                     </div>

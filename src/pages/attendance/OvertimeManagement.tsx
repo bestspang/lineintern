@@ -252,7 +252,7 @@ export default function OvertimeManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {warning.sent_at ? new Date(warning.sent_at).toLocaleString('th-TH') : '-'}
+                        {warning.sent_at ? new Date(warning.sent_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '-'}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{warning.status}</Badge>
@@ -313,7 +313,7 @@ export default function OvertimeManagement() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {new Date(log.server_time).toLocaleDateString('th-TH')}
+                        {new Date(log.server_time).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}
                       </TableCell>
                       <TableCell>
                         {log.overtime_hours ? (
