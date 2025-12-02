@@ -1504,7 +1504,7 @@ export default function Payroll() {
             </Select>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button 
               variant="outline" 
               onClick={() => calculatePayrollMutation.mutate()}
@@ -1586,7 +1586,8 @@ export default function Payroll() {
                   <PayrollCalendarLegend />
                 </div>
                 <ScrollArea className="h-[600px]">
-                  <table className="w-full">
+                  <div className="overflow-x-auto">
+                  <table className="w-full min-w-[800px]">
                     <thead className="sticky top-0 bg-background border-b z-10">
                       <tr className="text-xs text-muted-foreground">
                         <th className="text-left p-3 font-medium w-10"></th>
@@ -1609,7 +1610,10 @@ export default function Payroll() {
                         <React.Fragment key={emp.id}>
                           <tr 
                             className={`hover:bg-muted/50 cursor-pointer transition-colors ${isSelected ? 'bg-primary/10' : ''}`}
-                            onClick={() => toggleRowExpansion(emp.id)}
+                            onClick={() => {
+                              toggleRowExpansion(emp.id);
+                              setSelectedEmployee(emp.id);
+                            }}
                           >
                             <td className="p-2 text-center">
                               <Button
@@ -1840,8 +1844,9 @@ export default function Payroll() {
                       );
                     })}
                   </tbody>
-                </table>
-              </ScrollArea>
+                  </table>
+                  </div>
+                </ScrollArea>
               </>
             )}
           </CardContent>
