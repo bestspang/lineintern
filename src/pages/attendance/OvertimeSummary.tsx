@@ -1,3 +1,12 @@
+/*
+ * DO NOT MODIFY - OT Summary Page
+ * 
+ * CRITICAL: Uses fallback logic for salary
+ * - Primary: employee_payroll_settings.salary_per_month
+ * - Fallback: employees.salary_per_month
+ * - Default: 0
+ */
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,7 +67,8 @@ export default function OvertimeSummary() {
             branch_id,
             salary_per_month,
             hours_per_day,
-            ot_rate_multiplier
+            ot_rate_multiplier,
+            employee_payroll_settings(salary_per_month)
           ),
           branch:branches(id, name),
           overtime_request:overtime_requests(id, reason, status)
@@ -83,7 +93,10 @@ export default function OvertimeSummary() {
       // Calculate OT pay for each log
       return data?.map(log => {
         const employee = log.employee;
-        const salary = employee?.salary_per_month || 0;
+        // FALLBACK LOGIC: Use payroll settings first, then employees table
+        const salary = employee?.employee_payroll_settings?.[0]?.salary_per_month 
+          || employee?.salary_per_month 
+          || 0;
         const hoursPerDay = employee?.hours_per_day || 8;
         const otRate = employee?.ot_rate_multiplier || 1.5;
         

@@ -1,3 +1,19 @@
+/*
+ * DO NOT MODIFY - Employee Settings Page
+ * 
+ * CRITICAL INVARIANTS:
+ * 1. employees.salary_per_month is the SINGLE SOURCE OF TRUTH for salary data
+ * 2. Auto-sync salary to employee_payroll_settings.salary_per_month when saving
+ * 3. OT calculation uses employees.salary_per_month (with fallback to payroll_settings)
+ * 4. Never create duplicate salary fields in UI
+ * 
+ * COMMON BUGS TO AVOID:
+ * - Adding another "เงินเดือน" field in Payroll section → causes user confusion
+ * - Changing OT calculation to use different source → breaks consistency
+ * - Removing salary auto-sync → causes data inconsistency
+ * - Modifying upsert logic without testing → breaks save functionality
+ */
+
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -373,10 +389,11 @@ export default function EmployeeSettings() {
       if (error) throw error;
 
       // Save payroll settings
+      // AUTO-SYNC: Copy salary from employees.salary_per_month (single source of truth)
       const payrollUpdateData: any = {
         employee_id: id,
         pay_type: payrollData.pay_type,
-        salary_per_month: payrollData.salary_per_month ? parseFloat(payrollData.salary_per_month) : null,
+        salary_per_month: data.salary_per_month ? parseFloat(data.salary_per_month) : null, // Use employees.salary_per_month
         hourly_rate: payrollData.hourly_rate ? parseFloat(payrollData.hourly_rate) : null,
         has_social_security: payrollData.has_social_security,
         social_security_rate: parseFloat(payrollData.social_security_rate) / 100,
@@ -975,8 +992,18 @@ export default function EmployeeSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Warning if salary is empty or 0 */}
+            {(!formData.salary_per_month || parseFloat(formData.salary_per_month) === 0) && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  กรุณากรอกเงินเดือนเพื่อให้ระบบคำนวณค่า OT และ Payroll ได้ถูกต้อง
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="salary">เงินเดือน (บาท/เดือน)</Label>
+              <Label htmlFor="salary">เงินเดือน (บาท/เดือน) <span className="text-destructive">*</span></Label>
               <Input
                 id="salary"
                 type="number"
@@ -988,7 +1015,7 @@ export default function EmployeeSettings() {
                 }
               />
               <p className="text-sm text-muted-foreground">
-                ใช้สำหรับคำนวณค่า OT ต่อชั่วโมง
+                ใช้สำหรับคำนวณค่า OT และ Payroll (จะถูก sync ไปยัง Payroll Settings โดยอัตโนมัติ)
               </p>
             </div>
 
@@ -1121,23 +1148,8 @@ export default function EmployeeSettings() {
               </RadioGroup>
             </div>
 
-            {/* Salary/Hourly Rate */}
-            {payrollData.pay_type === 'salary' ? (
-              <div className="space-y-2 p-4 rounded-lg bg-muted/30 border">
-                <Label htmlFor="payroll_salary">เงินเดือน (บาท/เดือน)</Label>
-                <Input
-                  id="payroll_salary"
-                  type="number"
-                  step="0.01"
-                  placeholder="เช่น 30000"
-                  value={payrollData.salary_per_month}
-                  onChange={(e) => setPayrollData({ ...payrollData, salary_per_month: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  ใช้สำหรับคำนวณ Payroll รายเดือน
-                </p>
-              </div>
-            ) : (
+            {/* Hourly Rate (only for hourly employees) */}
+            {payrollData.pay_type === 'hourly' && (
               <div className="space-y-2 p-4 rounded-lg bg-muted/30 border">
                 <Label htmlFor="payroll_hourly">อัตราค่าจ้าง (บาท/ชั่วโมง)</Label>
                 <Input
