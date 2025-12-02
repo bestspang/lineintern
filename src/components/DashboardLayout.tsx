@@ -49,7 +49,8 @@ import {
   CalendarDays,
   UserCog,
   Wallet,
-  TrendingUp
+  TrendingUp,
+  PartyPopper
 } from 'lucide-react';
 import {
   Sidebar,
@@ -123,6 +124,7 @@ const navigationGroups = [
       { title: 'Work Summary', url: '/attendance/work-summary', icon: Timer },
       { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
       { title: 'Payroll YTD', url: '/attendance/payroll/ytd', icon: TrendingUp },
+      { title: 'Holidays', url: '/attendance/holidays', icon: PartyPopper },
       { title: 'Employees', url: '/attendance/employees', icon: Users },
       { title: 'Branches', url: '/attendance/branches', icon: Building },
       { title: 'Employee Roles', url: '/attendance/roles', icon: UserCog },

@@ -61,6 +61,7 @@ import LeaveBalance from "./pages/attendance/LeaveBalance";
 import AttendanceRoles from "./pages/attendance/Roles";
 import Payroll from "./pages/attendance/Payroll";
 import PayrollYTD from "./pages/attendance/PayrollYTD";
+import AttendanceHolidays from "./pages/attendance/Holidays";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
@@ -125,6 +126,7 @@ const App = () => (
                     <Route path="/attendance/roles" element={<AttendanceRoles />} />
                     <Route path="/attendance/payroll" element={<Payroll />} />
                     <Route path="/attendance/payroll/ytd" element={<PayrollYTD />} />
+                    <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
                     <Route path="/attendance/settings" element={<AttendanceSettings />} />
                     <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                     <Route path="/health-monitoring" element={<HealthMonitoring />} />
