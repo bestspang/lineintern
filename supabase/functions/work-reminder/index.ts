@@ -133,13 +133,15 @@ serve(async (req) => {
         // Send reminder to LINE group (will fail for test groups with fake LINE IDs)
         let lineMessageId: string | null = null;
         let deliveryStatus: 'sent' | 'failed' = 'sent';
+        let errorMsg: string | undefined;
         
         try {
           lineMessageId = await sendLineMessage(task.groups.line_group_id, reminderMessage);
           console.log(`[work-reminder] Sent reminder for task ${task.id}`);
         } catch (sendError) {
           deliveryStatus = 'failed';
-          console.log(`[work-reminder] ⚠️ Could not send to LINE (expected for test data), but reminder was generated successfully`);
+          errorMsg = sendError instanceof Error ? sendError.message : 'Unknown LINE send error';
+          console.log(`[work-reminder] ⚠️ Could not send to LINE: ${errorMsg} (expected for test data)`);
         }
 
         // Log bot message
@@ -153,7 +155,8 @@ serve(async (req) => {
           triggeredBy: 'cron',
           edgeFunctionName: 'work-reminder',
           lineMessageId: lineMessageId || undefined,
-          deliveryStatus: deliveryStatus
+          deliveryStatus: deliveryStatus,
+          errorMessage: errorMsg
         });
 
         // Update task metadata to mark reminder as sent
