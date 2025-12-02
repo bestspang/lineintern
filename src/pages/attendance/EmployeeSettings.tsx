@@ -1117,9 +1117,9 @@ export default function EmployeeSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Pay Type Selection */}
+            {/* Pay Type Selection - Enhanced Visual */}
             <div className="space-y-3">
-              <Label>ประเภทการจ่ายเงินเดือน</Label>
+              <Label className="text-base font-medium">ประเภทการจ่ายเงินเดือน</Label>
               <RadioGroup
                 value={payrollData.pay_type}
                 onValueChange={(value: 'salary' | 'hourly') =>
@@ -1127,19 +1127,25 @@ export default function EmployeeSettings() {
                 }
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >
-                <div className="flex items-start space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                <div className={`flex items-start space-x-3 rounded-lg border-2 p-4 cursor-pointer transition-all ${payrollData.pay_type === 'salary' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50'}`}>
                   <RadioGroupItem value="salary" id="pay_salary" className="mt-1" />
-                  <Label htmlFor="pay_salary" className="cursor-pointer space-y-1">
-                    <span className="font-medium">พนักงานเงินเดือน (Salary)</span>
+                  <Label htmlFor="pay_salary" className="cursor-pointer space-y-1 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">💼</span>
+                      <span className="font-semibold text-base">พนักงานเงินเดือน</span>
+                    </div>
                     <p className="text-sm text-muted-foreground font-normal">
                       จ่ายเป็นรายเดือน คำนวณตามวันทำงาน
                     </p>
                   </Label>
                 </div>
-                <div className="flex items-start space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                <div className={`flex items-start space-x-3 rounded-lg border-2 p-4 cursor-pointer transition-all ${payrollData.pay_type === 'hourly' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50'}`}>
                   <RadioGroupItem value="hourly" id="pay_hourly" className="mt-1" />
-                  <Label htmlFor="pay_hourly" className="cursor-pointer space-y-1">
-                    <span className="font-medium">พนักงาน Part-time (Hourly)</span>
+                  <Label htmlFor="pay_hourly" className="cursor-pointer space-y-1 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">⏰</span>
+                      <span className="font-semibold text-base">Part-time</span>
+                    </div>
                     <p className="text-sm text-muted-foreground font-normal">
                       จ่ายเป็นรายชั่วโมง คำนวณตามชั่วโมงจริง
                     </p>
@@ -1150,8 +1156,8 @@ export default function EmployeeSettings() {
 
             {/* Hourly Rate (only for hourly employees) */}
             {payrollData.pay_type === 'hourly' && (
-              <div className="space-y-2 p-4 rounded-lg bg-muted/30 border">
-                <Label htmlFor="payroll_hourly">อัตราค่าจ้าง (บาท/ชั่วโมง)</Label>
+              <div className="space-y-2 p-4 rounded-lg bg-primary/5 border-2 border-primary/20">
+                <Label htmlFor="payroll_hourly" className="font-medium">อัตราค่าจ้าง (บาท/ชั่วโมง) <span className="text-destructive">*</span></Label>
                 <Input
                   id="payroll_hourly"
                   type="number"
@@ -1159,24 +1165,25 @@ export default function EmployeeSettings() {
                   placeholder="เช่น 80"
                   value={payrollData.hourly_rate}
                   onChange={(e) => setPayrollData({ ...payrollData, hourly_rate: e.target.value })}
+                  className="text-base"
                 />
                 <p className="text-xs text-muted-foreground">
-                  ใช้สำหรับคำนวณ Payroll ตามชั่วโมงทำงานจริง
+                  💡 ใช้สำหรับคำนวณ Payroll ตามชั่วโมงทำงานจริง
                 </p>
               </div>
             )}
 
-            {/* Deductions Section */}
+            {/* Deductions Section - Enhanced with Toggles */}
             <div className="space-y-4">
-              <h4 className="font-medium flex items-center gap-2">
+              <h4 className="font-medium text-base flex items-center gap-2">
                 📉 รายการหักค่าใช้จ่าย
               </h4>
               
               {/* Social Security */}
-              <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center justify-between p-4 rounded-lg border-2 bg-muted/30">
                 <div className="flex-1">
-                  <Label htmlFor="ss_toggle" className="text-sm font-medium">ประกันสังคม</Label>
-                  <p className="text-xs text-muted-foreground">หัก 5% สูงสุด 750 บาท/เดือน</p>
+                  <Label htmlFor="ss_toggle" className="text-sm font-semibold cursor-pointer">ประกันสังคม</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">หัก 5% สูงสุด 750 บาท/เดือน</p>
                 </div>
                 <Switch
                   id="ss_toggle"
@@ -1186,7 +1193,7 @@ export default function EmployeeSettings() {
               </div>
 
               {payrollData.has_social_security && (
-                <div className="grid grid-cols-2 gap-3 pl-4">
+                <div className="grid grid-cols-2 gap-3 pl-6 animate-in slide-in-from-top-2">
                   <div className="space-y-1">
                     <Label className="text-xs">อัตรา (%)</Label>
                     <Input
@@ -1194,7 +1201,7 @@ export default function EmployeeSettings() {
                       step="0.1"
                       value={payrollData.social_security_rate}
                       onChange={(e) => setPayrollData({ ...payrollData, social_security_rate: e.target.value })}
-                      className="h-8"
+                      className="h-9"
                     />
                   </div>
                   <div className="space-y-1">
@@ -1210,10 +1217,10 @@ export default function EmployeeSettings() {
               )}
 
               {/* Withholding Tax */}
-              <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center justify-between p-4 rounded-lg border-2 bg-muted/30">
                 <div className="flex-1">
-                  <Label htmlFor="tax_toggle" className="text-sm font-medium">ภาษีหัก ณ ที่จ่าย</Label>
-                  <p className="text-xs text-muted-foreground">หักภาษีจากเงินเดือน</p>
+                  <Label htmlFor="tax_toggle" className="text-sm font-semibold cursor-pointer">ภาษีหัก ณ ที่จ่าย</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">หักตามอัตราที่กำหนด</p>
                 </div>
                 <Switch
                   id="tax_toggle"
@@ -1223,17 +1230,16 @@ export default function EmployeeSettings() {
               </div>
 
               {payrollData.has_withholding_tax && (
-                <div className="pl-4">
-                  <div className="space-y-1 w-1/2">
-                    <Label className="text-xs">อัตราภาษี (%)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={payrollData.withholding_tax_rate}
-                      onChange={(e) => setPayrollData({ ...payrollData, withholding_tax_rate: e.target.value })}
-                      className="h-8"
-                    />
-                  </div>
+                <div className="pl-6 space-y-1 animate-in slide-in-from-top-2">
+                  <Label className="text-xs font-medium">อัตรา (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={payrollData.withholding_tax_rate}
+                    onChange={(e) => setPayrollData({ ...payrollData, withholding_tax_rate: e.target.value })}
+                    placeholder="เช่น 3"
+                    className="h-9"
+                  />
                 </div>
               )}
 
@@ -1294,17 +1300,17 @@ export default function EmployeeSettings() {
               </div>
             </div>
 
-            {/* Allowances Section */}
+            {/* Allowances Section - Enhanced with Toggles */}
             <div className="space-y-4 pt-4 border-t">
-              <h4 className="font-medium flex items-center gap-2">
+              <h4 className="font-medium text-base flex items-center gap-2">
                 📈 เบี้ยเลี้ยงและสวัสดิการ
               </h4>
               
               {/* Transportation */}
-              <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center justify-between p-4 rounded-lg border-2 bg-muted/30">
                 <div className="flex-1">
-                  <Label htmlFor="transport_toggle" className="text-sm font-medium">ค่าเดินทาง</Label>
-                  <p className="text-xs text-muted-foreground">เบี้ยเลี้ยงค่าเดินทาง</p>
+                  <Label htmlFor="transport_toggle" className="text-sm font-semibold cursor-pointer">ค่าเดินทาง</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">เพิ่มค่าเดินทางเป็นรายเดือน</p>
                 </div>
                 <Switch
                   id="transport_toggle"
@@ -1314,16 +1320,16 @@ export default function EmployeeSettings() {
               </div>
 
               {payrollData.has_transportation && (
-                <div className="pl-4">
-                  <div className="space-y-1 w-1/2">
-                    <Label className="text-xs">จำนวน (บาท/เดือน)</Label>
-                    <Input
-                      type="number"
-                      value={payrollData.transportation_allowance}
-                      onChange={(e) => setPayrollData({ ...payrollData, transportation_allowance: e.target.value })}
-                      className="h-8"
-                    />
-                  </div>
+                <div className="pl-6 space-y-1 animate-in slide-in-from-top-2">
+                  <Label className="text-xs font-medium">จำนวน (บาท/เดือน)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={payrollData.transportation_allowance}
+                    onChange={(e) => setPayrollData({ ...payrollData, transportation_allowance: e.target.value })}
+                    placeholder="เช่น 1500"
+                    className="h-9"
+                  />
                 </div>
               )}
 
@@ -1386,28 +1392,38 @@ export default function EmployeeSettings() {
           </CardContent>
         </Card>
 
-        {/* 8. Work Schedule Card */}
+        {/* 8. Work Schedule Card - Enhanced Visual */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5" />
-              ตารางงานประจำสัปดาห์
+              ตารางงานรายสัปดาห์
             </CardTitle>
             <CardDescription>
-              กำหนดวันทำงานและเวลาเข้า-ออกสำหรับแต่ละวันในสัปดาห์
+              กำหนดวันทำงานและเวลาสำหรับแต่ละวันในสัปดาห์
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3">
+            {/* Quick Summary */}
+            <div className="p-3 rounded-lg bg-primary/5 border">
+              <div className="text-sm font-medium mb-1">สรุปตารางงาน</div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>วันทำงาน: {workSchedule.filter(d => d.is_working_day).length} วัน</span>
+                <span>•</span>
+                <span>รวมชั่วโมง/สัปดาห์: {workSchedule.filter(d => d.is_working_day).reduce((sum, d) => sum + d.expected_hours, 0)} ชม.</span>
+              </div>
+            </div>
+            
+            {/* Weekly Schedule Grid */}
+            <div className="space-y-2">
               {workSchedule.map((day, index) => (
                 <div 
                   key={day.day_of_week} 
-                  className={`flex items-center gap-4 p-3 rounded-lg border ${
-                    day.is_working_day ? 'bg-muted/30' : 'bg-muted/10 opacity-60'
+                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-colors ${
+                    day.is_working_day ? 'bg-background border-primary/20' : 'bg-muted/30 border-muted'
                   }`}
                 >
-                  {/* Day Toggle */}
-                  <div className="flex items-center gap-3 min-w-[140px]">
+                  <div className="flex items-center gap-3 w-36">
                     <Switch
                       checked={day.is_working_day}
                       onCheckedChange={(checked) => {
@@ -1416,16 +1432,18 @@ export default function EmployeeSettings() {
                         setWorkSchedule(updated);
                       }}
                     />
-                    <span className={`font-medium ${day.is_working_day ? '' : 'text-muted-foreground'}`}>
-                      {dayLabels[day.day_of_week]?.label || day.day_key}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{day.is_working_day ? '✅' : '🔲'}</span>
+                      <Label className="font-medium cursor-pointer">
+                        {dayLabels[day.day_of_week]?.label || day.day_key}
+                      </Label>
+                    </div>
                   </div>
-
-                  {/* Time Inputs */}
-                  {day.is_working_day && (
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap">เข้า</Label>
+                  
+                  {day.is_working_day ? (
+                    <div className="flex-1 grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">เวลาเริ่ม</Label>
                         <Input
                           type="time"
                           value={day.start_time}
@@ -1434,12 +1452,11 @@ export default function EmployeeSettings() {
                             updated[index].start_time = e.target.value;
                             setWorkSchedule(updated);
                           }}
-                          className="h-8 w-[110px]"
+                          className="h-9 font-medium"
                         />
                       </div>
-                      <span className="text-muted-foreground">-</span>
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap">ออก</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">เวลาสิ้นสุด</Label>
                         <Input
                           type="time"
                           value={day.end_time}
@@ -1448,49 +1465,36 @@ export default function EmployeeSettings() {
                             updated[index].end_time = e.target.value;
                             setWorkSchedule(updated);
                           }}
-                          className="h-8 w-[110px]"
+                          className="h-9 font-medium"
                         />
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap">ชม./วัน</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">ชั่วโมง/วัน</Label>
                         <Input
                           type="number"
                           step="0.5"
-                          min="1"
-                          max="12"
                           value={day.expected_hours}
                           onChange={(e) => {
                             const updated = [...workSchedule];
                             updated[index].expected_hours = parseFloat(e.target.value) || 8;
                             setWorkSchedule(updated);
                           }}
-                          className="h-8 w-[70px]"
+                          className="h-9 font-medium"
                         />
                       </div>
                     </div>
-                  )}
-
-                  {!day.is_working_day && (
-                    <div className="flex-1 text-sm text-muted-foreground">
-                      วันหยุด
+                  ) : (
+                    <div className="flex-1 text-sm text-muted-foreground italic">
+                      วันหยุด - ไม่มีการทำงาน
                     </div>
                   )}
                 </div>
               ))}
             </div>
-
-            <div className="rounded-lg bg-muted p-4 space-y-2">
-              <h4 className="font-medium text-sm">ℹ️ หมายเหตุ</h4>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>ตารางงานใช้สำหรับคำนวณวันทำงานและ Payroll</li>
-                <li>ปิด Switch = วันหยุด (ไม่นับเป็นวันทำงาน)</li>
-                <li>ชม./วัน = จำนวนชั่วโมงทำงานที่คาดหวังต่อวัน</li>
-              </ul>
-            </div>
           </CardContent>
         </Card>
 
-        {/* 10. Bank Account Info Card */}
+        {/* 9. Bank Account Info Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
