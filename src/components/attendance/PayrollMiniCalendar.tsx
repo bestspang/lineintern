@@ -5,8 +5,9 @@
 
 import { useMemo } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from "date-fns";
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
 import { th } from "date-fns/locale";
+import { getBangkokNow, formatBangkokISODate } from "@/lib/timezone";
 
 export interface DayStatus {
   date: string;
@@ -70,6 +71,9 @@ export function PayrollMiniCalendar({
     return map;
   }, [attendanceData]);
 
+  // Get today's date in Bangkok timezone for highlighting
+  const todayStr = useMemo(() => formatBangkokISODate(getBangkokNow()), []);
+
   const formatTime = (isoString?: string) => {
     if (!isoString) return '-';
     try {
@@ -100,7 +104,7 @@ export function PayrollMiniCalendar({
                     e.stopPropagation();
                     onDayClick?.(dateStr, dayData);
                   }}
-                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 relative ${statusColors[finalStatus]}`}
+                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 relative ${statusColors[finalStatus]} ${dateStr === todayStr ? 'ring-2 ring-offset-1 ring-primary' : ''}`}
                 >
                   {dayData?.has_adjustment && (
                     <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-background" />

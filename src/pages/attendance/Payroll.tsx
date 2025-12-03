@@ -29,7 +29,7 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { getBangkokNow } from "@/lib/timezone";
+import { getBangkokNow, formatBangkokISODate, getBangkokHoursMinutes } from "@/lib/timezone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -453,7 +453,8 @@ export default function Payroll() {
     if (!allAttendanceData || !employees) return new Map<string, DayStatus[]>();
     
     const map = new Map<string, DayStatus[]>();
-    const today = new Date();
+    const today = getBangkokNow();
+    const todayStr = formatBangkokISODate(today);
     const calDays = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
     
     // Build schedule map per employee
@@ -494,7 +495,7 @@ export default function Payroll() {
         });
         
         const dayLogs = empLogs.filter(l => 
-          format(parseISO(l.server_time), "yyyy-MM-dd") === dateStr
+          formatBangkokISODate(l.server_time) === dateStr
         );
         
         const checkIn = dayLogs.find(l => l.event_type === "check_in");
@@ -512,29 +513,35 @@ export default function Payroll() {
         } else if (!isWorkingDay) {
           status = checkIn ? 'present' : 'weekend';
         } else if (checkIn) {
-          const checkInTime = parseISO(checkIn.server_time);
+          // Use Bangkok timezone for check-in time calculation
+          const checkInBangkok = getBangkokHoursMinutes(checkIn.server_time);
           const schedule = scheduleMap.get(dayOfWeek);
           const startTime = schedule?.start_time || '09:00';
           const [startHour, startMinute] = startTime.split(':').map(Number);
           
-          const checkInHour = checkInTime.getHours();
-          const checkInMinute = checkInTime.getMinutes();
-          
-          const expectedMins = startHour * 60 + startMinute;
-          const actualMins = checkInHour * 60 + checkInMinute;
-          const graceThreshold = expectedMins + gracePeriodMinutes;
-          
-          if (actualMins > graceThreshold) {
-            // สายเกิน grace period
-            status = 'late';
-            lateMinutes = actualMins - expectedMins;
-          } else if (actualMins > expectedMins) {
-            // สายแต่ภายใน grace period
-            status = 'within_grace';
-            lateMinutes = actualMins - expectedMins;
-          } else {
-            // มาตรงเวลาหรือก่อน
+          if (!checkInBangkok) {
+            // Fallback if timezone conversion fails
             status = 'present';
+          } else {
+            const checkInHour = checkInBangkok.hours;
+            const checkInMinute = checkInBangkok.minutes;
+            
+            const expectedMins = startHour * 60 + startMinute;
+            const actualMins = checkInHour * 60 + checkInMinute;
+            const graceThreshold = expectedMins + gracePeriodMinutes;
+            
+            if (actualMins > graceThreshold) {
+              // สายเกิน grace period
+              status = 'late';
+              lateMinutes = actualMins - expectedMins;
+            } else if (actualMins > expectedMins) {
+              // สายแต่ภายใน grace period
+              status = 'within_grace';
+              lateMinutes = actualMins - expectedMins;
+            } else {
+              // มาตรงเวลาหรือก่อน
+              status = 'present';
+            }
           }
         }
         
