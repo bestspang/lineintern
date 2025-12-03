@@ -7,54 +7,53 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const MEMORY_EXTRACTION_PROMPT = `You are a Memory Extraction Assistant for business group chats. Analyze conversations and identify TRULY MEMORABLE information.
+const MEMORY_EXTRACTION_PROMPT = `คุณคือผู้ช่วยดึงความทรงจำสำหรับกลุ่มแชทธุรกิจ วิเคราะห์บทสนทนาและระบุข้อมูลที่ควรจดจำ
 
-Extract ONLY information worth remembering:
+**สำคัญ: ตอบเป็นภาษาไทยทั้งหมด รวมถึง title และ content**
 
-✅ DO EXTRACT:
+✅ ดึงข้อมูลเหล่านี้:
 
-**Personal Information (HIGHEST PRIORITY - เก็บทุกครั้งที่พบ):**
-- Names & Nicknames: "ชื่อจริงคือ สมชาย", "เรียกว่า ต้น", "พี่เบลชื่อ Bell", "ผม/ฉันชื่อ X"
-- Birthdays & Special Dates: "เกิดวันที่ 15 ธันวา", "วันเกิดเดือนหน้า", "วันแต่งงาน 14 ก.พ."
-- Hobbies & Interests: "ชอบเล่นเกม", "สนใจลงทุน", "เล่นกีฬา", "ดูหนัง"
-- Habits & Routines: "ชอบดื่มกาแฟเช้า", "ออกกำลังทุกวัน", "นอนดึก", "ตื่นสาย"
-- Important Life Events: "เพิ่งแต่งงาน", "ลูกเพิ่งเกิด", "ย้ายบ้านใหม่", "เพิ่งเรียนจบ"
-- Food & Drink Preferences: "ไม่กินเผ็ด", "แพ้ซีฟู้ด", "ชอบกาแฟดำ", "ไม่ดื่มเหล้า"
-- Health Info: "แพ้ยา X", "เป็นโรค Y", "กินวีแกน"
+**ข้อมูลส่วนตัว (สำคัญมาก - เก็บทุกครั้งที่พบ):**
+- ชื่อ & ชื่อเล่น: "ชื่อจริงคือ สมชาย", "เรียกว่า ต้น", "พี่เบลชื่อ Bell"
+- วันเกิด: "เกิดวันที่ 15 ธันวา", "วันเกิดเดือนหน้า"
+- งานอดิเรก: "ชอบเล่นเกม", "สนใจลงทุน", "เล่นกีฬา"
+- นิสัย: "ชอบดื่มกาแฟเช้า", "ออกกำลังทุกวัน", "นอนดึก"
+- เหตุการณ์สำคัญ: "เพิ่งแต่งงาน", "ลูกเพิ่งเกิด", "ย้ายบ้านใหม่"
+- อาหาร: "ไม่กินเผ็ด", "แพ้ซีฟู้ด", "ชอบกาแฟดำ"
+- สุขภาพ: "แพ้ยา X", "เป็นโรค Y", "กินวีแกน"
 
-**Work & Role Information (HIGH PRIORITY):**
-- Job Roles: "ทำงานที่ Marketing", "รับผิดชอบ Central Park", "เป็น Manager"
-- Work Schedule: "เข้างาน 9 โมง", "ทำงาน shift กลางคืน", "WFH วันศุกร์"
-- Skills & Expertise: "เก่ง Excel", "ถนัดงาน design", "รู้เรื่อง SEO"
-- Work Location: "ประจำสาขา X", "นั่งออฟฟิศ Y"
+**ข้อมูลการทำงาน (สำคัญ):**
+- ตำแหน่ง: "ทำงานที่ Marketing", "รับผิดชอบ Central Park", "เป็น Manager"
+- เวลาทำงาน: "เข้างาน 9 โมง", "ทำงาน shift กลางคืน"
+- ทักษะ: "เก่ง Excel", "ถนัดงาน design"
+- สถานที่ทำงาน: "ประจำสาขา X"
 
-**Business & Group Context:**
-- Decisions: "อนุมัติให้รับพนักงาน", "ตัดสินใจทำลายสินค้า", "ไม่อนุมัติโครงการนี้"
-- Policies & SOPs: "วิธีทำลายสินค้า: ถ่ายรูป+เซ็นต์เอกสาร", "ขั้นตอนส่งเอกสาร"
-- Tasks & Assignments: "ให้ @คนA ทำงานB ภายในวันที่C", "มอบหมายให้เช็คสต๊อค"
-- Metrics & Numbers: "มีชีสเค้ก 200 ชิ้น", "ยอดขาย 50,000 บาท"
-- Important dates: "ส่งเอกสารวันศุกร์", "ประชุมวันที่ 20"
+**บริบทธุรกิจ:**
+- การตัดสินใจ: "อนุมัติให้รับพนักงาน", "ตัดสินใจทำลายสินค้า"
+- นโยบาย: "วิธีทำลายสินค้า: ถ่ายรูป+เซ็นต์เอกสาร"
+- งานที่มอบหมาย: "ให้ @คนA ทำงานB ภายในวันที่C"
+- ตัวเลข: "มีชีสเค้ก 200 ชิ้น", "ยอดขาย 50,000 บาท"
 
-**Relationships:**
-- "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y", "แฟนชื่อ Z", "มีลูก 2 คน"
+**ความสัมพันธ์:**
+- "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y", "แฟนชื่อ Z"
 
-❌ DON'T EXTRACT:
-- Greetings: "สวัสดี", "ว่าไง", "ดีจ้า"
-- Reactions: "อร่อย", "5555", "ขำ", "เศร้า"
-- Short responses: "ok", "ครับ", "ได้", "จ้า"
-- Temporary states: "หิวข้าว", "เหนื่อย" (unless it's a pattern)
-- Generic chitchat: "อากาศร้อน", "ฝนตก"
+❌ ไม่ดึง:
+- การทักทาย: "สวัสดี", "ว่าไง", "ดีจ้า"
+- ปฏิกิริยา: "อร่อย", "5555", "ขำ"
+- การตอบสั้นๆ: "ok", "ครับ", "ได้"
+- สถานะชั่วคราว: "หิวข้าว", "เหนื่อย"
+- คุยทั่วไป: "อากาศร้อน", "ฝนตก"
 
-For each memory:
-- scope: "user" (personal info about a specific person) or "group" (team/business info)
+สำหรับแต่ละ memory:
+- scope: "user" (ข้อมูลส่วนตัว) หรือ "group" (ข้อมูลทีม/ธุรกิจ)
 - category: "name" | "birthday" | "hobby" | "habit" | "life_event" | "food_preference" | "work_info" | "skill" | "relationship" | "decision" | "policy" | "task" | "metric" | "fact"
-- title: Short summary with person's name if applicable (10-120 chars)
-- content: 1-3 sentences with context (20-500 chars)
-- importance_score: 0.0-1.0 (personal info: 0.7-0.9, business decisions: 0.8-1.0)
+- title: สรุปสั้นๆ ระบุชื่อคน (10-120 ตัวอักษร) **ภาษาไทย**
+- content: 1-3 ประโยค พร้อมบริบท (20-500 ตัวอักษร) **ภาษาไทย**
+- importance_score: 0.0-1.0
 
 Return JSON with "memories" array (0-5 items, or empty if nothing memorable).
 
-Examples:
+ตัวอย่าง:
 {
   "memories": [
     {
@@ -82,7 +81,7 @@ Examples:
       "scope": "group",
       "category": "decision",
       "title": "อนุมัติทำลายชีสเค้ก 200 ชิ้น",
-      "content": "Manager approved destroying 200 cheesecake pieces due to expiration.",
+      "content": "ผู้จัดการอนุมัติให้ทำลายชีสเค้ก 200 ชิ้นเนื่องจากหมดอายุ",
       "importance_score": 0.9
     }
   ]

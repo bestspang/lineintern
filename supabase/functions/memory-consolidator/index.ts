@@ -287,29 +287,29 @@ serve(async (req) => {
 });
 
 async function decideConsolidation(workingMemory: any): Promise<{ shouldConsolidate: boolean; keywords: string[]; category: string }> {
-  const prompt = `Analyze this short-term memory and decide if it should be saved as long-term memory.
+  const prompt = `วิเคราะห์ short-term memory นี้และตัดสินใจว่าควรบันทึกเป็น long-term memory หรือไม่
 
-Memory Type: ${workingMemory.memory_type}
-Content: ${workingMemory.content}
-Importance Score: ${workingMemory.importance_score}
+ประเภท Memory: ${workingMemory.memory_type}
+เนื้อหา: ${workingMemory.content}
+คะแนนความสำคัญ: ${workingMemory.importance_score}
 
-Criteria for long-term memory:
-- Contains factual information that may be useful later
-- Represents a decision, preference, or important context
-- Not trivial conversation or temporary context
+เกณฑ์สำหรับ long-term memory:
+- มีข้อมูลที่อาจเป็นประโยชน์ในอนาคต
+- เป็นการตัดสินใจ ความชอบ หรือบริบทสำคัญ
+- ไม่ใช่การสนทนาทั่วไปหรือบริบทชั่วคราว
 
-IMPORTANT: You MUST respond with one of these exact categories:
+สำคัญ: ต้องตอบด้วย category อย่างใดอย่างหนึ่งต่อไปนี้เท่านั้น:
 - trait, preference, topic, project, context, relationship, meta
 - name, birthday, hobby, habit, life_event, food_preference, work_info, skill
 - decision, policy, task, metric, fact
-- general (use as fallback)
+- general (ใช้เป็น fallback)
 
-Respond in JSON format only (no markdown):
+ตอบในรูปแบบ JSON เท่านั้น (ไม่ใช้ markdown):
 {
   "shouldConsolidate": true/false,
   "keywords": ["keyword1", "keyword2", ...],
-  "category": "one of the categories listed above",
-  "reasoning": "brief explanation"
+  "category": "หนึ่งใน categories ด้านบน",
+  "reasoning": "คำอธิบายสั้นๆ (ภาษาไทย)"
 }`;
 
   try {
