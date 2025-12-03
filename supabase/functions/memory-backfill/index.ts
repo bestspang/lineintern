@@ -148,7 +148,7 @@ serve(async (req) => {
               memory_type: validateCategory(memory.category),
               content: memory.content.substring(0, 2000),
               importance_score: memory.importance || 0.5,
-              context: { source: 'backfill', batch_index: i },
+              metadata: { source: 'backfill', batch_index: i },
               expires_at: expiresAt,
             });
 
