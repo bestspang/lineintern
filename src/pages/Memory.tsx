@@ -53,6 +53,85 @@ import { UserProfileCard } from '@/components/social-intelligence/UserProfileCar
 import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+// Parse summary text into structured sections
+function parseSummarySections(summary: string): { overview: string; sections: { title: string; bullets: string[] }[] } {
+  const lines = summary.split('\n').filter(line => line.trim());
+  let overview = '';
+  const sections: { title: string; bullets: string[] }[] = [];
+  let currentSection: { title: string; bullets: string[] } | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Check for overview line (📋 ภาพรวม:)
+    if (trimmed.includes('ภาพรวม:') || trimmed.includes('Overview:')) {
+      overview = trimmed.replace(/\*\*📋\s*ภาพรวม:\*\*|📋\s*ภาพรวม:|Overview:/gi, '').trim();
+      continue;
+    }
+    
+    // Check for section headers (bold with emoji)
+    const sectionMatch = trimmed.match(/^\*\*([📌⏳💡👥📜🔑].+?)\*\*:?$/);
+    if (sectionMatch) {
+      if (currentSection && currentSection.bullets.length > 0) {
+        sections.push(currentSection);
+      }
+      currentSection = { title: sectionMatch[1].trim(), bullets: [] };
+      continue;
+    }
+    
+    // Check for bullet points
+    if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*')) {
+      const bullet = trimmed.replace(/^[•\-\*]\s*/, '').trim();
+      if (bullet && currentSection) {
+        currentSection.bullets.push(bullet);
+      }
+      continue;
+    }
+    
+    // If no overview yet and line is plain text, use as overview
+    if (!overview && !currentSection && trimmed.length > 10) {
+      overview = trimmed;
+    }
+  }
+  
+  if (currentSection && currentSection.bullets.length > 0) {
+    sections.push(currentSection);
+  }
+
+  return { overview, sections };
+}
+
+// Memory Summary Content Component with horizontal bullet layout
+function MemorySummaryContent({ summary }: { summary: string }) {
+  const { overview, sections } = parseSummarySections(summary);
+  
+  if (!overview && sections.length === 0) {
+    return <p className="text-sm text-muted-foreground">{summary || 'ไม่มีข้อมูล'}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {overview && (
+        <p className="text-sm text-muted-foreground leading-relaxed">{overview}</p>
+      )}
+      
+      {sections.map((section, idx) => (
+        <div key={idx} className="space-y-1">
+          <div className="text-xs font-medium text-foreground/80">{section.title}</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {section.bullets.map((bullet, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <span className="text-primary/60 mt-0.5">•</span>
+                <span className="line-clamp-1">{bullet}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Memory Summary Cards Component
 function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: string }) {
   const queryClient = useQueryClient();
@@ -68,8 +147,8 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
       return data;
     },
     enabled: !!groupId || !!userId,
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
-    staleTime: 25000,
+    refetchInterval: 3600000, // Auto-refresh every 1 hour
+    staleTime: 3500000, // 58 minutes
   });
 
   // Monthly working memory summary
@@ -83,8 +162,8 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
       return data;
     },
     enabled: !!groupId || !!userId,
-    refetchInterval: 30000,
-    staleTime: 25000,
+    refetchInterval: 3600000,
+    staleTime: 3500000,
   });
 
   // Long-term memory summary
@@ -98,8 +177,8 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
       return data;
     },
     enabled: !!groupId || !!userId,
-    refetchInterval: 30000,
-    staleTime: 25000,
+    refetchInterval: 3600000,
+    staleTime: 3500000,
   });
 
   const handleRefreshAll = () => {
@@ -151,9 +230,7 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {weeklySummary?.summary || 'ไม่มีข้อมูล'}
-              </p>
+              <MemorySummaryContent summary={weeklySummary?.summary || 'ไม่มีข้อมูล'} />
             )}
           </CardContent>
         </Card>
@@ -177,9 +254,7 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {monthlySummary?.summary || 'ไม่มีข้อมูล'}
-              </p>
+              <MemorySummaryContent summary={monthlySummary?.summary || 'ไม่มีข้อมูล'} />
             )}
           </CardContent>
         </Card>
@@ -203,9 +278,7 @@ function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: st
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {longTermSummary?.summary || 'ไม่มีข้อมูล'}
-              </p>
+              <MemorySummaryContent summary={longTermSummary?.summary || 'ไม่มีข้อมูล'} />
             )}
           </CardContent>
         </Card>

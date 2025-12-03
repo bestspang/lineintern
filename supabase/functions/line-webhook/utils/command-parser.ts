@@ -31,7 +31,8 @@ export interface ParsedCommand {
   commandType: 'ask' | 'summary' | 'faq' | 'todo' | 'report' | 'help' | 'tasks' 
     | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
-    | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | 'cancel_dayoff' | null;
+    | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | 'cancel_dayoff' 
+    | 'memory_summary' | null;
   userQuestion: string;
   rawText: string;
   isMentioned: boolean;
@@ -145,6 +146,15 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/ยกเลิกวันหยุด': 'cancel_dayoff',
     '/canceldayoff': 'cancel_dayoff',
     '/ยกเลิกขอหยุด': 'cancel_dayoff',
+    
+    // Memory Summary (Admin/Owner only)
+    '/memorysummary': 'memory_summary',
+    '/ขอสรุปความจำ': 'memory_summary',
+    '/สรุปความจำ': 'memory_summary',
+    'ขอสรุปสัปดาห์นี้': 'memory_summary',
+    'ขอสรุปเดือนนี้': 'memory_summary',
+    'ขอสรุประยะยาว': 'memory_summary',
+    'สรุปความจำ': 'memory_summary',
   };
   
   let commandType: ParsedCommand['commandType'] = null;

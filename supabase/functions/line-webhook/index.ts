@@ -4406,6 +4406,87 @@ async function handleHelpCommand(
 }
 
 // =============================
+// MEMORY SUMMARY COMMAND HANDLER (Admin/Owner only)
+// =============================
+
+/**
+ * Handle /memorysummary command - get AI memory summary (DM only, Admin/Owner only)
+ */
+async function handleMemorySummaryCommand(
+  groupId: string,
+  userId: string,
+  lineUserId: string,
+  userMessage: string,
+  replyToken: string
+) {
+  console.log(`[handleMemorySummaryCommand] Processing memory summary request from user ${userId}`);
+
+  try {
+    // Check if user is admin or owner
+    const { data: userRole, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .in('role', ['admin', 'owner'])
+      .maybeSingle();
+
+    if (roleError || !userRole) {
+      console.log(`[handleMemorySummaryCommand] User ${userId} is not admin/owner`);
+      await replyToLine(replyToken, '⚠️ คำสั่งนี้สำหรับ Admin หรือ Owner เท่านั้น\n\nThis command is for Admin or Owner only.');
+      return;
+    }
+
+    // Determine summary type from message
+    const lowerMsg = userMessage.toLowerCase();
+    let summaryType: 'working_week' | 'working_month' | 'long_term' = 'working_week';
+    let typeLabel = '📅 สัปดาห์นี้';
+
+    if (lowerMsg.includes('เดือน') || lowerMsg.includes('month')) {
+      summaryType = 'working_month';
+      typeLabel = '📆 เดือนนี้';
+    } else if (lowerMsg.includes('ระยะยาว') || lowerMsg.includes('long') || lowerMsg.includes('ทั้งหมด')) {
+      summaryType = 'long_term';
+      typeLabel = '🧠 ระยะยาว';
+    }
+
+    // Get group for context
+    const { data: group } = await supabase
+      .from('groups')
+      .select('id, display_name')
+      .eq('id', groupId)
+      .single();
+
+    // Call memory-summary edge function
+    const { data, error } = await supabase.functions.invoke('memory-summary', {
+      body: { 
+        group_id: groupId, 
+        summary_type: summaryType 
+      }
+    });
+
+    if (error || !data) {
+      console.error('[handleMemorySummaryCommand] Error invoking memory-summary:', error);
+      await replyToLine(replyToken, '❌ ไม่สามารถสร้างสรุปได้ กรุณาลองใหม่\n\nCould not generate summary. Please try again.');
+      return;
+    }
+
+    // Format response
+    const groupName = group?.display_name || 'ทั้งระบบ';
+    const summaryText = data.summary || 'ไม่มีข้อมูลความจำในช่วงนี้';
+    const memoryCount = data.count || 0;
+
+    const response = `${typeLabel} - ${groupName}\n📊 จำนวนความจำ: ${memoryCount} รายการ\n\n${summaryText}`;
+
+    await replyToLine(replyToken, response);
+    console.log(`[handleMemorySummaryCommand] Sent ${summaryType} summary with ${memoryCount} memories`);
+
+  } catch (error) {
+    console.error('[handleMemorySummaryCommand] Error:', error);
+    await replyToLine(replyToken, '❌ เกิดข้อผิดพลาด กรุณาลองใหม่\n\nAn error occurred. Please try again.');
+  }
+}
+
+// =============================
 // PHASE 2: SUMMARY COMMAND HANDLERS
 // =============================
 
@@ -7806,6 +7887,12 @@ async function handleMessageEvent(event: LineEvent) {
   // Handle /status command
   if (parsed.commandType === 'status') {
     await handleStatusCommand(group.id, user.id, event.replyToken);
+    return;
+  }
+
+  // Handle /memorysummary command (Admin/Owner only)
+  if (parsed.commandType === 'memory_summary') {
+    await handleMemorySummaryCommand(group.id, user.id, lineUserId, event.message.text, event.replyToken);
     return;
   }
 
