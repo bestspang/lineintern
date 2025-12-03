@@ -712,7 +712,8 @@ export default function Payroll() {
     if (!attendanceData) return new Map<string, DailyAttendance>();
     
     const map = new Map<string, DailyAttendance>();
-    const today = new Date();
+    const today = getBangkokNow();
+    const todayStr = formatBangkokISODate(today);
     
     // Build schedule map from work_schedules
     const workingDaysSet = new Set<number>(
@@ -737,7 +738,7 @@ export default function Payroll() {
       const dayOfWeek = getDay(day);
       const isWorkingDay = workingDaysSet.has(dayOfWeek);
       const dayLogs = attendanceData.filter(log => 
-        format(parseISO(log.server_time), "yyyy-MM-dd") === dateStr
+        formatBangkokISODate(log.server_time) === dateStr
       );
       
       const checkIn = dayLogs.find(log => log.event_type === "check_in");
@@ -750,26 +751,27 @@ export default function Payroll() {
       } else if (!isWorkingDay) {
         status = checkIn ? 'present' : 'weekend';
       } else if (checkIn) {
-        // Check if late using work_schedules start_time
-        const checkInTime = parseISO(checkIn.server_time);
+        // Check if late using work_schedules start_time with Bangkok timezone
         const schedule = scheduleMap.get(dayOfWeek);
         const startTime = schedule?.start_time || '09:00';
         const [startHour, startMinute] = startTime.split(':').map(Number);
         
-        const checkInHour = checkInTime.getHours();
-        const checkInMinute = checkInTime.getMinutes();
+        const checkInBangkok = getBangkokHoursMinutes(checkIn.server_time);
         
-        // Use grace period for late detection
-        const expectedMins = startHour * 60 + startMinute;
-        const actualMins = checkInHour * 60 + checkInMinute;
-        const graceThreshold = expectedMins + gracePeriodMinutes;
-        
-        if (actualMins > graceThreshold) {
-          status = 'late';
-        } else if (actualMins > expectedMins) {
-          status = 'within_grace';
+        if (!checkInBangkok) {
+          status = 'present'; // fallback
         } else {
-          status = 'present';
+          const expectedMins = startHour * 60 + startMinute;
+          const actualMins = checkInBangkok.hours * 60 + checkInBangkok.minutes;
+          const graceThreshold = expectedMins + gracePeriodMinutes;
+          
+          if (actualMins > graceThreshold) {
+            status = 'late';
+          } else if (actualMins > expectedMins) {
+            status = 'within_grace';
+          } else {
+            status = 'present';
+          }
         }
       }
       
@@ -1390,6 +1392,7 @@ export default function Payroll() {
   const getStatusIcon = (status: DailyAttendance['status']) => {
     switch (status) {
       case 'present': return <CheckCircle className="h-3 w-3 text-green-500" />;
+      case 'within_grace': return <CheckCircle className="h-3 w-3 text-green-400" />;
       case 'late': return <AlertCircle className="h-3 w-3 text-yellow-500" />;
       case 'absent': return <XCircle className="h-3 w-3 text-red-500" />;
       case 'leave': return <Calendar className="h-3 w-3 text-blue-500" />;
@@ -1402,6 +1405,7 @@ export default function Payroll() {
   const getStatusBg = (status: DailyAttendance['status']) => {
     switch (status) {
       case 'present': return 'bg-green-100 dark:bg-green-900/30';
+      case 'within_grace': return 'bg-green-50 dark:bg-green-900/20';
       case 'late': return 'bg-yellow-100 dark:bg-yellow-900/30';
       case 'absent': return 'bg-red-100 dark:bg-red-900/30';
       case 'leave': return 'bg-blue-100 dark:bg-blue-900/30';
@@ -1410,6 +1414,9 @@ export default function Payroll() {
       default: return '';
     }
   };
+
+  // Get todayStr for calendar highlight
+  const calendarTodayStr = formatBangkokISODate(getBangkokNow());
 
   const isLoading = isPeriodLoading || isEmployeesLoading;
 
@@ -2087,7 +2094,7 @@ export default function Payroll() {
                                   setAttendanceEditDialogOpen(true);
                                 }
                               }}
-                              className={`aspect-square flex flex-col items-center justify-center rounded-md text-xs cursor-pointer transition-colors hover:ring-2 hover:ring-primary/50 relative ${getStatusBg(status)}`}
+                              className={`aspect-square flex flex-col items-center justify-center rounded-md text-xs cursor-pointer transition-colors hover:ring-2 hover:ring-primary/50 relative ${getStatusBg(status)} ${dateStr === calendarTodayStr ? 'ring-2 ring-primary' : ''}`}
                             >
                               <span className="font-medium">{format(day, "d")}</span>
                               {getStatusIcon(status)}
@@ -2129,6 +2136,9 @@ export default function Payroll() {
                               {attendance?.is_overtime && !attendance?.has_approved_ot && (
                                 <Badge variant="secondary" className="text-[10px]">OT</Badge>
                               )}
+                              {status === 'within_grace' && (
+                                <div className="text-green-600">สถานะ: มาภายใน Grace Period</div>
+                              )}
                               {status === 'late' && (
                                 <div className="text-yellow-600">สถานะ: มาสาย</div>
                               )}
@@ -2147,6 +2157,9 @@ export default function Payroll() {
                 <div className="flex flex-wrap gap-3 text-xs pt-2 border-t">
                   <div className="flex items-center gap-1">
                     <CheckCircle className="h-3 w-3 text-green-500" /> มา
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3 text-green-400" /> ภายใน Grace
                   </div>
                   <div className="flex items-center gap-1">
                     <AlertCircle className="h-3 w-3 text-yellow-500" /> สาย
