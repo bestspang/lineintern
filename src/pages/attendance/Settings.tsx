@@ -8,8 +8,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Settings as SettingsIcon, Save, Building2, BarChart3 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Building2, BarChart3 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Query options for caching
+const queryOptions = {
+  staleTime: 5 * 60 * 1000,      // 5 นาที - ไม่ re-fetch ถ้าข้อมูลยังใหม่
+  gcTime: 10 * 60 * 1000,        // 10 นาที - keep in cache
+  refetchOnWindowFocus: false,   // ไม่ re-fetch เมื่อกลับมาหน้าต่าง
+};
 
 export default function AttendanceSettings() {
   const { toast } = useToast();
@@ -26,44 +34,51 @@ export default function AttendanceSettings() {
   });
 
   const { data: settings, isLoading } = useQuery({
-    queryKey: ['attendance-settings'],
+    queryKey: ['attendance-settings-global'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_settings')
         .select('*')
         .eq('scope', 'global')
+        .is('branch_id', null)
+        .is('employee_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (error) throw error;
       return data;
-    }
+    },
+    ...queryOptions
   });
 
   const { data: branches, isLoading: isLoadingBranches } = useQuery({
-    queryKey: ['branches'],
+    queryKey: ['branches-active'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('branches')
-        .select('*')
+        .select('id, name, address')
         .eq('is_deleted', false)
         .order('name');
       
       if (error) throw error;
       return data;
-    }
+    },
+    ...queryOptions
   });
 
   const { data: branchSettings, isLoading: isLoadingBranchSettings } = useQuery({
-    queryKey: ['branch-settings'],
+    queryKey: ['branch-attendance-settings'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_settings')
-        .select('*')
+        .select('branch_id, require_photo')
         .eq('scope', 'branch');
       
       if (error) throw error;
       return data;
-    }
+    },
+    ...queryOptions
   });
 
   // Update form when settings load
@@ -96,7 +111,7 @@ export default function AttendanceSettings() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attendance-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-settings-global'] });
       toast({
         title: 'Success',
         description: 'Settings updated successfully',
@@ -128,7 +143,7 @@ export default function AttendanceSettings() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['branch-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['branch-attendance-settings'] });
       toast({
         title: 'Success',
         description: 'Branch settings updated successfully',
@@ -152,10 +167,44 @@ export default function AttendanceSettings() {
     return setting?.require_photo ?? false;
   };
 
+  // Skeleton Loading UI
   if (isLoading || isLoadingBranches || isLoadingBranchSettings) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+        <Card>
+          <CardHeader className="p-4 sm:p-6">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-6 w-11 rounded-full" />
+              </div>
+            ))}
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-10 w-40" />
+            </div>
+            <Skeleton className="h-10 w-32" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="p-4 sm:p-6">
+            <Skeleton className="h-6 w-56" />
+            <Skeleton className="h-4 w-48 mt-2" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
