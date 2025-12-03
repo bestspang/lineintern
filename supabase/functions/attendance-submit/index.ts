@@ -812,8 +812,9 @@ serve(async (req) => {
       );
     }
 
-    // Multi-Shift Support: Track work_sessions
-    if (token.employee.working_time_type === 'hours_based') {
+    // Multi-Shift Support: Track work_sessions for ALL employee types
+    // (Both hours_based and time_based need work_sessions for Live Status tracking)
+    {
       const today = getBangkokDateString();
       
       if (token.type === 'check_in') {
