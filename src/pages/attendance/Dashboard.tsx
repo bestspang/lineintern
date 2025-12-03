@@ -568,62 +568,84 @@ export default function AttendanceDashboard() {
       {/* Leave Balance Summary Widget */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5" />
-            สรุปวันลาทั้งหมด
-          </CardTitle>
-          <CardDescription>วันลาคงเหลือของพนักงานทั้งหมด (ปี {new Date().getFullYear()})</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                สรุปวันลาทั้งหมด
+              </CardTitle>
+              <CardDescription>วันลาคงเหลือของพนักงานทั้งหมด (ปี {new Date().getFullYear()})</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/attendance/leave-balance">จัดการวันลา →</a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">วันลาพักร้อน</span>
-                <Badge variant="secondary" className="text-xs">
-                  {leaveBalanceSummary.vacationRemaining}/{leaveBalanceSummary.vacationTotal}
-                </Badge>
+          {leaveBalanceSummary.vacationTotal === 0 && leaveBalanceSummary.sickTotal === 0 ? (
+            <div className="text-center py-6 space-y-3">
+              <AlertTriangle className="h-10 w-10 mx-auto text-amber-500" />
+              <div>
+                <p className="font-medium text-amber-700 dark:text-amber-400">ยังไม่มีข้อมูลวันลา</p>
+                <p className="text-sm text-muted-foreground">กรุณาไปหน้า Leave Balance เพื่อสร้างข้อมูลวันลาประจำปี</p>
               </div>
-              <div className="text-2xl font-bold text-blue-600">
-                {leaveBalanceSummary.vacationRemaining}
-              </div>
-              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+              <Button variant="outline" size="sm" asChild>
+                <a href="/attendance/leave-balance">ไปหน้า Leave Balance →</a>
+              </Button>
             </div>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">วันลาพักร้อน</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {leaveBalanceSummary.vacationRemaining}/{leaveBalanceSummary.vacationTotal}
+                    </Badge>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {leaveBalanceSummary.vacationRemaining}
+                  </div>
+                  <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+                </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">วันลาป่วย</span>
-                <Badge variant="secondary" className="text-xs">
-                  {leaveBalanceSummary.sickRemaining}/{leaveBalanceSummary.sickTotal}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-orange-600">
-                {leaveBalanceSummary.sickRemaining}
-              </div>
-              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
-            </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">วันลาป่วย</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {leaveBalanceSummary.sickRemaining}/{leaveBalanceSummary.sickTotal}
+                    </Badge>
+                  </div>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {leaveBalanceSummary.sickRemaining}
+                  </div>
+                  <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+                </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">วันลากิจ</span>
-                <Badge variant="secondary" className="text-xs">
-                  {leaveBalanceSummary.personalRemaining}/{leaveBalanceSummary.personalTotal}
-                </Badge>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">วันลากิจ</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {leaveBalanceSummary.personalRemaining}/{leaveBalanceSummary.personalTotal}
+                    </Badge>
+                  </div>
+                  <div className="text-2xl font-bold text-purple-600">
+                    {leaveBalanceSummary.personalRemaining}
+                  </div>
+                  <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
+                </div>
               </div>
-              <div className="text-2xl font-bold text-purple-600">
-                {leaveBalanceSummary.personalRemaining}
-              </div>
-              <p className="text-xs text-muted-foreground">วันคงเหลือ</p>
-            </div>
-          </div>
 
-          <div className="mt-4 pt-4 border-t">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">วันลารวมทั้งหมด</span>
-              <span className="font-semibold">
-                {leaveBalanceSummary.vacationRemaining + leaveBalanceSummary.sickRemaining + leaveBalanceSummary.personalRemaining} วัน
-              </span>
-            </div>
-          </div>
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">วันลารวมทั้งหมด</span>
+                  <span className="font-semibold">
+                    {leaveBalanceSummary.vacationRemaining + leaveBalanceSummary.sickRemaining + leaveBalanceSummary.personalRemaining} วัน
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
