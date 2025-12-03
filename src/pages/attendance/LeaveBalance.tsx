@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Calendar, Loader2, Edit, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
+import { Calendar, Loader2, Edit, RefreshCw, TrendingUp, TrendingDown, CalendarPlus, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface LeaveBalance {
   id: string;
@@ -177,15 +178,15 @@ export default function LeaveBalance() {
           </Select>
           <Button
             variant="outline"
-            onClick={() => createNewYearBalancesMutation.mutate(selectedYear + 1)}
+            onClick={() => createNewYearBalancesMutation.mutate(selectedYear)}
             disabled={createNewYearBalancesMutation.isPending}
           >
             {createNewYearBalancesMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <CalendarPlus className="h-4 w-4 mr-2" />
             )}
-            สร้างข้อมูลปีใหม่
+            สร้างข้อมูลปี {selectedYear}
           </Button>
         </div>
       </div>
@@ -234,83 +235,106 @@ export default function LeaveBalance() {
           <CardDescription>ข้อมูลวันลาของพนักงานทั้งหมดประจำปี {selectedYear}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>รหัส</TableHead>
-                <TableHead>ชื่อพนักงาน</TableHead>
-                <TableHead>ลาพักร้อน</TableHead>
-                <TableHead>ลาป่วย</TableHead>
-                <TableHead>ลากิจ</TableHead>
-                <TableHead className="text-right">จัดการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {balances?.map((balance) => (
-                <TableRow key={balance.id}>
-                  <TableCell className="font-mono">{balance.employees.code}</TableCell>
-                  <TableCell className="font-medium">{balance.employees.full_name}</TableCell>
-                  <TableCell>
-                    <div className="space-y-2 min-w-[150px]">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {balance.vacation_days_used} / {balance.vacation_days_total} วัน
-                        </span>
-                        <Badge variant={balance.vacation_days_used >= balance.vacation_days_total ? 'destructive' : 'secondary'} className="text-xs">
-                          คงเหลือ {balance.vacation_days_total - balance.vacation_days_used}
-                        </Badge>
-                      </div>
-                      <Progress 
-                        value={(balance.vacation_days_used / balance.vacation_days_total) * 100} 
-                        className="h-2"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-2 min-w-[150px]">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {balance.sick_days_used} / {balance.sick_days_total} วัน
-                        </span>
-                        <Badge variant={balance.sick_days_used >= balance.sick_days_total ? 'destructive' : 'secondary'} className="text-xs">
-                          คงเหลือ {balance.sick_days_total - balance.sick_days_used}
-                        </Badge>
-                      </div>
-                      <Progress 
-                        value={(balance.sick_days_used / balance.sick_days_total) * 100} 
-                        className="h-2"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-2 min-w-[150px]">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {balance.personal_days_used} / {balance.personal_days_total} วัน
-                        </span>
-                        <Badge variant={balance.personal_days_used >= balance.personal_days_total ? 'destructive' : 'secondary'} className="text-xs">
-                          คงเหลือ {balance.personal_days_total - balance.personal_days_used}
-                        </Badge>
-                      </div>
-                      <Progress 
-                        value={(balance.personal_days_used / balance.personal_days_total) * 100} 
-                        className="h-2"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(balance)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          {(!balances || balances.length === 0) ? (
+            <div className="text-center py-12 space-y-4">
+              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground" />
+              <div>
+                <h3 className="text-lg font-semibold">ไม่พบข้อมูลวันลาประจำปี {selectedYear}</h3>
+                <p className="text-muted-foreground text-sm mt-1">
+                  กรุณากดปุ่มด้านล่างเพื่อสร้างข้อมูลวันลาสำหรับพนักงานทั้งหมด
+                </p>
+              </div>
+              <Button
+                onClick={() => createNewYearBalancesMutation.mutate(selectedYear)}
+                disabled={createNewYearBalancesMutation.isPending}
+              >
+                {createNewYearBalancesMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                )}
+                สร้างข้อมูลวันลาปี {selectedYear}
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>รหัส</TableHead>
+                  <TableHead>ชื่อพนักงาน</TableHead>
+                  <TableHead>ลาพักร้อน</TableHead>
+                  <TableHead>ลาป่วย</TableHead>
+                  <TableHead>ลากิจ</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {balances.map((balance) => (
+                  <TableRow key={balance.id}>
+                    <TableCell className="font-mono">{balance.employees.code}</TableCell>
+                    <TableCell className="font-medium">{balance.employees.full_name}</TableCell>
+                    <TableCell>
+                      <div className="space-y-2 min-w-[150px]">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {balance.vacation_days_used} / {balance.vacation_days_total} วัน
+                          </span>
+                          <Badge variant={balance.vacation_days_used >= balance.vacation_days_total ? 'destructive' : 'secondary'} className="text-xs">
+                            คงเหลือ {balance.vacation_days_total - balance.vacation_days_used}
+                          </Badge>
+                        </div>
+                        <Progress 
+                          value={(balance.vacation_days_used / balance.vacation_days_total) * 100} 
+                          className="h-2"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-2 min-w-[150px]">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {balance.sick_days_used} / {balance.sick_days_total} วัน
+                          </span>
+                          <Badge variant={balance.sick_days_used >= balance.sick_days_total ? 'destructive' : 'secondary'} className="text-xs">
+                            คงเหลือ {balance.sick_days_total - balance.sick_days_used}
+                          </Badge>
+                        </div>
+                        <Progress 
+                          value={(balance.sick_days_used / balance.sick_days_total) * 100} 
+                          className="h-2"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-2 min-w-[150px]">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {balance.personal_days_used} / {balance.personal_days_total} วัน
+                          </span>
+                          <Badge variant={balance.personal_days_used >= balance.personal_days_total ? 'destructive' : 'secondary'} className="text-xs">
+                            คงเหลือ {balance.personal_days_total - balance.personal_days_used}
+                          </Badge>
+                        </div>
+                        <Progress 
+                          value={(balance.personal_days_used / balance.personal_days_total) * 100} 
+                          className="h-2"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(balance)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
