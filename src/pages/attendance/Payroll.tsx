@@ -29,6 +29,7 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { getBangkokNow } from "@/lib/timezone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -916,15 +917,18 @@ export default function Payroll() {
         // Calculate scheduled work days using actual work_schedules
         const periodStart = parseISO(startDate);
         const periodEnd = parseISO(endDate);
-        const today = new Date();
+        const today = getBangkokNow(); // Use Bangkok timezone for consistency
         
         // Full month scheduled days (for pay calculation)
         const periodDays = eachDayOfInterval({ start: periodStart, end: periodEnd });
         const scheduledWorkDays = periodDays.filter(d => workingDaysSet.has(getDay(d))).length;
         
         // Scheduled days up to today only (for absent calculation)
-        const effectiveEndDate = periodEnd > today ? today : periodEnd;
-        const daysToDate = eachDayOfInterval({ start: periodStart, end: effectiveEndDate });
+        // If today is before periodStart, scheduledWorkDaysToDate = 0
+        const effectiveEndDate = today < periodStart ? periodStart : (periodEnd > today ? today : periodEnd);
+        const daysToDate = today >= periodStart 
+          ? eachDayOfInterval({ start: periodStart, end: effectiveEndDate })
+          : [];
         const scheduledWorkDaysToDate = daysToDate.filter(d => workingDaysSet.has(getDay(d))).length;
         
         // Calculate pay
