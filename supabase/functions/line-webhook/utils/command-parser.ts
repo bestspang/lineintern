@@ -31,7 +31,7 @@ export interface ParsedCommand {
   commandType: 'ask' | 'summary' | 'faq' | 'todo' | 'report' | 'help' | 'tasks' 
     | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
-    | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | null;
+    | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | null;
   userQuestion: string;
   rawText: string;
   isMentioned: boolean;
@@ -133,6 +133,12 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/menu': 'menu',
     '/เมนู': 'menu',
     'เมนู': 'menu',
+    
+    // Flexible Day-Off
+    '/dayoff': 'dayoff',
+    '/วันหยุด': 'dayoff',
+    '/ขอหยุด': 'dayoff',
+    '/flexdayoff': 'dayoff',
   };
   
   let commandType: ParsedCommand['commandType'] = null;
