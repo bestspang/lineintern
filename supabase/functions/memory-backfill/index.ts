@@ -88,7 +88,7 @@ serve(async (req) => {
         )
       `)
       .eq('group_id', targetGroupId)
-      .eq('direction', 'incoming')
+      .eq('direction', 'human') // human = incoming messages from users
       .gte('sent_at', startDate)
       .order('sent_at', { ascending: false })
       .limit(limit);
