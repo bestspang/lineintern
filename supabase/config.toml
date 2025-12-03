@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.line-richmenu-link]
 verify_jwt = false
+
+[functions.memory-summary]
+verify_jwt = false

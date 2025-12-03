@@ -42,12 +42,177 @@ import {
   Network,
   LayoutGrid,
   Settings as SettingsIcon,
-  Database
+  Database,
+  Calendar,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
 import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
 import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+// Memory Summary Cards Component
+function MemorySummaryCards({ groupId, userId }: { groupId?: string; userId?: string }) {
+  const queryClient = useQueryClient();
+
+  // Weekly working memory summary
+  const { data: weeklySummary, isLoading: isLoadingWeekly, refetch: refetchWeekly } = useQuery({
+    queryKey: ['memory-summary', 'working_week', groupId, userId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('memory-summary', {
+        body: { group_id: groupId, user_id: userId, summary_type: 'working_week' }
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!groupId || !!userId,
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    staleTime: 25000,
+  });
+
+  // Monthly working memory summary
+  const { data: monthlySummary, isLoading: isLoadingMonthly, refetch: refetchMonthly } = useQuery({
+    queryKey: ['memory-summary', 'working_month', groupId, userId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('memory-summary', {
+        body: { group_id: groupId, user_id: userId, summary_type: 'working_month' }
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!groupId || !!userId,
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  // Long-term memory summary
+  const { data: longTermSummary, isLoading: isLoadingLongTerm, refetch: refetchLongTerm } = useQuery({
+    queryKey: ['memory-summary', 'long_term', groupId, userId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('memory-summary', {
+        body: { group_id: groupId, user_id: userId, summary_type: 'long_term' }
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!groupId || !!userId,
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  const handleRefreshAll = () => {
+    refetchWeekly();
+    refetchMonthly();
+    refetchLongTerm();
+  };
+
+  if (!groupId && !userId) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <p className="text-sm text-muted-foreground text-center">เลือก Group หรือ User เพื่อดูสรุป</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary" />
+          สรุปความจำ (AI)
+        </h3>
+        <Button variant="outline" size="sm" onClick={handleRefreshAll}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          รีเฟรช
+        </Button>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Weekly Working Memory Summary */}
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Clock className="w-4 h-4 text-blue-500" />
+              สรุปสัปดาห์นี้
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Working Memory • {weeklySummary?.count || 0} รายการ
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingWeekly ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {weeklySummary?.summary || 'ไม่มีข้อมูล'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Monthly Working Memory Summary */}
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Calendar className="w-4 h-4 text-green-500" />
+              สรุปเดือนนี้
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Working Memory • {monthlySummary?.count || 0} รายการ
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingMonthly ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {monthlySummary?.summary || 'ไม่มีข้อมูล'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Long-Term Memory Summary */}
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Brain className="w-4 h-4 text-purple-500" />
+              สรุปความจำระยะยาว
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Long-Term • {longTermSummary?.count || 0} รายการ
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingLongTerm ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {longTermSummary?.summary || 'ไม่มีข้อมูล'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
 
 // Working Memory Table Component with "See More" button
 function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: string }) {
@@ -898,6 +1063,12 @@ export default function Memory() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Memory Summaries Section */}
+      <MemorySummaryCards 
+        groupId={masterScope === 'group' ? masterGroupId : undefined}
+        userId={masterScope === 'user' ? masterUserId : undefined}
+      />
       
       {/* Search & Tabs */}
       <Card>
