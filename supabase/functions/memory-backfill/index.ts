@@ -224,28 +224,29 @@ async function extractMemoriesFromBatch(
   groupId: string,
   userId: string
 ): Promise<Array<{ content: string; category: string; importance: number }>> {
-  const prompt = `Analyze these chat messages and extract any important information that should be remembered for future context.
+  const prompt = `วิเคราะห์ข้อความแชทเหล่านี้และดึงข้อมูลสำคัญที่ควรจดจำไว้ใช้ในอนาคต
 
-Messages:
+ข้อความ:
 ${messagesText}
 
-Extract memories that are:
-- Personal facts (names, birthdays, preferences, hobbies)
-- Decisions made by the team/group
-- Important policies or rules mentioned
-- Tasks assigned or commitments made
-- Key business metrics or numbers
-- Relationship information between people
+ดึง memories ที่เป็น:
+- ข้อมูลส่วนตัว (ชื่อ, วันเกิด, ความชอบ, งานอดิเรก)
+- การตัดสินใจของทีม/กลุ่ม
+- นโยบายหรือกฎที่สำคัญ
+- งานที่ได้รับมอบหมาย หรือสิ่งที่ต้องทำ
+- ตัวเลขหรือสถิติทางธุรกิจที่สำคัญ
+- ความสัมพันธ์ระหว่างบุคคล
 
-For each memory, provide:
-- content: The extracted information (1-2 sentences)
-- category: One of: trait, preference, topic, project, context, relationship, name, birthday, hobby, habit, life_event, food_preference, work_info, skill, decision, policy, task, metric, fact, general
-- importance: 0.0 to 1.0 (how important is this to remember)
+สำหรับแต่ละ memory ให้ระบุ:
+- content: ข้อมูลที่ดึงมา (1-2 ประโยค) **ภาษาไทย**
+- category: หนึ่งใน: trait, preference, topic, project, context, relationship, name, birthday, hobby, habit, life_event, food_preference, work_info, skill, decision, policy, task, metric, fact, general
+- importance: 0.0 ถึง 1.0 (สำคัญแค่ไหนที่จะจดจำ)
 
-IMPORTANT: Only extract genuinely useful information. Skip casual chat and greetings.
-If there's nothing worth remembering, return an empty array.
+สำคัญ: ดึงเฉพาะข้อมูลที่มีประโยชน์จริงๆ ข้ามข้อความทั่วไปและการทักทาย
+ถ้าไม่มีอะไรที่ควรจดจำ ให้ return array ว่าง
+**ตอบเป็นภาษาไทยทั้งหมด**
 
-Respond in JSON format only (no markdown):
+ตอบในรูปแบบ JSON เท่านั้น (ไม่ใช้ markdown):
 {
   "memories": [
     {"content": "...", "category": "...", "importance": 0.7},
