@@ -150,7 +150,7 @@ Criteria for long-term memory:
 - Represents a decision, preference, or important context
 - Not trivial conversation or temporary context
 
-Respond in JSON format:
+Respond in JSON format only (no markdown):
 {
   "shouldConsolidate": true/false,
   "keywords": ["keyword1", "keyword2", ...],
@@ -174,16 +174,43 @@ Respond in JSON format:
 
     if (!response.ok) {
       console.error('[Memory Consolidator] AI API error:', await response.text());
+      // Fallback: consolidate high-importance memories anyway
+      if (workingMemory.importance_score >= 0.8) {
+        console.log('[Memory Consolidator] Fallback: consolidating high-importance memory despite API error');
+        return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+      }
       return { shouldConsolidate: false, keywords: [], category: 'context' };
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    console.log(`[Memory Consolidator] AI decision: ${result.shouldConsolidate ? 'CONSOLIDATE' : 'DISCARD'} - ${result.reasoning}`);
+    let content = data.choices[0].message.content;
+    
+    // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+    content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    
+    // Try to extract JSON object from content using regex
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[Memory Consolidator] No JSON found in AI response:', content.substring(0, 200));
+      // Fallback for high-importance memories
+      if (workingMemory.importance_score >= 0.8) {
+        console.log('[Memory Consolidator] Fallback: consolidating high-importance memory (no JSON found)');
+        return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+      }
+      return { shouldConsolidate: false, keywords: [], category: 'context' };
+    }
+    
+    const result = JSON.parse(jsonMatch[0]);
+    console.log(`[Memory Consolidator] AI decision: ${result.shouldConsolidate ? 'CONSOLIDATE' : 'DISCARD'} - ${result.reasoning || 'no reason'}`);
     
     return result;
   } catch (err) {
     console.error('[Memory Consolidator] Error calling AI:', err);
+    // Fallback: consolidate high-importance memories even on parse error
+    if (workingMemory.importance_score >= 0.8) {
+      console.log('[Memory Consolidator] Fallback: consolidating high-importance memory despite error');
+      return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+    }
     return { shouldConsolidate: false, keywords: [], category: 'context' };
   }
 }
