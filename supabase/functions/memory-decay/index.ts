@@ -31,46 +31,61 @@ serve(async (req) => {
 
     console.log('[Memory Decay] Starting decay process...');
 
-    // 1. Decay memory strength for unused memories
-    const decayFactor = 0.95; // Reduce by 5% daily
-    const { data: memories, error: fetchError } = await supabase
-      .from('memory_items')
-      .select('*')
-      .gt('memory_strength', 0.1)
-      .is('pinned', false)
-      .order('last_reinforced_at', { ascending: true });
+    // Check global settings for auto_decay_enabled
+    const { data: globalSettings } = await supabase
+      .from('memory_settings')
+      .select('auto_decay_enabled')
+      .eq('scope', 'global')
+      .maybeSingle();
 
-    if (fetchError) throw fetchError;
-
+    const autoDecayEnabled = globalSettings?.auto_decay_enabled ?? true; // Default to true if no setting
+    
     let decayed = 0;
     let archived = 0;
 
-    for (const memory of memories || []) {
-      const daysSinceReinforcement = memory.last_reinforced_at
-        ? (Date.now() - new Date(memory.last_reinforced_at).getTime()) / (1000 * 60 * 60 * 24)
-        : (Date.now() - new Date(memory.created_at).getTime()) / (1000 * 60 * 60 * 24);
+    // 1. Only decay memory strength if auto_decay_enabled is true
+    if (autoDecayEnabled) {
+      console.log('[Memory Decay] Auto-decay is enabled, processing memory strength decay...');
+      
+      const decayFactor = 0.95; // Reduce by 5% daily
+      const { data: memories, error: fetchError } = await supabase
+        .from('memory_items')
+        .select('*')
+        .gt('memory_strength', 0.1)
+        .is('pinned', false)
+        .order('last_reinforced_at', { ascending: true });
 
-      // Apply decay based on days since last use
-      let newStrength = memory.memory_strength;
-      if (daysSinceReinforcement > 1) {
-        const decayAmount = Math.pow(decayFactor, daysSinceReinforcement);
-        newStrength = memory.memory_strength * decayAmount;
-      }
+      if (fetchError) throw fetchError;
 
-      // Archive if strength too low
-      if (newStrength < 0.1) {
-        await supabase
-          .from('memory_items')
-          .update({ is_deleted: true, updated_at: new Date().toISOString() })
-          .eq('id', memory.id);
-        archived++;
-      } else if (newStrength < memory.memory_strength) {
-        await supabase
-          .from('memory_items')
-          .update({ memory_strength: newStrength, updated_at: new Date().toISOString() })
-          .eq('id', memory.id);
-        decayed++;
+      for (const memory of memories || []) {
+        const daysSinceReinforcement = memory.last_reinforced_at
+          ? (Date.now() - new Date(memory.last_reinforced_at).getTime()) / (1000 * 60 * 60 * 24)
+          : (Date.now() - new Date(memory.created_at).getTime()) / (1000 * 60 * 60 * 24);
+
+        // Apply decay based on days since last use
+        let newStrength = memory.memory_strength;
+        if (daysSinceReinforcement > 1) {
+          const decayAmount = Math.pow(decayFactor, daysSinceReinforcement);
+          newStrength = memory.memory_strength * decayAmount;
+        }
+
+        // Archive if strength too low
+        if (newStrength < 0.1) {
+          await supabase
+            .from('memory_items')
+            .update({ is_deleted: true, updated_at: new Date().toISOString() })
+            .eq('id', memory.id);
+          archived++;
+        } else if (newStrength < memory.memory_strength) {
+          await supabase
+            .from('memory_items')
+            .update({ memory_strength: newStrength, updated_at: new Date().toISOString() })
+            .eq('id', memory.id);
+          decayed++;
+        }
       }
+    } else {
+      console.log('[Memory Decay] Auto-decay is disabled, skipping memory strength decay');
     }
 
     // 2. Delete expired working memories

@@ -18,7 +18,7 @@ export function MemorySettings() {
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [maxItemsPerUser, setMaxItemsPerUser] = useState(50);
   const [maxItemsPerGroup, setMaxItemsPerGroup] = useState(100);
-  const [consolidationFrequency, setConsolidationFrequency] = useState(24);
+  const [consolidationFrequency, setConsolidationFrequency] = useState(6); // Actual cron schedule is 6h
   const [autoDecayEnabled, setAutoDecayEnabled] = useState(false);
   const [decayThreshold, setDecayThreshold] = useState(90);
   const [passiveLearningEnabled, setPassiveLearningEnabled] = useState(false);
@@ -96,13 +96,24 @@ export function MemorySettings() {
   // Trigger consolidation mutation
   const triggerConsolidationMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('memory-consolidator', {
-        body: {},
+      const { data, error } = await supabase.functions.invoke('memory-consolidator', {
+        body: { trigger: 'manual' },
       });
-      if (error) throw error;
+      
+      // Check both error object AND response data for errors
+      if (error) throw new Error(error.message || 'Function invocation failed');
+      if (data?.error) throw new Error(data.error);
+      
+      return data;
     },
-    onSuccess: () => {
-      toast({ title: 'Memory consolidation triggered', description: 'Working memories will be processed shortly' });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-settings-global'] });
+      toast({ 
+        title: 'Memory consolidation completed', 
+        description: `Evaluated: ${data?.stats?.evaluated || 0}, Consolidated: ${data?.stats?.consolidated || 0}` 
+      });
     },
     onError: (error) => {
       toast({ 
@@ -202,11 +213,11 @@ export function MemorySettings() {
                 min="1"
                 max="168"
                 value={consolidationFrequency} 
-                onChange={(e) => setConsolidationFrequency(parseInt(e.target.value) || 24)}
+                onChange={(e) => setConsolidationFrequency(parseInt(e.target.value) || 6)}
                 disabled
               />
               <p className="text-xs text-muted-foreground">
-                How often to convert short-term to long-term memory (configured via cron job)
+                Cron job runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
               </p>
             </div>
             
@@ -309,7 +320,7 @@ export function MemorySettings() {
               <div className="flex-1">
                 <Label className="text-base">Consolidate Memories Now</Label>
                 <p className="text-sm text-muted-foreground">
-                  Manually trigger memory consolidation (normally runs automatically every 24h)
+                  Manually trigger memory consolidation (normally runs automatically every 6h)
                 </p>
               </div>
               <Button 

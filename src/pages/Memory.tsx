@@ -276,7 +276,12 @@ export default function Memory() {
       const { data, error } = await supabase.functions.invoke('memory-consolidator', {
         body: { trigger: 'manual', groupId: masterGroupId || null },
       });
-      if (error) throw error;
+      
+      // Check both error object AND response data for errors
+      if (error) throw new Error(error.message || 'Function invocation failed');
+      if (data?.error) throw new Error(data.error);
+      if (!data?.success && !data?.stats) throw new Error('Consolidation returned no data');
+      
       return data;
     },
     onSuccess: (data) => {
