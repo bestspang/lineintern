@@ -20,7 +20,7 @@
  * [ ] RefetchInterval values are preserved
  */
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,8 +29,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { Clock, Users, TrendingUp, Calendar, LogOut, AlertCircle } from 'lucide-react';
+import { Clock, Users, TrendingUp, Calendar, LogOut, AlertCircle, Plus, X } from 'lucide-react';
 import { format, addMinutes, differenceInMinutes } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { useToast } from '@/hooks/use-toast';
@@ -65,8 +66,21 @@ export default function LiveTracking() {
   const [selectedEmployee, setSelectedEmployee] = useState<CheckedInEmployee | null>(null);
   const [checkoutNotes, setCheckoutNotes] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  // OT Grant Dialog State
+  const [isOTDialogOpen, setIsOTDialogOpen] = useState(false);
+  const [selectedEmployeeForOT, setSelectedEmployeeForOT] = useState<CheckedInEmployee | null>(null);
+  const [otHours, setOTHours] = useState<number>(2);
+  const [otReason, setOTReason] = useState('');
+  
+  // Cancel OT Dialog State
+  const [isCancelOTDialogOpen, setIsCancelOTDialogOpen] = useState(false);
+  const [employeeToCancel, setEmployeeToCancel] = useState<CheckedInEmployee | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  
   const { toast } = useToast();
   const { isAdmin } = useAdminRole();
+  const queryClient = useQueryClient();
 
   // Update current time every minute
   useEffect(() => {
@@ -78,13 +92,13 @@ export default function LiveTracking() {
   }, []);
 
   // Fetch approved OT requests for today
-  const { data: approvedOTRequests } = useQuery({
+  const { data: approvedOTRequests, refetch: refetchOT } = useQuery({
     queryKey: ['approved-ot-requests-today'],
     queryFn: async () => {
       const today = format(new Date(), 'yyyy-MM-dd');
       const { data, error } = await supabase
         .from('overtime_requests')
-        .select('employee_id, estimated_hours, reason')
+        .select('id, employee_id, estimated_hours, reason')
         .eq('status', 'approved')
         .eq('request_date', today);
       
@@ -283,6 +297,71 @@ export default function LiveTracking() {
     },
   });
 
+  // Instant OT Grant mutation
+  const grantOTMutation = useMutation({
+    mutationFn: async ({ employeeId, hours, reason }: { employeeId: string; hours: number; reason: string }) => {
+      const { data, error } = await supabase.functions.invoke('instant-ot-grant', {
+        body: { employee_id: employeeId, hours, reason },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to grant OT');
+      
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'สำเร็จ',
+        description: data.message || `ให้ OT ${otHours} ชม. เรียบร้อย - พนักงานจะได้รับแจ้งเตือนทาง LINE`,
+      });
+      setIsOTDialogOpen(false);
+      setSelectedEmployeeForOT(null);
+      setOTHours(2);
+      setOTReason('');
+      refetchOT();
+      queryClient.invalidateQueries({ queryKey: ['approved-ot-requests-today'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to grant OT',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Cancel OT mutation
+  const cancelOTMutation = useMutation({
+    mutationFn: async ({ employeeId, reason }: { employeeId: string; reason: string }) => {
+      const { data, error } = await supabase.functions.invoke('cancel-ot', {
+        body: { employee_id: employeeId, reason },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to cancel OT');
+      
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'สำเร็จ',
+        description: data.message || 'ยกเลิก OT เรียบร้อย',
+      });
+      setIsCancelOTDialogOpen(false);
+      setEmployeeToCancel(null);
+      setCancelReason('');
+      refetchOT();
+      queryClient.invalidateQueries({ queryKey: ['approved-ot-requests-today'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to cancel OT',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleCheckoutClick = (employee: CheckedInEmployee) => {
     setSelectedEmployee(employee);
     setIsDialogOpen(true);
@@ -293,6 +372,38 @@ export default function LiveTracking() {
       adminCheckout.mutate({
         employeeId: selectedEmployee.employee_id,
         notes: checkoutNotes || undefined,
+      });
+    }
+  };
+
+  const handleGrantOTClick = (employee: CheckedInEmployee) => {
+    setSelectedEmployeeForOT(employee);
+    setOTHours(2);
+    setOTReason('');
+    setIsOTDialogOpen(true);
+  };
+
+  const handleConfirmGrantOT = () => {
+    if (selectedEmployeeForOT && otHours > 0) {
+      grantOTMutation.mutate({
+        employeeId: selectedEmployeeForOT.employee_id,
+        hours: otHours,
+        reason: otReason || 'Admin granted OT',
+      });
+    }
+  };
+
+  const handleCancelOTClick = (employee: CheckedInEmployee) => {
+    setEmployeeToCancel(employee);
+    setCancelReason('');
+    setIsCancelOTDialogOpen(true);
+  };
+
+  const handleConfirmCancelOT = () => {
+    if (employeeToCancel) {
+      cancelOTMutation.mutate({
+        employeeId: employeeToCancel.employee_id,
+        reason: cancelReason || 'ยกเลิกโดย Admin',
       });
     }
   };
@@ -319,6 +430,28 @@ export default function LiveTracking() {
       supabase.removeChannel(channel);
     };
   }, [refetch]);
+
+  // Real-time subscription for overtime_requests
+  useEffect(() => {
+    const channel = supabase
+      .channel('overtime-requests-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'overtime_requests'
+        },
+        () => {
+          refetchOT();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchOT]);
 
   const stats = {
     total: checkedInEmployees?.length || 0,
@@ -440,114 +573,157 @@ export default function LiveTracking() {
             <div className="space-y-4">
               {checkedInEmployees
                 .sort((a, b) => a.time_until_checkout - b.time_until_checkout)
-                .map((employee) => (
-                  <div
-                    key={employee.employee_id}
-                    className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-4 flex-1">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {employee.employee_name.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-sm sm:text-base truncate">
-                            {employee.employee_name}
-                          </p>
-                          <Badge variant="outline" className="text-xs">
-                            {employee.employee_code}
-                          </Badge>
-                          {employee.is_remote_checkin && (
+                .map((employee) => {
+                  const hasApprovedOT = otApprovedMap.has(employee.employee_id);
+                  const approvedOTData = otApprovedMap.get(employee.employee_id);
+                  
+                  return (
+                    <div
+                      key={employee.employee_id}
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                            {employee.employee_name.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm sm:text-base truncate">
+                              {employee.employee_name}
+                            </p>
                             <Badge variant="outline" className="text-xs">
-                              🌐 Remote
+                              {employee.employee_code}
+                            </Badge>
+                            {employee.is_remote_checkin && (
+                              <Badge variant="outline" className="text-xs">
+                                🌐 Remote
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-muted-foreground">
+                            <span>🏢 {employee.branch_name}</span>
+                            <span className="hidden sm:inline">•</span>
+                            <span>
+                              📥 Check-in: {format(new Date(employee.check_in_time), 'HH:mm')}
+                            </span>
+                            <span className="hidden sm:inline">•</span>
+                            <span className="font-medium text-primary">
+                              ⏱️ Working: {formatWorkingHours(employee.working_minutes_elapsed)}
+                            </span>
+                            {employee.working_time_type === 'hours_based' && (
+                              <>
+                                <span className="hidden sm:inline">•</span>
+                                <span className="text-muted-foreground">
+                                  📋 {employee.hours_per_day}h/day + {employee.break_hours}h break
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          
+                          {/* Progress Bar - Work Summary Feature */}
+                          <div className="mt-2">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-muted-foreground">
+                                ทำงานสุทธิ: {Math.floor(employee.net_work_minutes / 60)}h {employee.net_work_minutes % 60}m / {employee.hours_per_day || 8}h
+                              </span>
+                              <span className="font-medium">{Math.floor(employee.progress_percent)}%</span>
+                            </div>
+                            <Progress 
+                              value={employee.progress_percent} 
+                              className={`h-2 ${employee.progress_percent >= 100 ? '[&>div]:bg-green-500' : ''}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end gap-2">
+                          {getStatusBadge(employee.time_until_checkout, employee.employee_id)}
+                          
+                          {/* Show approved OT hours */}
+                          {hasApprovedOT && approvedOTData && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                              🕐 OT: {approvedOTData.estimated_hours}h
+                            </Badge>
+                          )}
+                          
+                          <div className="text-right">
+                            <div className="text-sm font-semibold">
+                              {format(new Date(employee.expected_check_out), 'HH:mm')}
+                            </div>
+                            <div className={`text-xs ${
+                              employee.time_until_checkout < 0 
+                                ? 'text-destructive font-semibold'
+                                : employee.time_until_checkout <= 60
+                                ? 'text-orange-500 font-semibold'
+                                : 'text-muted-foreground'
+                            }`}>
+                              {employee.time_until_checkout < 0 ? 'OT ' : ''}
+                              {formatTimeRemaining(employee.time_until_checkout)}
+                            </div>
+                          </div>
+                          
+                          {/* Auto Checkout Time */}
+                          <div className="text-xs text-muted-foreground">
+                            ⏰ Auto: {format(new Date(employee.auto_checkout_at), 'HH:mm')}
+                          </div>
+                          
+                          {/* Grace Expiring Warning */}
+                          {employee.grace_expiring_soon && (
+                            <Badge variant="destructive" className="text-xs animate-pulse">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              ใกล้ Auto Checkout!
                             </Badge>
                           )}
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-muted-foreground">
-                          <span>🏢 {employee.branch_name}</span>
-                          <span className="hidden sm:inline">•</span>
-                          <span>
-                            📥 Check-in: {format(new Date(employee.check_in_time), 'HH:mm')}
-                          </span>
-                          <span className="hidden sm:inline">•</span>
-                          <span className="font-medium text-primary">
-                            ⏱️ Working: {formatWorkingHours(employee.working_minutes_elapsed)}
-                          </span>
-                          {employee.working_time_type === 'hours_based' && (
-                            <>
-                              <span className="hidden sm:inline">•</span>
-                              <span className="text-muted-foreground">
-                                📋 {employee.hours_per_day}h/day + {employee.break_hours}h break
-                              </span>
-                            </>
-                          )}
-                        </div>
                         
-                        {/* Progress Bar - Work Summary Feature */}
-                        <div className="mt-2">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-muted-foreground">
-                              ทำงานสุทธิ: {Math.floor(employee.net_work_minutes / 60)}h {employee.net_work_minutes % 60}m / {employee.hours_per_day || 8}h
-                            </span>
-                            <span className="font-medium">{Math.floor(employee.progress_percent)}%</span>
+                        {/* Admin Action Buttons */}
+                        {isAdmin && (
+                          <div className="flex flex-col gap-2">
+                            {/* Grant OT / Cancel OT Button */}
+                            {hasApprovedOT ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                                onClick={() => handleCancelOTClick(employee)}
+                                disabled={cancelOTMutation.isPending}
+                              >
+                                <X className="h-4 w-4 mr-1" />
+                                ยกเลิก OT
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 border-green-300 hover:bg-green-50"
+                                onClick={() => handleGrantOTClick(employee)}
+                                disabled={grantOTMutation.isPending}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                ให้ OT
+                              </Button>
+                            )}
+                            
+                            {/* Check Out Button */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCheckoutClick(employee)}
+                              disabled={adminCheckout.isPending}
+                            >
+                              <LogOut className="h-4 w-4 mr-1" />
+                              Check Out
+                            </Button>
                           </div>
-                          <Progress 
-                            value={employee.progress_percent} 
-                            className={`h-2 ${employee.progress_percent >= 100 ? '[&>div]:bg-green-500' : ''}`}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-end gap-2">
-                        {getStatusBadge(employee.time_until_checkout, employee.employee_id)}
-                        <div className="text-right">
-                          <div className="text-sm font-semibold">
-                            {format(new Date(employee.expected_check_out), 'HH:mm')}
-                          </div>
-                          <div className={`text-xs ${
-                            employee.time_until_checkout < 0 
-                              ? 'text-destructive font-semibold'
-                              : employee.time_until_checkout <= 60
-                              ? 'text-orange-500 font-semibold'
-                              : 'text-muted-foreground'
-                          }`}>
-                            {employee.time_until_checkout < 0 ? 'OT ' : ''}
-                            {formatTimeRemaining(employee.time_until_checkout)}
-                          </div>
-                        </div>
-                        
-                        {/* Auto Checkout Time */}
-                        <div className="text-xs text-muted-foreground">
-                          ⏰ Auto: {format(new Date(employee.auto_checkout_at), 'HH:mm')}
-                        </div>
-                        
-                        {/* Grace Expiring Warning */}
-                        {employee.grace_expiring_soon && (
-                          <Badge variant="destructive" className="text-xs animate-pulse">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            ใกล้ Auto Checkout!
-                          </Badge>
                         )}
                       </div>
-                      {isAdmin && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleCheckoutClick(employee)}
-                          disabled={adminCheckout.isPending}
-                        >
-                          <LogOut className="h-4 w-4 mr-1" />
-                          Check Out
-                        </Button>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           ) : (
             <div className="text-center py-12">
@@ -610,6 +786,161 @@ export default function LiveTracking() {
             </Button>
             <Button onClick={handleConfirmCheckout} disabled={adminCheckout.isPending}>
               {adminCheckout.isPending ? 'Checking out...' : 'Confirm Check-Out'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Grant OT Dialog */}
+      <Dialog open={isOTDialogOpen} onOpenChange={setIsOTDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>🕐 ให้ OT ทันที</DialogTitle>
+            <DialogDescription>
+              อนุมัติ OT ให้พนักงานที่กำลังทำงานอยู่ - พนักงานจะได้รับแจ้งเตือนทาง LINE
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedEmployeeForOT && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">พนักงาน:</span>
+                  <span className="font-semibold">{selectedEmployeeForOT.employee_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">รหัส:</span>
+                  <Badge variant="outline">{selectedEmployeeForOT.employee_code}</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">เวลา Check-out ปกติ:</span>
+                  <span className="text-sm">{format(new Date(selectedEmployeeForOT.expected_check_out), 'HH:mm')}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>จำนวนชั่วโมง OT</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {[1, 2, 3, 4].map((h) => (
+                    <Button
+                      key={h}
+                      type="button"
+                      size="sm"
+                      variant={otHours === h ? 'default' : 'outline'}
+                      onClick={() => setOTHours(h)}
+                    >
+                      {h} ชม.
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0.5}
+                    max={8}
+                    step={0.5}
+                    value={otHours}
+                    onChange={(e) => setOTHours(parseFloat(e.target.value) || 2)}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">ชั่วโมง (0.5 - 8)</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ot-reason">เหตุผล (ไม่บังคับ)</Label>
+                <Textarea
+                  id="ot-reason"
+                  placeholder="เช่น งานด่วนจากลูกค้า, ปิดงาน Project..."
+                  value={otReason}
+                  onChange={(e) => setOTReason(e.target.value)}
+                  rows={2}
+                />
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                <p className="text-green-800">
+                  ✅ พนักงานจะสามารถทำงานต่อได้อีก <strong>{otHours} ชั่วโมง</strong> จากเวลา checkout ปกติ
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOTDialogOpen(false)} disabled={grantOTMutation.isPending}>
+              ยกเลิก
+            </Button>
+            <Button 
+              onClick={handleConfirmGrantOT} 
+              disabled={grantOTMutation.isPending || otHours < 0.5}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {grantOTMutation.isPending ? 'กำลังดำเนินการ...' : `ให้ OT ${otHours} ชม.`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel OT Dialog */}
+      <Dialog open={isCancelOTDialogOpen} onOpenChange={setIsCancelOTDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>⚠️ ยกเลิก OT</DialogTitle>
+            <DialogDescription>
+              ยืนยันการยกเลิก OT - พนักงานจะได้รับแจ้งเตือนทาง LINE
+            </DialogDescription>
+          </DialogHeader>
+          
+          {employeeToCancel && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">พนักงาน:</span>
+                  <span className="font-semibold">{employeeToCancel.employee_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">รหัส:</span>
+                  <Badge variant="outline">{employeeToCancel.employee_code}</Badge>
+                </div>
+                {otApprovedMap.get(employeeToCancel.employee_id) && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">OT ที่อนุมัติ:</span>
+                    <Badge className="bg-green-500">
+                      {otApprovedMap.get(employeeToCancel.employee_id)?.estimated_hours} ชม.
+                    </Badge>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason">เหตุผลที่ยกเลิก (ไม่บังคับ)</Label>
+                <Textarea
+                  id="cancel-reason"
+                  placeholder="เช่น งานเสร็จเร็วกว่าที่คาด, เปลี่ยนแผน..."
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  rows={2}
+                />
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+                <p className="text-orange-800">
+                  ⚠️ หลังยกเลิก พนักงานจะต้อง checkout ตามเวลาปกติ
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCancelOTDialogOpen(false)} disabled={cancelOTMutation.isPending}>
+              ยกเลิก
+            </Button>
+            <Button 
+              onClick={handleConfirmCancelOT} 
+              disabled={cancelOTMutation.isPending}
+              variant="destructive"
+            >
+              {cancelOTMutation.isPending ? 'กำลังดำเนินการ...' : 'ยืนยันยกเลิก OT'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -107,3 +107,9 @@ verify_jwt = false
 
 [functions.payroll-notification]
 verify_jwt = false
+
+[functions.instant-ot-grant]
+verify_jwt = true
+
+[functions.cancel-ot]
+verify_jwt = true
