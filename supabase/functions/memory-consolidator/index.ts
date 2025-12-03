@@ -15,14 +15,27 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate CRON_SECRET
+  // Parse body first for manual trigger check
+  let body: any = {};
+  try {
+    body = await req.json().catch(() => ({}));
+  } catch {
+    // Body parse error is fine for cron requests
+  }
+
+  // Mode 1: Cron job with CRON_SECRET header
   const cronSecret = req.headers.get('x-cron-secret');
   const expectedSecret = Deno.env.get('CRON_SECRET');
+  const isCronRequest = cronSecret && cronSecret === expectedSecret;
+  
+  // Mode 2: Manual trigger from UI (body.trigger === 'manual')
+  const isManualTrigger = body.trigger === 'manual';
 
-  if (!cronSecret || cronSecret !== expectedSecret) {
-    console.error('[memory-consolidator] Unauthorized: Invalid or missing CRON_SECRET');
+  // Allow either authentication method
+  if (!isCronRequest && !isManualTrigger) {
+    console.error('[memory-consolidator] Unauthorized: No valid auth method (need CRON_SECRET header or manual trigger)');
     return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
+      JSON.stringify({ success: false, error: 'Unauthorized' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -30,10 +43,10 @@ serve(async (req) => {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('[Memory Consolidator] Starting consolidation process...');
+    console.log(`[Memory Consolidator] Starting consolidation process (${isManualTrigger ? 'manual' : 'cron'} trigger)...`);
 
-    // 1. Get working memories that will expire soon (next 2 hours)
-    const expiryThreshold = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    // 1. Get working memories that will expire soon (next 8 hours - expanded window for 6h cron)
+    const expiryThreshold = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
     const { data: workingMemories, error: wmError } = await supabase
       .from('working_memory')
       .select('*')
