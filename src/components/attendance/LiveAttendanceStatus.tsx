@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Activity, Clock, UserCheck, UserX, Building2, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
 interface EmployeeStatus {
@@ -208,7 +207,7 @@ export default function LiveAttendanceStatus() {
             <div>
               <CardTitle className="text-base sm:text-lg">Employee Status</CardTitle>
               <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                Real-time attendance tracking • Last updated: {format(lastUpdate, 'HH:mm:ss')}
+                Real-time attendance tracking • Last updated: {formatInTimeZone(lastUpdate, 'Asia/Bangkok', 'HH:mm:ss')}
               </p>
             </div>
           </div>
@@ -272,7 +271,7 @@ export default function LiveAttendanceStatus() {
                       <TableCell>
                         {emp.lastCheckIn ? (
                           <div className="text-sm">
-                            {format(new Date(emp.lastCheckIn), 'HH:mm')}
+                            {formatInTimeZone(new Date(emp.lastCheckIn), 'Asia/Bangkok', 'HH:mm')}
                           </div>
                         ) : (
                           <span className="text-muted-foreground text-sm">-</span>
@@ -281,7 +280,7 @@ export default function LiveAttendanceStatus() {
                       <TableCell>
                         {emp.lastCheckOut ? (
                           <div className="text-sm">
-                            {format(new Date(emp.lastCheckOut), 'HH:mm')}
+                            {formatInTimeZone(new Date(emp.lastCheckOut), 'Asia/Bangkok', 'HH:mm')}
                           </div>
                         ) : emp.currentStatus === 'working' ? (
                           <Badge variant="outline" className="text-xs">
