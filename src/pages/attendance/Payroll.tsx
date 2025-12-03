@@ -916,8 +916,16 @@ export default function Payroll() {
         // Calculate scheduled work days using actual work_schedules
         const periodStart = parseISO(startDate);
         const periodEnd = parseISO(endDate);
+        const today = new Date();
+        
+        // Full month scheduled days (for pay calculation)
         const periodDays = eachDayOfInterval({ start: periodStart, end: periodEnd });
         const scheduledWorkDays = periodDays.filter(d => workingDaysSet.has(getDay(d))).length;
+        
+        // Scheduled days up to today only (for absent calculation)
+        const effectiveEndDate = periodEnd > today ? today : periodEnd;
+        const daysToDate = eachDayOfInterval({ start: periodStart, end: effectiveEndDate });
+        const scheduledWorkDaysToDate = daysToDate.filter(d => workingDaysSet.has(getDay(d))).length;
         
         // Calculate pay
         let grossPay = 0;
@@ -975,8 +983,8 @@ export default function Payroll() {
         
         const netPay = grossPay + totalAllowances - totalDeductions;
         
-        // Calculate absent days (scheduled - actual - leave)
-        const absentDays = Math.max(0, scheduledWorkDays - actualWorkDays - leaveDays);
+        // Calculate absent days (scheduled days TO DATE - actual - leave)
+        const absentDays = Math.max(0, scheduledWorkDaysToDate - actualWorkDays - leaveDays);
         
         // Upsert payroll record
         await supabase
