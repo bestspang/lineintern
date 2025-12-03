@@ -53,6 +53,19 @@ export default function LiveAttendanceStatus() {
 
       if (sessionsError) throw sessionsError;
 
+      // Fallback: Fetch today's attendance_logs for employees without work_sessions
+      const todayStart = `${todayBangkok}T00:00:00+07:00`;
+      const todayEnd = `${todayBangkok}T23:59:59+07:00`;
+      
+      const { data: attendanceLogs, error: logsError } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .gte('server_time', todayStart)
+        .lte('server_time', todayEnd)
+        .order('server_time', { ascending: true });
+
+      if (logsError) console.error('Attendance logs fetch error:', logsError);
+
       // Calculate status for each employee
       const employeeStatusMap: Record<string, EmployeeStatus> = {};
 
@@ -91,6 +104,31 @@ export default function LiveAttendanceStatus() {
         
         // Use net_work_minutes from work_sessions (already calculated)
         emp.totalMinutes = session.net_work_minutes || 0;
+      });
+
+      // Fallback: Process attendance_logs for employees without work_sessions
+      attendanceLogs?.forEach(log => {
+        if (!employeeStatusMap[log.employee_id]) return;
+        
+        const emp = employeeStatusMap[log.employee_id];
+        
+        // Only process if no work_session data exists for this employee
+        if (emp.currentStatus !== null) return;
+        
+        if (log.event_type === 'check_in') {
+          emp.lastCheckIn = log.server_time;
+          emp.currentStatus = 'working';
+        } else if (log.event_type === 'check_out') {
+          emp.lastCheckOut = log.server_time;
+          emp.currentStatus = 'off';
+          
+          // Calculate hours from check-in to check-out
+          if (emp.lastCheckIn) {
+            const checkInTime = new Date(emp.lastCheckIn).getTime();
+            const checkOutTime = new Date(log.server_time).getTime();
+            emp.totalMinutes = Math.floor((checkOutTime - checkInTime) / (1000 * 60));
+          }
+        }
       });
 
       return Object.values(employeeStatusMap);
