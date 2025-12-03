@@ -1620,9 +1620,9 @@ export default function Payroll() {
 
       {/* Main Content */}
       {currentPeriod && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6">
         {/* Employee Table */}
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex items-center gap-2">
               <Users className="h-5 w-5" />
