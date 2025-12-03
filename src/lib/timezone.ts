@@ -124,3 +124,22 @@ export function isBangkokToday(date: string | Date | null | undefined): boolean 
     return false;
   }
 }
+
+/**
+ * Get hours and minutes in Bangkok timezone from a date
+ * @param date - Date string or Date object (UTC)
+ * @returns Object with hours and minutes in Bangkok timezone, or null if invalid
+ */
+export function getBangkokHoursMinutes(date: string | Date | null | undefined): { hours: number; minutes: number } | null {
+  if (!date) return null;
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const bangkokTime = new Date(d.toLocaleString('en-US', { timeZone: BANGKOK_TIMEZONE }));
+    return {
+      hours: bangkokTime.getHours(),
+      minutes: bangkokTime.getMinutes()
+    };
+  } catch {
+    return null;
+  }
+}
