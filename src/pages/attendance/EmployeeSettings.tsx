@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard, AlertTriangle, Calendar } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -164,6 +164,12 @@ export default function EmployeeSettings() {
     bank_name: "",
     bank_account_number: "",
     bank_branch: "",
+    
+    // === Flexible Day-Off Settings ===
+    flexible_day_off_enabled: false,
+    flexible_days_per_week: 1,
+    flexible_advance_days_required: 1,
+    flexible_auto_approve: false,
   });
 
   // Payroll settings state (separate for clarity)
@@ -298,6 +304,12 @@ export default function EmployeeSettings() {
         bank_name: (employee as any).bank_name || "",
         bank_account_number: (employee as any).bank_account_number || "",
         bank_branch: (employee as any).bank_branch || "",
+        
+        // Flexible Day-Off Settings
+        flexible_day_off_enabled: (employee as any).flexible_day_off_enabled || false,
+        flexible_days_per_week: (employee as any).flexible_days_per_week || 1,
+        flexible_advance_days_required: (employee as any).flexible_advance_days_required || 1,
+        flexible_auto_approve: (employee as any).flexible_auto_approve || false,
       });
     }
   }, [employee]);
@@ -353,6 +365,12 @@ export default function EmployeeSettings() {
         bank_name: data.bank_name || null,
         bank_account_number: data.bank_account_number || null,
         bank_branch: data.bank_branch || null,
+        
+        // Flexible Day-Off Settings
+        flexible_day_off_enabled: data.flexible_day_off_enabled,
+        flexible_days_per_week: data.flexible_days_per_week,
+        flexible_advance_days_required: data.flexible_advance_days_required,
+        flexible_auto_approve: data.flexible_auto_approve,
       };
 
       // Handle fields based on working_time_type
@@ -1494,7 +1512,117 @@ export default function EmployeeSettings() {
           </CardContent>
         </Card>
 
-        {/* 9. Bank Account Info Card */}
+        {/* 9. Flexible Day-Off Settings Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              วันหยุดยืดหยุ่น (Flexible Day-Off)
+            </CardTitle>
+            <CardDescription>
+              สำหรับพนักงานที่เลือกวันหยุดประจำสัปดาห์ได้เอง (เช่น แทนที่จะหยุด เสาร์-อาทิตย์ สามารถเลือกวันหยุดแต่ละสัปดาห์ได้)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Enable Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+              <div className="space-y-0.5">
+                <Label htmlFor="flexible_day_off_enabled" className="font-medium">
+                  เปิดใช้งานวันหยุดยืดหยุ่น
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  พนักงานสามารถเลือกวันหยุดของตัวเองได้ในแต่ละสัปดาห์
+                </p>
+              </div>
+              <Switch
+                id="flexible_day_off_enabled"
+                checked={formData.flexible_day_off_enabled}
+                onCheckedChange={(checked) => setFormData({ ...formData, flexible_day_off_enabled: checked })}
+              />
+            </div>
+
+            {formData.flexible_day_off_enabled && (
+              <div className="space-y-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                {/* Days per Week */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="flexible_days_per_week">จำนวนวันหยุด/สัปดาห์</Label>
+                    <Select
+                      value={formData.flexible_days_per_week.toString()}
+                      onValueChange={(value) => setFormData({ ...formData, flexible_days_per_week: parseInt(value) })}
+                    >
+                      <SelectTrigger id="flexible_days_per_week">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 วัน</SelectItem>
+                        <SelectItem value="2">2 วัน</SelectItem>
+                        <SelectItem value="3">3 วัน</SelectItem>
+                        <SelectItem value="4">4 วัน</SelectItem>
+                        <SelectItem value="5">5 วัน</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      จำนวนวันที่พนักงานสามารถเลือกหยุดได้ในแต่ละสัปดาห์
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="flexible_advance_days_required">แจ้งล่วงหน้าอย่างน้อย (วัน)</Label>
+                    <Select
+                      value={formData.flexible_advance_days_required.toString()}
+                      onValueChange={(value) => setFormData({ ...formData, flexible_advance_days_required: parseInt(value) })}
+                    >
+                      <SelectTrigger id="flexible_advance_days_required">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">ไม่ต้องแจ้งล่วงหน้า (วันนี้ได้)</SelectItem>
+                        <SelectItem value="1">1 วัน (พรุ่งนี้ขึ้นไป)</SelectItem>
+                        <SelectItem value="2">2 วัน (มะรืนขึ้นไป)</SelectItem>
+                        <SelectItem value="3">3 วัน</SelectItem>
+                        <SelectItem value="7">7 วัน (สัปดาห์หน้า)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      ต้องแจ้งวันหยุดล่วงหน้ากี่วัน
+                    </p>
+                  </div>
+                </div>
+
+                {/* Auto Approve */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="flexible_auto_approve" className="font-medium">
+                      อนุมัติอัตโนมัติ
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      อนุมัติวันหยุดทันทีโดยไม่ต้องรอ Admin
+                    </p>
+                  </div>
+                  <Switch
+                    id="flexible_auto_approve"
+                    checked={formData.flexible_auto_approve}
+                    onCheckedChange={(checked) => setFormData({ ...formData, flexible_auto_approve: checked })}
+                  />
+                </div>
+
+                {/* Summary */}
+                <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+                  <AlertDescription className="text-sm">
+                    <strong>สรุป:</strong> พนักงานสามารถเลือกหยุด {formData.flexible_days_per_week} วัน/สัปดาห์, 
+                    {formData.flexible_advance_days_required === 0 
+                      ? ' เลือกวันเดียวกันได้' 
+                      : ` ต้องแจ้งล่วงหน้า ${formData.flexible_advance_days_required} วัน`}
+                    {formData.flexible_auto_approve ? ', อนุมัติอัตโนมัติ' : ', ต้องรอ Admin อนุมัติ'}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 10. Bank Account Info Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
