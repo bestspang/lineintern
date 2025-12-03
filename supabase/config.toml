@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.flexible-day-off-approval]
 verify_jwt = true
+
+[functions.flexible-day-off-reminder]
+verify_jwt = false

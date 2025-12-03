@@ -1056,6 +1056,259 @@ async function handleOTRequestCommand(
 }
 
 // =============================
+// FLEXIBLE DAY-OFF REQUEST HANDLER (for employees)
+// =============================
+
+interface DayOffRequestResult {
+  detected: boolean;
+  message: string;
+}
+
+async function handleDayOffRequestCommand(
+  messageText: string,
+  user: any,
+  lineUserId: string,
+  locale: 'en' | 'th'
+): Promise<DayOffRequestResult> {
+  // Pattern matching for day-off request commands
+  // Thai: "/dayoff [วันที่]", "/วันหยุด [วันที่]", "/ขอหยุด [วันที่]"
+  // English: "/dayoff [date]"
+  const dayOffPatterns = [
+    /^\/dayoff\s*(.*)$/i,
+    /^\/วันหยุด\s*(.*)$/i,
+    /^\/ขอหยุด\s*(.*)$/i,
+    /^\/flexdayoff\s*(.*)$/i,
+  ];
+
+  let dateInput = '';
+  for (const pattern of dayOffPatterns) {
+    const match = messageText.trim().match(pattern);
+    if (match) {
+      dateInput = match[1].trim();
+      break;
+    }
+  }
+
+  // Check if command was matched (even without date)
+  if (!dayOffPatterns.some(p => p.test(messageText.trim()))) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[handleDayOffRequestCommand] Processing day-off request for user ${user.id} with date input: "${dateInput}"`);
+
+  try {
+    // Check if user is linked to an employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('*, branch:branches(name)')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (empError || !employee) {
+      console.log('[handleDayOffRequestCommand] Employee not found');
+      const message = locale === 'th'
+        ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียน'
+        : 'Sorry, your employee record is not found.\n\nPlease contact HR to register.';
+      return { detected: true, message };
+    }
+
+    // Check if flexible day-off is enabled for this employee
+    if (!employee.flexible_day_off_enabled) {
+      const message = locale === 'th'
+        ? '❌ คุณยังไม่ได้เปิดใช้งานวันหยุดยืดหยุ่น\n\nกรุณาติดต่อ HR เพื่อเปิดใช้งาน'
+        : '❌ Flexible day-off is not enabled for you.\n\nPlease contact HR to enable it.';
+      return { detected: true, message };
+    }
+
+    // If no date provided, show usage
+    if (!dateInput) {
+      const message = locale === 'th'
+        ? `📅 วิธีใช้คำสั่งขอวันหยุดยืดหยุ่น:\n\n` +
+          `/dayoff พรุ่งนี้\n` +
+          `/dayoff มะรืน\n` +
+          `/dayoff 2024-12-10\n` +
+          `/dayoff 10 ธ.ค.\n\n` +
+          `💡 คุณมีสิทธิ์หยุด ${employee.flexible_days_per_week || 1} วัน/สัปดาห์`
+        : `📅 How to use flexible day-off:\n\n` +
+          `/dayoff tomorrow\n` +
+          `/dayoff 2024-12-10\n\n` +
+          `💡 You have ${employee.flexible_days_per_week || 1} day(s) per week`;
+      return { detected: true, message };
+    }
+
+    // Parse date
+    const parsedDate = parseDateInput(dateInput);
+    if (!parsedDate) {
+      const message = locale === 'th'
+        ? `❌ ไม่เข้าใจรูปแบบวันที่ "${dateInput}"\n\n` +
+          `ตัวอย่าง:\n` +
+          `• พรุ่งนี้\n` +
+          `• มะรืน\n` +
+          `• 2024-12-10\n` +
+          `• 10 ธ.ค.`
+        : `❌ Could not parse date "${dateInput}"\n\n` +
+          `Examples:\n` +
+          `• tomorrow\n` +
+          `• 2024-12-10`;
+      return { detected: true, message };
+    }
+
+    const dayOffDateStr = getBangkokDateString(parsedDate);
+    console.log(`[handleDayOffRequestCommand] Parsed date: ${dayOffDateStr}`);
+
+    // Call the flexible-day-off-request edge function
+    const { data, error } = await supabase.functions.invoke('flexible-day-off-request', {
+      body: {
+        employee_id: employee.id,
+        day_off_date: dayOffDateStr,
+      }
+    });
+
+    if (error) {
+      console.error('[handleDayOffRequestCommand] Error calling flexible-day-off-request:', error);
+      const message = locale === 'th'
+        ? `❌ เกิดข้อผิดพลาด: ${error.message || 'กรุณาลองใหม่'}`
+        : `❌ Error: ${error.message || 'Please try again'}`;
+      return { detected: true, message };
+    }
+
+    if (!data?.success) {
+      console.error('[handleDayOffRequestCommand] Request failed:', data?.error);
+      const errorMap: Record<string, { th: string; en: string }> = {
+        'Weekly quota exceeded': {
+          th: '❌ คุณใช้วันหยุดยืดหยุ่นครบโควต้าประจำสัปดาห์แล้ว',
+          en: '❌ You have used all your flexible day-off quota this week'
+        },
+        'Already requested for this date': {
+          th: '❌ คุณได้ขอวันหยุดวันนี้ไปแล้ว',
+          en: '❌ You have already requested this date'
+        },
+        'Flexible day-off is not enabled for this employee': {
+          th: '❌ คุณยังไม่ได้เปิดใช้งานวันหยุดยืดหยุ่น',
+          en: '❌ Flexible day-off is not enabled for you'
+        },
+      };
+      const errMsg = errorMap[data?.error] || { th: data?.error || 'กรุณาลองใหม่', en: data?.error || 'Please try again' };
+      return { detected: true, message: locale === 'th' ? errMsg.th : errMsg.en };
+    }
+
+    // Success message
+    const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const formattedDate = `${parsedDate.getDate()} ${thaiMonths[parsedDate.getMonth()]} ${parsedDate.getFullYear() + 543}`;
+    
+    const message = data.auto_approved
+      ? (locale === 'th'
+          ? `✅ อนุมัติวันหยุดยืดหยุ่นอัตโนมัติ\n\n📅 วันหยุด: ${formattedDate}\n\n✨ อนุมัติเรียบร้อยแล้ว`
+          : `✅ Flexible day-off auto-approved\n\n📅 Day off: ${formattedDate}\n\n✨ Approved automatically`)
+      : (locale === 'th'
+          ? `📤 ส่งคำขอวันหยุดยืดหยุ่นแล้ว\n\n📅 วันที่ขอหยุด: ${formattedDate}\n\n⏳ รอการอนุมัติจาก Admin...`
+          : `📤 Flexible day-off request submitted\n\n📅 Requested date: ${formattedDate}\n\n⏳ Awaiting admin approval...`);
+
+    console.log('[handleDayOffRequestCommand] Day-off request submitted successfully');
+    return { detected: true, message };
+
+  } catch (error) {
+    console.error('[handleDayOffRequestCommand] Error:', error);
+    const message = locale === 'th'
+      ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่'
+      : 'System error. Please try again.';
+    return { detected: true, message };
+  }
+}
+
+// Helper function to parse date input (Thai/English)
+function parseDateInput(input: string): Date | null {
+  const now = getBangkokNow();
+  const lowerInput = input.toLowerCase().trim();
+
+  // Thai/English relative dates
+  if (['พรุ่งนี้', 'tomorrow', 'tmr'].includes(lowerInput)) {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    return tomorrow;
+  }
+
+  if (['มะรืน', 'มะรืนนี้', 'วันมะรืน'].includes(lowerInput)) {
+    const dayAfterTomorrow = new Date(now);
+    dayAfterTomorrow.setDate(now.getDate() + 2);
+    return dayAfterTomorrow;
+  }
+
+  // ISO date format (2024-12-10)
+  const isoMatch = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+  }
+
+  // Thai date format (10 ธ.ค., 10 ธันวาคม)
+  const thaiMonthMap: Record<string, number> = {
+    'ม.ค.': 0, 'มกราคม': 0, 'มกรา': 0,
+    'ก.พ.': 1, 'กุมภาพันธ์': 1, 'กุมภา': 1,
+    'มี.ค.': 2, 'มีนาคม': 2, 'มีนา': 2,
+    'เม.ย.': 3, 'เมษายน': 3, 'เมษา': 3,
+    'พ.ค.': 4, 'พฤษภาคม': 4, 'พฤษภา': 4,
+    'มิ.ย.': 5, 'มิถุนายน': 5, 'มิถุนา': 5,
+    'ก.ค.': 6, 'กรกฎาคม': 6, 'กรกฎา': 6,
+    'ส.ค.': 7, 'สิงหาคม': 7, 'สิงหา': 7,
+    'ก.ย.': 8, 'กันยายน': 8, 'กันยา': 8,
+    'ต.ค.': 9, 'ตุลาคม': 9, 'ตุลา': 9,
+    'พ.ย.': 10, 'พฤศจิกายน': 10, 'พฤศจิกา': 10,
+    'ธ.ค.': 11, 'ธันวาคม': 11, 'ธันวา': 11,
+  };
+
+  const thaiDateMatch = input.match(/^(\d{1,2})\s*([ก-์.]+)(?:\s*(\d{4}))?$/);
+  if (thaiDateMatch) {
+    const day = parseInt(thaiDateMatch[1]);
+    const monthStr = thaiDateMatch[2];
+    const year = thaiDateMatch[3] ? parseInt(thaiDateMatch[3]) : now.getFullYear();
+    
+    const month = thaiMonthMap[monthStr];
+    if (month !== undefined) {
+      // Handle Buddhist Era year
+      const adjustedYear = year > 2500 ? year - 543 : year;
+      return new Date(adjustedYear, month, day);
+    }
+  }
+
+  // English date formats
+  const engMonthMap: Record<string, number> = {
+    'jan': 0, 'january': 0,
+    'feb': 1, 'february': 1,
+    'mar': 2, 'march': 2,
+    'apr': 3, 'april': 3,
+    'may': 4,
+    'jun': 5, 'june': 5,
+    'jul': 6, 'july': 6,
+    'aug': 7, 'august': 7,
+    'sep': 8, 'september': 8,
+    'oct': 9, 'october': 9,
+    'nov': 10, 'november': 10,
+    'dec': 11, 'december': 11,
+  };
+
+  const engDateMatch = lowerInput.match(/^(\d{1,2})\s*([a-z]+)(?:\s*(\d{4}))?$/);
+  if (engDateMatch) {
+    const day = parseInt(engDateMatch[1]);
+    const monthStr = engDateMatch[2];
+    const year = engDateMatch[3] ? parseInt(engDateMatch[3]) : now.getFullYear();
+    
+    const month = engMonthMap[monthStr];
+    if (month !== undefined) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Try native Date parsing as fallback
+  const parsed = new Date(input);
+  if (!isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return null;
+}
+
+// =============================
 // OT APPROVAL DETECTION
 // =============================
 
@@ -7113,6 +7366,20 @@ async function handleMessageEvent(event: LineEvent) {
       }
     }
     
+    // Flexible Day-Off Request Command Detection (DM only)
+    const dayOffResult = await handleDayOffRequestCommand(event.message.text, user, lineUserId, attendanceLocale);
+    
+    if (dayOffResult.detected) {
+      console.log(`[handleMessageEvent] Detected day-off request command from user ${user.id}`);
+      try {
+        await replyToLine(event.replyToken, dayOffResult.message);
+        console.log('[handleMessageEvent] Sent day-off request confirmation');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending day-off request confirmation:', error);
+      }
+    }
+    
     // Welcome message with Quick Reply for unrecognized commands in DM
     const menuLocale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
     const lowerText = event.message.text.toLowerCase().trim();
@@ -7201,6 +7468,21 @@ async function handleMessageEvent(event: LineEvent) {
           : 'Please request OT via private message with the bot. 🙏\n\nFor privacy protection.';
         await replyToLine(event.replyToken, message);
         console.log('[handleMessageEvent] Redirected group OT command to DM');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending redirect message:', error);
+      }
+    }
+    
+    // Redirect flexible day-off commands in groups to DM
+    const dayOffCommands = ['/dayoff', '/วันหยุด', '/ขอหยุด', '/flexdayoff'];
+    if (dayOffCommands.some(cmd => messageTextLower.startsWith(cmd))) {
+      try {
+        const message = locale === 'th' 
+          ? 'กรุณาขอวันหยุดยืดหยุ่นผ่านแชทส่วนตัวกับบอทเท่านั้นครับ 🙏\n\nเพื่อความปลอดภัยของข้อมูลส่วนตัว\n\n---\n\nPlease request flexible day-off via private message with the bot. 🙏\n\nFor privacy protection.'
+          : 'Please request flexible day-off via private message with the bot. 🙏\n\nFor privacy protection.';
+        await replyToLine(event.replyToken, message);
+        console.log('[handleMessageEvent] Redirected group day-off command to DM');
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending redirect message:', error);
