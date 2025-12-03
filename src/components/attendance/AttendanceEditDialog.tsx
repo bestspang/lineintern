@@ -83,24 +83,7 @@ export function AttendanceEditDialog({
   const [workHours, setWorkHours] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   
-  // Early return if date is invalid - prevents "Invalid time value" error
-  if (!isValidDate) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>ข้อมูลไม่ถูกต้อง</DialogTitle>
-            <DialogDescription>กรุณาเลือกวันที่จากปฏิทินก่อนแก้ไขข้อมูล</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>ปิด</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-  
-  // Fetch existing adjustment
+  // Fetch existing adjustment (use enabled to prevent fetch when date invalid)
   const { data: existingAdjustment, isLoading } = useQuery({
     queryKey: ['attendance-adjustment', employeeId, date],
     queryFn: async () => {
@@ -114,7 +97,7 @@ export function AttendanceEditDialog({
       if (error) throw error;
       return data;
     },
-    enabled: open && !!employeeId && !!date,
+    enabled: open && !!employeeId && isValidDate,
   });
   
   // Fetch audit history for this date
@@ -135,7 +118,7 @@ export function AttendanceEditDialog({
         log.metadata && (log.metadata as any).adjustment_date === date
       ) || [];
     },
-    enabled: open && !!employeeId && !!date,
+    enabled: open && !!employeeId && isValidDate,
   });
   
   // Initialize form when dialog opens or data changes
@@ -311,6 +294,23 @@ export function AttendanceEditDialog({
       toast.error(error.message || 'เกิดข้อผิดพลาด');
     },
   });
+  
+  // Early return if date is invalid - MUST be after ALL hooks
+  if (!isValidDate) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>ข้อมูลไม่ถูกต้อง</DialogTitle>
+            <DialogDescription>กรุณาเลือกวันที่จากปฏิทินก่อนแก้ไขข้อมูล</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>ปิด</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   
   const formattedDate = (() => {
     try {
