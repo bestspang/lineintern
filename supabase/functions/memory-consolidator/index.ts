@@ -43,63 +43,124 @@ serve(async (req) => {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[Memory Consolidator] Starting consolidation process (${isManualTrigger ? 'manual' : 'cron'} trigger)...`);
+    console.log(`\n========== MEMORY CONSOLIDATOR START ==========`);
+    console.log(`[Memory Consolidator] Trigger type: ${isManualTrigger ? 'MANUAL' : 'CRON'}`);
+    console.log(`[Memory Consolidator] Timestamp: ${new Date().toISOString()}`);
 
-    // Phase 1: Age-based selection instead of expiry-based
-    // - High Priority (importance >= 0.9): Consolidate immediately
-    // - Normal Priority (importance >= 0.6): Wait 1 hour before consolidating
-    // - Low Priority (importance < 0.6): Let expire naturally (24h)
+    let workingMemories: any[] = [];
     
-    const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
-    
-    // Get high-priority memories (immediate consolidation)
-    const { data: highPriorityMemories } = await supabase
-      .from('working_memory')
-      .select('*')
-      .gte('importance_score', 0.9)
-      .gt('expires_at', new Date().toISOString()) // Not expired
-      .order('importance_score', { ascending: false })
-      .limit(20);
-    
-    // Get normal-priority memories (older than 1 hour)
-    const { data: normalPriorityMemories } = await supabase
-      .from('working_memory')
-      .select('*')
-      .gte('importance_score', 0.6)
-      .lt('importance_score', 0.9)
-      .lt('created_at', oneHourAgo) // At least 1 hour old
-      .gt('expires_at', new Date().toISOString()) // Not expired
-      .order('importance_score', { ascending: false })
-      .limit(30);
-    
-    // Combine and deduplicate
-    const allMemories = [...(highPriorityMemories || []), ...(normalPriorityMemories || [])];
-    const workingMemories = await deduplicateWorkingMemories(supabase, allMemories);
+    if (isManualTrigger) {
+      // MANUAL MODE: Process ALL working memories older than 30 minutes regardless of importance
+      const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      
+      console.log(`[Memory Consolidator] MANUAL MODE: Processing ALL memories older than ${thirtyMinsAgo}`);
+      
+      const { data: allMemories, error: allError } = await supabase
+        .from('working_memory')
+        .select('*')
+        .lt('created_at', thirtyMinsAgo)
+        .gt('expires_at', new Date().toISOString()) // Not expired
+        .order('importance_score', { ascending: false })
+        .limit(100);
+      
+      if (allError) {
+        console.error('[Memory Consolidator] Error fetching all memories:', allError);
+      }
+      
+      console.log(`[Memory Consolidator] MANUAL: Found ${allMemories?.length || 0} memories older than 30 mins`);
+      
+      // Also get any high-priority memories regardless of age
+      const { data: highPriority } = await supabase
+        .from('working_memory')
+        .select('*')
+        .gte('importance_score', 0.7)
+        .gt('expires_at', new Date().toISOString())
+        .limit(50);
+      
+      console.log(`[Memory Consolidator] MANUAL: Found ${highPriority?.length || 0} high-priority memories (any age)`);
+      
+      // Combine and deduplicate
+      const combined = [...(allMemories || []), ...(highPriority || [])];
+      workingMemories = await deduplicateWorkingMemories(supabase, combined);
+      
+    } else {
+      // CRON MODE: Use priority-based thresholds
+      // - High Priority (importance >= 0.7): Consolidate immediately
+      // - Normal Priority (importance >= 0.4): Wait 1 hour before consolidating
+      // - Low Priority (importance < 0.4): Let expire naturally (24h)
+      
+      const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+      
+      console.log(`[Memory Consolidator] CRON MODE: High priority >= 0.7, Normal priority >= 0.4 (after 1h)`);
+      
+      // Get high-priority memories (immediate consolidation) - LOWERED from 0.9 to 0.7
+      const { data: highPriorityMemories, error: highError } = await supabase
+        .from('working_memory')
+        .select('*')
+        .gte('importance_score', 0.7)
+        .gt('expires_at', new Date().toISOString())
+        .order('importance_score', { ascending: false })
+        .limit(20);
+      
+      if (highError) {
+        console.error('[Memory Consolidator] Error fetching high-priority:', highError);
+      }
+      
+      console.log(`[Memory Consolidator] High Priority (>=0.7): ${highPriorityMemories?.length || 0} memories`);
+      
+      // Get normal-priority memories (older than 1 hour) - LOWERED from 0.6 to 0.4
+      const { data: normalPriorityMemories, error: normalError } = await supabase
+        .from('working_memory')
+        .select('*')
+        .gte('importance_score', 0.4)
+        .lt('importance_score', 0.7)
+        .lt('created_at', oneHourAgo)
+        .gt('expires_at', new Date().toISOString())
+        .order('importance_score', { ascending: false })
+        .limit(30);
+      
+      if (normalError) {
+        console.error('[Memory Consolidator] Error fetching normal-priority:', normalError);
+      }
+      
+      console.log(`[Memory Consolidator] Normal Priority (>=0.4, >1h old): ${normalPriorityMemories?.length || 0} memories`);
+      
+      // Combine and deduplicate
+      const allMemories = [...(highPriorityMemories || []), ...(normalPriorityMemories || [])];
+      workingMemories = await deduplicateWorkingMemories(supabase, allMemories);
+    }
 
-    console.log(`[Memory Consolidator] Found ${workingMemories?.length || 0} working memories to evaluate (high: ${highPriorityMemories?.length || 0}, normal: ${normalPriorityMemories?.length || 0})`);
+    console.log(`[Memory Consolidator] Total memories to evaluate: ${workingMemories?.length || 0}`);
+    
     if (workingMemories && workingMemories.length > 0) {
-      console.log(`[Memory Consolidator] Sample memories:`, 
-        workingMemories.slice(0, 3).map(m => ({
-          type: m.memory_type,
-          importance: m.importance_score,
-          age_hours: ((Date.now() - new Date(m.created_at).getTime()) / (1000 * 60 * 60)).toFixed(1),
-          content: m.content.substring(0, 80) + '...'
-        }))
-      );
+      console.log(`[Memory Consolidator] Memory breakdown:`);
+      workingMemories.forEach((m, i) => {
+        const ageHours = ((Date.now() - new Date(m.created_at).getTime()) / (1000 * 60 * 60)).toFixed(1);
+        console.log(`  ${i + 1}. [${m.memory_type}] importance=${m.importance_score.toFixed(2)}, age=${ageHours}h, content="${m.content.substring(0, 60)}..."`);
+      });
+    } else {
+      console.log(`[Memory Consolidator] No memories to process`);
     }
 
     let consolidated = 0;
+    let discarded = 0;
     let deleted = 0;
 
     for (const wm of workingMemories || []) {
       try {
+        console.log(`\n--- Processing memory ${wm.id.substring(0, 8)}... ---`);
+        console.log(`  Type: ${wm.memory_type}, Importance: ${wm.importance_score}`);
+        
         // Use AI to decide if this should become long-term memory
         const decision = await decideConsolidation(wm);
 
         if (decision.shouldConsolidate) {
-          // Create or update long-term memory
+          console.log(`  → CONSOLIDATING to long-term memory (category: ${decision.category})`);
           await consolidateToLongTerm(supabase, wm, decision);
           consolidated++;
+        } else {
+          console.log(`  → DISCARDING (not worth keeping)`);
+          discarded++;
         }
 
         // Delete working memory after processing
@@ -111,12 +172,15 @@ serve(async (req) => {
     }
 
     // 2. Merge similar long-term memories
+    console.log(`\n--- Merging similar memories... ---`);
     await mergeSimilarMemories(supabase);
 
     // 3. Update thread summaries
+    console.log(`\n--- Updating thread summaries... ---`);
     await updateThreadSummaries(supabase);
 
-    console.log(`[Memory Consolidator] Completed: ${consolidated} consolidated, ${deleted} deleted`);
+    console.log(`\n========== MEMORY CONSOLIDATOR COMPLETE ==========`);
+    console.log(`[Memory Consolidator] Results: ${consolidated} consolidated, ${discarded} discarded, ${deleted} deleted from working memory`);
 
     return new Response(
       JSON.stringify({
@@ -124,6 +188,7 @@ serve(async (req) => {
         stats: {
           evaluated: workingMemories?.length || 0,
           consolidated,
+          discarded,
           deleted,
         },
       }),
@@ -174,9 +239,9 @@ Respond in JSON format only (no markdown):
 
     if (!response.ok) {
       console.error('[Memory Consolidator] AI API error:', await response.text());
-      // Fallback: consolidate high-importance memories anyway
-      if (workingMemory.importance_score >= 0.8) {
-        console.log('[Memory Consolidator] Fallback: consolidating high-importance memory despite API error');
+      // Fallback: consolidate memories with importance >= 0.5 (LOWERED from 0.8)
+      if (workingMemory.importance_score >= 0.5) {
+        console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5) despite API error');
         return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
       }
       return { shouldConsolidate: false, keywords: [], category: 'context' };
@@ -185,6 +250,8 @@ Respond in JSON format only (no markdown):
     const data = await response.json();
     let content = data.choices[0].message.content;
     
+    console.log(`[Memory Consolidator] Raw AI response: ${content.substring(0, 150)}...`);
+    
     // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
     content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
     
@@ -192,9 +259,9 @@ Respond in JSON format only (no markdown):
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error('[Memory Consolidator] No JSON found in AI response:', content.substring(0, 200));
-      // Fallback for high-importance memories
-      if (workingMemory.importance_score >= 0.8) {
-        console.log('[Memory Consolidator] Fallback: consolidating high-importance memory (no JSON found)');
+      // Fallback for memories with importance >= 0.5 (LOWERED from 0.8)
+      if (workingMemory.importance_score >= 0.5) {
+        console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5, no JSON found)');
         return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
       }
       return { shouldConsolidate: false, keywords: [], category: 'context' };
@@ -206,9 +273,9 @@ Respond in JSON format only (no markdown):
     return result;
   } catch (err) {
     console.error('[Memory Consolidator] Error calling AI:', err);
-    // Fallback: consolidate high-importance memories even on parse error
-    if (workingMemory.importance_score >= 0.8) {
-      console.log('[Memory Consolidator] Fallback: consolidating high-importance memory despite error');
+    // Fallback: consolidate memories with importance >= 0.5 (LOWERED from 0.8)
+    if (workingMemory.importance_score >= 0.5) {
+      console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5) despite error');
       return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
     }
     return { shouldConsolidate: false, keywords: [], category: 'context' };
@@ -250,9 +317,11 @@ async function consolidateToLongTerm(supabase: any, workingMemory: any, decision
   }
 
   if (shouldCreateNew) {
-    // Create new long-term memory
-    const { error } = await supabase.from('memory_items').insert({
-      scope: workingMemory.user_id ? 'user' : 'group',
+    // Create new long-term memory with scope=group for group-based memories
+    const memoryScope = workingMemory.group_id ? 'group' : (workingMemory.user_id ? 'user' : 'global');
+    
+    const { data: newMemory, error } = await supabase.from('memory_items').insert({
+      scope: memoryScope,
       group_id: workingMemory.group_id,
       user_id: workingMemory.user_id,
       title: workingMemory.content.substring(0, 100),
@@ -264,10 +333,13 @@ async function consolidateToLongTerm(supabase: any, workingMemory: any, decision
       keywords: decision.keywords,
       related_thread_ids: workingMemory.conversation_thread_id ? [workingMemory.conversation_thread_id] : [],
       last_reinforced_at: new Date().toISOString(),
-    });
+    }).select().single();
 
-    if (error) throw error;
-    console.log(`[Memory Consolidator] Created new long-term memory`);
+    if (error) {
+      console.error(`[Memory Consolidator] Error creating memory:`, error);
+      throw error;
+    }
+    console.log(`[Memory Consolidator] Created new long-term memory: ${newMemory?.id} (scope: ${memoryScope}, group: ${workingMemory.group_id})`);
   }
 }
 
@@ -315,6 +387,8 @@ async function mergeSimilarMemories(supabase: any) {
 
   if (merged > 0) {
     console.log(`[Memory Consolidator] Merged ${merged} similar memories`);
+  } else {
+    console.log(`[Memory Consolidator] No similar memories to merge`);
   }
 }
 
@@ -327,6 +401,8 @@ async function updateThreadSummaries(supabase: any) {
     .gte('last_message_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .is('summary', null)
     .limit(20);
+
+  console.log(`[Memory Consolidator] Found ${threads?.length || 0} threads needing summary`);
 
   for (const thread of threads || []) {
     if (thread.message_count >= 5) {
@@ -433,5 +509,6 @@ async function deduplicateWorkingMemories(supabase: any, memories: any[]): Promi
     }
   }
   
+  console.log(`[Memory Consolidator] After deduplication: ${seen.size} unique memories`);
   return Array.from(seen.values());
 }
