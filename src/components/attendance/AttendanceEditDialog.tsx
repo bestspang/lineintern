@@ -53,12 +53,13 @@ interface AttendanceEditDialogProps {
 
 const STATUS_OPTIONS = [
   { value: 'present', label: 'มาทำงาน', color: 'bg-emerald-500' },
-  { value: 'day_off', label: 'วันหยุดพิเศษ', color: 'bg-gray-400' },
+  { value: 'regular_weekend', label: 'วันหยุดประจำสัปดาห์', color: 'bg-slate-400' },
+  { value: 'day_off', label: 'วันหยุดพิเศษ', color: 'bg-gray-500' },
+  { value: 'holiday', label: 'วันหยุดนักขัตฤกษ์', color: 'bg-violet-400' },
   { value: 'vacation', label: 'ลาพักร้อน', color: 'bg-sky-500' },
   { value: 'sick', label: 'ลาป่วย', color: 'bg-amber-500' },
   { value: 'personal', label: 'ลากิจ', color: 'bg-violet-500' },
   { value: 'absent', label: 'ขาดงาน', color: 'bg-red-500' },
-  { value: 'holiday', label: 'วันหยุดนักขัตฤกษ์', color: 'bg-violet-400' },
 ];
 
 export function AttendanceEditDialog({
