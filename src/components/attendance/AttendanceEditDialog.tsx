@@ -72,6 +72,9 @@ export function AttendanceEditDialog({
 }: AttendanceEditDialogProps) {
   const queryClient = useQueryClient();
   
+  // Validate date format (yyyy-MM-dd)
+  const isValidDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  
   // Form state
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [checkInTime, setCheckInTime] = useState<string>('');
@@ -79,6 +82,23 @@ export function AttendanceEditDialog({
   const [otHours, setOtHours] = useState<string>('0');
   const [workHours, setWorkHours] = useState<string>('');
   const [reason, setReason] = useState<string>('');
+  
+  // Early return if date is invalid - prevents "Invalid time value" error
+  if (!isValidDate) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>ข้อมูลไม่ถูกต้อง</DialogTitle>
+            <DialogDescription>กรุณาเลือกวันที่จากปฏิทินก่อนแก้ไขข้อมูล</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>ปิด</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   
   // Fetch existing adjustment
   const { data: existingAdjustment, isLoading } = useQuery({
@@ -306,7 +326,7 @@ export function AttendanceEditDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            แก้ไขข้อมูลวันที่ {format(parseISO(date), 'd MMM', { locale: th })}
+            แก้ไขข้อมูลวันที่ {formattedDate.split(' ').slice(0, 2).join(' ')}
           </DialogTitle>
           <DialogDescription>
             {employeeName} • {formattedDate}
