@@ -10,6 +10,76 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Phase 5: Valid categories that match the database constraint
+const VALID_CATEGORIES = [
+  // Original categories
+  'trait', 'preference', 'topic', 'project', 'context', 'relationship', 'meta',
+  // Personal info categories
+  'name', 'birthday', 'hobby', 'habit', 'life_event', 'food_preference', 'work_info', 'skill',
+  // Business categories
+  'decision', 'policy', 'task', 'metric', 'fact',
+  // Generic fallback
+  'general'
+];
+
+// Map unknown categories to valid ones
+function validateCategory(category: string): string {
+  if (!category) return 'general';
+  
+  const normalized = category.toLowerCase().trim();
+  
+  // Direct match
+  if (VALID_CATEGORIES.includes(normalized)) {
+    return normalized;
+  }
+  
+  // Map common variations
+  const categoryMap: Record<string, string> = {
+    'information': 'fact',
+    'data': 'fact',
+    'note': 'fact',
+    'notes': 'fact',
+    'personal': 'trait',
+    'person': 'trait',
+    'work': 'work_info',
+    'job': 'work_info',
+    'food': 'food_preference',
+    'event': 'life_event',
+    'preference': 'preference',
+    'like': 'preference',
+    'dislike': 'preference',
+    'opinion': 'preference',
+    'rule': 'policy',
+    'announcement': 'policy',
+    'action': 'task',
+    'todo': 'task',
+    'number': 'metric',
+    'stat': 'metric',
+    'stats': 'metric',
+  };
+  
+  if (categoryMap[normalized]) {
+    return categoryMap[normalized];
+  }
+  
+  // Default fallback
+  console.log(`[Category Validator] Unknown category "${category}" mapped to "general"`);
+  return 'general';
+}
+
+// Validate and truncate title/content
+function validateTitle(content: string): string {
+  if (!content) return 'Memory Item';
+  // Max 100 chars, clean whitespace
+  return content.substring(0, 100).replace(/\s+/g, ' ').trim() || 'Memory Item';
+}
+
+function validateContent(content: string): string {
+  if (!content) return 'No content';
+  // Max 2000 chars to be safe
+  return content.substring(0, 2000).trim() || 'No content';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -145,6 +215,7 @@ serve(async (req) => {
     let consolidated = 0;
     let discarded = 0;
     let deleted = 0;
+    let errors = 0;
 
     for (const wm of workingMemories || []) {
       try {
@@ -155,8 +226,11 @@ serve(async (req) => {
         const decision = await decideConsolidation(wm);
 
         if (decision.shouldConsolidate) {
-          console.log(`  → CONSOLIDATING to long-term memory (category: ${decision.category})`);
-          await consolidateToLongTerm(supabase, wm, decision);
+          // Validate category before inserting
+          const validCategory = validateCategory(decision.category);
+          console.log(`  → CONSOLIDATING to long-term memory (raw: ${decision.category}, validated: ${validCategory})`);
+          
+          await consolidateToLongTerm(supabase, wm, { ...decision, category: validCategory });
           consolidated++;
         } else {
           console.log(`  → DISCARDING (not worth keeping)`);
@@ -168,6 +242,14 @@ serve(async (req) => {
         deleted++;
       } catch (err) {
         console.error(`[Memory Consolidator] Error processing memory ${wm.id}:`, err);
+        errors++;
+        // Still try to delete the working memory to prevent re-processing
+        try {
+          await supabase.from('working_memory').delete().eq('id', wm.id);
+          deleted++;
+        } catch (delErr) {
+          console.error(`[Memory Consolidator] Failed to delete failed memory:`, delErr);
+        }
       }
     }
 
@@ -180,7 +262,7 @@ serve(async (req) => {
     await updateThreadSummaries(supabase);
 
     console.log(`\n========== MEMORY CONSOLIDATOR COMPLETE ==========`);
-    console.log(`[Memory Consolidator] Results: ${consolidated} consolidated, ${discarded} discarded, ${deleted} deleted from working memory`);
+    console.log(`[Memory Consolidator] Results: ${consolidated} consolidated, ${discarded} discarded, ${deleted} deleted, ${errors} errors`);
 
     return new Response(
       JSON.stringify({
@@ -190,6 +272,7 @@ serve(async (req) => {
           consolidated,
           discarded,
           deleted,
+          errors,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -215,11 +298,17 @@ Criteria for long-term memory:
 - Represents a decision, preference, or important context
 - Not trivial conversation or temporary context
 
+IMPORTANT: You MUST respond with one of these exact categories:
+- trait, preference, topic, project, context, relationship, meta
+- name, birthday, hobby, habit, life_event, food_preference, work_info, skill
+- decision, policy, task, metric, fact
+- general (use as fallback)
+
 Respond in JSON format only (no markdown):
 {
   "shouldConsolidate": true/false,
   "keywords": ["keyword1", "keyword2", ...],
-  "category": "fact/preference/decision/context",
+  "category": "one of the categories listed above",
   "reasoning": "brief explanation"
 }`;
 
@@ -239,12 +328,13 @@ Respond in JSON format only (no markdown):
 
     if (!response.ok) {
       console.error('[Memory Consolidator] AI API error:', await response.text());
-      // Fallback: consolidate memories with importance >= 0.5 (LOWERED from 0.8)
+      // Fallback: consolidate memories with importance >= 0.5
       if (workingMemory.importance_score >= 0.5) {
         console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5) despite API error');
-        return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+        const fallbackCategory = validateCategory(workingMemory.memory_type || 'fact');
+        return { shouldConsolidate: true, keywords: [], category: fallbackCategory };
       }
-      return { shouldConsolidate: false, keywords: [], category: 'context' };
+      return { shouldConsolidate: false, keywords: [], category: 'general' };
     }
 
     const data = await response.json();
@@ -259,36 +349,48 @@ Respond in JSON format only (no markdown):
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error('[Memory Consolidator] No JSON found in AI response:', content.substring(0, 200));
-      // Fallback for memories with importance >= 0.5 (LOWERED from 0.8)
+      // Fallback for memories with importance >= 0.5
       if (workingMemory.importance_score >= 0.5) {
         console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5, no JSON found)');
-        return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+        const fallbackCategory = validateCategory(workingMemory.memory_type || 'fact');
+        return { shouldConsolidate: true, keywords: [], category: fallbackCategory };
       }
-      return { shouldConsolidate: false, keywords: [], category: 'context' };
+      return { shouldConsolidate: false, keywords: [], category: 'general' };
     }
     
     const result = JSON.parse(jsonMatch[0]);
     console.log(`[Memory Consolidator] AI decision: ${result.shouldConsolidate ? 'CONSOLIDATE' : 'DISCARD'} - ${result.reasoning || 'no reason'}`);
     
+    // Always validate category from AI response
+    result.category = validateCategory(result.category);
+    
     return result;
   } catch (err) {
     console.error('[Memory Consolidator] Error calling AI:', err);
-    // Fallback: consolidate memories with importance >= 0.5 (LOWERED from 0.8)
+    // Fallback: consolidate memories with importance >= 0.5
     if (workingMemory.importance_score >= 0.5) {
       console.log('[Memory Consolidator] Fallback: consolidating memory (importance >= 0.5) despite error');
-      return { shouldConsolidate: true, keywords: [], category: workingMemory.memory_type || 'fact' };
+      const fallbackCategory = validateCategory(workingMemory.memory_type || 'fact');
+      return { shouldConsolidate: true, keywords: [], category: fallbackCategory };
     }
-    return { shouldConsolidate: false, keywords: [], category: 'context' };
+    return { shouldConsolidate: false, keywords: [], category: 'general' };
   }
 }
 
 async function consolidateToLongTerm(supabase: any, workingMemory: any, decision: any) {
+  // Validate inputs
+  const validCategory = validateCategory(decision.category);
+  const validTitle = validateTitle(workingMemory.content);
+  const validContent = validateContent(workingMemory.content);
+  
+  console.log(`[Memory Consolidator] Validated: category=${validCategory}, title_len=${validTitle.length}, content_len=${validContent.length}`);
+
   // Check if similar memory exists
   const { data: existingMemories } = await supabase
     .from('memory_items')
     .select('*')
     .eq('group_id', workingMemory.group_id)
-    .eq('category', decision.category)
+    .eq('category', validCategory)
     .limit(10);
 
   let shouldCreateNew = true;
@@ -298,15 +400,16 @@ async function consolidateToLongTerm(supabase: any, workingMemory: any, decision
     const similarity = calculateSimilarity(workingMemory.content, existing.content);
     if (similarity > 0.7) {
       // Update existing memory instead
+      const mergedContent = `${existing.content}\n\nUpdate: ${workingMemory.content}`;
       await supabase
         .from('memory_items')
         .update({
-          content: `${existing.content}\n\nUpdate: ${workingMemory.content}`,
+          content: validateContent(mergedContent),
           memory_strength: Math.min(1.0, existing.memory_strength + 0.2),
           importance_score: Math.max(existing.importance_score, workingMemory.importance_score),
           updated_at: new Date().toISOString(),
           last_reinforced_at: new Date().toISOString(),
-          keywords: Array.from(new Set([...(existing.keywords || []), ...decision.keywords])),
+          keywords: Array.from(new Set([...(existing.keywords || []), ...(decision.keywords || [])])),
         })
         .eq('id', existing.id);
       
@@ -320,26 +423,31 @@ async function consolidateToLongTerm(supabase: any, workingMemory: any, decision
     // Create new long-term memory with scope=group for group-based memories
     const memoryScope = workingMemory.group_id ? 'group' : (workingMemory.user_id ? 'user' : 'global');
     
-    const { data: newMemory, error } = await supabase.from('memory_items').insert({
+    const insertData = {
       scope: memoryScope,
       group_id: workingMemory.group_id,
       user_id: workingMemory.user_id,
-      title: workingMemory.content.substring(0, 100),
-      content: workingMemory.content,
-      category: decision.category,
-      source_type: 'conversation',
+      title: validTitle,
+      content: validContent,
+      category: validCategory,
+      source_type: 'conversation', // Now valid due to constraint update
       importance_score: workingMemory.importance_score,
       memory_strength: 1.0,
-      keywords: decision.keywords,
+      keywords: decision.keywords || [],
       related_thread_ids: workingMemory.conversation_thread_id ? [workingMemory.conversation_thread_id] : [],
       last_reinforced_at: new Date().toISOString(),
-    }).select().single();
+    };
+    
+    console.log(`[Memory Consolidator] Inserting new memory with data:`, JSON.stringify(insertData, null, 2));
+    
+    const { data: newMemory, error } = await supabase.from('memory_items').insert(insertData).select().single();
 
     if (error) {
       console.error(`[Memory Consolidator] Error creating memory:`, error);
+      console.error(`[Memory Consolidator] Insert data was:`, JSON.stringify(insertData, null, 2));
       throw error;
     }
-    console.log(`[Memory Consolidator] Created new long-term memory: ${newMemory?.id} (scope: ${memoryScope}, group: ${workingMemory.group_id})`);
+    console.log(`[Memory Consolidator] Created new long-term memory: ${newMemory?.id} (scope: ${memoryScope}, group: ${workingMemory.group_id}, category: ${validCategory})`);
   }
 }
 
@@ -367,7 +475,7 @@ async function mergeSimilarMemories(supabase: any) {
           await supabase
             .from('memory_items')
             .update({
-              content: `${mem1.content}\n\n${mem2.content}`,
+              content: validateContent(`${mem1.content}\n\n${mem2.content}`),
               memory_strength: Math.min(1.0, mem1.memory_strength + mem2.memory_strength * 0.5),
               importance_score: Math.max(mem1.importance_score, mem2.importance_score),
               keywords: Array.from(new Set([...(mem1.keywords || []), ...(mem2.keywords || [])])),

@@ -48,6 +48,9 @@ verify_jwt = false
 [functions.memory-decay]
 verify_jwt = false
 
+[functions.memory-backfill]
+verify_jwt = false
+
 [functions.attendance-validate-token]
 verify_jwt = false
 
