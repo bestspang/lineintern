@@ -368,6 +368,24 @@ export default function Payroll() {
     },
   });
 
+  // Fetch global grace period for late detection in calendars
+  const { data: globalAttendanceSettings } = useQuery({
+    queryKey: ["attendance-settings-global-grace"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("attendance_settings")
+        .select("grace_period_minutes")
+        .eq("scope", "global")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    staleTime: 5 * 60 * 1000, // cache 5 minutes
+  });
+
+  const gracePeriodMinutes = globalAttendanceSettings?.grace_period_minutes || 15;
+
   // Build holidays set for quick lookup
   const holidaysSet = useMemo(() => {
     const set = new Map<string, { name: string; branch_id: string | null }>();
@@ -467,8 +485,9 @@ export default function Payroll() {
           
           const expectedMins = startHour * 60 + startMinute;
           const actualMins = checkInHour * 60 + checkInMinute;
+          const graceThreshold = expectedMins + gracePeriodMinutes;
           
-          if (actualMins > expectedMins) {
+          if (actualMins > graceThreshold) {
             status = 'late';
             lateMinutes = actualMins - expectedMins;
           } else {
@@ -495,7 +514,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet]);
+  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet, gracePeriodMinutes]);
 
   // Calculate payroll summaries and warnings
   const payrollSummary = useMemo(() => {
@@ -670,7 +689,12 @@ export default function Payroll() {
         const checkInHour = checkInTime.getHours();
         const checkInMinute = checkInTime.getMinutes();
         
-        const isLate = (checkInHour > startHour) || (checkInHour === startHour && checkInMinute > startMinute);
+        // Use grace period for late detection
+        const expectedMins = startHour * 60 + startMinute;
+        const actualMins = checkInHour * 60 + checkInMinute;
+        const graceThreshold = expectedMins + gracePeriodMinutes;
+        
+        const isLate = actualMins > graceThreshold;
         status = isLate ? 'late' : 'present';
       }
       
@@ -704,7 +728,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [attendanceData, calendarDays, selectedEmployeeSchedules, approvedOTRequests, selectedEmployeeDetails]);
+  }, [attendanceData, calendarDays, selectedEmployeeSchedules, approvedOTRequests, selectedEmployeeDetails, gracePeriodMinutes]);
 
   // Create payroll period
   const createPeriodMutation = useMutation({
