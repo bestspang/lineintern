@@ -18,12 +18,14 @@ export interface DayStatus {
   late_minutes?: number;
   leave_type?: string;
   holiday_name?: string;
+  has_adjustment?: boolean;
 }
 
 interface PayrollMiniCalendarProps {
   currentMonth: Date;
   attendanceData: DayStatus[];
   className?: string;
+  onDayClick?: (date: string, data?: DayStatus) => void;
 }
 
 const statusColors: Record<DayStatus['status'], string> = {
@@ -51,7 +53,8 @@ const statusLabels: Record<DayStatus['status'], string> = {
 export function PayrollMiniCalendar({ 
   currentMonth, 
   attendanceData,
-  className = ""
+  className = "",
+  onDayClick,
 }: PayrollMiniCalendarProps) {
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -93,8 +96,16 @@ export function PayrollMiniCalendar({
             <Tooltip key={dateStr}>
               <TooltipTrigger asChild>
                 <div
-                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 ${statusColors[finalStatus]}`}
-                />
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDayClick?.(dateStr, dayData);
+                  }}
+                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 relative ${statusColors[finalStatus]}`}
+                >
+                  {dayData?.has_adjustment && (
+                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-background" />
+                  )}
+                </div>
               </TooltipTrigger>
               <TooltipContent side="top" className="p-2 min-w-[140px]">
                 <div className="space-y-1">

@@ -70,6 +70,7 @@ import {
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
 import { PayrollMiniCalendar, PayrollCalendarLegend, type DayStatus } from "@/components/attendance/PayrollMiniCalendar";
+import { AttendanceEditDialog } from "@/components/attendance/AttendanceEditDialog";
 
 interface PayrollRecord {
   id: string;
@@ -132,6 +133,11 @@ export default function Payroll() {
   
   // LINE notification state
   const [sendLineNotification, setSendLineNotification] = useState(true);
+  
+  // Attendance edit dialog state
+  const [attendanceEditDialogOpen, setAttendanceEditDialogOpen] = useState(false);
+  const [editingDate, setEditingDate] = useState<string>('');
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string>('');
   
   // Toggle row expansion
   const toggleRowExpansion = (employeeId: string) => {
@@ -369,6 +375,36 @@ export default function Payroll() {
     },
   });
 
+  // Fetch attendance adjustments for all employees
+  const { data: allAdjustments } = useQuery({
+    queryKey: ["attendance-adjustments", format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("attendance_adjustments")
+        .select("*")
+        .gte("adjustment_date", startDate)
+        .lte("adjustment_date", endDate);
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Build adjustments map per employee
+  const employeeAdjustmentsMap = useMemo(() => {
+    const map = new Map<string, Map<string, any>>();
+    allAdjustments?.forEach(adj => {
+      if (!map.has(adj.employee_id)) {
+        map.set(adj.employee_id, new Map());
+      }
+      map.get(adj.employee_id)!.set(adj.adjustment_date, adj);
+    });
+    return map;
+  }, [allAdjustments]);
+
   // Fetch global grace period for late detection in calendars
   const { data: globalAttendanceSettings } = useQuery({
     queryKey: ["attendance-settings-global-grace"],
@@ -506,14 +542,34 @@ export default function Payroll() {
           ? (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60)
           : undefined;
         
+        // Check for adjustment
+        const adjustment = employeeAdjustmentsMap.get(emp.id)?.get(dateStr);
+        const hasAdjustment = !!adjustment;
+        
+        // Apply adjustment overrides
+        let finalStatus = status as DayStatus['status'];
+        if (adjustment?.override_status) {
+          const statusMapping: Record<string, DayStatus['status']> = {
+            'present': 'present',
+            'day_off': 'weekend',
+            'vacation': 'leave',
+            'sick': 'leave',
+            'personal': 'leave',
+            'absent': 'absent',
+            'holiday': 'holiday',
+          };
+          finalStatus = statusMapping[adjustment.override_status] || status as DayStatus['status'];
+        }
+        
         return {
           date: dateStr,
-          status,
+          status: finalStatus,
           check_in: checkIn?.server_time,
           check_out: checkOut?.server_time,
           work_hours: workHours,
           is_overtime: checkIn?.is_overtime || checkOut?.is_overtime,
           late_minutes: lateMinutes,
+          has_adjustment: hasAdjustment,
         };
       });
       
@@ -521,7 +577,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet, gracePeriodMinutes]);
+  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet, gracePeriodMinutes, employeeAdjustmentsMap]);
 
   // Calculate payroll summaries and warnings
   const payrollSummary = useMemo(() => {
@@ -1784,6 +1840,11 @@ export default function Payroll() {
                               <PayrollMiniCalendar 
                                 currentMonth={currentMonth}
                                 attendanceData={empAttendance}
+                                onDayClick={(date, data) => {
+                                  setEditingEmployeeId(emp.id);
+                                  setEditingDate(date);
+                                  setAttendanceEditDialogOpen(true);
+                                }}
                               />
                             </td>
                             <td className="p-3 text-center">
@@ -2006,15 +2067,26 @@ export default function Payroll() {
                       const dateStr = format(day, "yyyy-MM-dd");
                       const attendance = dailyAttendanceMap.get(dateStr);
                       const status = attendance?.status || 'future';
+                      const hasAdjustment = employeeAdjustmentsMap.get(selectedEmployee || '')?.has(dateStr);
                       
                       return (
                         <Tooltip key={dateStr}>
                           <TooltipTrigger asChild>
                             <div 
-                              className={`aspect-square flex flex-col items-center justify-center rounded-md text-xs cursor-default transition-colors ${getStatusBg(status)}`}
+                              onClick={() => {
+                                if (selectedEmployee) {
+                                  setEditingEmployeeId(selectedEmployee);
+                                  setEditingDate(dateStr);
+                                  setAttendanceEditDialogOpen(true);
+                                }
+                              }}
+                              className={`aspect-square flex flex-col items-center justify-center rounded-md text-xs cursor-pointer transition-colors hover:ring-2 hover:ring-primary/50 relative ${getStatusBg(status)}`}
                             >
                               <span className="font-medium">{format(day, "d")}</span>
                               {getStatusIcon(status)}
+                              {hasAdjustment && (
+                                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full" />
+                              )}
                             </div>
                           </TooltipTrigger>
                            <TooltipContent>
@@ -2281,6 +2353,20 @@ export default function Payroll() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Attendance Edit Dialog */}
+      <AttendanceEditDialog
+        open={attendanceEditDialogOpen}
+        onOpenChange={setAttendanceEditDialogOpen}
+        employeeId={editingEmployeeId}
+        employeeName={employees?.find(e => e.id === editingEmployeeId)?.full_name || ''}
+        date={editingDate}
+        currentData={dailyAttendanceMap.get(editingDate)}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
+          queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
+        }}
+      />
     </div>
   );
 }

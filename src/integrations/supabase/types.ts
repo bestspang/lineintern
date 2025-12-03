@@ -164,6 +164,62 @@ export type Database = {
           },
         ]
       }
+      attendance_adjustments: {
+        Row: {
+          adjusted_by_user_id: string | null
+          adjustment_date: string
+          created_at: string | null
+          employee_id: string
+          id: string
+          leave_type: string | null
+          override_check_in: string | null
+          override_check_out: string | null
+          override_ot_hours: number | null
+          override_status: string | null
+          override_work_hours: number | null
+          reason: string
+          updated_at: string | null
+        }
+        Insert: {
+          adjusted_by_user_id?: string | null
+          adjustment_date: string
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          leave_type?: string | null
+          override_check_in?: string | null
+          override_check_out?: string | null
+          override_ot_hours?: number | null
+          override_status?: string | null
+          override_work_hours?: number | null
+          reason: string
+          updated_at?: string | null
+        }
+        Update: {
+          adjusted_by_user_id?: string | null
+          adjustment_date?: string
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          leave_type?: string | null
+          override_check_in?: string | null
+          override_check_out?: string | null
+          override_ot_hours?: number | null
+          override_status?: string | null
+          override_work_hours?: number | null
+          reason?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_logs: {
         Row: {
           admin_notes: string | null
