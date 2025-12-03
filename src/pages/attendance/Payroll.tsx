@@ -103,7 +103,7 @@ interface PayrollRecord {
 
 interface DailyAttendance {
   date: string;
-  status: 'present' | 'late' | 'absent' | 'leave' | 'weekend' | 'future';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'future';
   check_in?: string;
   check_out?: string;
   work_hours?: number;      // raw hours (รวม break)
@@ -488,9 +488,15 @@ export default function Payroll() {
           const graceThreshold = expectedMins + gracePeriodMinutes;
           
           if (actualMins > graceThreshold) {
+            // สายเกิน grace period
             status = 'late';
             lateMinutes = actualMins - expectedMins;
+          } else if (actualMins > expectedMins) {
+            // สายแต่ภายใน grace period
+            status = 'within_grace';
+            lateMinutes = actualMins - expectedMins;
           } else {
+            // มาตรงเวลาหรือก่อน
             status = 'present';
           }
         }
@@ -694,8 +700,13 @@ export default function Payroll() {
         const actualMins = checkInHour * 60 + checkInMinute;
         const graceThreshold = expectedMins + gracePeriodMinutes;
         
-        const isLate = actualMins > graceThreshold;
-        status = isLate ? 'late' : 'present';
+        if (actualMins > graceThreshold) {
+          status = 'late';
+        } else if (actualMins > expectedMins) {
+          status = 'within_grace';
+        } else {
+          status = 'present';
+        }
       }
       
       // Calculate work hours

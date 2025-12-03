@@ -10,7 +10,7 @@ import { th } from "date-fns/locale";
 
 export interface DayStatus {
   date: string;
-  status: 'present' | 'late' | 'absent' | 'leave' | 'weekend' | 'future' | 'holiday';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'future' | 'holiday';
   check_in?: string;
   check_out?: string;
   work_hours?: number;
@@ -27,7 +27,8 @@ interface PayrollMiniCalendarProps {
 }
 
 const statusColors: Record<DayStatus['status'], string> = {
-  present: 'bg-emerald-500',
+  present: 'bg-emerald-600',
+  within_grace: 'bg-emerald-300',
   late: 'bg-amber-500',
   absent: 'bg-red-500',
   leave: 'bg-sky-500',
@@ -37,7 +38,8 @@ const statusColors: Record<DayStatus['status'], string> = {
 };
 
 const statusLabels: Record<DayStatus['status'], string> = {
-  present: 'มาปกติ',
+  present: 'มาตรงเวลา',
+  within_grace: 'สายไม่เกิน grace',
   late: 'มาสาย',
   absent: 'ขาด',
   leave: 'ลา',
@@ -134,8 +136,9 @@ export function PayrollMiniCalendar({
 
 // Legend component for mini calendar
 export function PayrollCalendarLegend({ className = "" }: { className?: string }) {
-  const legendItems = [
-    { status: 'present', label: 'ปกติ' },
+const legendItems = [
+    { status: 'present', label: 'ตรงเวลา' },
+    { status: 'within_grace', label: 'สายไม่เกิน 15 นาที' },
     { status: 'late', label: 'สาย' },
     { status: 'absent', label: 'ขาด' },
     { status: 'leave', label: 'ลา' },
