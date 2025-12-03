@@ -29,7 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Clock, Users, TrendingUp, Calendar, LogOut } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Clock, Users, TrendingUp, Calendar, LogOut, AlertCircle } from 'lucide-react';
 import { format, addMinutes, differenceInMinutes } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { useToast } from '@/hooks/use-toast';
@@ -51,6 +52,12 @@ interface CheckedInEmployee {
   time_until_checkout: number;
   is_remote_checkin: boolean;
   working_minutes_elapsed: number;
+  // Work Summary features
+  auto_checkout_grace_period_minutes: number;
+  net_work_minutes: number;
+  progress_percent: number;
+  auto_checkout_at: string;
+  grace_expiring_soon: boolean;
 }
 
 export default function LiveTracking() {
@@ -112,6 +119,7 @@ export default function LiveTracking() {
             shift_end_time,
             hours_per_day,
             break_hours,
+            auto_checkout_grace_period_minutes,
             branch:branches (
               name
             )
@@ -205,6 +213,17 @@ export default function LiveTracking() {
         const timeUntilCheckout = differenceInMinutes(expectedCheckOut, new Date());
         const workingMinutesElapsed = differenceInMinutes(new Date(), checkInTime);
 
+        // Work Summary calculations
+        const breakMinutes = (employee.break_hours || 0) * 60;
+        const netWorkMinutes = Math.max(0, workingMinutesElapsed - breakMinutes);
+        const targetMinutes = (employee.hours_per_day || 8) * 60;
+        const progressPercent = Math.min(100, (netWorkMinutes / targetMinutes) * 100);
+        
+        const gracePeriod = employee.auto_checkout_grace_period_minutes || 60;
+        const autoCheckoutAt = addMinutes(expectedCheckOut, gracePeriod);
+        const graceExpiringSoon = differenceInMinutes(autoCheckoutAt, new Date()) < 15 && 
+                                  differenceInMinutes(autoCheckoutAt, new Date()) > 0;
+
         return {
           employee_id: employee.id,
           employee_name: employee.full_name,
@@ -219,6 +238,12 @@ export default function LiveTracking() {
           time_until_checkout: timeUntilCheckout,
           is_remote_checkin: checkIn.is_remote_checkin || false,
           working_minutes_elapsed: workingMinutesElapsed,
+          // Work Summary fields
+          auto_checkout_grace_period_minutes: gracePeriod,
+          net_work_minutes: netWorkMinutes,
+          progress_percent: progressPercent,
+          auto_checkout_at: autoCheckoutAt.toISOString(),
+          grace_expiring_soon: graceExpiringSoon,
         };
       });
 
@@ -460,6 +485,20 @@ export default function LiveTracking() {
                             </>
                           )}
                         </div>
+                        
+                        {/* Progress Bar - Work Summary Feature */}
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">
+                              ทำงานสุทธิ: {Math.floor(employee.net_work_minutes / 60)}h {employee.net_work_minutes % 60}m / {employee.hours_per_day || 8}h
+                            </span>
+                            <span className="font-medium">{Math.floor(employee.progress_percent)}%</span>
+                          </div>
+                          <Progress 
+                            value={employee.progress_percent} 
+                            className={`h-2 ${employee.progress_percent >= 100 ? '[&>div]:bg-green-500' : ''}`}
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -481,6 +520,19 @@ export default function LiveTracking() {
                             {formatTimeRemaining(employee.time_until_checkout)}
                           </div>
                         </div>
+                        
+                        {/* Auto Checkout Time */}
+                        <div className="text-xs text-muted-foreground">
+                          ⏰ Auto: {format(new Date(employee.auto_checkout_at), 'HH:mm')}
+                        </div>
+                        
+                        {/* Grace Expiring Warning */}
+                        {employee.grace_expiring_soon && (
+                          <Badge variant="destructive" className="text-xs animate-pulse">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            ใกล้ Auto Checkout!
+                          </Badge>
+                        )}
                       </div>
                       {isAdmin && (
                         <Button

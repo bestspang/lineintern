@@ -121,7 +121,7 @@ const navigationGroups = [
       { title: 'Dashboard', url: '/attendance/dashboard', icon: Gauge },
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
-      { title: 'Work Summary', url: '/attendance/work-summary', icon: Timer },
+      
       { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
       { title: 'Payroll YTD', url: '/attendance/payroll/ytd', icon: TrendingUp },
       { title: 'Holidays', url: '/attendance/holidays', icon: PartyPopper },
