@@ -29,7 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut, CalendarDays } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { CheckCircle2, XCircle, Clock, Users, Building2, AlertTriangle, TrendingUp, Calendar, LogOut, CalendarDays, Loader2 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, differenceInMinutes } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
@@ -61,6 +62,7 @@ export default function AttendanceDashboard() {
   const today = format(new Date(), 'yyyy-MM-dd');
 
   // Setup realtime subscription for attendance logs
+  // CRITICAL: Filter must include +07:00 timezone offset for Bangkok time
   useEffect(() => {
     const channel = supabase
       .channel('attendance-dashboard-realtime')
@@ -70,7 +72,7 @@ export default function AttendanceDashboard() {
           event: '*',
           schema: 'public',
           table: 'attendance_logs',
-          filter: `server_time=gte.${today}T00:00:00`,
+          filter: `server_time=gte.${today}T00:00:00+07:00`,
         },
         (payload) => {
           console.log('Realtime attendance update:', payload);
@@ -164,7 +166,7 @@ export default function AttendanceDashboard() {
   const gracePeriodMinutes = attendanceSettings?.grace_period_minutes || 15;
 
   // Fetch active employees with branches
-  const { data: employees } = useQuery({
+  const { data: employees, isLoading: employeesLoading, error: employeesError } = useQuery({
     queryKey: ['active-employees'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -188,7 +190,7 @@ export default function AttendanceDashboard() {
   });
 
   // Fetch today's attendance logs
-  const { data: attendanceLogs, refetch } = useQuery({
+  const { data: attendanceLogs, isLoading: logsLoading, error: logsError, refetch } = useQuery({
     queryKey: ['attendance-logs-today'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -306,10 +308,25 @@ export default function AttendanceDashboard() {
   ) || { vacationRemaining: 0, sickRemaining: 0, personalRemaining: 0, vacationTotal: 0, sickTotal: 0, personalTotal: 0 };
 
   // Calculate employee statuses
+  // FIX: Sort logs by time and properly pair check-in/out
   const employeeStatuses: EmployeeStatus[] = employees?.map((emp) => {
     const empLogs = attendanceLogs?.filter((log) => log.employee_id === emp.id) || [];
-    const checkIn = empLogs.find((log) => log.event_type === 'check_in');
-    const checkOut = empLogs.find((log) => log.event_type === 'check_out');
+    
+    // Sort logs by time to properly pair check-in/out
+    const sortedLogs = [...empLogs].sort((a, b) => 
+      new Date(a.server_time).getTime() - new Date(b.server_time).getTime()
+    );
+    
+    // Find first check-in of the day
+    const checkIn = sortedLogs.find((log) => log.event_type === 'check_in');
+    
+    // Find check-out that comes AFTER the check-in (handles multiple pairs)
+    const checkOut = checkIn 
+      ? sortedLogs.find((log) => 
+          log.event_type === 'check_out' && 
+          new Date(log.server_time) > new Date(checkIn.server_time)
+        )
+      : undefined;
 
     let status: 'working' | 'checked_out' | 'not_arrived' = 'not_arrived';
     let minutesWorked = 0;
@@ -320,19 +337,8 @@ export default function AttendanceDashboard() {
     } else if (checkIn && checkOut) {
       status = 'checked_out';
       minutesWorked = differenceInMinutes(new Date(checkOut.server_time), new Date(checkIn.server_time));
-    } else {
-      // Check if employee should have arrived
-      const now = new Date();
-      
-      if (emp.working_time_type === 'time_based' && emp.shift_start_time) {
-        const [hour, minute] = emp.shift_start_time.split(':').map(Number);
-        const shiftStart = new Date();
-        shiftStart.setHours(hour, minute, 0, 0);
-        
-        // Only mark as "not arrived" if past shift start time
-        status = now < shiftStart ? 'not_arrived' : 'not_arrived';
-      }
     }
+    // Simplified: if no check-in, status stays 'not_arrived'
 
     return {
       id: emp.id,
@@ -386,6 +392,8 @@ export default function AttendanceDashboard() {
     attendanceLogs?.filter((log) => log.event_type === 'check_in').map((log) => log.employee_id) || []
   );
 
+  // FIX: Only count time_based employees as absent
+  // hours_based employees have flexible schedules and should NOT be counted as absent
   let shouldHaveArrivedCount = 0;
   employees?.forEach(emp => {
     if (emp.working_time_type === 'time_based' && emp.shift_start_time) {
@@ -398,12 +406,9 @@ export default function AttendanceDashboard() {
       if (now >= shouldHaveArrived && !checkedInEmployeeIds.has(emp.id)) {
         shouldHaveArrivedCount++;
       }
-    } else if (emp.working_time_type === 'hours_based') {
-      // For hours_based, count as absent if no check-in today
-      if (!checkedInEmployeeIds.has(emp.id)) {
-        shouldHaveArrivedCount++;
-      }
     }
+    // REMOVED: hours_based employees are NOT counted as absent
+    // They have flexible schedules and can check in anytime
   });
 
   attendanceStatus.absent = shouldHaveArrivedCount;
@@ -444,6 +449,48 @@ export default function AttendanceDashboard() {
   };
 
   const recentCheckIns = attendanceLogs?.filter((log) => log.event_type === 'check_in').slice(0, 5) || [];
+
+  // Loading state
+  if (employeesLoading || logsLoading) {
+    return (
+      <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Attendance Dashboard</h1>
+          <p className="text-muted-foreground text-sm sm:text-base mt-1">กำลังโหลดข้อมูล...</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16 mb-1" />
+                <Skeleton className="h-3 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (employeesError || logsError) {
+    return (
+      <div className="container mx-auto py-3 sm:py-6">
+        <div className="text-center py-12">
+          <AlertTriangle className="h-12 w-12 mx-auto text-destructive mb-4" />
+          <h2 className="text-xl font-semibold mb-2">เกิดข้อผิดพลาด</h2>
+          <p className="text-muted-foreground mb-4">ไม่สามารถโหลดข้อมูลได้</p>
+          <Button onClick={() => refetch()}>ลองอีกครั้ง</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
