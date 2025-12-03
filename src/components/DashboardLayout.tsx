@@ -135,6 +135,7 @@ const navigationGroups = [
       { title: 'OT Requests', url: '/attendance/overtime-requests', icon: Clock },
       { title: 'OT Summary Report', url: '/attendance/overtime-summary', icon: DollarSign },
       { title: 'Early Leave Requests', url: '/attendance/early-leave', icon: AlertTriangle },
+      { title: 'Flexible Day-Off', url: '/attendance/flexible-day-off-requests', icon: CalendarDays },
       { title: 'OT Monitoring', url: '/attendance/overtime', icon: Clock },
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
       { title: 'Reminder Logs', url: '/attendance/reminder-logs', icon: Bell },

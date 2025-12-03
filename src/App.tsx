@@ -55,6 +55,8 @@ import OvertimeManagement from "./pages/attendance/OvertimeManagement";
 import OvertimeSummary from "./pages/attendance/OvertimeSummary";
 import OvertimeRequests from "./pages/attendance/OvertimeRequests";
 import EarlyLeaveRequests from "./pages/attendance/EarlyLeaveRequests";
+import FlexibleDayOff from "./pages/attendance/FlexibleDayOff";
+import FlexibleDayOffRequests from "./pages/attendance/FlexibleDayOffRequests";
 
 import WorkHistory from "./pages/attendance/WorkHistory";
 import LeaveBalance from "./pages/attendance/LeaveBalance";
@@ -77,9 +79,10 @@ const App = () => (
         <ErrorBoundary>
           <AuthProvider>
             <Routes>
-            <Route path="/auth" element={<Auth />} />
+<Route path="/auth" element={<Auth />} />
             <Route path="/employee-menu" element={<EmployeeMenu />} />
             <Route path="/attendance" element={<Attendance />} />
+            <Route path="/attendance/flexible-day-off" element={<FlexibleDayOff />} />
             <Route path="/error/network" element={<NetworkError />} />
             <Route path="/error/server" element={<ServerError />} />
             <Route path="/error/session-expired" element={<SessionExpired />} />
@@ -120,6 +123,7 @@ const App = () => (
                     <Route path="/attendance/overtime-summary" element={<OvertimeSummary />} />
                     <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
                     <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
+                    <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
                     
                     <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
                     <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
