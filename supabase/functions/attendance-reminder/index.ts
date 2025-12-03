@@ -80,10 +80,25 @@ Deno.serve(async (req) => {
 
     console.log(`[attendance-reminder] Found ${employees?.length || 0} active employees`);
 
+    // Fetch approved flexible day-offs for today
+    const { data: flexibleDayOffs } = await supabase
+      .from('flexible_day_off_requests')
+      .select('employee_id')
+      .eq('day_off_date', today)
+      .eq('status', 'approved');
+    
+    const flexibleDayOffEmployeeIds = new Set(flexibleDayOffs?.map(f => f.employee_id) || []);
+    console.log(`[attendance-reminder] Found ${flexibleDayOffEmployeeIds.size} employees with flexible day-off today`);
+
     let checkInReminders = 0;
     let checkOutReminders = 0;
 
     for (const employee of employees || []) {
+      // Skip if employee has approved flexible day-off today
+      if (flexibleDayOffEmployeeIds.has(employee.id)) {
+        console.log(`[reminder] Skipping ${employee.full_name} - flexible day off today`);
+        continue;
+      }
       const prefs = employee.reminder_preferences || {
         check_in_reminder_enabled: true,
         check_out_reminder_enabled: true,

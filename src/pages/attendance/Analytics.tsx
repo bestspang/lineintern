@@ -77,6 +77,25 @@ export default function AttendanceAnalytics() {
     }
   });
 
+  // Fetch approved flexible day-offs for absent calculation
+  const { data: flexibleDayOffs } = useQuery({
+    queryKey: ['flexible-day-offs-analytics', dateRange, selectedBranch],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const bangkokNow = getBangkokNow();
+      const fromDate = formatBangkokISODate(subDays(bangkokNow, days));
+      const toDate = formatBangkokISODate(bangkokNow);
+      
+      const { data } = await supabase
+        .from('flexible_day_off_requests')
+        .select('employee_id, day_off_date')
+        .eq('status', 'approved')
+        .gte('day_off_date', fromDate)
+        .lte('day_off_date', toDate);
+      return data || [];
+    }
+  });
+
   const { data: logs, isLoading } = useQuery({
     queryKey: ['attendance-analytics', dateRange, selectedBranch],
     queryFn: async () => {
@@ -165,9 +184,18 @@ export default function AttendanceAnalytics() {
   const activeEmployees = employees?.filter(e => 
     selectedBranch === 'all' || e.branch_id === selectedBranch
   ).length || 0;
+  
+  // Calculate flexible day-offs count for selected employees
+  const flexibleDayOffCount = flexibleDayOffs?.filter(f => {
+    if (selectedBranch === 'all') return true;
+    const emp = employees?.find(e => e.id === f.employee_id);
+    return emp?.branch_id === selectedBranch;
+  }).length || 0;
+  
   const expectedCheckIns = activeEmployees * workingDaysInRange;
   const actualCheckIns = checkInLogs.length;
-  attendanceStatus.absent = Math.max(0, expectedCheckIns - actualCheckIns);
+  // Subtract flexible day-offs from absent count
+  attendanceStatus.absent = Math.max(0, expectedCheckIns - actualCheckIns - flexibleDayOffCount);
 
   // Calculate metrics
   const totalCheckIns = logs?.filter(l => l.event_type === 'check_in').length || 0;
