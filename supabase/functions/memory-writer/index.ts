@@ -13,34 +13,44 @@ Extract ONLY information worth remembering:
 
 ✅ DO EXTRACT:
 
-**Business & Group Context (PRIORITY):**
-- Decisions: "อนุมัติให้รับพนักงาน", "ตัดสินใจทำลายสินค้า", "ไม่อนุมัติโครงการนี้"
-- Policies & SOPs: "วิธีทำลายสินค้า: ถ่ายรูป+เซ็นต์เอกสาร", "ขั้นตอนส่งเอกสาร", "กฎการลา"
-- Tasks & Assignments: "ให้ @คนA ทำงานB ภายในวันที่C", "มอบหมายให้เช็คสต๊อค"
-- Metrics & Numbers: "มีชีสเค้ก 200 ชิ้น", "ยอดขาย 50,000 บาท", "deadline วันที่ 25"
-- Important dates: "ส่งเอกสารวันศุกร์", "ประชุมวันที่ 20", "ปิดโครงการ 31 ธ.ค."
+**Personal Information (HIGHEST PRIORITY - เก็บทุกครั้งที่พบ):**
+- Names & Nicknames: "ชื่อจริงคือ สมชาย", "เรียกว่า ต้น", "พี่เบลชื่อ Bell", "ผม/ฉันชื่อ X"
+- Birthdays & Special Dates: "เกิดวันที่ 15 ธันวา", "วันเกิดเดือนหน้า", "วันแต่งงาน 14 ก.พ."
+- Hobbies & Interests: "ชอบเล่นเกม", "สนใจลงทุน", "เล่นกีฬา", "ดูหนัง"
+- Habits & Routines: "ชอบดื่มกาแฟเช้า", "ออกกำลังทุกวัน", "นอนดึก", "ตื่นสาย"
+- Important Life Events: "เพิ่งแต่งงาน", "ลูกเพิ่งเกิด", "ย้ายบ้านใหม่", "เพิ่งเรียนจบ"
+- Food & Drink Preferences: "ไม่กินเผ็ด", "แพ้ซีฟู้ด", "ชอบกาแฟดำ", "ไม่ดื่มเหล้า"
+- Health Info: "แพ้ยา X", "เป็นโรค Y", "กินวีแกน"
 
-**Personal Context (if relevant):**
-- Personal preferences: "ชอบกินข้าวผัด", "ไม่ชอบของหวาน"
-- Important facts: "ทำงานที่ BKK", "เรียนที่จุฬา"
-- Recurring patterns: "ตื่นสายทุกวัน", "ชอบดื่มกาแฟตอนเช้า"
-- Significant events: "วันเกิด 15 ธันวา", "เพิ่งไปเที่ยวญี่ปุ่น"
-- Relationships: "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y"
+**Work & Role Information (HIGH PRIORITY):**
+- Job Roles: "ทำงานที่ Marketing", "รับผิดชอบ Central Park", "เป็น Manager"
+- Work Schedule: "เข้างาน 9 โมง", "ทำงาน shift กลางคืน", "WFH วันศุกร์"
+- Skills & Expertise: "เก่ง Excel", "ถนัดงาน design", "รู้เรื่อง SEO"
+- Work Location: "ประจำสาขา X", "นั่งออฟฟิศ Y"
+
+**Business & Group Context:**
+- Decisions: "อนุมัติให้รับพนักงาน", "ตัดสินใจทำลายสินค้า", "ไม่อนุมัติโครงการนี้"
+- Policies & SOPs: "วิธีทำลายสินค้า: ถ่ายรูป+เซ็นต์เอกสาร", "ขั้นตอนส่งเอกสาร"
+- Tasks & Assignments: "ให้ @คนA ทำงานB ภายในวันที่C", "มอบหมายให้เช็คสต๊อค"
+- Metrics & Numbers: "มีชีสเค้ก 200 ชิ้น", "ยอดขาย 50,000 บาท"
+- Important dates: "ส่งเอกสารวันศุกร์", "ประชุมวันที่ 20"
+
+**Relationships:**
+- "เป็นเพื่อนกับ X", "พี่ชายชื่อ Y", "แฟนชื่อ Z", "มีลูก 2 คน"
 
 ❌ DON'T EXTRACT:
 - Greetings: "สวัสดี", "ว่าไง", "ดีจ้า"
 - Reactions: "อร่อย", "5555", "ขำ", "เศร้า"
 - Short responses: "ok", "ครับ", "ได้", "จ้า"
-- Temporary states: "หิวข้าว", "เหนื่อย", "ง่วง" (unless recurring)
-- Generic chitchat: "อากาศร้อน", "ฝนตก", "คนเยอะ"
-- Spam or irrelevant memes
+- Temporary states: "หิวข้าว", "เหนื่อย" (unless it's a pattern)
+- Generic chitchat: "อากาศร้อน", "ฝนตก"
 
 For each memory:
-- scope: "user" (personal info) or "group" (team/business info)
-- category: "decision" | "policy" | "task" | "metric" | "preference" | "fact" | "event" | "pattern" | "relationship"
-- title: Short summary (10-120 chars)
+- scope: "user" (personal info about a specific person) or "group" (team/business info)
+- category: "name" | "birthday" | "hobby" | "habit" | "life_event" | "food_preference" | "work_info" | "skill" | "relationship" | "decision" | "policy" | "task" | "metric" | "fact"
+- title: Short summary with person's name if applicable (10-120 chars)
 - content: 1-3 sentences with context (20-500 chars)
-- importance_score: 0.0-1.0 (business decisions/tasks are usually 0.7-1.0)
+- importance_score: 0.0-1.0 (personal info: 0.7-0.9, business decisions: 0.8-1.0)
 
 Return JSON with "memories" array (0-5 items, or empty if nothing memorable).
 
@@ -48,25 +58,32 @@ Examples:
 {
   "memories": [
     {
-      "scope": "group",
-      "category": "decision",
-      "title": "อนุมัติทำลายชีสเค้ก 200 ชิ้น",
-      "content": "Manager approved destroying 200 cheesecake pieces due to expiration. Must take photo as evidence and submit document.",
-      "importance_score": 0.9
-    },
-    {
-      "scope": "group",
-      "category": "task",
-      "title": "ให้ @John เช็คสต๊อคสินค้า ภายในวันศุกร์",
-      "content": "Assigned @John to check inventory by Friday. Urgent task due to upcoming audit.",
+      "scope": "user",
+      "category": "name",
+      "title": "พี่เบลชื่อจริงว่า Bell",
+      "content": "พี่เบลบอกว่าชื่อจริงคือ Bell และชอบให้เรียกพี่เบล",
       "importance_score": 0.85
     },
     {
       "scope": "user",
-      "category": "preference",
-      "title": "Sarah ชอบกาแฟเข้ม",
-      "content": "Sarah mentioned she prefers strong black coffee, no sugar.",
-      "importance_score": 0.6
+      "category": "birthday",
+      "title": "วันเกิดต้น 15 ธันวาคม",
+      "content": "ต้นบอกว่าวันเกิดวันที่ 15 ธันวาคม",
+      "importance_score": 0.9
+    },
+    {
+      "scope": "user",
+      "category": "habit",
+      "title": "สมชายชอบดื่มกาแฟดำตอนเช้า",
+      "content": "สมชายบอกว่าต้องดื่มกาแฟดำทุกเช้า ไม่งั้นทำงานไม่ได้",
+      "importance_score": 0.7
+    },
+    {
+      "scope": "group",
+      "category": "decision",
+      "title": "อนุมัติทำลายชีสเค้ก 200 ชิ้น",
+      "content": "Manager approved destroying 200 cheesecake pieces due to expiration.",
+      "importance_score": 0.9
     }
   ]
 }`;
@@ -487,14 +504,23 @@ async function saveToWorkingMemory(
     return;
   }
 
-  // Determine memory type based on category (including new business categories)
+  // Determine memory type based on category (including personal + business categories)
   const memoryTypeMap: Record<string, string> = {
-    // Personal categories
+    // Personal categories (NEW - high priority)
+    name: 'fact',
+    birthday: 'fact',
+    hobby: 'context',
+    habit: 'context',
+    life_event: 'fact',
+    food_preference: 'context',
+    work_info: 'fact',
+    skill: 'fact',
+    relationship: 'context',
+    // Legacy personal categories
     preference: 'context',
     fact: 'fact',
     event: 'context',
     pattern: 'context',
-    relationship: 'context',
     // Business categories
     decision: 'decision',
     policy: 'fact',

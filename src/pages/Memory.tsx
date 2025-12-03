@@ -48,10 +48,12 @@ import { UserProfileCard } from '@/components/social-intelligence/UserProfileCar
 import { RelationshipGraph } from '@/components/social-intelligence/RelationshipGraph';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-// Working Memory Table Component
+// Working Memory Table Component with "See More" button
 function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showAll, setShowAll] = useState(false);
+  const ITEMS_TO_SHOW = 5;
   
   const { data: workingMemories, isLoading } = useQuery({
     queryKey: ['working-memory', groupId, userId],
@@ -140,82 +142,103 @@ function WorkingMemoryTable({ groupId, userId }: { groupId?: string; userId?: st
     );
   }
   
+  const displayedMemories = showAll ? workingMemories : workingMemories.slice(0, ITEMS_TO_SHOW);
+  const remainingCount = workingMemories.length - ITEMS_TO_SHOW;
+  
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="min-w-[80px] text-xs sm:text-sm py-2">Type</TableHead>
-            <TableHead className="min-w-[200px] text-xs sm:text-sm py-2">Content</TableHead>
-            <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Importance</TableHead>
-            <TableHead className="text-xs sm:text-sm py-2">Expires</TableHead>
-            <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Source</TableHead>
-            <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-      <TableBody>
-        {workingMemories.map((memory) => {
-          const timeRemaining = new Date(memory.expires_at).getTime() - Date.now();
-          const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60));
-          const minutesRemaining = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
-          
-          return (
-            <TableRow key={memory.id}>
-              <TableCell className="py-2">
-                <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">{memory.memory_type}</Badge>
-              </TableCell>
-              <TableCell className="max-w-md py-2">
-                <div className="truncate text-xs sm:text-sm">{memory.content}</div>
-                {memory.user && (
-                  <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-                    User: {memory.user.display_name}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell className="hidden sm:table-cell py-2">
-                <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
-                  {((memory.importance_score || 0) * 100).toFixed(0)}%
-                </Badge>
-              </TableCell>
-              <TableCell className="text-xs sm:text-sm py-2">
-                {timeRemaining > 0 ? (
-                  <div className="text-muted-foreground">
-                    {hoursRemaining > 0 && `${hoursRemaining}h `}
-                    {minutesRemaining}m
-                  </div>
-                ) : (
-                  <Badge variant="destructive" className="h-4 sm:h-5 text-[10px] sm:text-xs">Expired</Badge>
-                )}
-              </TableCell>
-              <TableCell className="hidden md:table-cell text-xs sm:text-sm text-muted-foreground py-2">
-                {memory.group?.display_name || 'Global'}
-              </TableCell>
-              <TableCell className="py-2">
-                <div className="flex gap-1 sm:gap-2 justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3"
-                    onClick={() => promoteToLongTermMutation.mutate(memory)}
-                  >
-                    <span className="hidden sm:inline">Promote</span>
-                    <span className="sm:hidden">↑</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0 sm:h-8 sm:w-8"
-                    onClick={() => discardMemoryMutation.mutate(memory.id)}
-                  >
-                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                  </Button>
-                </div>
-              </TableCell>
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="min-w-[80px] text-xs sm:text-sm py-2">Type</TableHead>
+              <TableHead className="min-w-[200px] text-xs sm:text-sm py-2">Content</TableHead>
+              <TableHead className="hidden sm:table-cell text-xs sm:text-sm py-2">Importance</TableHead>
+              <TableHead className="text-xs sm:text-sm py-2">Expires</TableHead>
+              <TableHead className="hidden md:table-cell text-xs sm:text-sm py-2">Source</TableHead>
+              <TableHead className="text-right text-xs sm:text-sm py-2">Actions</TableHead>
             </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+          </TableHeader>
+          <TableBody>
+            {displayedMemories.map((memory) => {
+              const timeRemaining = new Date(memory.expires_at).getTime() - Date.now();
+              const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60));
+              const minutesRemaining = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+              
+              return (
+                <TableRow key={memory.id}>
+                  <TableCell className="py-2">
+                    <Badge variant="outline" className="h-4 sm:h-5 text-[10px] sm:text-xs">{memory.memory_type}</Badge>
+                  </TableCell>
+                  <TableCell className="max-w-md py-2">
+                    <div className="text-xs sm:text-sm" title={memory.content}>
+                      {memory.content.length > 100 ? memory.content.substring(0, 100) + '...' : memory.content}
+                    </div>
+                    {memory.user && (
+                      <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                        User: {memory.user.display_name}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell py-2">
+                    <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'} className="h-4 sm:h-5 text-[10px] sm:text-xs">
+                      {((memory.importance_score || 0) * 100).toFixed(0)}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs sm:text-sm py-2">
+                    {timeRemaining > 0 ? (
+                      <div className="text-muted-foreground">
+                        {hoursRemaining > 0 && `${hoursRemaining}h `}
+                        {minutesRemaining}m
+                      </div>
+                    ) : (
+                      <Badge variant="destructive" className="h-4 sm:h-5 text-[10px] sm:text-xs">Expired</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-xs sm:text-sm text-muted-foreground py-2">
+                    {memory.group?.display_name || 'Global'}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <div className="flex gap-1 sm:gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3"
+                        onClick={() => promoteToLongTermMutation.mutate(memory)}
+                      >
+                        <span className="hidden sm:inline">Promote</span>
+                        <span className="sm:hidden">↑</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 sm:h-8 sm:w-8"
+                        onClick={() => discardMemoryMutation.mutate(memory.id)}
+                      >
+                        <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      
+      {/* See More / Show Less Button */}
+      {workingMemories.length > ITEMS_TO_SHOW && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAll(!showAll)}
+            className="text-xs"
+          >
+            {showAll ? 'Show Less' : `See More (${remainingCount} more)`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -579,6 +602,10 @@ export default function Memory() {
     },
   });
   
+  // State for "See More" in Long-Term Memory table
+  const [showAllLongTerm, setShowAllLongTerm] = useState(false);
+  const LONG_TERM_ITEMS_TO_SHOW = 5;
+  
   const renderMemoryTable = () => {
     if (!memories || memories.length === 0) {
       return (
@@ -592,73 +619,96 @@ export default function Memory() {
       );
     }
     
+    const displayedMemories = showAllLongTerm ? memories : memories.slice(0, LONG_TERM_ITEMS_TO_SHOW);
+    const remainingCount = memories.length - LONG_TERM_ITEMS_TO_SHOW;
+    
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Category</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead>Content</TableHead>
-            <TableHead>Importance</TableHead>
-            <TableHead>Last Used</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {memories.map((memory) => (
-            <TableRow key={memory.id}>
-              <TableCell>
-                <Badge variant="outline">{memory.category}</Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  {memory.pinned && <Pin className="w-3 h-3 text-primary" />}
-                  <span className="font-medium">{memory.title}</span>
-                </div>
-              </TableCell>
-              <TableCell className="max-w-md truncate">{memory.content}</TableCell>
-              <TableCell>
-                <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'}>
-                  {(memory.importance_score * 100).toFixed(0)}%
-                </Badge>
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {memory.last_used_at 
-                  ? formatDistanceToNow(new Date(memory.last_used_at), { addSuffix: true })
-                  : 'Never'}
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-2">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => pinMutation.mutate({ id: memory.id, pinned: !memory.pinned })}
-                  >
-                    {memory.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditingMemory(memory);
-                      setIsDialogOpen(true);
-                    }}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => deleteMutation.mutate(memory.id)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </TableCell>
+      <div className="space-y-3">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Category</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead>Content</TableHead>
+              <TableHead>Importance</TableHead>
+              <TableHead>Last Used</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {displayedMemories.map((memory) => (
+              <TableRow key={memory.id}>
+                <TableCell>
+                  <Badge variant="outline">{memory.category}</Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {memory.pinned && <Pin className="w-3 h-3 text-primary" />}
+                    <span className="font-medium" title={memory.title}>
+                      {memory.title.length > 50 ? memory.title.substring(0, 50) + '...' : memory.title}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="max-w-md" title={memory.content}>
+                  {memory.content.length > 100 ? memory.content.substring(0, 100) + '...' : memory.content}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={memory.importance_score > 0.7 ? 'default' : 'secondary'}>
+                    {(memory.importance_score * 100).toFixed(0)}%
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {memory.last_used_at 
+                    ? formatDistanceToNow(new Date(memory.last_used_at), { addSuffix: true })
+                    : 'Never'}
+                </TableCell>
+                <TableCell>
+                  <div className="flex gap-2">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => pinMutation.mutate({ id: memory.id, pinned: !memory.pinned })}
+                    >
+                      {memory.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingMemory(memory);
+                        setIsDialogOpen(true);
+                      }}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => deleteMutation.mutate(memory.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        
+        {/* See More / Show Less Button */}
+        {memories.length > LONG_TERM_ITEMS_TO_SHOW && (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAllLongTerm(!showAllLongTerm)}
+              className="text-xs"
+            >
+              {showAllLongTerm ? 'Show Less' : `See More (${remainingCount} more)`}
+            </Button>
+          </div>
+        )}
+      </div>
     );
   };
   

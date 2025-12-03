@@ -45,24 +45,44 @@ serve(async (req) => {
 
     console.log(`[Memory Consolidator] Starting consolidation process (${isManualTrigger ? 'manual' : 'cron'} trigger)...`);
 
-    // 1. Get working memories that will expire soon (next 8 hours - expanded window for 6h cron)
-    const expiryThreshold = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-    const { data: workingMemories, error: wmError } = await supabase
+    // Phase 1: Age-based selection instead of expiry-based
+    // - High Priority (importance >= 0.9): Consolidate immediately
+    // - Normal Priority (importance >= 0.6): Wait 1 hour before consolidating
+    // - Low Priority (importance < 0.6): Let expire naturally (24h)
+    
+    const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+    
+    // Get high-priority memories (immediate consolidation)
+    const { data: highPriorityMemories } = await supabase
       .from('working_memory')
       .select('*')
-      .lt('expires_at', expiryThreshold)
-      .gte('importance_score', 0.6) // Only consolidate important memories
+      .gte('importance_score', 0.9)
+      .gt('expires_at', new Date().toISOString()) // Not expired
       .order('importance_score', { ascending: false })
-      .limit(50);
+      .limit(20);
+    
+    // Get normal-priority memories (older than 1 hour)
+    const { data: normalPriorityMemories } = await supabase
+      .from('working_memory')
+      .select('*')
+      .gte('importance_score', 0.6)
+      .lt('importance_score', 0.9)
+      .lt('created_at', oneHourAgo) // At least 1 hour old
+      .gt('expires_at', new Date().toISOString()) // Not expired
+      .order('importance_score', { ascending: false })
+      .limit(30);
+    
+    // Combine and deduplicate
+    const allMemories = [...(highPriorityMemories || []), ...(normalPriorityMemories || [])];
+    const workingMemories = await deduplicateWorkingMemories(supabase, allMemories);
 
-    if (wmError) throw wmError;
-
-    console.log(`[Memory Consolidator] Found ${workingMemories?.length || 0} working memories to evaluate`);
+    console.log(`[Memory Consolidator] Found ${workingMemories?.length || 0} working memories to evaluate (high: ${highPriorityMemories?.length || 0}, normal: ${normalPriorityMemories?.length || 0})`);
     if (workingMemories && workingMemories.length > 0) {
       console.log(`[Memory Consolidator] Sample memories:`, 
         workingMemories.slice(0, 3).map(m => ({
           type: m.memory_type,
           importance: m.importance_score,
+          age_hours: ((Date.now() - new Date(m.created_at).getTime()) / (1000 * 60 * 60)).toFixed(1),
           content: m.content.substring(0, 80) + '...'
         }))
       );
@@ -345,4 +365,46 @@ function calculateSimilarity(str1: string, str2: string): number {
   const union = new Set([...words1, ...words2]);
   
   return intersection.size / union.size;
+}
+
+// Phase 5: Deduplication function to remove duplicate working memories before consolidation
+async function deduplicateWorkingMemories(supabase: any, memories: any[]): Promise<any[]> {
+  if (!memories || memories.length === 0) return [];
+  
+  const seen = new Map<string, any>(); // content_key -> best memory
+  const duplicateIds: string[] = [];
+  
+  for (const mem of memories) {
+    // Create key from first 50 chars of content (normalized)
+    const key = mem.content.substring(0, 50).toLowerCase().replace(/\s+/g, ' ').trim();
+    
+    if (seen.has(key)) {
+      const existing = seen.get(key);
+      // Keep the one with higher importance score
+      if (mem.importance_score > existing.importance_score) {
+        duplicateIds.push(existing.id);
+        seen.set(key, mem);
+      } else {
+        duplicateIds.push(mem.id);
+      }
+    } else {
+      seen.set(key, mem);
+    }
+  }
+  
+  // Delete duplicates from database
+  if (duplicateIds.length > 0) {
+    const { error } = await supabase
+      .from('working_memory')
+      .delete()
+      .in('id', duplicateIds);
+    
+    if (error) {
+      console.error(`[Memory Consolidator] Error deleting duplicates:`, error);
+    } else {
+      console.log(`[Memory Consolidator] Removed ${duplicateIds.length} duplicate working memories`);
+    }
+  }
+  
+  return Array.from(seen.values());
 }
