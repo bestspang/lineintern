@@ -65,7 +65,10 @@ import {
   Send,
   Printer,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Home,
+  Ban,
+  Star
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
@@ -105,7 +108,7 @@ interface PayrollRecord {
 
 interface DailyAttendance {
   date: string;
-  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'future';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'holiday' | 'future';
   check_in?: string;
   check_out?: string;
   work_hours?: number;      // raw hours (รวม break)
@@ -1397,6 +1400,9 @@ export default function Payroll() {
       case 'absent': return <XCircle className="h-3 w-3 text-red-500" />;
       case 'leave': return <Calendar className="h-3 w-3 text-blue-500" />;
       case 'weekend': return <span className="text-muted-foreground text-[10px]">-</span>;
+      case 'regular_weekend': return <Home className="h-3 w-3 text-slate-400" />;
+      case 'day_off': return <Ban className="h-3 w-3 text-gray-500" />;
+      case 'holiday': return <Star className="h-3 w-3 text-violet-400" />;
       case 'future': return <span className="text-muted-foreground text-[10px]">•</span>;
       default: return null;
     }
@@ -1410,6 +1416,9 @@ export default function Payroll() {
       case 'absent': return 'bg-red-100 dark:bg-red-900/30';
       case 'leave': return 'bg-blue-100 dark:bg-blue-900/30';
       case 'weekend': return 'bg-muted/50';
+      case 'regular_weekend': return 'bg-slate-100 dark:bg-slate-800/30';
+      case 'day_off': return 'bg-gray-200 dark:bg-gray-700/30';
+      case 'holiday': return 'bg-violet-100 dark:bg-violet-900/30';
       case 'future': return 'bg-muted/30';
       default: return '';
     }
@@ -2145,6 +2154,18 @@ export default function Payroll() {
                               {status === 'absent' && (
                                 <div className="text-red-600">สถานะ: ขาด</div>
                               )}
+                              {status === 'weekend' && (
+                                <div className="text-muted-foreground">สถานะ: วันหยุดประจำสัปดาห์ (ตาม schedule)</div>
+                              )}
+                              {status === 'regular_weekend' && (
+                                <div className="text-slate-600">สถานะ: วันหยุดประจำสัปดาห์ (กำหนดเอง)</div>
+                              )}
+                              {status === 'day_off' && (
+                                <div className="text-gray-600">สถานะ: วันหยุดพิเศษ</div>
+                              )}
+                              {status === 'holiday' && (
+                                <div className="text-violet-600">สถานะ: วันหยุดนักขัตฤกษ์</div>
+                              )}
                             </div>
                           </TooltipContent>
                         </Tooltip>
@@ -2159,7 +2180,7 @@ export default function Payroll() {
                     <CheckCircle className="h-3 w-3 text-green-500" /> มา
                   </div>
                   <div className="flex items-center gap-1">
-                    <CheckCircle className="h-3 w-3 text-green-400" /> ภายใน Grace
+                    <CheckCircle className="h-3 w-3 text-green-400" /> Grace
                   </div>
                   <div className="flex items-center gap-1">
                     <AlertCircle className="h-3 w-3 text-yellow-500" /> สาย
@@ -2169,6 +2190,18 @@ export default function Payroll() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3 text-blue-500" /> ลา
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground text-[10px]">-</span> หยุด
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Home className="h-3 w-3 text-slate-400" /> หยุดประจำ
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Ban className="h-3 w-3 text-gray-500" /> หยุดพิเศษ
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Star className="h-3 w-3 text-violet-400" /> นักขัตฤกษ์
                   </div>
                 </div>
 
