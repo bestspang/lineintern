@@ -1217,6 +1217,195 @@ async function handleDayOffRequestCommand(
   }
 }
 
+// =============================
+// CANCEL DAY-OFF COMMAND HANDLER
+// =============================
+
+interface CancelDayOffResult {
+  detected: boolean;
+  message: string;
+}
+
+async function handleCancelDayOffCommand(
+  messageText: string,
+  user: any,
+  lineUserId: string,
+  locale: 'en' | 'th'
+): Promise<CancelDayOffResult> {
+  // Pattern matching for cancel day-off commands
+  const cancelPatterns = [
+    /^\/cancel-dayoff\s*(.*)$/i,
+    /^\/ยกเลิกวันหยุด\s*(.*)$/i,
+    /^\/canceldayoff\s*(.*)$/i,
+    /^\/ยกเลิกขอหยุด\s*(.*)$/i,
+  ];
+
+  let requestIdOrDate = '';
+  for (const pattern of cancelPatterns) {
+    const match = messageText.trim().match(pattern);
+    if (match) {
+      requestIdOrDate = match[1].trim();
+      break;
+    }
+  }
+
+  // Check if command was matched
+  if (!cancelPatterns.some(p => p.test(messageText.trim()))) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[handleCancelDayOffCommand] Processing cancel request for user ${user.id} with input: "${requestIdOrDate}"`);
+
+  try {
+    // Check if user is linked to an employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('id, full_name, code')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (empError || !employee) {
+      console.log('[handleCancelDayOffCommand] Employee not found');
+      const message = locale === 'th'
+        ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ'
+        : 'Sorry, your employee record is not found.';
+      return { detected: true, message };
+    }
+
+    // Fetch pending requests for this employee
+    const { data: pendingRequests, error: fetchError } = await supabase
+      .from('flexible_day_off_requests')
+      .select('id, day_off_date, reason, created_at')
+      .eq('employee_id', employee.id)
+      .eq('status', 'pending')
+      .order('day_off_date', { ascending: true });
+
+    if (fetchError) {
+      console.error('[handleCancelDayOffCommand] Error fetching requests:', fetchError);
+      const message = locale === 'th'
+        ? 'เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาลองใหม่'
+        : 'Error fetching data. Please try again.';
+      return { detected: true, message };
+    }
+
+    if (!pendingRequests || pendingRequests.length === 0) {
+      const message = locale === 'th'
+        ? '✅ คุณไม่มีคำขอวันหยุดที่รออนุมัติอยู่'
+        : '✅ You have no pending day-off requests.';
+      return { detected: true, message };
+    }
+
+    // Thai months for formatting
+    const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    // If no specific request specified
+    if (!requestIdOrDate) {
+      if (pendingRequests.length === 1) {
+        // Only one pending request - cancel it directly
+        const request = pendingRequests[0];
+        const { data, error } = await supabase.functions.invoke('cancel-dayoff', {
+          body: {
+            request_id: request.id,
+            employee_id: employee.id,
+            source: 'line'
+          }
+        });
+
+        if (error || !data?.success) {
+          const message = locale === 'th'
+            ? `❌ ไม่สามารถยกเลิกได้: ${data?.error || error?.message || 'กรุณาลองใหม่'}`
+            : `❌ Cannot cancel: ${data?.error || error?.message || 'Please try again'}`;
+          return { detected: true, message };
+        }
+
+        const d = new Date(request.day_off_date);
+        const formattedDate = `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+        
+        const message = locale === 'th'
+          ? `✅ ยกเลิกคำขอวันหยุดยืดหยุ่นแล้ว\n\n📅 วันหยุด: ${formattedDate}`
+          : `✅ Day-off request cancelled\n\n📅 Date: ${formattedDate}`;
+        return { detected: true, message };
+      } else {
+        // Multiple pending requests - show list
+        let listMsg = locale === 'th'
+          ? '📋 คุณมีคำขอวันหยุดที่รออนุมัติหลายรายการ:\n\n'
+          : '📋 You have multiple pending day-off requests:\n\n';
+
+        pendingRequests.forEach((req, idx) => {
+          const d = new Date(req.day_off_date);
+          const formattedDate = `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+          listMsg += `${idx + 1}. ${formattedDate}${req.reason ? ` - ${req.reason}` : ''}\n`;
+        });
+
+        listMsg += locale === 'th'
+          ? '\n💡 พิมพ์ /cancel-dayoff [วันที่] เพื่อยกเลิก\nเช่น /cancel-dayoff พรุ่งนี้'
+          : '\n💡 Type /cancel-dayoff [date] to cancel\nE.g., /cancel-dayoff tomorrow';
+
+        return { detected: true, message: listMsg };
+      }
+    }
+
+    // Try to find the request by date
+    const parsedDate = parseDateInput(requestIdOrDate);
+    if (parsedDate) {
+      const dateStr = getBangkokDateString(parsedDate);
+      const matchingRequest = pendingRequests.find(r => r.day_off_date === dateStr);
+
+      if (matchingRequest) {
+        const { data, error } = await supabase.functions.invoke('cancel-dayoff', {
+          body: {
+            request_id: matchingRequest.id,
+            employee_id: employee.id,
+            source: 'line'
+          }
+        });
+
+        if (error || !data?.success) {
+          const message = locale === 'th'
+            ? `❌ ไม่สามารถยกเลิกได้: ${data?.error || error?.message || 'กรุณาลองใหม่'}`
+            : `❌ Cannot cancel: ${data?.error || error?.message || 'Please try again'}`;
+          return { detected: true, message };
+        }
+
+        const d = new Date(matchingRequest.day_off_date);
+        const formattedDate = `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+        
+        const message = locale === 'th'
+          ? `✅ ยกเลิกคำขอวันหยุดยืดหยุ่นแล้ว\n\n📅 วันหยุด: ${formattedDate}`
+          : `✅ Day-off request cancelled\n\n📅 Date: ${formattedDate}`;
+        return { detected: true, message };
+      } else {
+        const d = parsedDate;
+        const formattedDate = `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+        const message = locale === 'th'
+          ? `❌ ไม่พบคำขอวันหยุดวันที่ ${formattedDate} ที่รออนุมัติ`
+          : `❌ No pending request found for ${formattedDate}`;
+        return { detected: true, message };
+      }
+    }
+
+    // Could not parse - show usage
+    const message = locale === 'th'
+      ? `❌ ไม่เข้าใจรูปแบบ "${requestIdOrDate}"\n\n` +
+        `ตัวอย่าง:\n` +
+        `• /cancel-dayoff พรุ่งนี้\n` +
+        `• /cancel-dayoff 2024-12-10`
+      : `❌ Could not understand "${requestIdOrDate}"\n\n` +
+        `Examples:\n` +
+        `• /cancel-dayoff tomorrow\n` +
+        `• /cancel-dayoff 2024-12-10`;
+    return { detected: true, message };
+
+  } catch (error) {
+    console.error('[handleCancelDayOffCommand] Error:', error);
+    const message = locale === 'th'
+      ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่'
+      : 'System error. Please try again.';
+    return { detected: true, message };
+  }
+}
+
 // Helper function to parse date input (Thai/English)
 function parseDateInput(input: string): Date | null {
   const now = getBangkokNow();
@@ -7377,6 +7566,20 @@ async function handleMessageEvent(event: LineEvent) {
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending day-off request confirmation:', error);
+      }
+    }
+    
+    // Cancel Day-Off Request Command Detection (DM only)
+    const cancelDayOffResult = await handleCancelDayOffCommand(event.message.text, user, lineUserId, attendanceLocale);
+    
+    if (cancelDayOffResult.detected) {
+      console.log(`[handleMessageEvent] Detected cancel day-off command from user ${user.id}`);
+      try {
+        await replyToLine(event.replyToken, cancelDayOffResult.message);
+        console.log('[handleMessageEvent] Sent cancel day-off response');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending cancel day-off response:', error);
       }
     }
     

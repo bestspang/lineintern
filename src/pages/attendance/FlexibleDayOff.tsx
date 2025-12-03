@@ -13,8 +13,19 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { 
   CalendarCheck, AlertCircle, Clock, CheckCircle, XCircle, 
-  Loader2, CalendarDays, Info
+  Loader2, CalendarDays, Info, Trash2
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { format, addDays, startOfWeek, isBefore, isAfter, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -151,6 +162,37 @@ export default function FlexibleDayOff() {
     },
   });
 
+  // Cancel request mutation
+  const cancelMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      if (!employee) throw new Error('Employee not found');
+
+      const { data, error } = await supabase.functions.invoke(
+        'cancel-dayoff',
+        {
+          body: {
+            request_id: requestId,
+            employee_id: employee.id,
+            source: 'webapp'
+          }
+        }
+      );
+
+      if (error) throw new Error(error.message || 'Failed to cancel request');
+      if (!data.success) throw new Error(data.error || 'Failed to cancel request');
+      
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('ยกเลิกคำขอวันหยุดเรียบร้อยแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['flexible-day-off-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['flexible-day-off-history'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'เกิดข้อผิดพลาดในการยกเลิก');
+    },
+  });
+
   // Submit request mutation
   const submitMutation = useMutation({
     mutationFn: async (date: Date) => {
@@ -232,6 +274,8 @@ export default function FlexibleDayOff() {
         return <Badge variant="default" className="bg-green-50 text-green-700"><CheckCircle className="h-3 w-3 mr-1" />อนุมัติแล้ว</Badge>;
       case 'rejected':
         return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />ไม่อนุมัติ</Badge>;
+      case 'cancelled':
+        return <Badge variant="secondary"><XCircle className="h-3 w-3 mr-1" />ยกเลิกแล้ว</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -412,7 +456,7 @@ export default function FlexibleDayOff() {
                     key={request.id}
                     className="flex items-center justify-between p-3 border rounded-lg"
                   >
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium">
                         {format(new Date(request.day_off_date), 'd MMMM yyyy', { locale: th })}
                       </p>
@@ -420,7 +464,46 @@ export default function FlexibleDayOff() {
                         <p className="text-sm text-muted-foreground">{request.reason}</p>
                       )}
                     </div>
-                    {getStatusBadge(request.status)}
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(request.status)}
+                      {request.status === 'pending' && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={cancelMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>ยกเลิกคำขอวันหยุด?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                คุณต้องการยกเลิกคำขอวันหยุดวันที่{' '}
+                                {format(new Date(request.day_off_date), 'd MMMM yyyy', { locale: th })}{' '}
+                                ใช่หรือไม่?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>ไม่ใช่</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => cancelMutation.mutate(request.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                {cancelMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  'ยกเลิก'
+                                )}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

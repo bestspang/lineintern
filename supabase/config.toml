@@ -122,3 +122,12 @@ verify_jwt = true
 
 [functions.flexible-day-off-reminder]
 verify_jwt = false
+
+[functions.cancel-dayoff]
+verify_jwt = false
+
+[functions.line-richmenu-setup]
+verify_jwt = false
+
+[functions.line-richmenu-link]
+verify_jwt = false
