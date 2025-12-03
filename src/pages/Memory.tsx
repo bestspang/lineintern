@@ -41,7 +41,8 @@ import {
   User,
   Network,
   LayoutGrid,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Database
 } from 'lucide-react';
 import { RelationshipCard } from '@/components/social-intelligence/RelationshipCard';
 import { UserProfileCard } from '@/components/social-intelligence/UserProfileCard';
@@ -319,6 +320,42 @@ export default function Memory() {
     onError: (error) => {
       toast({ 
         title: 'Consolidation failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Manual backfill trigger (re-process historical messages)
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('memory-backfill', {
+        body: { 
+          trigger: 'manual', 
+          group_id: masterGroupId || null,
+          days_back: 7,
+          limit: 200,
+          auto_consolidate: true 
+        },
+      });
+      
+      if (error) throw new Error(error.message || 'Function invocation failed');
+      if (data?.error) throw new Error(data.error);
+      
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
+      queryClient.invalidateQueries({ queryKey: ['working-memory'] });
+      queryClient.invalidateQueries({ queryKey: ['memory-stats'] });
+      toast({ 
+        title: 'Backfill completed', 
+        description: `Messages: ${data?.stats?.messages_processed || 0}, Extracted: ${data?.stats?.memories_extracted || 0}, Created: ${data?.stats?.working_memories_created || 0}` 
+      });
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Backfill failed', 
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive' 
       });
@@ -741,10 +778,20 @@ export default function Memory() {
             size="sm"
             className="h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
             onClick={() => consolidateMutation.mutate()}
-            disabled={consolidateMutation.isPending}
+            disabled={consolidateMutation.isPending || backfillMutation.isPending}
           >
             <Brain className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {consolidateMutation.isPending ? 'Running...' : 'Consolidate'}
+          </Button>
+          <Button 
+            variant="secondary" 
+            size="sm"
+            className="h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+            onClick={() => backfillMutation.mutate()}
+            disabled={backfillMutation.isPending || consolidateMutation.isPending}
+          >
+            <Database className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            {backfillMutation.isPending ? 'Processing...' : 'Backfill Data'}
           </Button>
           <Button 
             size="sm"
