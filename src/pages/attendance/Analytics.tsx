@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,12 +6,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User, CheckCircle2, XCircle, Timer } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfDay, isWeekend } from 'date-fns';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import LiveAttendanceStatus from '@/components/attendance/LiveAttendanceStatus';
+import { getBangkokNow, getBangkokHoursMinutes, formatBangkokISODate } from '@/lib/timezone';
 
+const BANGKOK_TZ = 'Asia/Bangkok';
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
 export default function AttendanceAnalytics() {
@@ -56,11 +59,31 @@ export default function AttendanceAnalytics() {
     }
   });
 
+  // Fetch holidays for absent calculation
+  const { data: holidays } = useQuery({
+    queryKey: ['holidays-analytics', dateRange],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const bangkokNow = getBangkokNow();
+      const fromDate = formatBangkokISODate(subDays(bangkokNow, days));
+      const toDate = formatBangkokISODate(bangkokNow);
+      
+      const { data } = await supabase
+        .from('holidays')
+        .select('date')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+      return new Set(data?.map(h => h.date) || []);
+    }
+  });
+
   const { data: logs, isLoading } = useQuery({
     queryKey: ['attendance-analytics', dateRange, selectedBranch],
     queryFn: async () => {
       const days = parseInt(dateRange);
-      const fromDate = startOfDay(subDays(new Date(), days));
+      // Use Bangkok timezone for date calculation
+      const bangkokNow = getBangkokNow();
+      const fromDate = startOfDay(subDays(bangkokNow, days));
       
       let query = supabase
         .from('attendance_logs')
@@ -83,41 +106,66 @@ export default function AttendanceAnalytics() {
     }
   });
 
-  // Calculate attendance status (on time, late, absent)
+  // Calculate attendance status (on time, late, absent) using Bangkok timezone
   const checkInLogs = logs?.filter(l => l.event_type === 'check_in') || [];
   
-  const attendanceStatus = checkInLogs.reduce((acc, log) => {
-    if (!log.employee?.shift_start_time && log.employee?.working_time_type === 'time_based') return acc;
+  const attendanceStatus = useMemo(() => {
+    const result = { onTime: 0, late: 0, absent: 0 };
     
-    // For time_based employees, check if late (with grace period)
-    if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
-      const checkInTime = new Date(log.server_time);
-      const [hours, minutes] = log.employee.shift_start_time.split(':');
-      const standardTime = new Date(checkInTime);
-      standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
+    checkInLogs.forEach(log => {
+      if (!log.employee?.shift_start_time && log.employee?.working_time_type === 'time_based') return;
       
-      // Add grace period
-      const lateThreshold = new Date(standardTime.getTime() + gracePeriodMinutes * 60000);
-      
-      if (checkInTime > lateThreshold) {
-        acc.late++;
+      // For time_based employees, check if late (with grace period) using Bangkok time
+      if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
+        const checkInBangkok = getBangkokHoursMinutes(log.server_time);
+        if (!checkInBangkok) return;
+        
+        const [hours, minutes] = log.employee.shift_start_time.split(':');
+        const shiftStartMinutes = parseInt(hours) * 60 + parseInt(minutes);
+        const checkInMinutes = checkInBangkok.hours * 60 + checkInBangkok.minutes;
+        const lateThreshold = shiftStartMinutes + gracePeriodMinutes;
+        
+        if (checkInMinutes > lateThreshold) {
+          result.late++;
+        } else {
+          result.onTime++;
+        }
       } else {
-        acc.onTime++;
+        // For hours_based, count as on time if checked in
+        result.onTime++;
       }
-    } else {
-      // For hours_based, count as on time if checked in
-      acc.onTime++;
+    });
+    
+    return result;
+  }, [checkInLogs, gracePeriodMinutes]);
+
+  // Calculate working days (excluding weekends and holidays)
+  const daysInRange = parseInt(dateRange);
+  const workingDaysInRange = useMemo(() => {
+    const bangkokNow = getBangkokNow();
+    let workingDays = 0;
+    
+    for (let i = 0; i < daysInRange; i++) {
+      const checkDate = subDays(bangkokNow, i);
+      const dateStr = formatBangkokISODate(checkDate);
+      
+      // Skip weekends
+      if (isWeekend(checkDate)) continue;
+      
+      // Skip holidays
+      if (holidays?.has(dateStr)) continue;
+      
+      workingDays++;
     }
     
-    return acc;
-  }, { onTime: 0, late: 0, absent: 0 });
+    return workingDays;
+  }, [daysInRange, holidays]);
 
   // Calculate absent (employees who should have checked in but didn't)
-  const daysInRange = parseInt(dateRange);
   const activeEmployees = employees?.filter(e => 
     selectedBranch === 'all' || e.branch_id === selectedBranch
   ).length || 0;
-  const expectedCheckIns = activeEmployees * daysInRange;
+  const expectedCheckIns = activeEmployees * workingDaysInRange;
   const actualCheckIns = checkInLogs.length;
   attendanceStatus.absent = Math.max(0, expectedCheckIns - actualCheckIns);
 
@@ -145,12 +193,14 @@ export default function AttendanceAnalytics() {
     return acc;
   }, [] as Array<{ date: string; checkIns: number; checkOuts: number }>);
 
-  // Peak hours data (check-ins only)
+  // Peak hours data (check-ins only) - using Bangkok timezone
   const peakHours = logs
     ?.filter(l => l.event_type === 'check_in')
     .reduce((acc, log) => {
-      const hour = new Date(log.server_time).getHours();
-      const hourLabel = `${hour.toString().padStart(2, '0')}:00`;
+      const bangkokTime = getBangkokHoursMinutes(log.server_time);
+      if (!bangkokTime) return acc;
+      
+      const hourLabel = `${bangkokTime.hours.toString().padStart(2, '0')}:00`;
       const existing = acc.find(h => h.hour === hourLabel);
       
       if (existing) {
@@ -162,18 +212,22 @@ export default function AttendanceAnalytics() {
     }, [] as Array<{ hour: string; count: number }>)
     .sort((a, b) => a.hour.localeCompare(b.hour));
 
-  // Late arrivals by branch
+  // Late arrivals by branch - using Bangkok timezone with grace period
   const lateByBranch = logs
     ?.filter(l => l.event_type === 'check_in')
     .reduce((acc, log) => {
       if (!log.branch?.standard_start_time || !log.branch?.name) return acc;
       
-      const checkInTime = new Date(log.server_time);
-      const [hours, minutes] = log.branch.standard_start_time.split(':');
-      const standardTime = new Date(checkInTime);
-      standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
+      const checkInBangkok = getBangkokHoursMinutes(log.server_time);
+      if (!checkInBangkok) return acc;
       
-      const isLate = checkInTime > standardTime;
+      const [hours, minutes] = log.branch.standard_start_time.split(':');
+      const standardMinutes = parseInt(hours) * 60 + parseInt(minutes);
+      const checkInMinutes = checkInBangkok.hours * 60 + checkInBangkok.minutes;
+      
+      // Add grace period to late calculation
+      const lateThreshold = standardMinutes + gracePeriodMinutes;
+      const isLate = checkInMinutes > lateThreshold;
       const branchName = log.branch.name;
       
       const existing = acc.find(b => b.branch === branchName);
@@ -212,21 +266,23 @@ export default function AttendanceAnalytics() {
     return acc;
   }, [] as Array<{ branch: string; checkIns: number; flagged: number }>);
 
-  // Attendance by branch breakdown (on time, late, absent)
+  // Attendance by branch breakdown (on time, late, absent) - using Bangkok timezone
   const branchAttendanceBreakdown = checkInLogs.reduce((acc, log) => {
     const branchName = log.branch?.name || 'Unknown';
     const existing = acc.find(b => b.branch === branchName);
     
     let status = 'onTime';
     if (log.employee?.working_time_type === 'time_based' && log.employee?.shift_start_time) {
-      const checkInTime = new Date(log.server_time);
-      const [hours, minutes] = log.employee.shift_start_time.split(':');
-      const standardTime = new Date(checkInTime);
-      standardTime.setHours(parseInt(hours), parseInt(minutes), 0);
-      
-      // Add grace period
-      const lateThreshold = new Date(standardTime.getTime() + gracePeriodMinutes * 60000);
-      status = checkInTime > lateThreshold ? 'late' : 'onTime';
+      const checkInBangkok = getBangkokHoursMinutes(log.server_time);
+      if (checkInBangkok) {
+        const [hours, minutes] = log.employee.shift_start_time.split(':');
+        const shiftStartMinutes = parseInt(hours) * 60 + parseInt(minutes);
+        const checkInMinutes = checkInBangkok.hours * 60 + checkInBangkok.minutes;
+        
+        // Add grace period
+        const lateThreshold = shiftStartMinutes + gracePeriodMinutes;
+        status = checkInMinutes > lateThreshold ? 'late' : 'onTime';
+      }
     }
     
     if (existing) {
@@ -256,7 +312,7 @@ export default function AttendanceAnalytics() {
   }, {} as Record<string, number>);
 
   branchAttendanceBreakdown.forEach(branch => {
-    const expectedCheckIns = (employeesByBranch?.[branch.branch] || 0) * daysInRange;
+    const expectedCheckIns = (employeesByBranch?.[branch.branch] || 0) * workingDaysInRange;
     branch.absent = Math.max(0, expectedCheckIns - branch.total);
   });
 
@@ -398,6 +454,10 @@ export default function AttendanceAnalytics() {
             สถานะปัจจุบัน
           </TabsTrigger>
           <TabsTrigger value="trends" className="text-xs sm:text-sm">แนวโน้ม</TabsTrigger>
+          <TabsTrigger value="hours" className="text-xs sm:text-sm">
+            <Clock className="h-3 w-3 mr-1" />
+            ชั่วโมงเข้างาน
+          </TabsTrigger>
           <TabsTrigger value="late" className="text-xs sm:text-sm">เข้าสาย</TabsTrigger>
           <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">เปรียบเทียบสาขา</TabsTrigger>
         </TabsList>
