@@ -53,23 +53,21 @@ export default function FlexibleDayOffRequests() {
   // Approval mutation
   const approvalMutation = useMutation({
     mutationFn: async ({ request_id, action, notes }: { request_id: string; action: 'approve' | 'reject'; notes?: string }) => {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session) throw new Error('Not authenticated');
+      // Call edge function for approval with LINE notification
+      const { data, error } = await supabase.functions.invoke(
+        'flexible-day-off-approval',
+        {
+          body: {
+            request_id,
+            action,
+            notes: notes || undefined,
+          }
+        }
+      );
 
-      const updateData: any = {
-        status: action === 'approve' ? 'approved' : 'rejected',
-        approved_at: action === 'approve' ? new Date().toISOString() : null,
-        approved_by_admin_id: session.session.user.id,
-        rejection_reason: action === 'reject' ? notes : null,
-      };
-
-      const { error } = await supabase
-        .from('flexible_day_off_requests')
-        .update(updateData)
-        .eq('id', request_id);
-
-      if (error) throw error;
-      return { success: true };
+      if (error) throw new Error(error.message || 'Failed to process request');
+      if (!data.success) throw new Error(data.error || 'Failed to process request');
+      return data;
     },
     onSuccess: (_, variables) => {
       const actionText = variables.action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ';
@@ -90,23 +88,21 @@ export default function FlexibleDayOffRequests() {
       action: 'approve' | 'reject';
       notes?: string;
     }) => {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session) throw new Error('Not authenticated');
+      // Call edge function for bulk approval with LINE notifications
+      const { data, error } = await supabase.functions.invoke(
+        'flexible-day-off-approval',
+        {
+          body: {
+            request_ids: requestIds,
+            action,
+            notes: notes || undefined,
+          }
+        }
+      );
 
-      const updateData: any = {
-        status: action === 'approve' ? 'approved' : 'rejected',
-        approved_at: action === 'approve' ? new Date().toISOString() : null,
-        approved_by_admin_id: session.session.user.id,
-        rejection_reason: action === 'reject' ? notes : null,
-      };
-
-      const { error } = await supabase
-        .from('flexible_day_off_requests')
-        .update(updateData)
-        .in('id', requestIds);
-
-      if (error) throw error;
-      return { success: true };
+      if (error) throw new Error(error.message || 'Failed to process requests');
+      if (!data.success) throw new Error(data.error || 'Failed to process requests');
+      return data;
     },
     onSuccess: (_, variables) => {
       const actionText = variables.action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ';

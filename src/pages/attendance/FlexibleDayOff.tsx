@@ -156,29 +156,27 @@ export default function FlexibleDayOff() {
     mutationFn: async (date: Date) => {
       if (!employee) throw new Error('Employee not found');
 
-      const weekStart = startOfWeek(date, { weekStartsOn: 1 });
       const dayOffDate = format(date, 'yyyy-MM-dd');
-      const weekStartDate = format(weekStart, 'yyyy-MM-dd');
 
-      // Determine status based on auto-approve setting
-      const status = employee.flexible_auto_approve ? 'approved' : 'pending';
-      const approvedAt = employee.flexible_auto_approve ? new Date().toISOString() : null;
+      // Call edge function for request with LINE notification
+      const { data, error } = await supabase.functions.invoke(
+        'flexible-day-off-request',
+        {
+          body: {
+            employee_id: employee.id,
+            day_off_date: dayOffDate,
+            reason: reason.trim() || null,
+          }
+        }
+      );
 
-      const { data, error } = await supabase
-        .from('flexible_day_off_requests')
-        .insert({
-          employee_id: employee.id,
-          day_off_date: dayOffDate,
-          week_start_date: weekStartDate,
-          reason: reason.trim() || null,
-          status,
-          approved_at: approvedAt,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { data, autoApproved: employee.flexible_auto_approve };
+      if (error) throw new Error(error.message || 'Failed to submit request');
+      if (!data.success) throw new Error(data.error || 'Failed to submit request');
+      
+      return { 
+        data: data, 
+        autoApproved: data.auto_approved 
+      };
     },
     onSuccess: (result) => {
       if (result.autoApproved) {

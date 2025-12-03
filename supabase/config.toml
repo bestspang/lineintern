@@ -113,3 +113,9 @@ verify_jwt = true
 
 [functions.cancel-ot]
 verify_jwt = true
+
+[functions.flexible-day-off-request]
+verify_jwt = false
+
+[functions.flexible-day-off-approval]
+verify_jwt = true
