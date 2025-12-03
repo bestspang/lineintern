@@ -747,6 +747,17 @@ export default function Payroll() {
       const startDate = currentPeriod.start_date;
       const endDate = currentPeriod.end_date;
       
+      // Fetch grace period from global attendance settings
+      const { data: attendanceSettings } = await supabase
+        .from("attendance_settings")
+        .select("grace_period_minutes")
+        .eq("scope", "global")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const gracePeriodMinutes = attendanceSettings?.grace_period_minutes || 15;
+      
       for (const emp of employees) {
         // Fetch attendance logs for this employee
         const { data: logs } = await supabase
@@ -799,9 +810,12 @@ export default function Payroll() {
           const expectedMinutes = startHour * 60 + startMinute;
           const actualMinutes = checkInHour * 60 + checkInMinute;
           
-          // If late, add to count and minutes
-          if (actualMinutes > expectedMinutes) {
+          // Use grace period - only count as late if exceeds grace threshold
+          const graceThreshold = expectedMinutes + gracePeriodMinutes;
+          
+          if (actualMinutes > graceThreshold) {
             lateCount++;
+            // Total late minutes = actual - expected (full duration)
             totalLateMinutes += (actualMinutes - expectedMinutes);
           }
         });
