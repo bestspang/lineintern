@@ -1296,6 +1296,10 @@ export type Database = {
           earliest_checkin_time: string | null
           enable_pattern_learning: boolean | null
           enable_second_checkin_reminder: boolean | null
+          flexible_advance_days_required: number | null
+          flexible_auto_approve: boolean | null
+          flexible_day_off_enabled: boolean | null
+          flexible_days_per_week: number | null
           full_name: string
           hours_per_day: number | null
           id: string
@@ -1335,6 +1339,10 @@ export type Database = {
           earliest_checkin_time?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
+          flexible_advance_days_required?: number | null
+          flexible_auto_approve?: boolean | null
+          flexible_day_off_enabled?: boolean | null
+          flexible_days_per_week?: number | null
           full_name: string
           hours_per_day?: number | null
           id?: string
@@ -1374,6 +1382,10 @@ export type Database = {
           earliest_checkin_time?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
+          flexible_advance_days_required?: number | null
+          flexible_auto_approve?: boolean | null
+          flexible_day_off_enabled?: boolean | null
+          flexible_days_per_week?: number | null
           full_name?: string
           hours_per_day?: number | null
           id?: string
@@ -1476,6 +1488,59 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flexible_day_off_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by_admin_id: string | null
+          created_at: string | null
+          day_off_date: string
+          employee_id: string
+          id: string
+          reason: string | null
+          rejection_reason: string | null
+          requested_at: string
+          status: string
+          updated_at: string | null
+          week_start_date: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          day_off_date: string
+          employee_id: string
+          id?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          status?: string
+          updated_at?: string | null
+          week_start_date: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          day_off_date?: string
+          employee_id?: string
+          id?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          status?: string
+          updated_at?: string | null
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flexible_day_off_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
