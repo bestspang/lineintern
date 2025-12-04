@@ -1410,109 +1410,7 @@ export default function EmployeeSettings() {
           </CardContent>
         </Card>
 
-        {/* 8. Work Schedule Card - Enhanced Visual */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              ตารางงานรายสัปดาห์
-            </CardTitle>
-            <CardDescription>
-              กำหนดวันทำงานและเวลาสำหรับแต่ละวันในสัปดาห์
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Quick Summary */}
-            <div className="p-3 rounded-lg bg-primary/5 border">
-              <div className="text-sm font-medium mb-1">สรุปตารางงาน</div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>วันทำงาน: {workSchedule.filter(d => d.is_working_day).length} วัน</span>
-                <span>•</span>
-                <span>รวมชั่วโมง/สัปดาห์: {workSchedule.filter(d => d.is_working_day).reduce((sum, d) => sum + d.expected_hours, 0)} ชม.</span>
-              </div>
-            </div>
-            
-            {/* Weekly Schedule Grid */}
-            <div className="space-y-2">
-              {workSchedule.map((day, index) => (
-                <div 
-                  key={day.day_of_week} 
-                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-colors ${
-                    day.is_working_day ? 'bg-background border-primary/20' : 'bg-muted/30 border-muted'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 w-36">
-                    <Switch
-                      checked={day.is_working_day}
-                      onCheckedChange={(checked) => {
-                        const updated = [...workSchedule];
-                        updated[index].is_working_day = checked;
-                        setWorkSchedule(updated);
-                      }}
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{day.is_working_day ? '✅' : '🔲'}</span>
-                      <Label className="font-medium cursor-pointer">
-                        {dayLabels[day.day_of_week]?.label || day.day_key}
-                      </Label>
-                    </div>
-                  </div>
-                  
-                  {day.is_working_day ? (
-                    <div className="flex-1 grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs font-medium">เวลาเริ่ม</Label>
-                        <Input
-                          type="time"
-                          value={day.start_time}
-                          onChange={(e) => {
-                            const updated = [...workSchedule];
-                            updated[index].start_time = e.target.value;
-                            setWorkSchedule(updated);
-                          }}
-                          className="h-9 font-medium"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs font-medium">เวลาสิ้นสุด</Label>
-                        <Input
-                          type="time"
-                          value={day.end_time}
-                          onChange={(e) => {
-                            const updated = [...workSchedule];
-                            updated[index].end_time = e.target.value;
-                            setWorkSchedule(updated);
-                          }}
-                          className="h-9 font-medium"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs font-medium">ชั่วโมง/วัน</Label>
-                        <Input
-                          type="number"
-                          step="0.5"
-                          value={day.expected_hours}
-                          onChange={(e) => {
-                            const updated = [...workSchedule];
-                            updated[index].expected_hours = parseFloat(e.target.value) || 8;
-                            setWorkSchedule(updated);
-                          }}
-                          className="h-9 font-medium"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 text-sm text-muted-foreground italic">
-                      วันหยุด - ไม่มีการทำงาน
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 9. Flexible Day-Off Settings Card */}
+        {/* 8. Flexible Day-Off Settings Card - MOVED BEFORE Work Schedule */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1543,6 +1441,16 @@ export default function EmployeeSettings() {
 
             {formData.flexible_day_off_enabled && (
               <div className="space-y-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                {/* Important Notice - NEW */}
+                <Alert className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <AlertDescription className="text-sm text-amber-700 dark:text-amber-300">
+                    <strong>หมายเหตุ:</strong> เมื่อเปิดใช้งานวันหยุดยืดหยุ่น พนักงานต้องทำงานทุกวัน (จันทร์-อาทิตย์) ยกเว้นวันหยุดนักขัตฤกษ์ และวันที่เลือกหยุดตามโควต้า
+                    <br />
+                    <span className="text-xs">เวลาทำงานจะใช้จาก "ตารางเวลาทำงาน" (เวลาเข้า-ออก หรือชั่วโมงต่อวัน)</span>
+                  </AlertDescription>
+                </Alert>
+
                 {/* Days per Week */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1621,6 +1529,109 @@ export default function EmployeeSettings() {
             )}
           </CardContent>
         </Card>
+
+        {/* 9. Work Schedule Card - Hidden when Flexible Day-Off is enabled */}
+        {!formData.flexible_day_off_enabled && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                ตารางงานรายสัปดาห์
+              </CardTitle>
+              <CardDescription>
+                กำหนดวันทำงานและเวลาสำหรับแต่ละวันในสัปดาห์
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Quick Summary */}
+              <div className="p-3 rounded-lg bg-primary/5 border">
+                <div className="text-sm font-medium mb-1">สรุปตารางงาน</div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>วันทำงาน: {workSchedule.filter(d => d.is_working_day).length} วัน</span>
+                  <span>•</span>
+                  <span>รวมชั่วโมง/สัปดาห์: {workSchedule.filter(d => d.is_working_day).reduce((sum, d) => sum + d.expected_hours, 0)} ชม.</span>
+                </div>
+              </div>
+              
+              {/* Weekly Schedule Grid */}
+              <div className="space-y-2">
+                {workSchedule.map((day, index) => (
+                  <div 
+                    key={day.day_of_week} 
+                    className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-colors ${
+                      day.is_working_day ? 'bg-background border-primary/20' : 'bg-muted/30 border-muted'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 w-36">
+                      <Switch
+                        checked={day.is_working_day}
+                        onCheckedChange={(checked) => {
+                          const updated = [...workSchedule];
+                          updated[index].is_working_day = checked;
+                          setWorkSchedule(updated);
+                        }}
+                      />
+                      <span className={`font-medium ${day.is_working_day ? '' : 'text-muted-foreground'}`}>
+                        {dayLabels[day.day_of_week].label}
+                      </span>
+                    </div>
+
+                    {day.is_working_day ? (
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">เข้างาน</Label>
+                          <Input
+                            type="time"
+                            value={day.start_time}
+                            onChange={(e) => {
+                              const updated = [...workSchedule];
+                              updated[index].start_time = e.target.value;
+                              setWorkSchedule(updated);
+                            }}
+                            className="h-9 w-28"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">เลิกงาน</Label>
+                          <Input
+                            type="time"
+                            value={day.end_time}
+                            onChange={(e) => {
+                              const updated = [...workSchedule];
+                              updated[index].end_time = e.target.value;
+                              setWorkSchedule(updated);
+                            }}
+                            className="h-9 w-28"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap">ชม./วัน</Label>
+                          <Input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="24"
+                            value={day.expected_hours}
+                            onChange={(e) => {
+                              const updated = [...workSchedule];
+                              updated[index].expected_hours = parseFloat(e.target.value) || 0;
+                              setWorkSchedule(updated);
+                            }}
+                            className="h-9 w-20 font-medium"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 text-sm text-muted-foreground italic">
+                        วันหยุด - ไม่มีการทำงาน
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 10. Bank Account Info Card */}
         <Card>
