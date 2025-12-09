@@ -175,7 +175,7 @@ export async function callAI(
       return null;
     }
 
-    const response = await fetch("https://lovable.app/api/ai/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,

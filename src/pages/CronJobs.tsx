@@ -58,22 +58,22 @@ const calculateDuration = (start: string, end: string): string => {
 
 const getJobDescription = (jobname: string): string => {
   const descriptions: Record<string, string> = {
-    // Attendance
-    'attendance-reminder': 'เตือนพนักงานเช็คอิน/เช็คเอาต์',
-    'attendance-daily-summary-30min': 'ส่งสรุปรายวันไป LINE',
-    'auto-checkout-grace': 'Auto checkout หลัง grace period',
+    // Attendance - exact matches from database
+    'attendance-reminder-every-10-min': 'เตือนพนักงานเช็คอิน/เช็คเอาต์ ทุก 10 นาที',
+    'attendance-daily-summary-30min': 'ส่งสรุปรายวันไป LINE ทุก 30 นาที',
+    'auto-checkout-grace-5min': 'Auto checkout หลัง grace period ทุก 5 นาที',
     'auto-checkout-midnight': 'Auto checkout เที่ยงคืน',
-    'attendance-snapshot-update-30min': 'อัพเดท snapshot การเข้างาน',
+    'attendance-snapshot-update-30min': 'อัพเดท snapshot การเข้างาน ทุก 30 นาที',
     'missing-employee-check': 'ตรวจจับพนักงานหาย',
     // OT & Leave
-    'overtime-warning': 'เตือน OT ที่ยังไม่ได้อนุมัติ',
-    'request-timeout-checker': 'ตรวจสอบ timeout ของ requests',
-    'flexible-day-off-reminder-weekly': 'เตือนวันหยุดที่เหลือ',
+    'overtime-warning-check': 'เตือน OT ที่ยังไม่ได้อนุมัติ',
+    'request-timeout-check': 'ตรวจสอบ timeout ของ requests',
+    'flexible-day-off-reminder-weekly': 'เตือนวันหยุดที่เหลือทุกสัปดาห์',
     // Tasks & Work
-    'task-scheduler': 'ตรวจสอบและส่งแจ้งเตือน tasks',
+    'task-scheduler-every-5min': 'ตรวจสอบและส่งแจ้งเตือน tasks ทุก 5 นาที',
     'work-summary-morning': 'สรุปงานตอนเช้า',
     'work-summary-evening': 'สรุปงานตอนเย็น',
-    'work-check-in-daily': 'เตือน check-in งาน',
+    'work-check-in-daily': 'เตือน check-in งานรายวัน',
     'work-reminder-hourly': 'เตือนงานรายชั่วโมง',
     // Reports
     'generate-daily-reports': 'สร้างรายงานรายวัน',
@@ -82,13 +82,13 @@ const getJobDescription = (jobname: string): string => {
     'team-health-report-weekly': 'ส่ง Team Health Report ทุกวันจันทร์ 09:00',
     'sentiment-tracker-daily': 'วิเคราะห์ sentiment รายวัน',
     'sentiment-network-weekly': 'คำนวณ network metrics รายสัปดาห์',
-    'response-analytics-daily': 'Aggregate response analytics',
+    'response-analytics-daily': 'Aggregate response analytics รายวัน',
     // Memory
-    'memory-consolidator-every-6h': 'รวม working memory เป็น long-term',
-    'memory-decay-daily': 'ลดน้ำหนัก memory เก่า',
-    'pattern-learner-daily': 'เรียนรู้ patterns จาก data',
+    'memory-consolidator-every-6h': 'รวม working memory เป็น long-term ทุก 6 ชม.',
+    'memory-decay-daily': 'ลดน้ำหนัก memory เก่ารายวัน',
+    'pattern-learner-daily': 'เรียนรู้ patterns จาก data รายวัน',
     // Broadcast
-    'broadcast-scheduler-every-min': 'ตรวจสอบ scheduled broadcasts',
+    'broadcast-scheduler-every-min': 'ตรวจสอบ scheduled broadcasts ทุกนาที',
   };
   return descriptions[jobname] || 'Scheduled job';
 };

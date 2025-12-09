@@ -32,7 +32,7 @@ Provide a short (2-3 sentences), encouraging feedback that:
 
 Keep it friendly, brief, and motivating. Write in Thai if the progress text is in Thai, otherwise in English.`;
 
-    const response = await fetch('https://lovable.app/api/ai/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lovableApiKey}`,
@@ -75,7 +75,7 @@ export async function callLovableAI(
       return null;
     }
 
-    const response = await fetch('https://lovable.app/api/ai/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lovableApiKey}`,
