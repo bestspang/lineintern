@@ -140,3 +140,9 @@ verify_jwt = false
 
 [functions.trigger-daily-summary]
 verify_jwt = true
+
+[functions.broadcast-send]
+verify_jwt = true
+
+[functions.broadcast-scheduler]
+verify_jwt = false
