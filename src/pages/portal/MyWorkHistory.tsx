@@ -6,6 +6,7 @@ import { Clock, LogIn, LogOut, AlertCircle, Calendar } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subDays, parseISO } from 'date-fns';
+import { formatBangkokTime, formatBangkokISODate, getBangkokHoursMinutes } from '@/lib/timezone';
 import { th, enUS } from 'date-fns/locale';
 
 interface AttendanceLog {
@@ -49,13 +50,15 @@ export default function MyWorkHistory() {
         
         // Calculate stats
         const checkIns = data.filter(l => l.event_type === 'check_in');
-        const uniqueDays = new Set(checkIns.map(l => format(parseISO(l.server_time), 'yyyy-MM-dd')));
+        // Use Bangkok timezone for date grouping
+        const uniqueDays = new Set(checkIns.map(l => formatBangkokISODate(l.server_time)));
         const flaggedCount = checkIns.filter(l => l.is_flagged).length;
         
-        // Calculate average check-in time
+        // Calculate average check-in time using Bangkok timezone
         const checkInHours = checkIns.map(l => {
-          const d = parseISO(l.server_time);
-          return d.getHours() + d.getMinutes() / 60;
+          const bangkokTime = getBangkokHoursMinutes(l.server_time);
+          if (!bangkokTime) return 0;
+          return bangkokTime.hours + bangkokTime.minutes / 60;
         });
         const avgHour = checkInHours.length > 0 
           ? checkInHours.reduce((a, b) => a + b, 0) / checkInHours.length 
@@ -76,9 +79,9 @@ export default function MyWorkHistory() {
     fetchHistory();
   }, [employee?.id]);
 
-  // Group logs by date
+  // Group logs by date using Bangkok timezone
   const groupedLogs = logs.reduce((acc, log) => {
-    const date = format(parseISO(log.server_time), 'yyyy-MM-dd');
+    const date = formatBangkokISODate(log.server_time);
     if (!acc[date]) acc[date] = [];
     acc[date].push(log);
     return acc;
@@ -205,7 +208,7 @@ export default function MyWorkHistory() {
                         )}
                       </div>
                       <span className="text-muted-foreground">
-                        {format(parseISO(log.server_time), 'HH:mm')}
+                        {formatBangkokTime(log.server_time).slice(0, 5)}
                       </span>
                       {log.is_flagged && (
                         <AlertCircle className="h-4 w-4 text-amber-500" />

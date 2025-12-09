@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,70 +19,104 @@ export default function Approvals() {
   const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0 });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      if (!employee?.id) return;
+  const fetchCounts = useCallback(async () => {
+    if (!employee?.id) return;
 
-      // Build query based on role
-      // Admin: see all, Manager: see only their branch
-      let otCount = 0;
-      let leaveCount = 0;
-      let earlyLeaveCount = 0;
+    // Build query based on role
+    // Admin: see all, Manager: see only their branch
+    let otCount = 0;
+    let leaveCount = 0;
+    let earlyLeaveCount = 0;
 
-      if (isAdmin) {
-        // Admin sees all pending requests
-        const [otRes, leaveRes, earlyRes] = await Promise.all([
-          supabase
-            .from('overtime_requests')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'pending'),
-          supabase
-            .from('leave_requests')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'pending'),
-          supabase
-            .from('early_leave_requests')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'pending'),
-        ]);
-        otCount = otRes.count || 0;
-        leaveCount = leaveRes.count || 0;
-        earlyLeaveCount = earlyRes.count || 0;
-      } else if (isManager && employee.branch_id) {
-        // Manager sees only their branch's requests
-        // Need to join with employees table to filter by branch
-        const [otRes, leaveRes, earlyRes] = await Promise.all([
-          supabase
-            .from('overtime_requests')
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-            .eq('status', 'pending')
-            .eq('employee.branch_id', employee.branch_id),
-          supabase
-            .from('leave_requests')
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-            .eq('status', 'pending')
-            .eq('employee.branch_id', employee.branch_id),
-          supabase
-            .from('early_leave_requests')
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-            .eq('status', 'pending')
-            .eq('employee.branch_id', employee.branch_id),
-        ]);
-        otCount = otRes.count || 0;
-        leaveCount = leaveRes.count || 0;
-        earlyLeaveCount = earlyRes.count || 0;
-      }
+    if (isAdmin) {
+      // Admin sees all pending requests
+      const [otRes, leaveRes, earlyRes] = await Promise.all([
+        supabase
+          .from('overtime_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        supabase
+          .from('leave_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        supabase
+          .from('early_leave_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+      ]);
+      otCount = otRes.count || 0;
+      leaveCount = leaveRes.count || 0;
+      earlyLeaveCount = earlyRes.count || 0;
+    } else if (isManager && employee.branch_id) {
+      // Manager sees only their branch's requests
+      // Need to join with employees table to filter by branch
+      const [otRes, leaveRes, earlyRes] = await Promise.all([
+        supabase
+          .from('overtime_requests')
+          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('employee.branch_id', employee.branch_id),
+        supabase
+          .from('leave_requests')
+          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('employee.branch_id', employee.branch_id),
+        supabase
+          .from('early_leave_requests')
+          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('employee.branch_id', employee.branch_id),
+      ]);
+      otCount = otRes.count || 0;
+      leaveCount = leaveRes.count || 0;
+      earlyLeaveCount = earlyRes.count || 0;
+    }
 
-      setCounts({
-        ot: otCount,
-        leave: leaveCount,
-        earlyLeave: earlyLeaveCount,
-      });
-      setLoading(false);
-    };
-
-    fetchCounts();
+    setCounts({
+      ot: otCount,
+      leave: leaveCount,
+      earlyLeave: earlyLeaveCount,
+    });
+    setLoading(false);
   }, [employee?.id, employee?.branch_id, isAdmin, isManager]);
+
+  useEffect(() => {
+    fetchCounts();
+
+    // Subscribe to realtime updates for all request tables
+    const otChannel = supabase
+      .channel('portal-approvals-ot')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'overtime_requests' },
+        () => fetchCounts()
+      )
+      .subscribe();
+
+    const leaveChannel = supabase
+      .channel('portal-approvals-leave')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'leave_requests' },
+        () => fetchCounts()
+      )
+      .subscribe();
+
+    const earlyLeaveChannel = supabase
+      .channel('portal-approvals-early-leave')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'early_leave_requests' },
+        () => fetchCounts()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(otChannel);
+      supabase.removeChannel(leaveChannel);
+      supabase.removeChannel(earlyLeaveChannel);
+    };
+  }, [fetchCounts]);
 
   const totalPending = counts.ot + counts.leave + counts.earlyLeave;
 
