@@ -772,7 +772,18 @@ export default function Personality() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <RelationshipGraph relationships={userRelationships || []} />
+              <RelationshipGraph 
+                relationships={userRelationships || []} 
+                networkMetrics={networkMetrics?.map(m => ({
+                  user_id: m.user_id,
+                  network_role: m.network_role,
+                  degree_centrality: Number(m.degree_centrality) || 0,
+                  unique_contacts: m.unique_contacts,
+                  total_interactions: m.total_interactions,
+                })) || []}
+                showBurnoutIndicators={true}
+                burnoutUsers={burnoutRiskUsers.map(u => u.user_id)}
+              />
             </CardContent>
           </Card>
         </TabsContent>

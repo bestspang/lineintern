@@ -146,3 +146,6 @@ verify_jwt = true
 
 [functions.broadcast-scheduler]
 verify_jwt = false
+
+[functions.sentiment-tracker]
+verify_jwt = false
