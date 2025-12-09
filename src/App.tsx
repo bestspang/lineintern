@@ -74,7 +74,8 @@ import ConfigurationValidator from "./pages/ConfigurationValidator";
 import { 
   PortalHome, PortalPlaceholder, 
   MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile,
-  Approvals, ApproveOT, ApproveLeave, TeamSummary 
+  Approvals, ApproveOT, ApproveLeave, TeamSummary,
+  TodayPhotos, DailySummary
 } from "./pages/portal";
 
 const queryClient = new QueryClient();
@@ -111,22 +112,8 @@ const App = () => (
                       <Route path="/approvals/ot" element={<ApproveOT />} />
                       <Route path="/approvals/leave" element={<ApproveLeave />} />
                       <Route path="/team-summary" element={<TeamSummary />} />
-                      <Route path="/photos" element={
-                        <PortalPlaceholder 
-                          title="รูปวันนี้" 
-                          titleEn="Today's Photos"
-                          description="ดูรูปเช็คอินวันนี้"
-                          descriptionEn="View today's check-in photos"
-                        />
-                      } />
-                      <Route path="/daily-summary" element={
-                        <PortalPlaceholder 
-                          title="สรุปประจำวัน" 
-                          titleEn="Daily Summary"
-                          description="สถิติและรายงานประจำวัน"
-                          descriptionEn="Daily statistics and reports"
-                        />
-                      } />
+                      <Route path="/photos" element={<TodayPhotos />} />
+                      <Route path="/daily-summary" element={<DailySummary />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </PortalLayout>
