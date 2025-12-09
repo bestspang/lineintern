@@ -30,33 +30,44 @@ interface EarlyLeaveRequest {
 
 export default function ApproveEarlyLeave() {
   const navigate = useNavigate();
-  const { employee, locale } = usePortal();
+  const { employee, locale, isManager, isAdmin } = usePortal();
   const [requests, setRequests] = useState<EarlyLeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
   const fetchRequests = async () => {
-    const { data, error } = await supabase
+    if (!employee) return;
+    
+    let query = supabase
       .from('early_leave_requests')
       .select(`
         id, request_date, leave_reason, leave_type, actual_work_hours, required_work_hours, status, created_at,
         employee:employees!early_leave_requests_employee_id_fkey (
-          id, full_name, code,
+          id, full_name, code, branch_id,
           branch:branches!employees_branch_id_fkey ( name )
         )
       `)
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
+    const { data, error } = await query;
+
     if (!error && data) {
-      setRequests(data as unknown as EarlyLeaveRequest[]);
+      // Filter by branch for managers (not admin)
+      let filtered = data as unknown as (EarlyLeaveRequest & { employee: { branch_id: string } })[];
+      if (isManager && !isAdmin && employee.branch_id) {
+        filtered = filtered.filter(req => req.employee?.branch_id === employee.branch_id);
+      }
+      setRequests(filtered);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (employee) {
+      fetchRequests();
+    }
+  }, [employee, isManager, isAdmin]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setProcessing(requestId);
