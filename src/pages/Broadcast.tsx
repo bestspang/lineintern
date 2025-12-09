@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,9 +15,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { Radio, Send, Clock, Users, FileText, History, BarChart3, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare } from "lucide-react";
+import { format, isSameDay, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { th } from "date-fns/locale";
+import { Radio, Send, Clock, Users, FileText, History, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare, CalendarDays } from "lucide-react";
 import { getBangkokNow, formatBangkokDateTime } from "@/lib/timezone";
 
 type MessageType = "text" | "image" | "text_image";
@@ -91,6 +93,7 @@ export default function Broadcast() {
   const [newGroupDesc, setNewGroupDesc] = useState("");
   
   const [sending, setSending] = useState(false);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(getBangkokNow());
 
   // Fetch broadcasts history
   const { data: broadcasts, isLoading: broadcastsLoading } = useQuery({
@@ -101,6 +104,20 @@ export default function Broadcast() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
+      if (error) throw error;
+      return data as Broadcast[];
+    },
+  });
+
+  // Fetch scheduled/recurring broadcasts for calendar
+  const { data: scheduledBroadcasts } = useQuery({
+    queryKey: ["scheduled-broadcasts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("broadcasts")
+        .select("*")
+        .in("status", ["scheduled", "paused"])
+        .order("scheduled_at", { ascending: true });
       if (error) throw error;
       return data as Broadcast[];
     },
@@ -574,6 +591,7 @@ export default function Broadcast() {
         { event: "*", schema: "public", table: "broadcasts" },
         () => {
           queryClient.invalidateQueries({ queryKey: ["broadcasts"] });
+          queryClient.invalidateQueries({ queryKey: ["scheduled-broadcasts"] });
         }
       )
       .subscribe();
@@ -582,6 +600,60 @@ export default function Broadcast() {
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
+
+  // Calendar helper: Get dates that have scheduled broadcasts
+  const datesWithBroadcasts = useMemo(() => {
+    if (!scheduledBroadcasts) return [];
+    return scheduledBroadcasts
+      .map((b) => b.scheduled_at || b.next_run_at)
+      .filter(Boolean)
+      .map((dateStr) => new Date(dateStr!));
+  }, [scheduledBroadcasts]);
+
+  // Calendar helper: Get broadcasts for selected date
+  const broadcastsForSelectedDate = useMemo(() => {
+    if (!scheduledBroadcasts || !selectedCalendarDate) return [];
+    const selectedDateStr = format(selectedCalendarDate, "yyyy-MM-dd");
+    return scheduledBroadcasts.filter((b) => {
+      const broadcastDate = b.scheduled_at || b.next_run_at;
+      if (!broadcastDate) return false;
+      return format(new Date(broadcastDate), "yyyy-MM-dd") === selectedDateStr;
+    }).sort((a, b) => {
+      const aTime = new Date(a.scheduled_at || a.next_run_at!).getTime();
+      const bTime = new Date(b.scheduled_at || b.next_run_at!).getTime();
+      return aTime - bTime;
+    });
+  }, [scheduledBroadcasts, selectedCalendarDate]);
+
+  // Calendar helper: Calculate upcoming stats
+  const upcomingStats = useMemo(() => {
+    if (!scheduledBroadcasts) return { today: 0, thisWeek: 0, recurring: 0, paused: 0 };
+    
+    const now = getBangkokNow();
+    const todayStr = format(now, "yyyy-MM-dd");
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    
+    return {
+      today: scheduledBroadcasts.filter((b) => {
+        const d = b.scheduled_at || b.next_run_at;
+        return d && format(new Date(d), "yyyy-MM-dd") === todayStr;
+      }).length,
+      thisWeek: scheduledBroadcasts.filter((b) => {
+        const d = b.scheduled_at || b.next_run_at;
+        if (!d) return false;
+        const date = new Date(d);
+        return isWithinInterval(date, { start: weekStart, end: weekEnd });
+      }).length,
+      recurring: scheduledBroadcasts.filter((b) => b.is_recurring).length,
+      paused: scheduledBroadcasts.filter((b) => b.status === "paused").length,
+    };
+  }, [scheduledBroadcasts]);
+
+  // Calendar helper: Check if a date has broadcasts
+  const hasbroadcastModifier = (date: Date) => {
+    return datesWithBroadcasts.some((d) => isSameDay(d, date));
+  };
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -594,10 +666,14 @@ export default function Broadcast() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="create" className="flex items-center gap-2">
             <Send className="h-4 w-4" />
             Create New
+          </TabsTrigger>
+          <TabsTrigger value="calendar" className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4" />
+            Calendar
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="h-4 w-4" />
@@ -1007,6 +1083,176 @@ export default function Broadcast() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        {/* CALENDAR TAB */}
+        <TabsContent value="calendar" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Calendar */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5" /> Broadcast Calendar
+                </CardTitle>
+                <CardDescription>Select a date to view scheduled broadcasts</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Calendar
+                  mode="single"
+                  selected={selectedCalendarDate}
+                  onSelect={setSelectedCalendarDate}
+                  modifiers={{
+                    hasbroadcast: hasbroadcastModifier,
+                  }}
+                  modifiersStyles={{
+                    hasbroadcast: { 
+                      fontWeight: 'bold',
+                      backgroundColor: 'hsl(var(--primary) / 0.15)',
+                      borderRadius: '50%'
+                    }
+                  }}
+                  className="rounded-md border pointer-events-auto"
+                />
+                <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-3 h-3 rounded-full bg-primary/20"></div>
+                  <span>Has scheduled broadcasts</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Broadcasts for selected date */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  {selectedCalendarDate 
+                    ? format(selectedCalendarDate, "EEEE, d MMMM yyyy", { locale: th })
+                    : "Select a date"}
+                </CardTitle>
+                <CardDescription>
+                  {broadcastsForSelectedDate.length} broadcast(s) scheduled
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {broadcastsForSelectedDate.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CalendarDays className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No broadcasts scheduled for this date</p>
+                    <Button variant="outline" className="mt-4" onClick={() => setActiveTab("create")}>
+                      <Plus className="h-4 w-4 mr-2" /> Create New Broadcast
+                    </Button>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-3 pr-4">
+                      {broadcastsForSelectedDate.map((broadcast) => (
+                        <div 
+                          key={broadcast.id} 
+                          className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="space-y-1 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium truncate">{broadcast.title}</span>
+                                {getStatusBadge(broadcast.status)}
+                                {broadcast.is_recurring && (
+                                  <Badge variant="secondary" className="shrink-0">
+                                    🔁 {broadcast.recurrence_pattern}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {format(new Date(broadcast.scheduled_at || broadcast.next_run_at!), "HH:mm")}
+                                </span>
+                                <span>•</span>
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {broadcast.total_recipients} recipients
+                                </span>
+                              </div>
+                              {broadcast.content && (
+                                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                  {broadcast.content}
+                                </p>
+                              )}
+                            </div>
+                            {/* Quick Actions */}
+                            <div className="flex gap-1 shrink-0">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => cloneBroadcastMutation.mutate(broadcast)} 
+                                title="Clone"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              {broadcast.status === "scheduled" && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={() => togglePauseMutation.mutate({ broadcastId: broadcast.id, pause: true })} 
+                                  title="Pause"
+                                >
+                                  <Pause className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {broadcast.status === "paused" && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={() => togglePauseMutation.mutate({ broadcastId: broadcast.id, pause: false })} 
+                                  title="Resume"
+                                >
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => cancelBroadcastMutation.mutate(broadcast.id)} 
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Upcoming broadcasts summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>📊 Upcoming Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <div className="text-3xl font-bold text-primary">{upcomingStats.today}</div>
+                  <div className="text-sm text-muted-foreground mt-1">Today</div>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <div className="text-3xl font-bold text-blue-500">{upcomingStats.thisWeek}</div>
+                  <div className="text-sm text-muted-foreground mt-1">This Week</div>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <div className="text-3xl font-bold text-orange-500">{upcomingStats.recurring}</div>
+                  <div className="text-sm text-muted-foreground mt-1">Recurring</div>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <div className="text-3xl font-bold text-yellow-500">{upcomingStats.paused}</div>
+                  <div className="text-sm text-muted-foreground mt-1">Paused</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* HISTORY TAB */}
