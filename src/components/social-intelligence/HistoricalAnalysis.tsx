@@ -252,37 +252,39 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
       }
     });
     
-    // Aggregate across all periods - calculate period averages first, then average those
+    // Use only the LATEST period's average (not averaging all periods)
     return Array.from(userMap.values()).map((u) => {
       const periods = Array.from(u.periodData.values());
       const totalMessages = periods.reduce((s, p) => s + p.messages, 0);
       
-      // Calculate average per period first, then average across periods
-      const validWorkPeriods = periods.filter(p => p.workCount > 0);
-      const validOutsidePeriods = periods.filter(p => p.outsideCount > 0);
-      const validGhostPeriods = periods.filter(p => p.ghostCount > 0);
+      // Find the latest period key (sorted chronologically)
+      const sortedPeriodKeys = Array.from(u.periodData.keys()).sort();
+      const latestPeriodKey = sortedPeriodKeys[sortedPeriodKeys.length - 1];
+      const latestPeriod = u.periodData.get(latestPeriodKey);
       
-      // Each period's average
-      const periodWorkAvgs = validWorkPeriods.map(p => p.workHours / p.workCount);
-      const periodOutsideAvgs = validOutsidePeriods.map(p => p.outsideHours / p.outsideCount);
-      const periodGhostAvgs = validGhostPeriods.map(p => p.ghost / p.ghostCount);
+      // Calculate average from latest period only
+      let avgWorkSeconds: number | null = null;
+      let avgOutsideSeconds: number | null = null;
+      let avgGhost = 0;
       
-      // Final average = average of period averages
-      const avgWorkSeconds = periodWorkAvgs.length > 0 
-        ? periodWorkAvgs.reduce((a, b) => a + b, 0) / periodWorkAvgs.length 
-        : null;
-      const avgOutsideSeconds = periodOutsideAvgs.length > 0 
-        ? periodOutsideAvgs.reduce((a, b) => a + b, 0) / periodOutsideAvgs.length 
-        : null;
-      const avgGhost = periodGhostAvgs.length > 0 
-        ? periodGhostAvgs.reduce((a, b) => a + b, 0) / periodGhostAvgs.length 
-        : 0;
+      if (latestPeriod) {
+        avgWorkSeconds = latestPeriod.workCount > 0 
+          ? latestPeriod.workHours / latestPeriod.workCount 
+          : null;
+        avgOutsideSeconds = latestPeriod.outsideCount > 0 
+          ? latestPeriod.outsideHours / latestPeriod.outsideCount 
+          : null;
+        avgGhost = latestPeriod.ghostCount > 0 
+          ? latestPeriod.ghost / latestPeriod.ghostCount 
+          : 0;
+      }
       
       return {
         userId: u.userId,
         displayName: u.displayName,
         totalMessages,
         periodCount: periods.length,
+        latestPeriod: latestPeriodKey || '-',
         avgWorkHours: avgWorkSeconds ? Math.round(avgWorkSeconds / 60) : null,
         avgOutsideHours: avgOutsideSeconds ? Math.round(avgOutsideSeconds / 60) : null,
         avgGhost: Math.round(avgGhost * 100),
