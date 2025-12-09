@@ -24,6 +24,7 @@ interface LeaveRequest {
     id: string;
     full_name: string;
     code: string;
+    branch_id: string | null;
     branch: { name: string } | null;
   };
 }
@@ -37,33 +38,41 @@ const leaveTypeLabels: Record<string, { th: string; en: string }> = {
 
 export default function ApproveLeave() {
   const navigate = useNavigate();
-  const { employee, locale } = usePortal();
+  const { employee, locale, isAdmin } = usePortal();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
   const fetchRequests = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('leave_requests')
       .select(`
         id, leave_type, start_date, end_date, reason, status, total_days, created_at,
         employee:employees!leave_requests_employee_id_fkey (
-          id, full_name, code,
+          id, full_name, code, branch_id,
           branch:branches!employees_branch_id_fkey ( name )
         )
       `)
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
+    // Manager can only see their branch's requests
+    if (!isAdmin && employee?.branch_id) {
+      query = query.eq('employee.branch_id', employee.branch_id);
+    }
+
+    const { data, error } = await query;
+
     if (!error && data) {
-      setRequests(data as unknown as LeaveRequest[]);
+      const validData = data.filter(d => d.employee !== null) as unknown as LeaveRequest[];
+      setRequests(validData);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [isAdmin, employee?.branch_id]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setProcessing(requestId);

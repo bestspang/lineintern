@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, UserCheck, UserX, Clock, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { th, enUS } from 'date-fns/locale';
+import { formatBangkokISODate, getBangkokNow, getBangkokHoursMinutes } from '@/lib/timezone';
 
 export default function DailySummary() {
   const { employee, locale } = usePortal();
@@ -27,7 +28,8 @@ export default function DailySummary() {
   const { data: summary, isLoading } = useQuery({
     queryKey: ['portal-daily-summary', selectedBranch],
     queryFn: async () => {
-      const today = format(new Date(), 'yyyy-MM-dd');
+      // Use Bangkok timezone for today's date
+      const today = formatBangkokISODate(new Date());
       
       // Get employees
       let empQuery = supabase
@@ -41,12 +43,12 @@ export default function DailySummary() {
       
       const { data: employees } = await empQuery;
       
-      // Get today's logs
+      // Get today's logs using Bangkok timezone boundaries
       const { data: logs } = await supabase
         .from('attendance_logs')
         .select('employee_id, event_type, server_time, is_flagged')
-        .gte('server_time', `${today}T00:00:00`)
-        .lt('server_time', `${today}T23:59:59`);
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lt('server_time', `${today}T23:59:59+07:00`);
 
       const employeeIds = employees?.map(e => e.id) || [];
       const todayLogs = logs?.filter(l => employeeIds.includes(l.employee_id)) || [];
@@ -55,10 +57,15 @@ export default function DailySummary() {
       const checkedOutIds = new Set(todayLogs.filter(l => l.event_type === 'check_out').map(l => l.employee_id));
       const flaggedCount = todayLogs.filter(l => l.is_flagged).length;
 
-      // Calculate late (check-in after 09:00)
+      // Calculate late (check-in after 09:00 in Bangkok time)
       const lateIds = new Set(
         todayLogs
-          .filter(l => l.event_type === 'check_in' && new Date(l.server_time).getHours() >= 9)
+          .filter(l => {
+            if (l.event_type !== 'check_in') return false;
+            // Convert server_time to Bangkok hours
+            const bangkokTime = getBangkokHoursMinutes(l.server_time);
+            return bangkokTime && bangkokTime.hours >= 9;
+          })
           .map(l => l.employee_id)
       );
 
@@ -111,6 +118,8 @@ export default function DailySummary() {
     },
   ];
 
+  const dateLocale = locale === 'th' ? th : enUS;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -119,7 +128,7 @@ export default function DailySummary() {
             {locale === 'th' ? '📊 สรุปประจำวัน' : '📊 Daily Summary'}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {format(new Date(), locale === 'th' ? 'd MMMM yyyy' : 'MMMM d, yyyy', { locale: locale === 'th' ? th : undefined })}
+            {format(getBangkokNow(), locale === 'th' ? 'd MMMM yyyy' : 'MMMM d, yyyy', { locale: dateLocale })}
           </p>
         </div>
         <Select value={selectedBranch} onValueChange={setSelectedBranch}>

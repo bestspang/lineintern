@@ -90,6 +90,7 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              {/* Legacy route - redirects handled by LINE webhook now pointing to /portal */}
               <Route path="/employee-menu" element={<EmployeeMenu />} />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/attendance/flexible-day-off" element={<FlexibleDayOff />} />

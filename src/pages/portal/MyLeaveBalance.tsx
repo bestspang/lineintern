@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Briefcase, HeartPulse, User } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
+import { formatBangkokISODate, getBangkokNow } from '@/lib/timezone';
 
 interface LeaveBalance {
   vacation_days_total: number;
@@ -22,6 +23,10 @@ export default function MyLeaveBalance() {
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Get current year in Bangkok timezone
+  const bangkokNow = getBangkokNow();
+  const currentYear = bangkokNow.getFullYear();
+
   useEffect(() => {
     const fetchBalance = async () => {
       if (!employee?.id) return;
@@ -30,8 +35,8 @@ export default function MyLeaveBalance() {
         .from('leave_balances')
         .select('*')
         .eq('employee_id', employee.id)
-        .eq('leave_year', new Date().getFullYear())
-        .single();
+        .eq('leave_year', currentYear)
+        .maybeSingle();
 
       if (!error && data) {
         setBalance(data);
@@ -40,7 +45,7 @@ export default function MyLeaveBalance() {
     };
 
     fetchBalance();
-  }, [employee?.id]);
+  }, [employee?.id, currentYear]);
 
   if (loading) {
     return (
@@ -91,7 +96,7 @@ export default function MyLeaveBalance() {
           {locale === 'th' ? '📅 วันลาคงเหลือ' : '📅 Leave Balance'}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {locale === 'th' ? `ปี ${balance?.leave_year || new Date().getFullYear()}` : `Year ${balance?.leave_year || new Date().getFullYear()}`}
+          {locale === 'th' ? `ปี ${balance?.leave_year || currentYear}` : `Year ${balance?.leave_year || currentYear}`}
         </p>
       </div>
 

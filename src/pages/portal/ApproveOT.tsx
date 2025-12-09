@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Check, X, Clock, User } from 'lucide-react';
+import { ArrowLeft, Check, X, Clock } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO } from 'date-fns';
@@ -22,6 +22,7 @@ interface OTRequest {
     id: string;
     full_name: string;
     code: string;
+    branch_id: string | null;
     branch: { name: string } | null;
   };
 }
@@ -34,27 +35,37 @@ export default function ApproveOT() {
   const [processing, setProcessing] = useState<string | null>(null);
 
   const fetchRequests = async () => {
-    const { data, error } = await supabase
+    // Build query - join with employees to get branch info
+    let query = supabase
       .from('overtime_requests')
       .select(`
         id, request_date, estimated_hours, reason, status, created_at,
         employee:employees!overtime_requests_employee_id_fkey (
-          id, full_name, code,
+          id, full_name, code, branch_id,
           branch:branches!employees_branch_id_fkey ( name )
         )
       `)
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
+    // Manager can only see their branch's requests
+    if (!isAdmin && employee?.branch_id) {
+      query = query.eq('employee.branch_id', employee.branch_id);
+    }
+
+    const { data, error } = await query;
+
     if (!error && data) {
-      setRequests(data as unknown as OTRequest[]);
+      // Filter out any null employees (shouldn't happen but type safety)
+      const validData = data.filter(d => d.employee !== null) as unknown as OTRequest[];
+      setRequests(validData);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [isAdmin, employee?.branch_id]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setProcessing(requestId);

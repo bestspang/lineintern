@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatBangkokISODate } from '@/lib/timezone';
 
 interface LeaveRequest {
   id: string;
@@ -37,10 +38,14 @@ export default function RequestLeave() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Use Bangkok timezone for default dates
+  const todayBangkok = formatBangkokISODate(new Date());
+  
   const [formData, setFormData] = useState({
     leave_type: 'vacation',
-    start_date: format(new Date(), 'yyyy-MM-dd'),
-    end_date: format(new Date(), 'yyyy-MM-dd'),
+    start_date: todayBangkok,
+    end_date: todayBangkok,
     reason: '',
   });
 
@@ -98,7 +103,7 @@ export default function RequestLeave() {
           total_days: calculateDays(),
           status: 'pending',
           requested_at: new Date().toISOString(),
-          request_date: format(new Date(), 'yyyy-MM-dd'),
+          request_date: todayBangkok,
         });
 
       if (error) throw error;
