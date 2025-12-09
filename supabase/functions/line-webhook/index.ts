@@ -7708,13 +7708,13 @@ async function handleMessageEvent(event: LineEvent) {
           return;
         }
 
-        // Get app URL from environment
+        // Get app URL from environment - point to new Portal
         const appUrl = Deno.env.get('APP_URL') || 'https://your-app-url.com';
-        const menuUrl = `${appUrl}/employee-menu?token=${token}`;
+        const menuUrl = `${appUrl}/portal?token=${token}`;
 
         const menuMessage = menuLocale === 'th'
-          ? `📋 เมนูพนักงาน\n\nคลิกลิงก์ด้านล่างเพื่อเปิดเมนู:\n${menuUrl}\n\n⏰ ลิงก์นี้ใช้ได้ 30 นาที`
-          : `📋 Employee Menu\n\nClick the link below to open menu:\n${menuUrl}\n\n⏰ This link is valid for 30 minutes`;
+          ? `📋 เมนูพนักงาน\n\nคลิกลิงก์ด้านล่างเพื่อเปิด Portal:\n${menuUrl}\n\n⏰ ลิงก์นี้ใช้ได้ 30 นาที`
+          : `📋 Employee Portal\n\nClick the link below to open Portal:\n${menuUrl}\n\n⏰ This link is valid for 30 minutes`;
 
         await replyToLine(event.replyToken, menuMessage, getSimpleQuickReply(menuLocale));
         console.log('[Menu] Sent menu link with token');
