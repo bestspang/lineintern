@@ -255,6 +255,27 @@ export default function Personality() {
     );
   }, [allUsers]);
 
+  // Compute derived data for Team Health (moved before early returns to fix hooks order)
+  const burnoutRiskUsers = useMemo(() => 
+    (sentimentHistory || []).filter((s: any) => s.burnout_score > 0.5), 
+    [sentimentHistory]
+  );
+  
+  const influencers = useMemo(() => 
+    (networkMetrics || []).filter((n: any) => n.network_role === "influencer"),
+    [networkMetrics]
+  );
+  
+  const outsiders = useMemo(() => 
+    (networkMetrics || []).filter((n: any) => n.network_role === "outsider"),
+    [networkMetrics]
+  );
+  
+  const avgSentiment = useMemo(() => {
+    if (!sentimentHistory?.length) return 0;
+    return sentimentHistory.reduce((sum: number, s: any) => sum + (s.avg_sentiment || 0), 0) / sentimentHistory.length;
+  }, [sentimentHistory]);
+
   // Reset personality mutation
   const resetPersonalityMutation = useMutation({
     mutationFn: async (personalityId: string) => {
@@ -364,27 +385,6 @@ export default function Personality() {
       </div>
     );
   }
-
-  // Compute derived data for Team Health
-  const burnoutRiskUsers = useMemo(() => 
-    (sentimentHistory || []).filter((s: any) => s.burnout_score > 0.5), 
-    [sentimentHistory]
-  );
-  
-  const influencers = useMemo(() => 
-    (networkMetrics || []).filter((n: any) => n.network_role === "influencer"),
-    [networkMetrics]
-  );
-  
-  const outsiders = useMemo(() => 
-    (networkMetrics || []).filter((n: any) => n.network_role === "outsider"),
-    [networkMetrics]
-  );
-  
-  const avgSentiment = useMemo(() => {
-    if (!sentimentHistory?.length) return 0;
-    return sentimentHistory.reduce((sum: number, s: any) => sum + (s.avg_sentiment || 0), 0) / sentimentHistory.length;
-  }, [sentimentHistory]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
