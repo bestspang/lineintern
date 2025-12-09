@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarIcon, Play, Clock, TrendingUp, Ghost, Users, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from "recharts";
 
@@ -17,6 +18,8 @@ interface HistoricalAnalysisProps {
   groups: any[];
   selectedGroupId: string;
 }
+
+type ViewMode = "day" | "week" | "month";
 
 export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalysisProps) {
   const queryClient = useQueryClient();
@@ -26,6 +29,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
   });
   const [analysisGroupId, setAnalysisGroupId] = useState<string>(selectedGroupId);
   const [analysisUserId, setAnalysisUserId] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
@@ -176,51 +180,145 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
     }
   };
 
-  // Aggregate data for charts
-  const responseTimeChartData = (historicalData || []).reduce((acc: any[], item: any) => {
-    const existing = acc.find((d) => d.date === item.date);
-    if (existing) {
+  // Aggregate user stats for the table
+  const userStats = useMemo(() => {
+    if (!historicalData || analysisUserId !== "all" || analysisGroupId === "all") return [];
+    
+    const userMap = new Map<string, {
+      userId: string;
+      displayName: string;
+      totalMessages: number;
+      totalWorkHours: number;
+      workHoursCount: number;
+      totalOutsideHours: number;
+      outsideHoursCount: number;
+      totalGhost: number;
+      ghostCount: number;
+    }>();
+    
+    historicalData.forEach((item: any) => {
+      const userId = item.user_id;
+      if (!userMap.has(userId)) {
+        userMap.set(userId, {
+          userId,
+          displayName: item.users?.display_name || "Unknown",
+          totalMessages: 0,
+          totalWorkHours: 0,
+          workHoursCount: 0,
+          totalOutsideHours: 0,
+          outsideHoursCount: 0,
+          totalGhost: 0,
+          ghostCount: 0,
+        });
+      }
+      
+      const user = userMap.get(userId)!;
+      user.totalMessages += item.total_messages_sent || 0;
+      
       if (item.avg_response_time_work_hours) {
-        existing.workHours = (existing.workHours || 0) + item.avg_response_time_work_hours;
-        existing.workCount = (existing.workCount || 0) + 1;
+        user.totalWorkHours += item.avg_response_time_work_hours;
+        user.workHoursCount++;
       }
       if (item.avg_response_time_outside_hours) {
-        existing.outsideHours = (existing.outsideHours || 0) + item.avg_response_time_outside_hours;
-        existing.outsideCount = (existing.outsideCount || 0) + 1;
+        user.totalOutsideHours += item.avg_response_time_outside_hours;
+        user.outsideHoursCount++;
       }
-    } else {
-      acc.push({
-        date: item.date,
-        workHours: item.avg_response_time_work_hours || 0,
-        workCount: item.avg_response_time_work_hours ? 1 : 0,
-        outsideHours: item.avg_response_time_outside_hours || 0,
-        outsideCount: item.avg_response_time_outside_hours ? 1 : 0,
-      });
-    }
-    return acc;
-  }, []).map((d) => ({
-    date: d.date,
-    workHours: d.workCount > 0 ? Math.round(d.workHours / d.workCount / 60) : null,
-    outsideHours: d.outsideCount > 0 ? Math.round(d.outsideHours / d.outsideCount / 60) : null,
-  }));
+      if (item.ghost_score !== null && item.ghost_score !== undefined) {
+        user.totalGhost += parseFloat(item.ghost_score);
+        user.ghostCount++;
+      }
+    });
+    
+    return Array.from(userMap.values()).map((u) => ({
+      ...u,
+      avgWorkHours: u.workHoursCount > 0 
+        ? Math.round(u.totalWorkHours / u.workHoursCount / 60) 
+        : null,
+      avgOutsideHours: u.outsideHoursCount > 0 
+        ? Math.round(u.totalOutsideHours / u.outsideHoursCount / 60) 
+        : null,
+      avgGhost: u.ghostCount > 0 
+        ? Math.round((u.totalGhost / u.ghostCount) * 100) 
+        : 0,
+    })).sort((a, b) => b.totalMessages - a.totalMessages);
+  }, [historicalData, analysisUserId, analysisGroupId]);
 
-  const sentimentChartData = (sentimentData || []).reduce((acc: any[], item: any) => {
-    const existing = acc.find((d) => d.date === item.date);
-    if (existing) {
-      existing.totalSentiment += item.avg_sentiment || 0;
-      existing.count++;
-    } else {
-      acc.push({
-        date: item.date,
-        totalSentiment: item.avg_sentiment || 0,
-        count: 1,
-      });
+  // Helper function to get period key based on view mode
+  const getPeriodKey = (dateStr: string, mode: ViewMode): string => {
+    const date = new Date(dateStr);
+    if (mode === "day") return dateStr;
+    if (mode === "week") {
+      const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+      return format(weekStart, "yyyy-MM-dd");
     }
-    return acc;
-  }, []).map((d) => ({
-    date: d.date,
-    sentiment: Math.round((d.totalSentiment / d.count) * 100) / 100,
-  }));
+    return format(startOfMonth(date), "yyyy-MM-01");
+  };
+
+  // Aggregate data for charts with view mode support
+  const responseTimeChartData = useMemo(() => {
+    const dailyData = (historicalData || []).reduce((acc: any[], item: any) => {
+      const periodKey = getPeriodKey(item.date, viewMode);
+      const existing = acc.find((d) => d.date === periodKey);
+      
+      if (existing) {
+        if (item.avg_response_time_work_hours) {
+          existing.workHours = (existing.workHours || 0) + item.avg_response_time_work_hours;
+          existing.workCount = (existing.workCount || 0) + 1;
+        }
+        if (item.avg_response_time_outside_hours) {
+          existing.outsideHours = (existing.outsideHours || 0) + item.avg_response_time_outside_hours;
+          existing.outsideCount = (existing.outsideCount || 0) + 1;
+        }
+      } else {
+        acc.push({
+          date: periodKey,
+          workHours: item.avg_response_time_work_hours || 0,
+          workCount: item.avg_response_time_work_hours ? 1 : 0,
+          outsideHours: item.avg_response_time_outside_hours || 0,
+          outsideCount: item.avg_response_time_outside_hours ? 1 : 0,
+        });
+      }
+      return acc;
+    }, []);
+
+    return dailyData.map((d) => ({
+      date: d.date,
+      workHours: d.workCount > 0 ? Math.round(d.workHours / d.workCount / 60) : null,
+      outsideHours: d.outsideCount > 0 ? Math.round(d.outsideHours / d.outsideCount / 60) : null,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  }, [historicalData, viewMode]);
+
+  const sentimentChartData = useMemo(() => {
+    const aggregated = (sentimentData || []).reduce((acc: any[], item: any) => {
+      const periodKey = getPeriodKey(item.date, viewMode);
+      const existing = acc.find((d) => d.date === periodKey);
+      
+      if (existing) {
+        existing.totalSentiment += item.avg_sentiment || 0;
+        existing.count++;
+      } else {
+        acc.push({
+          date: periodKey,
+          totalSentiment: item.avg_sentiment || 0,
+          count: 1,
+        });
+      }
+      return acc;
+    }, []);
+
+    return aggregated.map((d) => ({
+      date: d.date,
+      sentiment: Math.round((d.totalSentiment / d.count) * 100) / 100,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  }, [sentimentData, viewMode]);
+
+  // Format date label based on view mode
+  const formatDateLabel = (dateStr: string) => {
+    const date = new Date(dateStr);
+    if (viewMode === "day") return format(date, "MMM d");
+    if (viewMode === "week") return `W${format(date, "w")}`;
+    return format(date, "MMM yyyy");
+  };
 
   // Calculate summary stats
   const totalMessages = historicalData?.reduce((sum, d: any) => sum + (d.total_messages_sent || 0), 0) || 0;
@@ -246,7 +344,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Date Range */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Date Range</label>
@@ -254,10 +352,10 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d, yyyy")}
+                    {format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0 pointer-events-auto" align="start">
                   <Calendar
                     mode="range"
                     selected={{ from: dateRange.from, to: dateRange.to }}
@@ -267,6 +365,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                       }
                     }}
                     numberOfMonths={2}
+                    className="pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
@@ -275,7 +374,10 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
             {/* Group Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Group</label>
-              <Select value={analysisGroupId} onValueChange={setAnalysisGroupId}>
+              <Select value={analysisGroupId} onValueChange={(v) => {
+                setAnalysisGroupId(v);
+                setAnalysisUserId("all");
+              }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -304,6 +406,21 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
               </Select>
             </div>
 
+            {/* View Mode */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">View By</label>
+              <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">Daily</SelectItem>
+                  <SelectItem value="week">Weekly</SelectItem>
+                  <SelectItem value="month">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Actions */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Actions</label>
@@ -326,7 +443,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                   ) : (
                     <Play className="h-4 w-4 mr-1" />
                   )}
-                  Run Backfill
+                  Backfill
                 </Button>
               </div>
             </div>
@@ -344,6 +461,65 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
           )}
         </CardContent>
       </Card>
+
+      {/* User List Table - Show when group is selected and showing all users */}
+      {analysisGroupId !== "all" && analysisUserId === "all" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              User Response Times
+            </CardTitle>
+            <CardDescription>
+              Click on a user to view their detailed analytics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingHistory ? (
+              <Skeleton className="h-[200px] w-full" />
+            ) : userStats.length === 0 ? (
+              <div className="flex items-center justify-center h-[100px] text-muted-foreground">
+                No user data available for this period.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead className="text-right">Messages</TableHead>
+                    <TableHead className="text-right">Work Hours (avg)</TableHead>
+                    <TableHead className="text-right">Outside Hours (avg)</TableHead>
+                    <TableHead className="text-right">Ghost Score</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {userStats.map((user) => (
+                    <TableRow 
+                      key={user.userId}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setAnalysisUserId(user.userId)}
+                    >
+                      <TableCell className="font-medium">{user.displayName}</TableCell>
+                      <TableCell className="text-right">{user.totalMessages.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        {user.avgWorkHours !== null ? `${user.avgWorkHours} min` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {user.avgOutsideHours !== null ? `${user.avgOutsideHours} min` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={user.avgGhost > 50 ? "text-destructive" : "text-green-600"}>
+                          {user.avgGhost}%
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -406,7 +582,9 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
               <Clock className="h-5 w-5" />
               Response Time Trend
             </CardTitle>
-            <CardDescription>Average response time in minutes (work hours vs outside)</CardDescription>
+            <CardDescription>
+              Average response time in minutes ({viewMode === "day" ? "daily" : viewMode === "week" ? "weekly" : "monthly"})
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loadingHistory ? (
@@ -422,7 +600,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                   <XAxis 
                     dataKey="date" 
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    tickFormatter={(value) => format(new Date(value), "MMM d")}
+                    tickFormatter={formatDateLabel}
                   />
                   <YAxis 
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
@@ -434,6 +612,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
+                    labelFormatter={formatDateLabel}
                   />
                   <Legend />
                   <Line 
@@ -442,7 +621,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                     name="Work Hours"
                     stroke="hsl(var(--primary))" 
                     strokeWidth={2}
-                    dot={false}
+                    dot={viewMode !== "day"}
                     connectNulls
                   />
                   <Line 
@@ -452,7 +631,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                     stroke="hsl(var(--secondary-foreground))" 
                     strokeWidth={2}
                     strokeDasharray="5 5"
-                    dot={false}
+                    dot={viewMode !== "day"}
                     connectNulls
                   />
                 </LineChart>
@@ -468,7 +647,9 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
               <TrendingUp className="h-5 w-5" />
               Sentiment Trend
             </CardTitle>
-            <CardDescription>Daily average sentiment score (-1 to 1)</CardDescription>
+            <CardDescription>
+              Average sentiment score ({viewMode === "day" ? "daily" : viewMode === "week" ? "weekly" : "monthly"})
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loadingSentiment ? (
@@ -484,7 +665,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                   <XAxis 
                     dataKey="date" 
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    tickFormatter={(value) => format(new Date(value), "MMM d")}
+                    tickFormatter={formatDateLabel}
                   />
                   <YAxis 
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
@@ -496,6 +677,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
+                    labelFormatter={formatDateLabel}
                   />
                   <Bar 
                     dataKey="sentiment" 
