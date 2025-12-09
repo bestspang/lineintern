@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Clock, AlertTriangle, Moon, Play, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatBangkokISODate } from "@/lib/timezone";
 
 export default function OvertimeManagement() {
   const queryClient = useQueryClient();
@@ -18,7 +19,7 @@ export default function OvertimeManagement() {
   const { data: warnings, isLoading: loadingWarnings } = useQuery({
     queryKey: ["ot-warnings"],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatBangkokISODate(new Date());
       const { data, error } = await supabase
         .from("attendance_reminders")
         .select(`

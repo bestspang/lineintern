@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -42,32 +42,55 @@ export default function OvertimeRequests() {
   const [isBulkMode, setIsBulkMode] = useState(false);
 
   // Fetch OT requests
-  const { data: requests, isLoading } = useQuery({
+  const fetchRequests = useCallback(async () => {
+    let query = supabase
+      .from('overtime_requests')
+      .select(`
+        *,
+        employees!inner(
+          id,
+          code,
+          full_name,
+          line_user_id
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  }, [statusFilter]);
+
+  const { data: requests, isLoading, refetch } = useQuery({
     queryKey: ['overtime-requests', statusFilter],
-    queryFn: async () => {
-      let query = supabase
-        .from('overtime_requests')
-        .select(`
-          *,
-          employees!inner(
-            id,
-            code,
-            full_name,
-            line_user_id
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60000, // Normal: Overtime request monitoring
+    queryFn: fetchRequests,
+    refetchInterval: 60000,
   });
+
+  // Realtime subscription for pending OT requests
+  useEffect(() => {
+    const channel = supabase
+      .channel('overtime-requests-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'overtime_requests',
+          filter: 'status=eq.pending'
+        },
+        () => refetch()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetch]);
 
   // Approve/Reject mutation
   const approveMutation = useMutation({
