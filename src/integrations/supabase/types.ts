@@ -2302,6 +2302,9 @@ export type Database = {
           group_id: string
           has_url: boolean | null
           id: string
+          is_within_work_hours: boolean | null
+          reply_to_message_id: string | null
+          response_time_seconds: number | null
           risk_score: number | null
           sent_at: string
           sentiment: string | null
@@ -2314,6 +2317,9 @@ export type Database = {
           group_id: string
           has_url?: boolean | null
           id?: string
+          is_within_work_hours?: boolean | null
+          reply_to_message_id?: string | null
+          response_time_seconds?: number | null
           risk_score?: number | null
           sent_at?: string
           sentiment?: string | null
@@ -2326,6 +2332,9 @@ export type Database = {
           group_id?: string
           has_url?: boolean | null
           id?: string
+          is_within_work_hours?: boolean | null
+          reply_to_message_id?: string | null
+          response_time_seconds?: number | null
           risk_score?: number | null
           sent_at?: string
           sentiment?: string | null
@@ -2338,6 +2347,13 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_message_id_fkey"
+            columns: ["reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
@@ -2776,6 +2792,72 @@ export type Database = {
           },
         ]
       }
+      response_analytics: {
+        Row: {
+          avg_response_time_seconds: number | null
+          created_at: string | null
+          date: string
+          ghost_score: number | null
+          group_id: string | null
+          id: string
+          max_response_time_seconds: number | null
+          messages_during_work_hours: number | null
+          messages_outside_work_hours: number | null
+          min_response_time_seconds: number | null
+          total_messages_sent: number | null
+          total_replies_received: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          avg_response_time_seconds?: number | null
+          created_at?: string | null
+          date: string
+          ghost_score?: number | null
+          group_id?: string | null
+          id?: string
+          max_response_time_seconds?: number | null
+          messages_during_work_hours?: number | null
+          messages_outside_work_hours?: number | null
+          min_response_time_seconds?: number | null
+          total_messages_sent?: number | null
+          total_replies_received?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          avg_response_time_seconds?: number | null
+          created_at?: string | null
+          date?: string
+          ghost_score?: number | null
+          group_id?: string | null
+          id?: string
+          max_response_time_seconds?: number | null
+          messages_during_work_hours?: number | null
+          messages_outside_work_hours?: number | null
+          min_response_time_seconds?: number | null
+          total_messages_sent?: number | null
+          total_replies_received?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "response_analytics_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "response_analytics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_menu_permissions: {
         Row: {
           created_at: string | null
@@ -3182,6 +3264,78 @@ export type Database = {
           },
         ]
       }
+      user_network_metrics: {
+        Row: {
+          betweenness_centrality: number | null
+          closeness_centrality: number | null
+          communication_direction: Json | null
+          created_at: string | null
+          degree_centrality: number | null
+          eigenvector_centrality: number | null
+          group_id: string | null
+          id: string
+          most_contacted_users: Json | null
+          network_role: string | null
+          period_end: string
+          period_start: string
+          total_interactions: number | null
+          unique_contacts: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          betweenness_centrality?: number | null
+          closeness_centrality?: number | null
+          communication_direction?: Json | null
+          created_at?: string | null
+          degree_centrality?: number | null
+          eigenvector_centrality?: number | null
+          group_id?: string | null
+          id?: string
+          most_contacted_users?: Json | null
+          network_role?: string | null
+          period_end: string
+          period_start: string
+          total_interactions?: number | null
+          unique_contacts?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          betweenness_centrality?: number | null
+          closeness_centrality?: number | null
+          communication_direction?: Json | null
+          created_at?: string | null
+          degree_centrality?: number | null
+          eigenvector_centrality?: number | null
+          group_id?: string | null
+          id?: string
+          most_contacted_users?: Json | null
+          network_role?: string | null
+          period_end?: string
+          period_start?: string
+          total_interactions?: number | null
+          unique_contacts?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_network_metrics_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_network_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_profiles: {
         Row: {
           behavioral_patterns: Json | null
@@ -3341,6 +3495,69 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_sentiment_history: {
+        Row: {
+          avg_sentiment: number | null
+          burnout_score: number | null
+          burnout_signals: Json | null
+          created_at: string | null
+          date: string
+          emotion_breakdown: Json | null
+          group_id: string | null
+          id: string
+          message_count: number | null
+          negative_count: number | null
+          neutral_count: number | null
+          positive_count: number | null
+          user_id: string | null
+        }
+        Insert: {
+          avg_sentiment?: number | null
+          burnout_score?: number | null
+          burnout_signals?: Json | null
+          created_at?: string | null
+          date: string
+          emotion_breakdown?: Json | null
+          group_id?: string | null
+          id?: string
+          message_count?: number | null
+          negative_count?: number | null
+          neutral_count?: number | null
+          positive_count?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          avg_sentiment?: number | null
+          burnout_score?: number | null
+          burnout_signals?: Json | null
+          created_at?: string | null
+          date?: string
+          emotion_breakdown?: Json | null
+          group_id?: string | null
+          id?: string
+          message_count?: number | null
+          negative_count?: number | null
+          neutral_count?: number | null
+          positive_count?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_sentiment_history_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_sentiment_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
@@ -3807,6 +4024,14 @@ export type Database = {
         Args: { lat1: number; lat2: number; lon1: number; lon2: number }
         Returns: number
       }
+      calculate_ghost_score: {
+        Args: {
+          p_avg_response_time: number
+          p_replies_received: number
+          p_total_sent: number
+        }
+        Returns: number
+      }
       can_employee_check_in: {
         Args: { p_employee_id: string }
         Returns: boolean
@@ -3824,6 +4049,15 @@ export type Database = {
           token_id: string
           token_type: string
         }[]
+      }
+      detect_burnout_signals: {
+        Args: {
+          p_avg_sentiment: number
+          p_message_count: number
+          p_negative_ratio: number
+          p_prev_message_count: number
+        }
+        Returns: Json
       }
       detect_duplicate_photos: {
         Args: {

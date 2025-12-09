@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp } from "lucide-react";
+import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp, Ghost, Activity, Network } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +14,10 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { getBangkokNow } from "@/lib/timezone";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GhostLeaderboard } from "@/components/social-intelligence/GhostLeaderboard";
+import { TeamHealthDashboard } from "@/components/social-intelligence/TeamHealthDashboard";
+import { RelationshipGraph } from "@/components/social-intelligence/RelationshipGraph";
 
 const getMoodEmoji = (mood: string) => {
   const moodMap: Record<string, { icon: typeof Smile; color: string }> = {
@@ -44,6 +48,7 @@ export default function Personality() {
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [activeTab, setActiveTab] = useState<string>("personality");
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
@@ -152,6 +157,94 @@ export default function Personality() {
       if (error) throw error;
       return data;
     }
+  });
+
+  // Fetch response analytics for Ghost Tracker
+  const { data: responseAnalytics, isLoading: loadingResponseAnalytics } = useQuery({
+    queryKey: ["response-analytics", selectedGroupId],
+    queryFn: async () => {
+      let query = supabase
+        .from("response_analytics")
+        .select("*, users!inner(display_name, avatar_url)")
+        .order("date", { ascending: false })
+        .limit(100);
+      
+      if (selectedGroupId !== "all") {
+        query = query.eq("group_id", selectedGroupId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!magicGroups,
+  });
+
+  // Fetch user sentiment history for Team Health
+  const { data: sentimentHistory, isLoading: loadingSentiment } = useQuery({
+    queryKey: ["sentiment-history", selectedGroupId],
+    queryFn: async () => {
+      let query = supabase
+        .from("user_sentiment_history")
+        .select("*, users!inner(display_name, avatar_url)")
+        .order("date", { ascending: false })
+        .limit(200);
+      
+      if (selectedGroupId !== "all") {
+        query = query.eq("group_id", selectedGroupId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!magicGroups,
+  });
+
+  // Fetch network metrics
+  const { data: networkMetrics, isLoading: loadingNetwork } = useQuery({
+    queryKey: ["network-metrics", selectedGroupId],
+    queryFn: async () => {
+      let query = supabase
+        .from("user_network_metrics")
+        .select("*, users!inner(display_name, avatar_url)")
+        .order("updated_at", { ascending: false })
+        .limit(50);
+      
+      if (selectedGroupId !== "all") {
+        query = query.eq("group_id", selectedGroupId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!magicGroups,
+  });
+
+  // Fetch user relationships for Network Graph
+  const { data: userRelationships } = useQuery({
+    queryKey: ["user-relationships", selectedGroupId],
+    queryFn: async () => {
+      let query = supabase
+        .from("user_relationships")
+        .select(`
+          *,
+          user_a:user_a_id(id, display_name, avatar_url),
+          user_b:user_b_id(id, display_name, avatar_url)
+        `)
+        .order("interaction_count", { ascending: false })
+        .limit(50);
+      
+      if (selectedGroupId !== "all") {
+        query = query.eq("group_id", selectedGroupId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!magicGroups,
   });
 
   // Create user lookup map
@@ -272,6 +365,27 @@ export default function Personality() {
     );
   }
 
+  // Compute derived data for Team Health
+  const burnoutRiskUsers = useMemo(() => 
+    (sentimentHistory || []).filter((s: any) => s.burnout_score > 0.5), 
+    [sentimentHistory]
+  );
+  
+  const influencers = useMemo(() => 
+    (networkMetrics || []).filter((n: any) => n.network_role === "influencer"),
+    [networkMetrics]
+  );
+  
+  const outsiders = useMemo(() => 
+    (networkMetrics || []).filter((n: any) => n.network_role === "outsider"),
+    [networkMetrics]
+  );
+  
+  const avgSentiment = useMemo(() => {
+    if (!sentimentHistory?.length) return 0;
+    return sentimentHistory.reduce((sum: number, s: any) => sum + (s.avg_sentiment || 0), 0) / sentimentHistory.length;
+  }, [sentimentHistory]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
@@ -297,7 +411,29 @@ export default function Personality() {
         </Select>
       </div>
 
-      {/* Mood History Chart (only for single group selection) */}
+      {/* Main Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="personality" className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">Personality</span>
+          </TabsTrigger>
+          <TabsTrigger value="ghost" className="flex items-center gap-2">
+            <Ghost className="h-4 w-4" />
+            <span className="hidden sm:inline">Ghost Tracker</span>
+          </TabsTrigger>
+          <TabsTrigger value="health" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            <span className="hidden sm:inline">Team Health</span>
+          </TabsTrigger>
+          <TabsTrigger value="network" className="flex items-center gap-2">
+            <Network className="h-4 w-4" />
+            <span className="hidden sm:inline">Network</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* PERSONALITY TAB */}
+        <TabsContent value="personality" className="space-y-4 mt-4">
       {selectedGroupId !== "all" && (
         <Card>
           <CardHeader>
@@ -596,6 +732,51 @@ export default function Personality() {
           })}
         </div>
       )}
+        </TabsContent>
+
+        {/* GHOST TRACKER TAB */}
+        <TabsContent value="ghost" className="space-y-4 mt-4">
+          {loadingResponseAnalytics ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <GhostLeaderboard data={responseAnalytics || []} showAll />
+          )}
+        </TabsContent>
+
+        {/* TEAM HEALTH TAB */}
+        <TabsContent value="health" className="space-y-4 mt-4">
+          {loadingSentiment || loadingNetwork ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <TeamHealthDashboard
+              sentimentData={sentimentHistory || []}
+              networkData={networkMetrics || []}
+              burnoutRiskUsers={burnoutRiskUsers}
+              influencers={influencers}
+              outsiders={outsiders}
+              avgSentiment={avgSentiment}
+            />
+          )}
+        </TabsContent>
+
+        {/* NETWORK TAB */}
+        <TabsContent value="network" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Relationship Network
+              </CardTitle>
+              <CardDescription>
+                Visualize communication patterns and relationships between users
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RelationshipGraph relationships={userRelationships || []} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Reset Confirmation Dialog */}
       <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
