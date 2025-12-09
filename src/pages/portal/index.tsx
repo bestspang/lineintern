@@ -14,3 +14,7 @@ export { default as Approvals } from './Approvals';
 export { default as ApproveOT } from './ApproveOT';
 export { default as ApproveLeave } from './ApproveLeave';
 export { default as TeamSummary } from './TeamSummary';
+
+// Admin pages
+export { default as TodayPhotos } from './TodayPhotos';
+export { default as DailySummary } from './DailySummary';
