@@ -118,16 +118,39 @@ export default function AttendanceSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
-      const payload = {
-        scope: 'global',
-        ...data
-      };
-
-      const { error } = await supabase
+      // Check if global settings record exists
+      const { data: existing } = await supabase
         .from('attendance_settings')
-        .upsert(payload, { onConflict: 'scope, branch_id, employee_id' });
-      
-      if (error) throw error;
+        .select('id')
+        .eq('scope', 'global')
+        .is('branch_id', null)
+        .is('employee_id', null)
+        .maybeSingle();
+
+      if (existing) {
+        // Record exists → UPDATE
+        const { error } = await supabase
+          .from('attendance_settings')
+          .update({
+            ...data,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+        
+        if (error) throw error;
+      } else {
+        // No record → INSERT
+        const { error } = await supabase
+          .from('attendance_settings')
+          .insert({
+            scope: 'global',
+            branch_id: null,
+            employee_id: null,
+            ...data
+          });
+        
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance-settings-global'] });
