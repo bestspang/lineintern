@@ -4,8 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { PortalProvider } from "./contexts/PortalContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/DashboardLayout";
+import { PortalLayout } from "./components/portal/PortalLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import Auth from "./pages/Auth";
 import Overview from "./pages/Overview";
@@ -68,6 +70,9 @@ import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
 
+// Portal pages
+import { PortalHome, PortalPlaceholder } from "./pages/portal";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -79,81 +84,166 @@ const App = () => (
         <ErrorBoundary>
           <AuthProvider>
             <Routes>
-<Route path="/auth" element={<Auth />} />
-            <Route path="/employee-menu" element={<EmployeeMenu />} />
-            <Route path="/attendance" element={<Attendance />} />
-            <Route path="/attendance/flexible-day-off" element={<FlexibleDayOff />} />
-            <Route path="/error/network" element={<NetworkError />} />
-            <Route path="/error/server" element={<ServerError />} />
-            <Route path="/error/session-expired" element={<SessionExpired />} />
-            <Route path="/*" element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Routes>
-                    <Route path="/" element={<Overview />} />
-                    <Route path="/groups" element={<Groups />} />
-                    <Route path="/groups/:id" element={<GroupDetail />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/users/:id" element={<UserDetail />} />
-                    <Route path="/knowledge" element={<KnowledgeBase />} />
-                    <Route path="/faq-logs" element={<FaqLogs />} />
-                    <Route path="/training" element={<Training />} />
-              <Route path="/tasks" element={<Tasks />} />
-              <Route path="/cron-jobs" element={<CronJobs />} />
-              <Route path="/memory" element={<Memory />} />
-                    <Route path="/commands" element={<Commands />} />
-                    <Route path="/summaries" element={<Summaries />} />
-                    <Route path="/bot-logs" element={<BotLogs />} />
-                    <Route path="/personality" element={<Personality />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/memory-analytics" element={<MemoryAnalytics />} />
-                    <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />
-                    <Route path="/attendance/employees" element={<AttendanceEmployees />} />
-                    <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
-                    <Route path="/attendance/employees/:id/history" element={<EmployeeHistory />} />
-                    <Route path="/attendance/employees/:id/settings" element={<EmployeeSettings />} />
-                    <Route path="/attendance/branches" element={<AttendanceBranches />} />
-                    <Route path="/attendance/logs" element={<AttendanceLogs />} />
-                    <Route path="/attendance/photos" element={<AttendancePhotos />} />
-                    <Route path="/attendance/fraud-detection" element={<AttendanceFraudDetection />} />
-                    <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
-                    <Route path="/attendance/reminder-logs" element={<AttendanceReminderLogs />} />
-                    <Route path="/attendance/live-tracking" element={<AttendanceLiveTracking />} />
-                    <Route path="/attendance/overtime" element={<OvertimeManagement />} />
-                    <Route path="/attendance/overtime-summary" element={<OvertimeSummary />} />
-                    <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
-                    <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
-                    <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
-                    
-                    <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
-                    <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
-                    <Route path="/attendance/roles" element={<AttendanceRoles />} />
-                    <Route path="/attendance/payroll" element={<Payroll />} />
-                    <Route path="/attendance/payroll/ytd" element={<PayrollYTD />} />
-                    <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
-                    <Route path="/attendance/settings" element={<AttendanceSettings />} />
-                    <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
-                    <Route path="/health-monitoring" element={<HealthMonitoring />} />
-                    <Route path="/config-validator" element={<ConfigurationValidator />} />
-                    <Route path="/settings" element={<SettingsLayout />}>
-                      <Route index element={<Settings />} />
-                      <Route path="safety" element={<SafetyRules />} />
-                      <Route path="integrations" element={<Integrations />} />
-                      <Route path="alerts" element={<Alerts />} />
-                      <Route path="reports" element={<Reports />} />
-                    </Route>
-                    <Route path="/test-bot" element={<TestBot />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </DashboardLayout>
-              </ProtectedRoute>
-            } />
-          </Routes>
-        </AuthProvider>
-      </ErrorBoundary>
-    </BrowserRouter>
-  </TooltipProvider>
-</QueryClientProvider>
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/employee-menu" element={<EmployeeMenu />} />
+              <Route path="/attendance" element={<Attendance />} />
+              <Route path="/attendance/flexible-day-off" element={<FlexibleDayOff />} />
+              <Route path="/error/network" element={<NetworkError />} />
+              <Route path="/error/server" element={<ServerError />} />
+              <Route path="/error/session-expired" element={<SessionExpired />} />
+              
+              {/* Portal Routes - Employee Mini App */}
+              <Route path="/portal/*" element={
+                <PortalProvider>
+                  <PortalLayout>
+                    <Routes>
+                      <Route path="/" element={<PortalHome />} />
+                      <Route path="/my-history" element={
+                        <PortalPlaceholder 
+                          title="ประวัติการทำงาน" 
+                          titleEn="Work History"
+                          description="ดูประวัติเช็คอิน/เช็คเอาท์ของคุณ"
+                          descriptionEn="View your check-in/check-out history"
+                        />
+                      } />
+                      <Route path="/my-leave" element={
+                        <PortalPlaceholder 
+                          title="วันลาคงเหลือ" 
+                          titleEn="Leave Balance"
+                          description="ตรวจสอบวันลาที่เหลือของคุณ"
+                          descriptionEn="Check your remaining leave days"
+                        />
+                      } />
+                      <Route path="/request-leave" element={
+                        <PortalPlaceholder 
+                          title="ขอลางาน" 
+                          titleEn="Request Leave"
+                          description="ส่งคำขอลางาน"
+                          descriptionEn="Submit leave request"
+                        />
+                      } />
+                      <Route path="/request-ot" element={
+                        <PortalPlaceholder 
+                          title="ขอ OT" 
+                          titleEn="Request OT"
+                          description="ส่งคำขอทำงานล่วงเวลา"
+                          descriptionEn="Submit overtime request"
+                        />
+                      } />
+                      <Route path="/my-profile" element={
+                        <PortalPlaceholder 
+                          title="โปรไฟล์ของฉัน" 
+                          titleEn="My Profile"
+                          description="ดูข้อมูลพนักงานของคุณ"
+                          descriptionEn="View your employee information"
+                        />
+                      } />
+                      <Route path="/approvals" element={
+                        <PortalPlaceholder 
+                          title="อนุมัติคำขอ" 
+                          titleEn="Approve Requests"
+                          description="อนุมัติ OT และการลางาน"
+                          descriptionEn="Approve OT and leave requests"
+                        />
+                      } />
+                      <Route path="/team-summary" element={
+                        <PortalPlaceholder 
+                          title="สรุปทีม" 
+                          titleEn="Team Summary"
+                          description="ดูสถานะทีมวันนี้"
+                          descriptionEn="View team status today"
+                        />
+                      } />
+                      <Route path="/photos" element={
+                        <PortalPlaceholder 
+                          title="รูปวันนี้" 
+                          titleEn="Today's Photos"
+                          description="ดูรูปเช็คอินวันนี้"
+                          descriptionEn="View today's check-in photos"
+                        />
+                      } />
+                      <Route path="/daily-summary" element={
+                        <PortalPlaceholder 
+                          title="สรุปประจำวัน" 
+                          titleEn="Daily Summary"
+                          description="สถิติและรายงานประจำวัน"
+                          descriptionEn="Daily statistics and reports"
+                        />
+                      } />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </PortalLayout>
+                </PortalProvider>
+              } />
+
+              <Route path="/*" element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Routes>
+                      <Route path="/" element={<Overview />} />
+                      <Route path="/groups" element={<Groups />} />
+                      <Route path="/groups/:id" element={<GroupDetail />} />
+                      <Route path="/users" element={<Users />} />
+                      <Route path="/users/:id" element={<UserDetail />} />
+                      <Route path="/knowledge" element={<KnowledgeBase />} />
+                      <Route path="/faq-logs" element={<FaqLogs />} />
+                      <Route path="/training" element={<Training />} />
+                      <Route path="/tasks" element={<Tasks />} />
+                      <Route path="/cron-jobs" element={<CronJobs />} />
+                      <Route path="/memory" element={<Memory />} />
+                      <Route path="/commands" element={<Commands />} />
+                      <Route path="/summaries" element={<Summaries />} />
+                      <Route path="/bot-logs" element={<BotLogs />} />
+                      <Route path="/personality" element={<Personality />} />
+                      <Route path="/analytics" element={<Analytics />} />
+                      <Route path="/memory-analytics" element={<MemoryAnalytics />} />
+                      <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />
+                      <Route path="/attendance/employees" element={<AttendanceEmployees />} />
+                      <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
+                      <Route path="/attendance/employees/:id/history" element={<EmployeeHistory />} />
+                      <Route path="/attendance/employees/:id/settings" element={<EmployeeSettings />} />
+                      <Route path="/attendance/branches" element={<AttendanceBranches />} />
+                      <Route path="/attendance/logs" element={<AttendanceLogs />} />
+                      <Route path="/attendance/photos" element={<AttendancePhotos />} />
+                      <Route path="/attendance/fraud-detection" element={<AttendanceFraudDetection />} />
+                      <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
+                      <Route path="/attendance/reminder-logs" element={<AttendanceReminderLogs />} />
+                      <Route path="/attendance/live-tracking" element={<AttendanceLiveTracking />} />
+                      <Route path="/attendance/overtime" element={<OvertimeManagement />} />
+                      <Route path="/attendance/overtime-summary" element={<OvertimeSummary />} />
+                      <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
+                      <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
+                      <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
+                      
+                      <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
+                      <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
+                      <Route path="/attendance/roles" element={<AttendanceRoles />} />
+                      <Route path="/attendance/payroll" element={<Payroll />} />
+                      <Route path="/attendance/payroll/ytd" element={<PayrollYTD />} />
+                      <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
+                      <Route path="/attendance/settings" element={<AttendanceSettings />} />
+                      <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
+                      <Route path="/health-monitoring" element={<HealthMonitoring />} />
+                      <Route path="/config-validator" element={<ConfigurationValidator />} />
+                      <Route path="/settings" element={<SettingsLayout />}>
+                        <Route index element={<Settings />} />
+                        <Route path="safety" element={<SafetyRules />} />
+                        <Route path="integrations" element={<Integrations />} />
+                        <Route path="alerts" element={<Alerts />} />
+                        <Route path="reports" element={<Reports />} />
+                      </Route>
+                      <Route path="/test-bot" element={<TestBot />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </DashboardLayout>
+                </ProtectedRoute>
+              } />
+            </Routes>
+          </AuthProvider>
+        </ErrorBoundary>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;
