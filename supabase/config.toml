@@ -149,3 +149,9 @@ verify_jwt = false
 
 [functions.sentiment-tracker]
 verify_jwt = false
+
+[functions.team-health-report]
+verify_jwt = false
+
+[functions.response-analytics-backfill]
+verify_jwt = false

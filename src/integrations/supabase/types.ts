@@ -401,6 +401,7 @@ export type Database = {
       }
       attendance_settings: {
         Row: {
+          admin_line_group_id: string | null
           branch_id: string | null
           created_at: string | null
           daily_summary_enabled: boolean | null
@@ -418,6 +419,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          admin_line_group_id?: string | null
           branch_id?: string | null
           created_at?: string | null
           daily_summary_enabled?: boolean | null
@@ -435,6 +437,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          admin_line_group_id?: string | null
           branch_id?: string | null
           created_at?: string | null
           daily_summary_enabled?: boolean | null
@@ -2794,7 +2797,9 @@ export type Database = {
       }
       response_analytics: {
         Row: {
+          avg_response_time_outside_hours: number | null
           avg_response_time_seconds: number | null
+          avg_response_time_work_hours: number | null
           created_at: string | null
           date: string
           ghost_score: number | null
@@ -2810,7 +2815,9 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          avg_response_time_outside_hours?: number | null
           avg_response_time_seconds?: number | null
+          avg_response_time_work_hours?: number | null
           created_at?: string | null
           date: string
           ghost_score?: number | null
@@ -2826,7 +2833,9 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          avg_response_time_outside_hours?: number | null
           avg_response_time_seconds?: number | null
+          avg_response_time_work_hours?: number | null
           created_at?: string | null
           date?: string
           ghost_score?: number | null
