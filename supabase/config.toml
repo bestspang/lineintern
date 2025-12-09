@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.memory-summary]
 verify_jwt = false
+
+[functions.trigger-daily-summary]
+verify_jwt = true

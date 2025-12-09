@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getBangkokNow } from '@/lib/timezone';
 import {
   Table,
   TableBody,
@@ -72,7 +73,7 @@ export default function Training() {
         .update({
           status,
           notes,
-          reviewed_at: new Date().toISOString(),
+          reviewed_at: getBangkokNow().toISOString(),
         })
         .eq('id', id);
       if (error) throw error;

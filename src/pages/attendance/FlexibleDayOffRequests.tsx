@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,27 +28,50 @@ export default function FlexibleDayOffRequests() {
   const [isBulkMode, setIsBulkMode] = useState(false);
 
   // Fetch flexible day-off requests
-  const { data: requests, isLoading } = useQuery({
-    queryKey: ["flexible-day-off-requests-admin"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("flexible_day_off_requests")
-        .select(`
-          *,
-          employees (
-            full_name,
-            code,
-            branch:branches(name)
-          )
-        `)
-        .order('requested_at', { ascending: false })
-        .limit(100);
+  const fetchRequests = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("flexible_day_off_requests")
+      .select(`
+        *,
+        employees (
+          full_name,
+          code,
+          branch:branches(name)
+        )
+      `)
+      .order('requested_at', { ascending: false })
+      .limit(100);
 
-      if (error) throw error;
-      return data;
-    },
+    if (error) throw error;
+    return data;
+  }, []);
+
+  const { data: requests, isLoading, refetch } = useQuery({
+    queryKey: ["flexible-day-off-requests-admin"],
+    queryFn: fetchRequests,
     refetchInterval: 60000,
   });
+
+  // Realtime subscription for pending requests
+  useEffect(() => {
+    const channel = supabase
+      .channel('flexible-dayoff-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'flexible_day_off_requests',
+          filter: 'status=eq.pending'
+        },
+        () => refetch()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetch]);
 
   // Approval mutation
   const approvalMutation = useMutation({

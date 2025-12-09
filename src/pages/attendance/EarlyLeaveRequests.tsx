@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,26 +26,49 @@ export default function EarlyLeaveRequests() {
   const [isBulkMode, setIsBulkMode] = useState(false);
 
   // Fetch early leave requests
-  const { data: requests, isLoading } = useQuery({
-    queryKey: ["early-leave-requests"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("early_leave_requests")
-        .select(`
-          *,
-          employees (
-            full_name,
-            code
-          )
-        `)
-        .order('requested_at', { ascending: false })
-        .limit(100);
+  const fetchRequests = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("early_leave_requests")
+      .select(`
+        *,
+        employees (
+          full_name,
+          code
+        )
+      `)
+      .order('requested_at', { ascending: false })
+      .limit(100);
 
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60000, // Normal: Early leave request monitoring
+    if (error) throw error;
+    return data;
+  }, []);
+
+  const { data: requests, isLoading, refetch } = useQuery({
+    queryKey: ["early-leave-requests"],
+    queryFn: fetchRequests,
+    refetchInterval: 60000,
   });
+
+  // Realtime subscription for pending early leave requests
+  useEffect(() => {
+    const channel = supabase
+      .channel('early-leave-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'early_leave_requests',
+          filter: 'status=eq.pending'
+        },
+        () => refetch()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetch]);
 
   // Approval mutation
   const approvalMutation = useMutation({

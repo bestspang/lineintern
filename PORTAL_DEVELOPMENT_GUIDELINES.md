@@ -10,6 +10,31 @@ All phases have been completed:
 - ✅ Phase 3: Session & UX (auto-refresh, expiry warnings)
 - ✅ Phase 4: Realtime & Performance (all approval pages have realtime subscriptions)
 - ✅ Phase 5: Documentation (this file)
+- ✅ Phase 6: Security Fix (removed hardcoded secrets from CronJobs.tsx)
+- ✅ Phase 7: Admin Page Realtime (FlexibleDayOffRequests, OvertimeRequests, EarlyLeaveRequests)
+
+## Security Best Practices (CRITICAL)
+
+### NEVER expose secrets in frontend code
+- ❌ NEVER hardcode API keys, tokens, or secrets in React components
+- ❌ NEVER use inline secrets even for edge function calls
+- ✅ Always use edge function proxies to call services requiring secrets
+- ✅ Store all secrets in Supabase environment variables
+
+### Example - Calling protected edge functions:
+```tsx
+// ❌ WRONG - Hardcoded secrets exposed in frontend
+const response = await fetch('https://xxx.supabase.co/functions/v1/my-function', {
+  headers: {
+    'x-secret': 'my-secret-key',  // EXPOSED TO USERS!
+  }
+});
+
+// ✅ CORRECT - Use edge function proxy
+const { data, error } = await supabase.functions.invoke('proxy-function', {
+  body: { ... }
+});
+```
 
 ## 1. Timezone Handling (CRITICAL)
 

@@ -134,25 +134,20 @@ export default function CronJobs() {
 
   const triggerManualSummary = useMutation({
     mutationFn: async (targetDate: string) => {
-      const response = await fetch(
-        `https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/attendance-daily-summary`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqenpxZnpnbnNsZWZxaG5zbWxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjkyMDQsImV4cCI6MjA3OTAwNTIwNH0.lwfsxDP3u8jck6iIZ8eBygyo0_Q7TwBwR06HpxOLC4c`,
-            'x-cron-secret': 's5hhKcLWrc02k',
-          },
-          body: JSON.stringify({ target_date: targetDate, force_send: true }),
-        }
-      );
+      // Use edge function proxy to avoid exposing secrets
+      const { data, error } = await supabase.functions.invoke('trigger-daily-summary', {
+        body: { target_date: targetDate, force_send: true }
+      });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed: ${response.status} - ${errorText}`);
+      if (error) {
+        throw new Error(error.message || 'Failed to trigger daily summary');
       }
       
-      return response.json();
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to trigger daily summary');
+      }
+      
+      return data;
     },
     onSuccess: (data) => {
       toast.success(`Daily Summary sent! Processed: ${data.processed || 0} configs`);

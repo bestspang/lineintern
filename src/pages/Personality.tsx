@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { getBangkokNow } from "@/lib/timezone";
 
 const getMoodEmoji = (mood: string) => {
   const moodMap: Record<string, { icon: typeof Smile; color: string }> = {
@@ -164,6 +165,7 @@ export default function Personality() {
   // Reset personality mutation
   const resetPersonalityMutation = useMutation({
     mutationFn: async (personalityId: string) => {
+      const now = getBangkokNow().toISOString();
       const { error } = await supabase
         .from("personality_state")
         .update({
@@ -173,8 +175,8 @@ export default function Personality() {
           current_interests: [],
           recent_topics: [],
           relationship_map: {},
-          last_mood_change: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          last_mood_change: now,
+          updated_at: now,
         })
         .eq("id", personalityId);
 
