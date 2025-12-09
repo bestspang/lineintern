@@ -71,7 +71,11 @@ import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
 
 // Portal pages
-import { PortalHome, PortalPlaceholder, MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile } from "./pages/portal";
+import { 
+  PortalHome, PortalPlaceholder, 
+  MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile,
+  Approvals, ApproveOT, ApproveLeave, TeamSummary 
+} from "./pages/portal";
 
 const queryClient = new QueryClient();
 
@@ -103,22 +107,10 @@ const App = () => (
                       <Route path="/request-leave" element={<RequestLeave />} />
                       <Route path="/request-ot" element={<RequestOT />} />
                       <Route path="/my-profile" element={<MyProfile />} />
-                      <Route path="/approvals" element={
-                        <PortalPlaceholder 
-                          title="อนุมัติคำขอ" 
-                          titleEn="Approve Requests"
-                          description="อนุมัติ OT และการลางาน"
-                          descriptionEn="Approve OT and leave requests"
-                        />
-                      } />
-                      <Route path="/team-summary" element={
-                        <PortalPlaceholder 
-                          title="สรุปทีม" 
-                          titleEn="Team Summary"
-                          description="ดูสถานะทีมวันนี้"
-                          descriptionEn="View team status today"
-                        />
-                      } />
+                      <Route path="/approvals" element={<Approvals />} />
+                      <Route path="/approvals/ot" element={<ApproveOT />} />
+                      <Route path="/approvals/leave" element={<ApproveLeave />} />
+                      <Route path="/team-summary" element={<TeamSummary />} />
                       <Route path="/photos" element={
                         <PortalPlaceholder 
                           title="รูปวันนี้" 
