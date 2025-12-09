@@ -18,8 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Radio, Send, Clock, Users, FileText, History, BarChart3, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare } from "lucide-react";
-import { getBangkokNow } from "@/lib/timezone";
-import { format } from "date-fns";
+import { getBangkokNow, formatBangkokDateTime } from "@/lib/timezone";
 
 type MessageType = "text" | "image" | "text_image";
 type RecurrencePattern = "daily" | "every_3_days" | "weekly" | "monthly" | "yearly";
@@ -1029,7 +1028,7 @@ export default function Broadcast() {
                         <TableCell>{getStatusBadge(broadcast.status)}</TableCell>
                         <TableCell>
                           {broadcast.scheduled_at
-                            ? formatBangkokDate(new Date(broadcast.scheduled_at), "dd MMM yyyy HH:mm")
+                            ? formatBangkokDateTime(broadcast.scheduled_at)
                             : "-"}
                         </TableCell>
                         <TableCell>
