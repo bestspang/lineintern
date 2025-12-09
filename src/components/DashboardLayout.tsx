@@ -50,7 +50,8 @@ import {
   UserCog,
   Wallet,
   TrendingUp,
-  PartyPopper
+  PartyPopper,
+  Radio
 } from 'lucide-react';
 import {
   Sidebar,
@@ -102,6 +103,7 @@ const navigationGroups = [
       { title: 'Groups', url: '/groups', icon: MessageSquare },
       { title: 'Users', url: '/users', icon: Users },
       { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
+      { title: 'Broadcast', url: '/broadcast', icon: Radio },
       { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
     ],
   },
