@@ -74,7 +74,7 @@ import ConfigurationValidator from "./pages/ConfigurationValidator";
 import { 
   PortalHome, PortalPlaceholder, 
   MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile,
-  Approvals, ApproveOT, ApproveLeave, TeamSummary,
+  Approvals, ApproveOT, ApproveLeave, ApproveEarlyLeave, TeamSummary,
   TodayPhotos, DailySummary
 } from "./pages/portal";
 
@@ -111,6 +111,7 @@ const App = () => (
                       <Route path="/approvals" element={<Approvals />} />
                       <Route path="/approvals/ot" element={<ApproveOT />} />
                       <Route path="/approvals/leave" element={<ApproveLeave />} />
+                      <Route path="/approvals/early-leave" element={<ApproveEarlyLeave />} />
                       <Route path="/team-summary" element={<TeamSummary />} />
                       <Route path="/photos" element={<TodayPhotos />} />
                       <Route path="/daily-summary" element={<DailySummary />} />

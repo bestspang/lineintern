@@ -13,6 +13,7 @@ export { default as MyProfile } from './MyProfile';
 export { default as Approvals } from './Approvals';
 export { default as ApproveOT } from './ApproveOT';
 export { default as ApproveLeave } from './ApproveLeave';
+export { default as ApproveEarlyLeave } from './ApproveEarlyLeave';
 export { default as TeamSummary } from './TeamSummary';
 
 // Admin pages
