@@ -104,6 +104,22 @@ export function TeamHealthDashboard({
   const healthStatus = getHealthStatus(avgSentiment);
   const HealthIcon = healthStatus.icon;
   
+  // Type-safe parser for burnout_signals from Json to string[]
+  const parseBurnoutSignals = (signals: Json): string[] => {
+    if (Array.isArray(signals)) {
+      return signals.map(s => String(s));
+    }
+    if (typeof signals === 'string') {
+      try {
+        const parsed = JSON.parse(signals);
+        return Array.isArray(parsed) ? parsed.map(s => String(s)) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+  
   const getBurnoutSignalLabel = (signal: string): string => {
     const labels: Record<string, string> = {
       high_negativity: "High Negativity",
@@ -292,9 +308,9 @@ export function TeamHealthDashboard({
                       </Badge>
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {(Array.isArray(user.burnout_signals) ? user.burnout_signals : []).map((signal, i) => (
+                      {parseBurnoutSignals(user.burnout_signals).map((signal, i) => (
                         <Badge key={i} variant="secondary" className="text-xs">
-                          {getBurnoutSignalLabel(String(signal))}
+                          {getBurnoutSignalLabel(signal)}
                         </Badge>
                       ))}
                     </div>
