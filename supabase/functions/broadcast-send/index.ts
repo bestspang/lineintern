@@ -35,12 +35,29 @@ interface Recipient {
   status: string;
 }
 
-// Build LINE message based on type
-function buildLineMessage(broadcast: Broadcast): object[] {
+// Helper function to replace template variables
+function replaceTemplateVariables(text: string, recipientName: string | null): string {
+  const now = new Date();
+  const bangkokOptions: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Bangkok' };
+  
+  const dateStr = now.toLocaleDateString('th-TH', bangkokOptions);
+  const timeStr = now.toLocaleTimeString('th-TH', { ...bangkokOptions, hour: '2-digit', minute: '2-digit' });
+  const datetimeStr = now.toLocaleString('th-TH', bangkokOptions);
+  
+  return text
+    .replace(/\{\{name\}\}/gi, recipientName || 'คุณ')
+    .replace(/\{\{date\}\}/gi, dateStr)
+    .replace(/\{\{time\}\}/gi, timeStr)
+    .replace(/\{\{datetime\}\}/gi, datetimeStr);
+}
+
+// Build LINE message based on type (with personalization)
+function buildLineMessage(broadcast: Broadcast, recipientName: string | null = null): object[] {
   const messages: object[] = [];
 
   if (broadcast.message_type === "text" && broadcast.content) {
-    messages.push({ type: "text", text: broadcast.content });
+    const processedContent = replaceTemplateVariables(broadcast.content, recipientName);
+    messages.push({ type: "text", text: processedContent });
   } else if (broadcast.message_type === "image" && broadcast.image_url) {
     messages.push({
       type: "image",
@@ -49,7 +66,8 @@ function buildLineMessage(broadcast: Broadcast): object[] {
     });
   } else if (broadcast.message_type === "text_image") {
     if (broadcast.content) {
-      messages.push({ type: "text", text: broadcast.content });
+      const processedContent = replaceTemplateVariables(broadcast.content, recipientName);
+      messages.push({ type: "text", text: processedContent });
     }
     if (broadcast.image_url) {
       messages.push({
@@ -90,11 +108,10 @@ async function sendToLine(lineId: string, messages: object[]): Promise<{ success
   }
 }
 
-// Process a batch of recipients
+// Process a batch of recipients (with personalized messages)
 async function processBatch(
   broadcast: Broadcast,
-  recipients: Recipient[],
-  messages: object[]
+  recipients: Recipient[]
 ): Promise<{ sent: number; failed: number }> {
   let sent = 0;
   let failed = 0;
@@ -116,6 +133,18 @@ async function processBatch(
         error_message: "No LINE ID",
       });
       
+      failed++;
+      continue;
+    }
+
+    // Build personalized message for each recipient
+    const messages = buildLineMessage(broadcast, recipient.recipient_name);
+    
+    if (messages.length === 0) {
+      await supabase
+        .from("broadcast_recipients")
+        .update({ status: "skipped", error_message: "No message content" })
+        .eq("id", recipient.id);
       failed++;
       continue;
     }
@@ -223,15 +252,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Dry run - just return recipient count
+    // Dry run - return recipients list with preview
     if (dry_run) {
-      const { count } = await supabase
+      const { data: recipients, count } = await supabase
         .from("broadcast_recipients")
-        .select("*", { count: "exact", head: true })
-        .eq("broadcast_id", broadcast_id);
+        .select("id, recipient_type, recipient_id, recipient_name, line_id", { count: "exact" })
+        .eq("broadcast_id", broadcast_id)
+        .limit(100);
+
+      // Generate sample message with first recipient's name
+      const sampleName = recipients?.[0]?.recipient_name || "Sample User";
+      const sampleMessage = broadcast.content 
+        ? replaceTemplateVariables(broadcast.content, sampleName)
+        : null;
 
       return new Response(
-        JSON.stringify({ success: true, dry_run: true, recipient_count: count }),
+        JSON.stringify({ 
+          success: true, 
+          dry_run: true, 
+          recipient_count: count,
+          recipients: recipients || [],
+          sample_message: sampleMessage
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -242,9 +284,9 @@ Deno.serve(async (req) => {
       .update({ status: "sending" })
       .eq("id", broadcast_id);
 
-    // Build message
-    const messages = buildLineMessage(broadcast);
-    if (messages.length === 0) {
+    // Check if message has content
+    const testMessages = buildLineMessage(broadcast, null);
+    if (testMessages.length === 0) {
       await supabase
         .from("broadcasts")
         .update({ status: "failed" })
@@ -276,7 +318,7 @@ Deno.serve(async (req) => {
     // Process in batches
     for (let i = 0; i < (recipients?.length || 0); i += BATCH_SIZE) {
       const batch = recipients!.slice(i, i + BATCH_SIZE);
-      const { sent, failed } = await processBatch(broadcast, batch, messages);
+      const { sent, failed } = await processBatch(broadcast, batch);
       totalSent += sent;
       totalFailed += failed;
 

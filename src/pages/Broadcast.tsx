@@ -503,6 +503,20 @@ export default function Broadcast() {
     toast.success(`Template "${template.name}" loaded`);
   };
 
+  // Helper function to replace template variables for preview
+  const replaceTemplateVariables = (text: string, recipientName: string = "ชื่อผู้รับ"): string => {
+    const now = getBangkokNow();
+    const dateStr = now.toLocaleDateString('th-TH');
+    const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const datetimeStr = now.toLocaleString('th-TH');
+    
+    return text
+      .replace(/\{\{name\}\}/gi, recipientName)
+      .replace(/\{\{date\}\}/gi, dateStr)
+      .replace(/\{\{time\}\}/gi, timeStr)
+      .replace(/\{\{datetime\}\}/gi, datetimeStr);
+  };
+
   const resetForm = () => {
     setTitle("");
     setMessageType("text");
@@ -657,7 +671,15 @@ export default function Broadcast() {
                         placeholder="Enter your message..."
                         rows={5}
                       />
-                      <p className="text-xs text-muted-foreground">{content.length} characters</p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{content.length} characters</span>
+                        <span className="text-border">|</span>
+                        <span>Variables:</span>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{"{{name}}"}</code>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{"{{date}}"}</code>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{"{{time}}"}</code>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{"{{datetime}}"}</code>
+                      </div>
                     </div>
                   )}
 
@@ -1219,25 +1241,114 @@ export default function Broadcast() {
         </TabsContent>
       </Tabs>
 
-      {/* Preview Dialog */}
+      {/* Preview Dialog - Enhanced with recipients and variables */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Message Preview</DialogTitle>
-            <DialogDescription>This is how your message will appear in LINE</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" /> Broadcast Preview
+            </DialogTitle>
+            <DialogDescription>Review message and recipients before sending</DialogDescription>
           </DialogHeader>
-          <div className="bg-muted rounded-lg p-4 space-y-3">
-            {(messageType === "text" || messageType === "text_image") && content && (
-              <div className="bg-primary text-primary-foreground rounded-lg p-3 max-w-[80%]">
-                <p className="whitespace-pre-wrap text-sm">{content}</p>
+          
+          <div className="flex-1 overflow-y-auto space-y-4">
+            {/* Message Preview */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Message Preview (with sample variables)</Label>
+              <div className="bg-muted rounded-lg p-4 space-y-3">
+                {(messageType === "text" || messageType === "text_image") && content && (
+                  <div className="bg-primary text-primary-foreground rounded-lg p-3 max-w-[80%]">
+                    <p className="whitespace-pre-wrap text-sm">{replaceTemplateVariables(content)}</p>
+                  </div>
+                )}
+                {(messageType === "image" || messageType === "text_image") && imageUrl && (
+                  <div className="max-w-[80%]">
+                    <img src={imageUrl} alt="Preview" className="rounded-lg" />
+                  </div>
+                )}
               </div>
-            )}
-            {(messageType === "image" || messageType === "text_image") && imageUrl && (
-              <div className="max-w-[80%]">
-                <img src={imageUrl} alt="Preview" className="rounded-lg" />
-              </div>
-            )}
+              {content && content.includes("{{") && (
+                <p className="text-xs text-muted-foreground">
+                  * Variables like {"{{name}}"} will be replaced with each recipient's actual name
+                </p>
+              )}
+            </div>
+
+            {/* Recipients Preview */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Recipients ({getTotalRecipients()} total)
+              </Label>
+              <ScrollArea className="h-40 border rounded-md">
+                <div className="p-3 space-y-3">
+                  {selectedUsers.length > 0 && (
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">Users ({selectedUsers.length})</span>
+                      <div className="mt-1 space-y-0.5">
+                        {selectedUsers.slice(0, 10).map(id => {
+                          const user = users?.find(u => u.id === id);
+                          return <div key={id} className="text-sm">{user?.display_name || id}</div>;
+                        })}
+                        {selectedUsers.length > 10 && (
+                          <div className="text-xs text-muted-foreground">...and {selectedUsers.length - 10} more</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedGroups.length > 0 && (
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">Groups ({selectedGroups.length})</span>
+                      <div className="mt-1 space-y-0.5">
+                        {selectedGroups.slice(0, 10).map(id => {
+                          const group = groups?.find(g => g.id === id);
+                          return <div key={id} className="text-sm">{group?.display_name || id}</div>;
+                        })}
+                        {selectedGroups.length > 10 && (
+                          <div className="text-xs text-muted-foreground">...and {selectedGroups.length - 10} more</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedEmployees.length > 0 && (
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">Employees ({selectedEmployees.length})</span>
+                      <div className="mt-1 space-y-0.5">
+                        {selectedEmployees.slice(0, 10).map(id => {
+                          const emp = employees?.find(e => e.id === id);
+                          return <div key={id} className="text-sm">{emp?.full_name || id}</div>;
+                        })}
+                        {selectedEmployees.length > 10 && (
+                          <div className="text-xs text-muted-foreground">...and {selectedEmployees.length - 10} more</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedRecipientGroups.length > 0 && (
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">Saved Groups ({selectedRecipientGroups.length})</span>
+                      <div className="mt-1 space-y-0.5">
+                        {selectedRecipientGroups.map(id => {
+                          const rg = recipientGroups?.find(r => r.id === id);
+                          return <div key={id} className="text-sm">{rg?.name || id} ({rg?.member_count || 0} members)</div>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {getTotalRecipients() === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No recipients selected</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Close</Button>
+            <Button onClick={() => { setPreviewOpen(false); setConfirmSendOpen(true); }} disabled={!canSend()}>
+              <Send className="h-4 w-4 mr-2" />
+              Continue to Send
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
