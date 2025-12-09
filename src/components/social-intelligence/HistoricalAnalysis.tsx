@@ -252,25 +252,40 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
       }
     });
     
-    // Aggregate across all periods
+    // Aggregate across all periods - calculate period averages first, then average those
     return Array.from(userMap.values()).map((u) => {
       const periods = Array.from(u.periodData.values());
       const totalMessages = periods.reduce((s, p) => s + p.messages, 0);
-      const totalWorkHours = periods.reduce((s, p) => s + p.workHours, 0);
-      const totalWorkCount = periods.reduce((s, p) => s + p.workCount, 0);
-      const totalOutsideHours = periods.reduce((s, p) => s + p.outsideHours, 0);
-      const totalOutsideCount = periods.reduce((s, p) => s + p.outsideCount, 0);
-      const totalGhost = periods.reduce((s, p) => s + p.ghost, 0);
-      const totalGhostCount = periods.reduce((s, p) => s + p.ghostCount, 0);
+      
+      // Calculate average per period first, then average across periods
+      const validWorkPeriods = periods.filter(p => p.workCount > 0);
+      const validOutsidePeriods = periods.filter(p => p.outsideCount > 0);
+      const validGhostPeriods = periods.filter(p => p.ghostCount > 0);
+      
+      // Each period's average
+      const periodWorkAvgs = validWorkPeriods.map(p => p.workHours / p.workCount);
+      const periodOutsideAvgs = validOutsidePeriods.map(p => p.outsideHours / p.outsideCount);
+      const periodGhostAvgs = validGhostPeriods.map(p => p.ghost / p.ghostCount);
+      
+      // Final average = average of period averages
+      const avgWorkSeconds = periodWorkAvgs.length > 0 
+        ? periodWorkAvgs.reduce((a, b) => a + b, 0) / periodWorkAvgs.length 
+        : null;
+      const avgOutsideSeconds = periodOutsideAvgs.length > 0 
+        ? periodOutsideAvgs.reduce((a, b) => a + b, 0) / periodOutsideAvgs.length 
+        : null;
+      const avgGhost = periodGhostAvgs.length > 0 
+        ? periodGhostAvgs.reduce((a, b) => a + b, 0) / periodGhostAvgs.length 
+        : 0;
       
       return {
         userId: u.userId,
         displayName: u.displayName,
         totalMessages,
         periodCount: periods.length,
-        avgWorkHours: totalWorkCount > 0 ? Math.round(totalWorkHours / totalWorkCount / 60) : null,
-        avgOutsideHours: totalOutsideCount > 0 ? Math.round(totalOutsideHours / totalOutsideCount / 60) : null,
-        avgGhost: totalGhostCount > 0 ? Math.round((totalGhost / totalGhostCount) * 100) : 0,
+        avgWorkHours: avgWorkSeconds ? Math.round(avgWorkSeconds / 60) : null,
+        avgOutsideHours: avgOutsideSeconds ? Math.round(avgOutsideSeconds / 60) : null,
+        avgGhost: Math.round(avgGhost * 100),
       };
     }).sort((a, b) => b.totalMessages - a.totalMessages);
   }, [historicalData, analysisUserId, analysisGroupId, viewMode]);
