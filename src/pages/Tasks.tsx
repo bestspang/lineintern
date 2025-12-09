@@ -26,6 +26,7 @@ import { format, formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-f
 import { CalendarIcon, CheckCircle2, Plus, XCircle, Clock, AlertCircle, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { getBangkokNow } from '@/lib/timezone';
 
 export default function Tasks() {
   const [search, setSearch] = useState('');
@@ -36,7 +37,7 @@ export default function Tasks() {
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
-    dueDate: new Date(),
+    dueDate: getBangkokNow(),
     dueTime: '12:00',
     groupId: '',
   });
@@ -130,7 +131,7 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('Task created successfully!');
       setIsCreateOpen(false);
-      setNewTask({ title: '', description: '', dueDate: new Date(), dueTime: '12:00', groupId: '' });
+      setNewTask({ title: '', description: '', dueDate: getBangkokNow(), dueTime: '12:00', groupId: '' });
     },
     onError: (error) => {
       toast.error('Failed to create task: ' + error.message);
