@@ -3148,7 +3148,8 @@ async function insertMessage(
   userId: string | null,
   direction: "human" | "bot" | "system",
   text: string,
-  commandType?: string
+  commandType?: string,
+  replyToMessageId?: string | null
 ): Promise<{ id: string; threadId: string } | null> {
   // Sanitize and validate message text
   const sanitizedText = sanitizeMessageText(text);
@@ -3161,6 +3162,38 @@ async function insertMessage(
   }
   
   const hasUrl = /https?:\/\/[^\s]+/.test(sanitizedText);
+  const now = new Date();
+  
+  // Calculate response time if this is a reply
+  let responseTimeSeconds: number | null = null;
+  let isWithinWorkHours = true;
+  
+  if (replyToMessageId && direction === "human") {
+    // Fetch the original message to calculate response time
+    const { data: originalMsg } = await supabase
+      .from("messages")
+      .select("sent_at, user_id")
+      .eq("id", replyToMessageId)
+      .maybeSingle();
+    
+    if (originalMsg?.sent_at) {
+      const originalTime = new Date(originalMsg.sent_at);
+      responseTimeSeconds = Math.floor((now.getTime() - originalTime.getTime()) / 1000);
+      console.log(`[insertMessage] Response time: ${responseTimeSeconds}s to message ${replyToMessageId}`);
+    }
+    
+    // Check if within working hours (8:00-18:00 Bangkok time)
+    const bangkokTime = toBangkokTime(now);
+    const hour = bangkokTime.getHours();
+    const dayOfWeek = bangkokTime.getDay();
+    
+    // Weekend check
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      isWithinWorkHours = false;
+    } else if (hour < 8 || hour >= 18) {
+      isWithinWorkHours = false;
+    }
+  }
   
   const { data, error } = await supabase.from("messages").insert({
     group_id: groupId,
@@ -3169,7 +3202,10 @@ async function insertMessage(
     text: sanitizedText,
     has_url: hasUrl,
     command_type: commandType,
-    sent_at: new Date().toISOString(),
+    sent_at: now.toISOString(),
+    reply_to_message_id: replyToMessageId || null,
+    response_time_seconds: responseTimeSeconds,
+    is_within_work_hours: isWithinWorkHours,
   }).select("id").maybeSingle();
 
   if (error) {
