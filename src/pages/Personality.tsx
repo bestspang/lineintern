@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp, Ghost, Activity, Network, History } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp, Ghost, Activity, Network, History, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,6 +43,35 @@ const getMoodScore = (mood: string): number => {
   };
   return moodScoreMap[mood] || 50;
 };
+
+// Admin Group Warning Component
+function AdminGroupWarning() {
+  const { data: adminGroupConfig, isLoading } = useQuery({
+    queryKey: ["admin-line-group-check"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("attendance_settings")
+        .select("admin_line_group_id")
+        .eq("scope", "global")
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (isLoading || adminGroupConfig?.admin_line_group_id) return null;
+
+  return (
+    <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>Team Health Report ยังไม่สามารถส่งได้</AlertTitle>
+      <AlertDescription>
+        กรุณาตั้งค่า Admin LINE Group ใน Settings → Attendance → Settings หน้า global เพื่อรับ Team Health Report
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 export default function Personality() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
@@ -410,6 +440,9 @@ export default function Personality() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Admin Group Warning - Show if not configured */}
+      <AdminGroupWarning />
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

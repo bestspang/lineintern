@@ -424,7 +424,21 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
             {/* Actions */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Actions</label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  onClick={() => setDateRange({ from: subDays(new Date(), 7), to: new Date() })}
+                  variant="outline"
+                  size="sm"
+                >
+                  Last 7 Days
+                </Button>
+                <Button 
+                  onClick={() => setDateRange({ from: subDays(new Date(), 30), to: new Date() })}
+                  variant="outline"
+                  size="sm"
+                >
+                  Last 30 Days
+                </Button>
                 <Button 
                   onClick={() => runBackfillWithPagination(true)}
                   variant="outline"
