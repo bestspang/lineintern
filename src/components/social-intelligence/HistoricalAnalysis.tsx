@@ -180,6 +180,17 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
     }
   };
 
+  // Helper function to get period key based on view mode
+  const getPeriodKey = (dateStr: string, mode: ViewMode): string => {
+    const date = new Date(dateStr);
+    if (mode === "day") return dateStr;
+    if (mode === "week") {
+      const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+      return format(weekStart, "yyyy-MM-dd");
+    }
+    return format(startOfMonth(date), "yyyy-MM-01");
+  };
+
   // Aggregate user stats for the table - now respects viewMode
   const userStats = useMemo(() => {
     if (!historicalData || analysisUserId !== "all" || analysisGroupId === "all") return [];
@@ -263,17 +274,6 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
       };
     }).sort((a, b) => b.totalMessages - a.totalMessages);
   }, [historicalData, analysisUserId, analysisGroupId, viewMode]);
-
-  // Helper function to get period key based on view mode
-  const getPeriodKey = (dateStr: string, mode: ViewMode): string => {
-    const date = new Date(dateStr);
-    if (mode === "day") return dateStr;
-    if (mode === "week") {
-      const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-      return format(weekStart, "yyyy-MM-dd");
-    }
-    return format(startOfMonth(date), "yyyy-MM-01");
-  };
 
   // Aggregate data for charts with view mode support
   const responseTimeChartData = useMemo(() => {
