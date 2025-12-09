@@ -23,45 +23,66 @@ export default function Approvals() {
     const fetchCounts = async () => {
       if (!employee?.id) return;
 
-      // Get pending OT requests
-      let otQuery = supabase
-        .from('overtime_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
+      // Build query based on role
+      // Admin: see all, Manager: see only their branch
+      let otCount = 0;
+      let leaveCount = 0;
+      let earlyLeaveCount = 0;
 
-      // Filter by branch for non-admins
-      if (!isAdmin && employee.branch_id) {
-        otQuery = otQuery.eq('employee_id', employee.branch_id);
+      if (isAdmin) {
+        // Admin sees all pending requests
+        const [otRes, leaveRes, earlyRes] = await Promise.all([
+          supabase
+            .from('overtime_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending'),
+          supabase
+            .from('leave_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending'),
+          supabase
+            .from('early_leave_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending'),
+        ]);
+        otCount = otRes.count || 0;
+        leaveCount = leaveRes.count || 0;
+        earlyLeaveCount = earlyRes.count || 0;
+      } else if (isManager && employee.branch_id) {
+        // Manager sees only their branch's requests
+        // Need to join with employees table to filter by branch
+        const [otRes, leaveRes, earlyRes] = await Promise.all([
+          supabase
+            .from('overtime_requests')
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .eq('employee.branch_id', employee.branch_id),
+          supabase
+            .from('leave_requests')
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .eq('employee.branch_id', employee.branch_id),
+          supabase
+            .from('early_leave_requests')
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .eq('employee.branch_id', employee.branch_id),
+        ]);
+        otCount = otRes.count || 0;
+        leaveCount = leaveRes.count || 0;
+        earlyLeaveCount = earlyRes.count || 0;
       }
 
-      const { count: otCount } = await otQuery;
-
-      // Get pending leave requests
-      let leaveQuery = supabase
-        .from('leave_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-
-      const { count: leaveCount } = await leaveQuery;
-
-      // Get pending early leave requests
-      let earlyLeaveQuery = supabase
-        .from('early_leave_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-
-      const { count: earlyLeaveCount } = await earlyLeaveQuery;
-
       setCounts({
-        ot: otCount || 0,
-        leave: leaveCount || 0,
-        earlyLeave: earlyLeaveCount || 0,
+        ot: otCount,
+        leave: leaveCount,
+        earlyLeave: earlyLeaveCount,
       });
       setLoading(false);
     };
 
     fetchCounts();
-  }, [employee?.id, employee?.branch_id, isAdmin]);
+  }, [employee?.id, employee?.branch_id, isAdmin, isManager]);
 
   const totalPending = counts.ot + counts.leave + counts.earlyLeave;
 

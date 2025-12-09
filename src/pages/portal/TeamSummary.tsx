@@ -7,6 +7,7 @@ import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
+import { formatBangkokISODate, formatBangkokTime, getBangkokNow } from '@/lib/timezone';
 
 interface EmployeeStatus {
   id: string;
@@ -34,7 +35,8 @@ export default function TeamSummary() {
     const fetchTeamStatus = async () => {
       if (!employee?.id) return;
 
-      const today = format(new Date(), 'yyyy-MM-dd');
+      // Use Bangkok timezone for today's date
+      const today = formatBangkokISODate(new Date());
 
       // Get employees in the same branch (or all if admin)
       let employeesQuery = supabase
@@ -53,12 +55,12 @@ export default function TeamSummary() {
         return;
       }
 
-      // Get today's attendance logs
+      // Get today's attendance logs using Bangkok date boundaries
       const { data: logs } = await supabase
         .from('attendance_logs')
         .select('employee_id, event_type, server_time')
-        .gte('server_time', `${today}T00:00:00`)
-        .lt('server_time', `${today}T23:59:59`)
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lt('server_time', `${today}T23:59:59+07:00`)
         .order('server_time', { ascending: true });
 
       // Build employee status map
@@ -160,7 +162,7 @@ export default function TeamSummary() {
           {locale === 'th' ? '👥 สรุปทีม' : '👥 Team Summary'}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {format(new Date(), 'EEEE, d MMMM yyyy', { locale: dateLocale })}
+          {format(getBangkokNow(), 'EEEE, d MMMM yyyy', { locale: dateLocale })}
         </p>
       </div>
 
@@ -209,11 +211,11 @@ export default function TeamSummary() {
           <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden flex">
             <div 
               className="h-full bg-emerald-500"
-              style={{ width: `${(stats.checkedIn / stats.total) * 100}%` }}
+              style={{ width: `${stats.total > 0 ? (stats.checkedIn / stats.total) * 100 : 0}%` }}
             />
             <div 
               className="h-full bg-blue-500"
-              style={{ width: `${(stats.checkedOut / stats.total) * 100}%` }}
+              style={{ width: `${stats.total > 0 ? (stats.checkedOut / stats.total) * 100 : 0}%` }}
             />
           </div>
         </CardContent>
@@ -256,8 +258,8 @@ export default function TeamSummary() {
                       {getStatusBadge(emp.status)}
                       {emp.check_in_time && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(emp.check_in_time), 'HH:mm')}
-                          {emp.check_out_time && ` - ${format(new Date(emp.check_out_time), 'HH:mm')}`}
+                          {formatBangkokTime(emp.check_in_time).slice(0, 5)}
+                          {emp.check_out_time && ` - ${formatBangkokTime(emp.check_out_time).slice(0, 5)}`}
                         </p>
                       )}
                     </div>

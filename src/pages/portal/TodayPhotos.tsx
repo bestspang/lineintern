@@ -6,8 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Camera, Clock, MapPin, User } from 'lucide-react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatBangkokISODate, formatBangkokTime } from '@/lib/timezone';
 
 export default function TodayPhotos() {
   const { employee, locale } = usePortal();
@@ -29,7 +28,8 @@ export default function TodayPhotos() {
   const { data: photos, isLoading } = useQuery({
     queryKey: ['portal-today-photos', selectedBranch],
     queryFn: async () => {
-      const today = format(new Date(), 'yyyy-MM-dd');
+      // Use Bangkok timezone for today's date
+      const today = formatBangkokISODate(new Date());
       
       let query = supabase
         .from('attendance_logs')
@@ -42,8 +42,8 @@ export default function TodayPhotos() {
           longitude,
           employee:employees!inner(id, full_name, code, branch:branches(name))
         `)
-        .gte('server_time', `${today}T00:00:00`)
-        .lt('server_time', `${today}T23:59:59`)
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lt('server_time', `${today}T23:59:59+07:00`)
         .not('photo_url', 'is', null)
         .order('server_time', { ascending: false });
 
@@ -117,7 +117,7 @@ export default function TodayPhotos() {
                 </div>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
-                  {format(new Date(log.server_time), 'HH:mm')}
+                  {formatBangkokTime(log.server_time).slice(0, 5)}
                 </div>
                 {log.employee?.branch?.name && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">

@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatBangkokISODate, getBangkokNow } from '@/lib/timezone';
 
 interface OTRequest {
   id: string;
@@ -27,8 +28,12 @@ export default function RequestOT() {
   const [requests, setRequests] = useState<OTRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Use Bangkok timezone for default date
+  const todayBangkok = formatBangkokISODate(new Date());
+  
   const [formData, setFormData] = useState({
-    request_date: format(new Date(), 'yyyy-MM-dd'),
+    request_date: todayBangkok,
     estimated_hours: '2',
     reason: '',
   });
