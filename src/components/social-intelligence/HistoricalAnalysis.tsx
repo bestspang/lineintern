@@ -180,68 +180,89 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
     }
   };
 
-  // Aggregate user stats for the table
+  // Aggregate user stats for the table - now respects viewMode
   const userStats = useMemo(() => {
     if (!historicalData || analysisUserId !== "all" || analysisGroupId === "all") return [];
     
     const userMap = new Map<string, {
       userId: string;
       displayName: string;
-      totalMessages: number;
-      totalWorkHours: number;
-      workHoursCount: number;
-      totalOutsideHours: number;
-      outsideHoursCount: number;
-      totalGhost: number;
-      ghostCount: number;
+      periodData: Map<string, {
+        messages: number;
+        workHours: number;
+        workCount: number;
+        outsideHours: number;
+        outsideCount: number;
+        ghost: number;
+        ghostCount: number;
+      }>;
     }>();
     
     historicalData.forEach((item: any) => {
       const userId = item.user_id;
+      const periodKey = getPeriodKey(item.date, viewMode);
+      
       if (!userMap.has(userId)) {
         userMap.set(userId, {
           userId,
           displayName: item.users?.display_name || "Unknown",
-          totalMessages: 0,
-          totalWorkHours: 0,
-          workHoursCount: 0,
-          totalOutsideHours: 0,
-          outsideHoursCount: 0,
-          totalGhost: 0,
-          ghostCount: 0,
+          periodData: new Map(),
         });
       }
       
       const user = userMap.get(userId)!;
-      user.totalMessages += item.total_messages_sent || 0;
+      
+      if (!user.periodData.has(periodKey)) {
+        user.periodData.set(periodKey, {
+          messages: 0,
+          workHours: 0,
+          workCount: 0,
+          outsideHours: 0,
+          outsideCount: 0,
+          ghost: 0,
+          ghostCount: 0,
+        });
+      }
+      
+      const period = user.periodData.get(periodKey)!;
+      period.messages += item.total_messages_sent || 0;
       
       if (item.avg_response_time_work_hours) {
-        user.totalWorkHours += item.avg_response_time_work_hours;
-        user.workHoursCount++;
+        period.workHours += item.avg_response_time_work_hours;
+        period.workCount++;
       }
       if (item.avg_response_time_outside_hours) {
-        user.totalOutsideHours += item.avg_response_time_outside_hours;
-        user.outsideHoursCount++;
+        period.outsideHours += item.avg_response_time_outside_hours;
+        period.outsideCount++;
       }
       if (item.ghost_score !== null && item.ghost_score !== undefined) {
-        user.totalGhost += parseFloat(item.ghost_score);
-        user.ghostCount++;
+        period.ghost += parseFloat(item.ghost_score);
+        period.ghostCount++;
       }
     });
     
-    return Array.from(userMap.values()).map((u) => ({
-      ...u,
-      avgWorkHours: u.workHoursCount > 0 
-        ? Math.round(u.totalWorkHours / u.workHoursCount / 60) 
-        : null,
-      avgOutsideHours: u.outsideHoursCount > 0 
-        ? Math.round(u.totalOutsideHours / u.outsideHoursCount / 60) 
-        : null,
-      avgGhost: u.ghostCount > 0 
-        ? Math.round((u.totalGhost / u.ghostCount) * 100) 
-        : 0,
-    })).sort((a, b) => b.totalMessages - a.totalMessages);
-  }, [historicalData, analysisUserId, analysisGroupId]);
+    // Aggregate across all periods
+    return Array.from(userMap.values()).map((u) => {
+      const periods = Array.from(u.periodData.values());
+      const totalMessages = periods.reduce((s, p) => s + p.messages, 0);
+      const totalWorkHours = periods.reduce((s, p) => s + p.workHours, 0);
+      const totalWorkCount = periods.reduce((s, p) => s + p.workCount, 0);
+      const totalOutsideHours = periods.reduce((s, p) => s + p.outsideHours, 0);
+      const totalOutsideCount = periods.reduce((s, p) => s + p.outsideCount, 0);
+      const totalGhost = periods.reduce((s, p) => s + p.ghost, 0);
+      const totalGhostCount = periods.reduce((s, p) => s + p.ghostCount, 0);
+      
+      return {
+        userId: u.userId,
+        displayName: u.displayName,
+        totalMessages,
+        periodCount: periods.length,
+        avgWorkHours: totalWorkCount > 0 ? Math.round(totalWorkHours / totalWorkCount / 60) : null,
+        avgOutsideHours: totalOutsideCount > 0 ? Math.round(totalOutsideHours / totalOutsideCount / 60) : null,
+        avgGhost: totalGhostCount > 0 ? Math.round((totalGhost / totalGhostCount) * 100) : 0,
+      };
+    }).sort((a, b) => b.totalMessages - a.totalMessages);
+  }, [historicalData, analysisUserId, analysisGroupId, viewMode]);
 
   // Helper function to get period key based on view mode
   const getPeriodKey = (dateStr: string, mode: ViewMode): string => {
@@ -501,6 +522,9 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                   <TableRow>
                     <TableHead>User</TableHead>
                     <TableHead className="text-right">Messages</TableHead>
+                    <TableHead className="text-right">
+                      {viewMode === "day" ? "Days" : viewMode === "week" ? "Weeks" : "Months"}
+                    </TableHead>
                     <TableHead className="text-right">Work Hours (avg)</TableHead>
                     <TableHead className="text-right">Outside Hours (avg)</TableHead>
                     <TableHead className="text-right">Ghost Score</TableHead>
@@ -515,6 +539,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                     >
                       <TableCell className="font-medium">{user.displayName}</TableCell>
                       <TableCell className="text-right">{user.totalMessages.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{user.periodCount}</TableCell>
                       <TableCell className="text-right">
                         {user.avgWorkHours !== null ? `${user.avgWorkHours} min` : "-"}
                       </TableCell>

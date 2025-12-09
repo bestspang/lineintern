@@ -28,12 +28,33 @@ interface GhostLeaderboardProps {
 }
 
 export function GhostLeaderboard({ data, title = "Response Analytics", showAll = false }: GhostLeaderboardProps) {
-  // Aggregate by user (get latest per user)
+  // Aggregate by user - select record with best data (most activity, not just latest)
   const userMap = new Map<string, ResponseAnalytics>();
   for (const item of data) {
     const existing = userMap.get(item.user_id);
-    if (!existing || new Date(item.date) > new Date(existing.date)) {
+    if (!existing) {
       userMap.set(item.user_id, item);
+    } else {
+      // Determine which record has better data
+      const existingHasData = existing.total_replies_received > 0 || existing.avg_response_time_seconds !== null;
+      const newHasData = item.total_replies_received > 0 || item.avg_response_time_seconds !== null;
+      
+      // Prefer record with actual data
+      if (newHasData && !existingHasData) {
+        userMap.set(item.user_id, item);
+      } else if (newHasData && existingHasData) {
+        // Both have data - prefer one with more activity or newer date
+        if (item.total_messages_sent > existing.total_messages_sent ||
+            (item.total_messages_sent === existing.total_messages_sent && 
+             new Date(item.date) > new Date(existing.date))) {
+          userMap.set(item.user_id, item);
+        }
+      } else if (!existingHasData && !newHasData) {
+        // Neither has data - prefer newer
+        if (new Date(item.date) > new Date(existing.date)) {
+          userMap.set(item.user_id, item);
+        }
+      }
     }
   }
   
