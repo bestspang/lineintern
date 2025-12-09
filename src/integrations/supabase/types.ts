@@ -811,6 +811,212 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_logs: {
+        Row: {
+          broadcast_id: string
+          delivery_status: string
+          error_message: string | null
+          id: string
+          line_id: string | null
+          line_response: Json | null
+          recipient_id: string | null
+          recipient_name: string | null
+          sent_at: string | null
+        }
+        Insert: {
+          broadcast_id: string
+          delivery_status: string
+          error_message?: string | null
+          id?: string
+          line_id?: string | null
+          line_response?: Json | null
+          recipient_id?: string | null
+          recipient_name?: string | null
+          sent_at?: string | null
+        }
+        Update: {
+          broadcast_id?: string
+          delivery_status?: string
+          error_message?: string | null
+          id?: string
+          line_id?: string | null
+          line_response?: Json | null
+          recipient_id?: string | null
+          recipient_name?: string | null
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_logs_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_logs_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_recipients: {
+        Row: {
+          broadcast_id: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          line_id: string | null
+          recipient_id: string
+          recipient_name: string | null
+          recipient_type: string
+          sent_at: string | null
+          status: string | null
+        }
+        Insert: {
+          broadcast_id: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          line_id?: string | null
+          recipient_id: string
+          recipient_name?: string | null
+          recipient_type: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          broadcast_id?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          line_id?: string | null
+          recipient_id?: string
+          recipient_name?: string | null
+          recipient_type?: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_recipients_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_templates: {
+        Row: {
+          category: string | null
+          content: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          message_type: string
+          name: string
+          updated_at: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          message_type?: string
+          name: string
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          message_type?: string
+          name?: string
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Relationships: []
+      }
+      broadcasts: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          created_by: string | null
+          failed_count: number | null
+          id: string
+          image_url: string | null
+          is_recurring: boolean | null
+          last_run_at: string | null
+          message_type: string
+          next_run_at: string | null
+          recurrence_end_date: string | null
+          recurrence_pattern: string | null
+          scheduled_at: string | null
+          sent_count: number | null
+          status: string
+          title: string
+          total_recipients: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          failed_count?: number | null
+          id?: string
+          image_url?: string | null
+          is_recurring?: boolean | null
+          last_run_at?: string | null
+          message_type?: string
+          next_run_at?: string | null
+          recurrence_end_date?: string | null
+          recurrence_pattern?: string | null
+          scheduled_at?: string | null
+          sent_count?: number | null
+          status?: string
+          title: string
+          total_recipients?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          failed_count?: number | null
+          id?: string
+          image_url?: string | null
+          is_recurring?: boolean | null
+          last_run_at?: string | null
+          message_type?: string
+          next_run_at?: string | null
+          recurrence_end_date?: string | null
+          recurrence_pattern?: string | null
+          scheduled_at?: string | null
+          sent_count?: number | null
+          status?: string
+          title?: string
+          total_recipients?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       chat_summaries: {
         Row: {
           action_items: Json | null
@@ -2455,6 +2661,77 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      recipient_group_members: {
+        Row: {
+          created_at: string | null
+          group_id: string
+          id: string
+          line_id: string | null
+          member_id: string
+          member_name: string | null
+          member_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          group_id: string
+          id?: string
+          line_id?: string | null
+          member_id: string
+          member_name?: string | null
+          member_type: string
+        }
+        Update: {
+          created_at?: string | null
+          group_id?: string
+          id?: string
+          line_id?: string | null
+          member_id?: string
+          member_name?: string | null
+          member_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipient_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "recipient_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipient_groups: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          member_count: number | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          member_count?: number | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          member_count?: number | null
+          name?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
