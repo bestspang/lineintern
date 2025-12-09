@@ -45,11 +45,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if token already used
-    if (tokenData.used_at) {
-      console.log('[employee-menu-validate] Token already used');
+    // Check if token already used - allow reuse within session (1 hour grace period)
+    const usedAt = tokenData.used_at ? new Date(tokenData.used_at) : null;
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    
+    if (usedAt && usedAt < oneHourAgo) {
+      console.log('[employee-menu-validate] Token session expired (used more than 1 hour ago)');
       return new Response(
-        JSON.stringify({ error: 'Token already used' }),
+        JSON.stringify({ error: 'Token session expired' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -65,7 +68,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Mark token as used
+    // Mark token as used (or update used_at for session refresh)
     await supabase
       .from('employee_menu_tokens')
       .update({ used_at: new Date().toISOString() })
