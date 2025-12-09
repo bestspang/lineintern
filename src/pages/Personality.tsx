@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp, Ghost, Activity, Network } from "lucide-react";
+import { Smile, Frown, Meh, Sparkles, Battery, Users, Heart, Lightbulb, MessageCircle, RotateCcw, TrendingUp, Ghost, Activity, Network, History } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GhostLeaderboard } from "@/components/social-intelligence/GhostLeaderboard";
 import { TeamHealthDashboard } from "@/components/social-intelligence/TeamHealthDashboard";
 import { RelationshipGraph } from "@/components/social-intelligence/RelationshipGraph";
-
+import { HistoricalAnalysis } from "@/components/social-intelligence/HistoricalAnalysis";
 const getMoodEmoji = (mood: string) => {
   const moodMap: Record<string, { icon: typeof Smile; color: string }> = {
     happy: { icon: Smile, color: "text-green-500" },
@@ -413,7 +413,7 @@ export default function Personality() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="personality" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             <span className="hidden sm:inline">Personality</span>
@@ -429,6 +429,10 @@ export default function Personality() {
           <TabsTrigger value="network" className="flex items-center gap-2">
             <Network className="h-4 w-4" />
             <span className="hidden sm:inline">Network</span>
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            <span className="hidden sm:inline">History</span>
           </TabsTrigger>
         </TabsList>
 
@@ -786,6 +790,14 @@ export default function Personality() {
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* HISTORICAL ANALYSIS TAB */}
+        <TabsContent value="history" className="space-y-4 mt-4">
+          <HistoricalAnalysis 
+            groups={magicGroups || []} 
+            selectedGroupId={selectedGroupId}
+          />
         </TabsContent>
       </Tabs>
 
