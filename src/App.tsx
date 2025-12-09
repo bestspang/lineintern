@@ -71,7 +71,7 @@ import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
 
 // Portal pages
-import { PortalHome, PortalPlaceholder } from "./pages/portal";
+import { PortalHome, PortalPlaceholder, MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile } from "./pages/portal";
 
 const queryClient = new QueryClient();
 
@@ -98,46 +98,11 @@ const App = () => (
                   <PortalLayout>
                     <Routes>
                       <Route path="/" element={<PortalHome />} />
-                      <Route path="/my-history" element={
-                        <PortalPlaceholder 
-                          title="ประวัติการทำงาน" 
-                          titleEn="Work History"
-                          description="ดูประวัติเช็คอิน/เช็คเอาท์ของคุณ"
-                          descriptionEn="View your check-in/check-out history"
-                        />
-                      } />
-                      <Route path="/my-leave" element={
-                        <PortalPlaceholder 
-                          title="วันลาคงเหลือ" 
-                          titleEn="Leave Balance"
-                          description="ตรวจสอบวันลาที่เหลือของคุณ"
-                          descriptionEn="Check your remaining leave days"
-                        />
-                      } />
-                      <Route path="/request-leave" element={
-                        <PortalPlaceholder 
-                          title="ขอลางาน" 
-                          titleEn="Request Leave"
-                          description="ส่งคำขอลางาน"
-                          descriptionEn="Submit leave request"
-                        />
-                      } />
-                      <Route path="/request-ot" element={
-                        <PortalPlaceholder 
-                          title="ขอ OT" 
-                          titleEn="Request OT"
-                          description="ส่งคำขอทำงานล่วงเวลา"
-                          descriptionEn="Submit overtime request"
-                        />
-                      } />
-                      <Route path="/my-profile" element={
-                        <PortalPlaceholder 
-                          title="โปรไฟล์ของฉัน" 
-                          titleEn="My Profile"
-                          description="ดูข้อมูลพนักงานของคุณ"
-                          descriptionEn="View your employee information"
-                        />
-                      } />
+                      <Route path="/my-history" element={<MyWorkHistory />} />
+                      <Route path="/my-leave" element={<MyLeaveBalance />} />
+                      <Route path="/request-leave" element={<RequestLeave />} />
+                      <Route path="/request-ot" element={<RequestOT />} />
+                      <Route path="/my-profile" element={<MyProfile />} />
                       <Route path="/approvals" element={
                         <PortalPlaceholder 
                           title="อนุมัติคำขอ" 
