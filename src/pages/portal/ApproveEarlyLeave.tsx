@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ interface EarlyLeaveRequest {
     id: string;
     full_name: string;
     code: string;
+    branch_id: string | null;
     branch: { name: string } | null;
   };
 }
@@ -35,7 +36,7 @@ export default function ApproveEarlyLeave() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     if (!employee) return;
     
     let query = supabase
@@ -54,20 +55,43 @@ export default function ApproveEarlyLeave() {
 
     if (!error && data) {
       // Filter by branch for managers (not admin)
-      let filtered = data as unknown as (EarlyLeaveRequest & { employee: { branch_id: string } })[];
+      let filtered = data as unknown as EarlyLeaveRequest[];
       if (isManager && !isAdmin && employee.branch_id) {
         filtered = filtered.filter(req => req.employee?.branch_id === employee.branch_id);
       }
       setRequests(filtered);
     }
     setLoading(false);
-  };
+  }, [employee, isManager, isAdmin]);
 
+  // Initial fetch + realtime subscription
   useEffect(() => {
     if (employee) {
       fetchRequests();
     }
-  }, [employee, isManager, isAdmin]);
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel('early-leave-requests-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'early_leave_requests',
+          filter: 'status=eq.pending'
+        },
+        () => {
+          // Refetch on any change to pending requests
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employee, fetchRequests]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setProcessing(requestId);

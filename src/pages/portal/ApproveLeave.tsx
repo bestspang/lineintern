@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,7 +43,7 @@ export default function ApproveLeave() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     let query = supabase
       .from('leave_requests')
       .select(`
@@ -68,11 +68,34 @@ export default function ApproveLeave() {
       setRequests(validData);
     }
     setLoading(false);
-  };
+  }, [isAdmin, employee?.branch_id]);
 
+  // Initial fetch + realtime subscription
   useEffect(() => {
     fetchRequests();
-  }, [isAdmin, employee?.branch_id]);
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel('leave-requests-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leave_requests',
+          filter: 'status=eq.pending'
+        },
+        () => {
+          // Refetch on any change to pending requests
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchRequests]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     setProcessing(requestId);
