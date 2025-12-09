@@ -26,6 +26,8 @@ import {
   Area 
 } from "recharts";
 
+import type { Json } from "@/integrations/supabase/types";
+
 interface SentimentHistory {
   user_id: string;
   group_id: string;
@@ -36,7 +38,7 @@ interface SentimentHistory {
   negative_count: number;
   neutral_count: number;
   burnout_score: number;
-  burnout_signals: string[];
+  burnout_signals: Json;
   users?: {
     display_name: string;
     avatar_url: string | null;
@@ -290,9 +292,9 @@ export function TeamHealthDashboard({
                       </Badge>
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {user.burnout_signals?.map((signal, i) => (
+                      {(Array.isArray(user.burnout_signals) ? user.burnout_signals : []).map((signal, i) => (
                         <Badge key={i} variant="secondary" className="text-xs">
-                          {getBurnoutSignalLabel(signal)}
+                          {getBurnoutSignalLabel(String(signal))}
                         </Badge>
                       ))}
                     </div>
