@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, Play, Clock, TrendingUp, Ghost, Users, AlertTriangle, CheckCircle } from "lucide-react";
+import { CalendarIcon, Play, Clock, TrendingUp, Ghost, Users, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from "recharts";
@@ -29,6 +28,17 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
   const [analysisUserId, setAnalysisUserId] = useState<string>("all");
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Fetch users for the selected group
   const { data: users } = useQuery({
@@ -102,56 +112,68 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
     },
   });
 
-  // Run backfill mutation
-  const backfillMutation = useMutation({
-    mutationFn: async (params: { startDate: string; endDate: string; groupId?: string; userId?: string; dryRun: boolean }) => {
-      setIsRunning(true);
-      setProgress(10);
+  // Run backfill with pagination support
+  const runBackfillWithPagination = async (dryRun: boolean) => {
+    setIsRunning(true);
+    setProgress(5);
+    setProgressMessage("Starting backfill...");
 
-      const { data, error } = await supabase.functions.invoke("response-analytics-backfill", {
-        body: {
-          startDate: params.startDate,
-          endDate: params.endDate,
-          groupId: params.groupId === "all" ? undefined : params.groupId,
-          userId: params.userId === "all" ? undefined : params.userId,
-          dryRun: params.dryRun,
-        },
-      });
+    const startDate = format(dateRange.from, "yyyy-MM-dd");
+    const endDate = format(dateRange.to, "yyyy-MM-dd");
+    
+    let cursor: string | null = null;
+    let totalUpdates = 0;
+    let iteration = 0;
+    const maxIterations = 20; // Safety limit
+    
+    try {
+      do {
+        iteration++;
+        setProgressMessage(`Processing batch ${iteration}...`);
+        setProgress(Math.min(10 + (iteration * 4), 90));
+        
+        const { data, error } = await supabase.functions.invoke("response-analytics-backfill", {
+          body: {
+            startDate,
+            endDate,
+            groupId: analysisGroupId === "all" ? undefined : analysisGroupId,
+            userId: analysisUserId === "all" ? undefined : analysisUserId,
+            dryRun,
+            cursor,
+            batchSize: 500,
+          },
+        });
+
+        if (error) throw error;
+        
+        totalUpdates += data.updatesCount || 0;
+        cursor = data.hasMore ? data.nextCursor : null;
+        
+        setProgressMessage(`Processed ${totalUpdates} updates...`);
+        
+      } while (cursor && iteration < maxIterations);
 
       setProgress(100);
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      setIsRunning(false);
-      if (data.dryRun) {
-        toast.info(`Dry run complete: Would update ${data.updatesCount} messages`, {
-          description: `Work hours: ${data.stats.updatedWorkHours}, Response times: ${data.stats.updatedResponseTime}`,
-        });
+      setProgressMessage("Complete!");
+      
+      if (dryRun) {
+        toast.info(`Dry run complete: Would update ${totalUpdates} messages`);
       } else {
-        toast.success(`Backfill complete!`, {
-          description: `Updated ${data.updatesCount} messages`,
-        });
+        toast.success(`Backfill complete! Updated ${totalUpdates} messages`);
         queryClient.invalidateQueries({ queryKey: ["historical-analytics"] });
         queryClient.invalidateQueries({ queryKey: ["historical-sentiment"] });
         queryClient.invalidateQueries({ queryKey: ["response-analytics"] });
       }
-    },
-    onError: (error: any) => {
-      setIsRunning(false);
+      
+    } catch (error: any) {
       toast.error("Backfill failed", { description: error.message });
-    },
-  });
-
-  const handleRunBackfill = (dryRun: boolean) => {
-    backfillMutation.mutate({
-      startDate: format(dateRange.from, "yyyy-MM-dd"),
-      endDate: format(dateRange.to, "yyyy-MM-dd"),
-      groupId: analysisGroupId,
-      userId: analysisUserId,
-      dryRun,
-    });
+    } finally {
+      setIsRunning(false);
+      setTimeout(() => {
+        setProgress(0);
+        setProgressMessage("");
+      }, 2000);
+    }
   };
 
   // Aggregate data for charts
@@ -287,7 +309,7 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
               <label className="text-sm font-medium">Actions</label>
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => handleRunBackfill(true)}
+                  onClick={() => runBackfillWithPagination(true)}
                   variant="outline"
                   size="sm"
                   disabled={isRunning}
@@ -295,11 +317,15 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                   Preview
                 </Button>
                 <Button 
-                  onClick={() => handleRunBackfill(false)}
+                  onClick={() => runBackfillWithPagination(false)}
                   size="sm"
                   disabled={isRunning}
                 >
-                  <Play className="h-4 w-4 mr-1" />
+                  {isRunning ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-1" />
+                  )}
                   Run Backfill
                 </Button>
               </div>
@@ -310,10 +336,10 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
           {isRunning && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Processing...</span>
+                <span>{progressMessage || "Processing..."}</span>
                 <span>{progress}%</span>
               </div>
-              <Progress value={progress} />
+              <Progress value={progress} className="h-2" />
             </div>
           )}
         </CardContent>
@@ -461,8 +487,8 @@ export function HistoricalAnalysis({ groups, selectedGroupId }: HistoricalAnalys
                     tickFormatter={(value) => format(new Date(value), "MMM d")}
                   />
                   <YAxis 
-                    domain={[-1, 1]}
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    domain={[-1, 1]}
                   />
                   <Tooltip 
                     contentStyle={{ 

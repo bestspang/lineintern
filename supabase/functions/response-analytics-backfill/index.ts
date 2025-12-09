@@ -1,6 +1,15 @@
+/**
+ * Response Analytics Backfill Edge Function
+ * 
+ * SCHEMA REFERENCE - DO NOT CHANGE:
+ * - messages.direction: 'human' | 'bot' (NOT 'incoming')
+ * - messages.is_within_work_hours: boolean
+ * - messages.response_time_seconds: number
+ * - messages.reply_to_message_id: uuid
+ */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getBangkokNow, getBangkokDateString, formatBangkokTime } from "../_shared/timezone.ts";
+import { getBangkokNow, getBangkokDateString } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,11 +17,10 @@ const corsHeaders = {
 };
 
 // Check if timestamp is within working hours (8:00-18:00 Bangkok, Mon-Fri, excluding holidays)
-async function isWithinWorkingHours(
-  supabase: any,
+function isWithinWorkingHours(
   timestamp: Date,
   holidays: Set<string>
-): Promise<boolean> {
+): boolean {
   // Convert to Bangkok time
   const bangkokTime = new Date(timestamp.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
   const hours = bangkokTime.getHours();
@@ -62,6 +70,40 @@ function detectReplyContext(
   return null;
 }
 
+// Batch update helper - process updates in chunks
+async function batchUpdate(
+  supabase: any,
+  updates: Array<{ id: string; updates: any }>,
+  chunkSize: number = 25
+): Promise<{ success: number; errors: number }> {
+  let success = 0;
+  let errors = 0;
+  
+  for (let i = 0; i < updates.length; i += chunkSize) {
+    const chunk = updates.slice(i, i + chunkSize);
+    
+    // Process chunk in parallel
+    const results = await Promise.allSettled(
+      chunk.map(update =>
+        supabase
+          .from("messages")
+          .update(update.updates)
+          .eq("id", update.id)
+      )
+    );
+    
+    for (const result of results) {
+      if (result.status === "fulfilled" && !result.value.error) {
+        success++;
+      } else {
+        errors++;
+      }
+    }
+  }
+  
+  return { success, errors };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -79,7 +121,8 @@ serve(async (req) => {
       groupId, 
       userId,
       dryRun = false,
-      batchSize = 500 
+      batchSize = 500,
+      cursor // For pagination
     } = body;
 
     const now = getBangkokNow();
@@ -101,11 +144,11 @@ serve(async (req) => {
     const holidays = new Set((holidaysData || []).map((h: any) => h.date));
     console.log(`[response-analytics-backfill] Found ${holidays.size} holidays in range`);
 
-    // 2. Fetch messages in batches
+    // 2. Fetch messages with pagination
     let query = supabase
       .from("messages")
       .select("id, user_id, group_id, sent_at, text, direction, response_time_seconds, reply_to_message_id, is_within_work_hours")
-      .eq("direction", "human")
+      .eq("direction", "human") // CORRECT: use 'human' not 'incoming'
       .gte("sent_at", `${start}T00:00:00+07:00`)
       .lte("sent_at", `${end}T23:59:59+07:00`)
       .order("sent_at", { ascending: true })
@@ -117,6 +160,9 @@ serve(async (req) => {
     if (userId) {
       query = query.eq("user_id", userId);
     }
+    if (cursor) {
+      query = query.gt("sent_at", cursor);
+    }
 
     const { data: messages, error: msgError } = await query;
 
@@ -124,7 +170,8 @@ serve(async (req) => {
       throw new Error(`Failed to fetch messages: ${msgError.message}`);
     }
 
-    console.log(`[response-analytics-backfill] Processing ${messages?.length || 0} messages`);
+    const messageCount = messages?.length || 0;
+    console.log(`[response-analytics-backfill] Processing ${messageCount} messages`);
 
     const stats = {
       processed: 0,
@@ -143,7 +190,7 @@ serve(async (req) => {
       messagesByGroup[msg.group_id].push(msg);
     }
 
-    // 3. Process each message
+    // 3. Process each message (synchronously to avoid race conditions)
     const updates: Array<{ id: string; updates: any }> = [];
 
     for (const [gId, groupMessages] of Object.entries(messagesByGroup)) {
@@ -157,8 +204,8 @@ serve(async (req) => {
         const msgUpdates: any = {};
         const sentAt = new Date(msg.sent_at);
 
-        // Update is_within_work_hours
-        const isWorkHours = await isWithinWorkingHours(supabase, sentAt, holidays);
+        // Update is_within_work_hours (no async needed now)
+        const isWorkHours = isWithinWorkingHours(sentAt, holidays);
         if (msg.is_within_work_hours !== isWorkHours) {
           msgUpdates.is_within_work_hours = isWorkHours;
           stats.updatedWorkHours++;
@@ -184,40 +231,53 @@ serve(async (req) => {
       }
     }
 
-    // 4. Apply updates (if not dry run)
+    // 4. Apply updates in batches (if not dry run)
     if (!dryRun && updates.length > 0) {
-      console.log(`[response-analytics-backfill] Applying ${updates.length} updates...`);
+      console.log(`[response-analytics-backfill] Applying ${updates.length} updates in batches...`);
       
-      // Batch update
-      for (const update of updates) {
-        const { error: updateError } = await supabase
-          .from("messages")
-          .update(update.updates)
-          .eq("id", update.id);
-        
-        if (updateError) {
-          console.error(`[response-analytics-backfill] Error updating message ${update.id}:`, updateError);
-          stats.errors++;
-        }
-      }
+      const batchResult = await batchUpdate(supabase, updates, 25);
+      stats.errors = batchResult.errors;
+      
+      console.log(`[response-analytics-backfill] Batch update complete: ${batchResult.success} success, ${batchResult.errors} errors`);
     }
 
     // 5. Aggregate response analytics by user/group/date
-    if (!dryRun) {
+    if (!dryRun && updates.length > 0) {
       console.log(`[response-analytics-backfill] Aggregating response analytics...`);
       
-      // Get updated messages for aggregation
-      const { data: updatedMessages } = await supabase
-        .from("messages")
-        .select("user_id, group_id, sent_at, response_time_seconds, is_within_work_hours, direction")
-        .eq("direction", "human")
-        .gte("sent_at", `${start}T00:00:00+07:00`)
-        .lte("sent_at", `${end}T23:59:59+07:00`);
+      // Get updated messages for aggregation (with pagination for large datasets)
+      let allUpdatedMessages: any[] = [];
+      let aggCursor: string | null = null;
+      const aggBatchSize = 1000;
+      
+      do {
+        let aggQuery = supabase
+          .from("messages")
+          .select("user_id, group_id, sent_at, response_time_seconds, is_within_work_hours, direction")
+          .eq("direction", "human")
+          .gte("sent_at", `${start}T00:00:00+07:00`)
+          .lte("sent_at", `${end}T23:59:59+07:00`)
+          .order("sent_at", { ascending: true })
+          .limit(aggBatchSize);
+        
+        if (aggCursor) {
+          aggQuery = aggQuery.gt("sent_at", aggCursor);
+        }
+        
+        const { data: batchMessages } = await aggQuery;
+        
+        if (batchMessages && batchMessages.length > 0) {
+          allUpdatedMessages = allUpdatedMessages.concat(batchMessages);
+          aggCursor = batchMessages[batchMessages.length - 1].sent_at;
+        } else {
+          aggCursor = null;
+        }
+      } while (aggCursor && allUpdatedMessages.length < 5000); // Cap at 5000 for safety
 
       // Group by user, group, and date
       const aggregations: Record<string, any> = {};
 
-      for (const msg of updatedMessages || []) {
+      for (const msg of allUpdatedMessages) {
         if (!msg.user_id || !msg.group_id) continue;
         
         const dateStr = new Date(msg.sent_at).toISOString().split("T")[0];
@@ -258,9 +318,8 @@ serve(async (req) => {
         }
       }
 
-      // Upsert aggregations
-      let aggregatedCount = 0;
-      for (const agg of Object.values(aggregations)) {
+      // Batch upsert aggregations
+      const aggregationRecords = Object.values(aggregations).map((agg: any) => {
         const responseTimes = agg.response_times;
         const workTimes = agg.work_hours_response_times;
         const outsideTimes = agg.outside_hours_response_times;
@@ -280,32 +339,41 @@ serve(async (req) => {
           ? Math.round((1 - (agg.total_replies_received / agg.total_messages_sent)) * 0.6 * 100) / 100
           : 0;
 
+        return {
+          user_id: agg.user_id,
+          group_id: agg.group_id,
+          date: agg.date,
+          total_messages_sent: agg.total_messages_sent,
+          total_replies_received: agg.total_replies_received,
+          avg_response_time_seconds: avgResponseTime,
+          avg_response_time_work_hours: avgWorkHoursTime,
+          avg_response_time_outside_hours: avgOutsideHoursTime,
+          messages_during_work_hours: agg.messages_during_work_hours,
+          messages_outside_work_hours: agg.messages_outside_work_hours,
+          ghost_score: ghostScore,
+          updated_at: new Date().toISOString(),
+        };
+      });
+
+      // Upsert in batches of 50
+      let aggregatedCount = 0;
+      for (let i = 0; i < aggregationRecords.length; i += 50) {
+        const batch = aggregationRecords.slice(i, i + 50);
         const { error: upsertError } = await supabase
           .from("response_analytics")
-          .upsert({
-            user_id: agg.user_id,
-            group_id: agg.group_id,
-            date: agg.date,
-            total_messages_sent: agg.total_messages_sent,
-            total_replies_received: agg.total_replies_received,
-            avg_response_time_seconds: avgResponseTime,
-            avg_response_time_work_hours: avgWorkHoursTime,
-            avg_response_time_outside_hours: avgOutsideHoursTime,
-            messages_during_work_hours: agg.messages_during_work_hours,
-            messages_outside_work_hours: agg.messages_outside_work_hours,
-            ghost_score: ghostScore,
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: "user_id,group_id,date",
-          });
-
+          .upsert(batch, { onConflict: "user_id,group_id,date" });
+        
         if (!upsertError) {
-          aggregatedCount++;
+          aggregatedCount += batch.length;
         }
       }
 
       console.log(`[response-analytics-backfill] Aggregated ${aggregatedCount} records`);
     }
+
+    // Determine if there are more messages to process
+    const hasMore = messageCount === batchSize;
+    const nextCursor = hasMore && messages?.length ? messages[messages.length - 1].sent_at : null;
 
     const result = {
       success: true,
@@ -313,6 +381,8 @@ serve(async (req) => {
       dateRange: { start, end },
       stats,
       updatesCount: updates.length,
+      hasMore,
+      nextCursor,
       message: dryRun
         ? `Dry run complete. Would update ${updates.length} messages.`
         : `Backfill complete. Updated ${updates.length} messages.`,

@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Settings as SettingsIcon, Save, Building2, BarChart3 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -30,7 +31,8 @@ export default function AttendanceSettings() {
     daily_summary_time: '18:00',
     time_zone: 'Asia/Bangkok',
     token_validity_minutes: 10,
-    grace_period_minutes: 15
+    grace_period_minutes: 15,
+    admin_line_group_id: '' as string | null
   });
 
   const { data: settings, isLoading } = useQuery({
@@ -81,6 +83,22 @@ export default function AttendanceSettings() {
     ...queryOptions
   });
 
+  // Fetch LINE groups for admin notifications
+  const { data: lineGroups } = useQuery({
+    queryKey: ['line-groups-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, display_name, line_group_id')
+        .eq('status', 'active')
+        .order('display_name');
+      
+      if (error) throw error;
+      return data;
+    },
+    ...queryOptions
+  });
+
   // Update form when settings load
   useEffect(() => {
     if (settings) {
@@ -92,7 +110,8 @@ export default function AttendanceSettings() {
         daily_summary_time: settings.daily_summary_time || '18:00',
         time_zone: settings.time_zone || 'Asia/Bangkok',
         token_validity_minutes: settings.token_validity_minutes || 10,
-        grace_period_minutes: settings.grace_period_minutes || 15
+        grace_period_minutes: settings.grace_period_minutes || 15,
+        admin_line_group_id: settings.admin_line_group_id || null
       });
     }
   }, [settings]);
@@ -413,6 +432,71 @@ export default function AttendanceSettings() {
               <li>Other branches follow global settings</li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Admin LINE Group Configuration */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+            Admin LINE Group
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            Select LINE group for admin notifications (Team Health Reports, Alerts)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>LINE Group for Notifications</Label>
+            <Select 
+              value={formData.admin_line_group_id || 'none'} 
+              onValueChange={(value) => setFormData({ 
+                ...formData, 
+                admin_line_group_id: value === 'none' ? null : value 
+              })}
+            >
+              <SelectTrigger className="max-w-md">
+                <SelectValue placeholder="Select a LINE group" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No group selected</SelectItem>
+                {lineGroups?.map((group) => (
+                  <SelectItem key={group.id} value={group.line_group_id}>
+                    {group.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Weekly Team Health Reports and system alerts will be sent to this group
+            </p>
+          </div>
+
+          {formData.admin_line_group_id ? (
+            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+              <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                Configured
+              </Badge>
+              <span className="text-sm text-green-700 dark:text-green-400">
+                Team Health Reports will be sent every Monday at 09:00 Bangkok time
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
+                Not Set
+              </Badge>
+              <span className="text-sm text-amber-700 dark:text-amber-400">
+                Please select a LINE group to receive Team Health Reports
+              </span>
+            </div>
+          )}
+
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Save className="h-4 w-4 mr-2" />
+            {saveMutation.isPending ? 'Saving...' : 'Save Admin Group Setting'}
+          </Button>
         </CardContent>
       </Card>
     </div>
