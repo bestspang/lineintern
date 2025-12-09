@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { PortalErrorBoundary } from './PortalErrorBoundary';
 
 interface NavItem {
   icon: typeof Home;
@@ -76,70 +77,72 @@ export function PortalLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b">
-        <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-lg">
-                {employee?.full_name?.charAt(0) || 'P'}
+    <PortalErrorBoundary locale={locale}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        {/* Header */}
+        <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b">
+          <div className="max-w-lg mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-lg">
+                  {employee?.full_name?.charAt(0) || 'P'}
+                </div>
+                <div>
+                  <h1 className="font-semibold text-sm line-clamp-1">
+                    {employee?.full_name || 'Portal'}
+                  </h1>
+                  <p className="text-xs text-muted-foreground">
+                    {employee?.role?.display_name_th || employee?.code}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="font-semibold text-sm line-clamp-1">
-                  {employee?.full_name || 'Portal'}
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  {employee?.role?.display_name_th || employee?.code}
-                </p>
-              </div>
+              {employee?.branch && (
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                  📍 {employee.branch.name}
+                </span>
+              )}
             </div>
-            {employee?.branch && (
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                📍 {employee.branch.name}
-              </span>
-            )}
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content */}
-      <main className="pb-24">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          {children}
-        </div>
-      </main>
-
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t safe-area-bottom">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-around py-2 px-2">
-            {filteredNavItems.map((item) => {
-              const isActive = location.pathname === item.path || 
-                (item.path !== '/portal' && location.pathname.startsWith(item.path));
-              const Icon = item.icon;
-              
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className={cn(
-                    'flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all min-w-[60px]',
-                    isActive
-                      ? 'text-primary bg-primary/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                  )}
-                >
-                  <Icon className={cn('h-5 w-5', isActive && 'scale-110')} />
-                  <span className="text-[10px] font-medium">
-                    {locale === 'th' ? item.label : item.labelEn}
-                  </span>
-                </button>
-              );
-            })}
+        {/* Main Content */}
+        <main className="pb-24">
+          <div className="max-w-lg mx-auto px-4 py-4">
+            {children}
           </div>
-        </div>
-      </nav>
-    </div>
+        </main>
+
+        {/* Bottom Navigation */}
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t safe-area-bottom">
+          <div className="max-w-lg mx-auto">
+            <div className="flex items-center justify-around py-2 px-2">
+              {filteredNavItems.map((item) => {
+                const isActive = location.pathname === item.path || 
+                  (item.path !== '/portal' && location.pathname.startsWith(item.path));
+                const Icon = item.icon;
+                
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => navigate(item.path)}
+                    className={cn(
+                      'flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all min-w-[60px]',
+                      isActive
+                        ? 'text-primary bg-primary/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    )}
+                  >
+                    <Icon className={cn('h-5 w-5', isActive && 'scale-110')} />
+                    <span className="text-[10px] font-medium">
+                      {locale === 'th' ? item.label : item.labelEn}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </nav>
+      </div>
+    </PortalErrorBoundary>
   );
 }
