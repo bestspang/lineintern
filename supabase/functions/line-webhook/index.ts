@@ -3143,6 +3143,60 @@ async function ensureGroupMember(groupId: string, userId: string) {
   return newMember;
 }
 
+// =============================
+// REPLY CONTEXT DETECTION
+// =============================
+
+interface ReplyContext {
+  replyToMessageId: string;
+  originalUserId: string;
+  responseTimeSeconds: number;
+}
+
+/**
+ * Detect if the current message is a reply to a previous message in the group.
+ * Uses a 30-minute window to find the most recent message from a different user.
+ */
+async function detectReplyContext(
+  groupId: string,
+  currentUserId: string
+): Promise<ReplyContext | null> {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  
+  // Find the most recent message from a DIFFERENT user within the last 30 minutes
+  const { data: recentMessage, error } = await supabase
+    .from("messages")
+    .select("id, user_id, sent_at")
+    .eq("group_id", groupId)
+    .eq("direction", "human")
+    .neq("user_id", currentUserId) // From a different user
+    .gte("sent_at", thirtyMinutesAgo)
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  if (error) {
+    console.error("[detectReplyContext] Error:", error);
+    return null;
+  }
+  
+  if (!recentMessage) {
+    return null; // No recent message from other user
+  }
+  
+  const responseTimeSeconds = Math.floor(
+    (Date.now() - new Date(recentMessage.sent_at).getTime()) / 1000
+  );
+  
+  console.log(`[detectReplyContext] Detected reply to message ${recentMessage.id} from user ${recentMessage.user_id}, response time: ${responseTimeSeconds}s`);
+  
+  return {
+    replyToMessageId: recentMessage.id,
+    originalUserId: recentMessage.user_id,
+    responseTimeSeconds,
+  };
+}
+
 async function insertMessage(
   groupId: string,
   userId: string | null,
@@ -7430,20 +7484,24 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // Ensure user is a member of this group
+// Ensure user is a member of this group
   await ensureGroupMember(group.id, user.id);
 
   // Parse command dynamically from database
   const parsed = await parseCommandDynamic(event.message.text, isDM);
 
+  // PHASE 1: Detect if this message is a reply to a previous message
+  const replyContext = await detectReplyContext(group.id, user.id);
+  
   // Insert human message and get the inserted record
-    const insertedMessage = await insertMessage(
-      group.id,
-      user.id,
-      "human",
-      event.message.text,
-      parsed.commandType
-    );
+  const insertedMessage = await insertMessage(
+    group.id,
+    user.id,
+    "human",
+    event.message.text,
+    parsed.commandType,
+    replyContext?.replyToMessageId || null
+  );
 
   // PASSIVE LEARNING: Call memory-writer for ALL messages (fire-and-forget, before any early returns)
   supabase.functions
