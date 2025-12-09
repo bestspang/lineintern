@@ -199,12 +199,13 @@ serve(async (req) => {
         const startOfDay = `${targetDate}T00:00:00+07:00`;
         const endOfDay = `${targetDate}T23:59:59+07:00`;
         
-        let query = supabase
+      // SCHEMA: messages.direction is 'human' or 'bot', NOT 'incoming'
+      let query = supabase
           .from("messages")
           .select("id, user_id, group_id, text, sentiment, sent_at, direction, response_time_seconds, is_within_work_hours")
           .gte("sent_at", startOfDay)
           .lte("sent_at", endOfDay)
-          .eq("direction", "incoming");
+          .eq("direction", "human");
         
         if (groupId) {
           query = query.eq("group_id", groupId);
@@ -322,11 +323,12 @@ serve(async (req) => {
         const periodEnd = now.toISOString().split("T")[0];
         
         // Get messages from the past week
+        // SCHEMA: messages.direction is 'human' or 'bot', NOT 'incoming'
         const { data: messages, error: msgError } = await supabase
           .from("messages")
           .select("id, user_id, group_id, text, sent_at, reply_to_message_id")
           .eq("group_id", groupId)
-          .eq("direction", "incoming")
+          .eq("direction", "human")
           .gte("sent_at", `${periodStart}T00:00:00+07:00`)
           .lte("sent_at", `${periodEnd}T23:59:59+07:00`);
         
@@ -419,7 +421,8 @@ serve(async (req) => {
             };
           }
           
-          if (msg.direction === "incoming") {
+          // SCHEMA: messages.direction is 'human' or 'bot'
+          if (msg.direction === "human") {
             userGroupStats[key].sent++;
             if (msg.is_within_work_hours) {
               userGroupStats[key].work_hours++;
