@@ -155,3 +155,9 @@ verify_jwt = false
 
 [functions.response-analytics-backfill]
 verify_jwt = false
+
+[functions.deposit-submit]
+verify_jwt = false
+
+[functions.deposit-reminder]
+verify_jwt = false

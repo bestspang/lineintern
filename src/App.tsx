@@ -78,6 +78,9 @@ import {
   Approvals, ApproveOT, ApproveLeave, ApproveEarlyLeave, TeamSummary,
   TodayPhotos, DailySummary
 } from "./pages/portal";
+import DepositUpload from "./pages/portal/DepositUpload";
+import Deposits from "./pages/attendance/Deposits";
+import DepositSettings from "./pages/attendance/DepositSettings";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +120,7 @@ const App = () => (
                       <Route path="/team-summary" element={<TeamSummary />} />
                       <Route path="/photos" element={<TodayPhotos />} />
                       <Route path="/daily-summary" element={<DailySummary />} />
+                      <Route path="/deposit-upload" element={<DepositUpload />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </PortalLayout>
@@ -169,6 +173,8 @@ const App = () => (
                       <Route path="/attendance/payroll" element={<Payroll />} />
                       <Route path="/attendance/payroll/ytd" element={<PayrollYTD />} />
                       <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
+                      <Route path="/attendance/deposits" element={<Deposits />} />
+                      <Route path="/attendance/deposit-settings" element={<DepositSettings />} />
                       <Route path="/attendance/settings" element={<AttendanceSettings />} />
                       <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
