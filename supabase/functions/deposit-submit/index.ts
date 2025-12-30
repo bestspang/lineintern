@@ -14,12 +14,19 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") ?? "";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 interface DepositData {
-  employeeId: string;
-  branchId: string;
-  depositDate: string;
-  facePhotoBase64: string;
+  employeeId?: string;
+  branchId?: string;
+  depositDate?: string;
+  facePhotoBase64?: string;
   slipPhotoBase64: string;
   livenessData?: any;
+  extract_only?: boolean;
+  manualData?: {
+    amount?: number | null;
+    account_number?: string | null;
+    bank_name?: string | null;
+    reference_number?: string | null;
+  };
 }
 
 interface ExtractedData {
@@ -188,11 +195,27 @@ serve(async (req) => {
 
   try {
     const data: DepositData = await req.json();
-    const { employeeId, branchId, depositDate, facePhotoBase64, slipPhotoBase64, livenessData } = data;
+    const { employeeId, branchId, depositDate, facePhotoBase64, slipPhotoBase64, livenessData, extract_only, manualData } = data;
 
-    console.log("Processing deposit submission:", { employeeId, branchId, depositDate });
+    console.log("Processing deposit submission:", { employeeId, branchId, depositDate, extract_only });
 
-    // Validate required fields
+    // Handle extract_only mode
+    if (extract_only) {
+      if (!slipPhotoBase64) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Missing slip photo" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const extractedData = await extractDepositData(slipPhotoBase64);
+      return new Response(
+        JSON.stringify({ success: true, extractedData }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate required fields for full submission
     if (!employeeId || !branchId || !depositDate || !slipPhotoBase64) {
       return new Response(
         JSON.stringify({ success: false, error: "Missing required fields" }),
@@ -248,8 +271,21 @@ serve(async (req) => {
       );
     }
 
-    // Extract data from slip using AI
-    const extractedData = await extractDepositData(slipPhotoBase64);
+    // Extract data from slip using AI (only if no manual data provided)
+    let extractedData: ExtractedData = {};
+    if (!manualData?.amount) {
+      extractedData = await extractDepositData(slipPhotoBase64);
+    }
+
+    // Use manual data if provided, fallback to extracted data
+    const finalData = {
+      amount: manualData?.amount ?? extractedData.amount ?? null,
+      account_number: manualData?.account_number ?? extractedData.account_number ?? null,
+      bank_name: manualData?.bank_name ?? extractedData.bank_name ?? null,
+      bank_branch: extractedData.bank_branch ?? null,
+      deposit_date: extractedData.deposit_date ?? null,
+      reference_number: manualData?.reference_number ?? extractedData.reference_number ?? null,
+    };
 
     // Insert deposit record
     const { data: deposit, error: insertError } = await supabase
@@ -262,13 +298,13 @@ serve(async (req) => {
         face_verified_at: facePhotoBase64 ? new Date().toISOString() : null,
         liveness_data: livenessData,
         slip_photo_url: slipPhotoUrl,
-        amount: extractedData.amount || null,
-        account_number: extractedData.account_number || null,
-        bank_name: extractedData.bank_name || null,
-        bank_branch: extractedData.bank_branch || null,
-        deposit_date_on_slip: extractedData.deposit_date || null,
-        reference_number: extractedData.reference_number || null,
-        raw_ocr_result: extractedData,
+        amount: finalData.amount,
+        account_number: finalData.account_number,
+        bank_name: finalData.bank_name,
+        bank_branch: finalData.bank_branch,
+        deposit_date_on_slip: finalData.deposit_date,
+        reference_number: finalData.reference_number,
+        raw_ocr_result: { ...extractedData, manualOverride: !!manualData?.amount },
         extraction_confidence: extractedData.confidence || null,
         status: 'pending'
       })
@@ -312,9 +348,9 @@ serve(async (req) => {
 ━━━━━━━━━━━━━━━━
 👤 พนักงาน: ${employee.full_name}
 🏢 สาขา: ${branchName}
-💰 ยอดฝาก: ${formatCurrency(extractedData.amount)}
-🏦 บัญชี: ${extractedData.account_number || 'ไม่ระบุ'}
-📄 Ref: ${extractedData.reference_number || 'ไม่ระบุ'}
+💰 ยอดฝาก: ${formatCurrency(finalData.amount)}
+🏦 บัญชี: ${finalData.account_number || 'ไม่ระบุ'}
+📄 Ref: ${finalData.reference_number || 'ไม่ระบุ'}
 ⏰ เวลา: ${timeStr} น.`;
 
     let lineMessageId = null;
@@ -337,7 +373,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         deposit,
-        extractedData,
+        extractedData: finalData,
         notified: !!lineMessageId
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

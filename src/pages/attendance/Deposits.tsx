@@ -1,19 +1,20 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { th } from "date-fns/locale";
-import { CalendarIcon, Search, Eye, CheckCircle, XCircle, Download, Image, Building2 } from "lucide-react";
+import { CalendarIcon, Search, Eye, CheckCircle, XCircle, Download, Image, Building2, Pencil, Code, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -30,18 +31,24 @@ interface Deposit {
   status: string;
   slip_photo_url: string | null;
   face_photo_url: string | null;
+  extraction_confidence: number | null;
+  raw_ocr_result: any;
   created_at: string;
   employees: { full_name: string; code: string } | null;
   branches: { name: string } | null;
 }
 
 export default function Deposits() {
+  const queryClient = useQueryClient();
   const [selectedDeposit, setSelectedDeposit] = useState<Deposit | null>(null);
   const [showImageDialog, setShowImageDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showRawDialog, setShowRawDialog] = useState(false);
   const [imageType, setImageType] = useState<'slip' | 'face'>('slip');
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [editForm, setEditForm] = useState({ amount: '', account_number: '', bank_name: '', reference_number: '' });
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date())
@@ -136,10 +143,59 @@ export default function Deposits() {
     setShowImageDialog(true);
   };
 
+  // Open edit dialog
+  const openEditDialog = (deposit: Deposit) => {
+    setSelectedDeposit(deposit);
+    setEditForm({
+      amount: deposit.amount?.toString() || '',
+      account_number: deposit.account_number || '',
+      bank_name: deposit.bank_name || '',
+      reference_number: deposit.reference_number || ''
+    });
+    setShowEditDialog(true);
+  };
+
+  // View raw OCR result
+  const viewRaw = (deposit: Deposit) => {
+    setSelectedDeposit(deposit);
+    setShowRawDialog(true);
+  };
+
+  // Save edit
+  const saveEdit = async () => {
+    if (!selectedDeposit) return;
+    
+    try {
+      const { error } = await supabase
+        .from('daily_deposits')
+        .update({
+          amount: editForm.amount ? parseFloat(editForm.amount.replace(/,/g, '')) : null,
+          account_number: editForm.account_number || null,
+          bank_name: editForm.bank_name || null,
+          reference_number: editForm.reference_number || null
+        })
+        .eq('id', selectedDeposit.id);
+
+      if (error) throw error;
+      toast.success("บันทึกการแก้ไขสำเร็จ");
+      setShowEditDialog(false);
+      refetch();
+    } catch (error) {
+      toast.error("เกิดข้อผิดพลาด");
+    }
+  };
+
   // Format currency
   const formatCurrency = (amount: number | null) => {
     if (!amount) return "-";
     return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
+  };
+
+  // Format confidence
+  const formatConfidence = (confidence: number | null) => {
+    if (confidence === null) return null;
+    const percent = Math.round(confidence * 100);
+    return { percent, isLow: percent < 70 };
   };
 
   // Filter deposits by search
@@ -278,6 +334,7 @@ export default function Deposits() {
                     <TableHead className="text-right">ยอดฝาก</TableHead>
                     <TableHead>เลขบัญชี</TableHead>
                     <TableHead>Ref</TableHead>
+                    <TableHead>AI</TableHead>
                     <TableHead>รูปภาพ</TableHead>
                     <TableHead>สถานะ</TableHead>
                     <TableHead className="text-right">จัดการ</TableHead>
@@ -286,87 +343,116 @@ export default function Deposits() {
                 <TableBody>
                   {filteredDeposits?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                         ไม่พบข้อมูล
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredDeposits?.map(deposit => (
-                      <TableRow key={deposit.id}>
-                        <TableCell>
-                          {format(new Date(deposit.deposit_date), 'd MMM yyyy', { locale: th })}
-                        </TableCell>
-                        <TableCell>{deposit.branches?.name || '-'}</TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{deposit.employees?.full_name}</div>
-                            <div className="text-xs text-muted-foreground">{deposit.employees?.code}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(deposit.amount)}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {deposit.account_number || '-'}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {deposit.reference_number || '-'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {deposit.slip_photo_url && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => viewImage(deposit, 'slip')}
-                              >
-                                <Image className="h-4 w-4" />
-                              </Button>
+                    filteredDeposits?.map(deposit => {
+                      const confidence = formatConfidence(deposit.extraction_confidence);
+                      return (
+                        <TableRow key={deposit.id}>
+                          <TableCell>
+                            {format(new Date(deposit.deposit_date), 'd MMM yyyy', { locale: th })}
+                          </TableCell>
+                          <TableCell>{deposit.branches?.name || '-'}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{deposit.employees?.full_name}</div>
+                              <div className="text-xs text-muted-foreground">{deposit.employees?.code}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(deposit.amount)}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {deposit.account_number || '-'}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {deposit.reference_number || '-'}
+                          </TableCell>
+                          <TableCell>
+                            {confidence ? (
+                              <div className="flex items-center gap-1">
+                                {confidence.isLow && <AlertTriangle className="h-3 w-3 text-yellow-500" />}
+                                <span className={cn("text-xs", confidence.isLow ? "text-yellow-600" : "text-muted-foreground")}>
+                                  {confidence.percent}%
+                                </span>
+                                {deposit.raw_ocr_result && (
+                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => viewRaw(deposit)}>
+                                    <Code className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
                             )}
-                            {deposit.face_photo_url && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => viewImage(deposit, 'face')}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            deposit.status === 'verified' ? 'default' :
-                            deposit.status === 'rejected' ? 'destructive' : 'secondary'
-                          }>
-                            {deposit.status === 'verified' ? 'ตรวจสอบแล้ว' :
-                             deposit.status === 'rejected' ? 'ถูกปฏิเสธ' : 'รอตรวจสอบ'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {deposit.status === 'pending' && (
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              {deposit.slip_photo_url && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => viewImage(deposit, 'slip')}
+                                >
+                                  <Image className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {deposit.face_photo_url && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => viewImage(deposit, 'face')}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              deposit.status === 'verified' ? 'default' :
+                              deposit.status === 'rejected' ? 'destructive' : 'secondary'
+                            }>
+                              {deposit.status === 'verified' ? 'ตรวจสอบแล้ว' :
+                               deposit.status === 'rejected' ? 'ถูกปฏิเสธ' : 'รอตรวจสอบ'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <Button 
                                 variant="ghost" 
                                 size="icon"
-                                className="text-green-600 hover:text-green-700"
-                                onClick={() => handleVerify(deposit.id)}
+                                onClick={() => openEditDialog(deposit)}
                               >
-                                <CheckCircle className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="text-red-600 hover:text-red-700"
-                                onClick={() => handleReject(deposit.id)}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
+                              {deposit.status === 'pending' && (
+                                <>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="text-green-600 hover:text-green-700"
+                                    onClick={() => handleVerify(deposit.id)}
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="text-red-600 hover:text-red-700"
+                                    onClick={() => handleReject(deposit.id)}
+                                  >
+                                    <XCircle className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -390,6 +476,71 @@ export default function Deposits() {
                   className="max-w-full max-h-[70vh] object-contain rounded-lg"
                 />
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>แก้ไขข้อมูลใบฝากเงิน</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-amount">ยอดฝาก (บาท)</Label>
+                <Input
+                  id="edit-amount"
+                  type="text"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, amount: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-account">เลขบัญชี</Label>
+                <Input
+                  id="edit-account"
+                  type="text"
+                  value={editForm.account_number}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, account_number: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-bank">ธนาคาร</Label>
+                <Input
+                  id="edit-bank"
+                  type="text"
+                  value={editForm.bank_name}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, bank_name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-ref">เลขอ้างอิง</Label>
+                <Input
+                  id="edit-ref"
+                  type="text"
+                  value={editForm.reference_number}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, reference_number: e.target.value }))}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>ยกเลิก</Button>
+              <Button onClick={saveEdit}>บันทึก</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Raw OCR Dialog */}
+        <Dialog open={showRawDialog} onOpenChange={setShowRawDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>ข้อมูล AI Extraction</DialogTitle>
+            </DialogHeader>
+            <div className="bg-muted rounded-lg p-4 max-h-96 overflow-auto">
+              <pre className="text-xs whitespace-pre-wrap">
+                {selectedDeposit?.raw_ocr_result ? JSON.stringify(selectedDeposit.raw_ocr_result, null, 2) : 'ไม่มีข้อมูล'}
+              </pre>
             </div>
           </DialogContent>
         </Dialog>

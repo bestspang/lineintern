@@ -3,10 +3,12 @@ import { usePortal } from "@/contexts/PortalContext";
 import { PortalLayout } from "@/components/portal/PortalLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, User, FileText, ArrowRight, ArrowLeft, RefreshCw } from "lucide-react";
+import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, User, FileText, ArrowRight, ArrowLeft, RefreshCw, Sparkles, Edit3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import LivenessCamera, { LivenessData } from "@/components/attendance/LivenessCamera";
@@ -23,6 +25,13 @@ interface ExtractedData {
   confidence?: number;
 }
 
+interface ManualData {
+  amount: string;
+  account_number: string;
+  bank_name: string;
+  reference_number: string;
+}
+
 export default function DepositUpload() {
   const { employee, locale, loading: portalLoading } = usePortal();
   const [step, setStep] = useState<Step>('face');
@@ -30,6 +39,13 @@ export default function DepositUpload() {
   const [livenessData, setLivenessData] = useState<any>(null);
   const [slipPhoto, setSlipPhoto] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
+  const [manualData, setManualData] = useState<ManualData>({
+    amount: '',
+    account_number: '',
+    bank_name: '',
+    reference_number: ''
+  });
+  const [isExtracting, setIsExtracting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [todayDeposit, setTodayDeposit] = useState<any>(null);
   const [checkingDeposit, setCheckingDeposit] = useState(true);
@@ -139,6 +155,38 @@ export default function DepositUpload() {
     };
   }, []);
 
+  // Extract data from slip using AI
+  const handleExtract = async () => {
+    if (!slipPhoto) return;
+
+    setIsExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('deposit-submit', {
+        body: {
+          slipPhotoBase64: slipPhoto,
+          extract_only: true
+        }
+      });
+
+      if (error) throw error;
+      if (data.extractedData) {
+        setExtractedData(data.extractedData);
+        // Pre-fill manual fields
+        setManualData({
+          amount: data.extractedData.amount?.toString() || '',
+          account_number: data.extractedData.account_number || '',
+          bank_name: data.extractedData.bank_name || '',
+          reference_number: data.extractedData.reference_number || ''
+        });
+      }
+    } catch (error) {
+      console.error("Extract error:", error);
+      toast.error("ไม่สามารถสกัดข้อมูลได้ กรุณากรอกด้วยตนเอง");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   // Submit deposit
   const handleSubmit = async () => {
     if (!employee || !slipPhoto) return;
@@ -152,7 +200,13 @@ export default function DepositUpload() {
           depositDate: today,
           facePhotoBase64: facePhoto,
           slipPhotoBase64: slipPhoto,
-          livenessData
+          livenessData,
+          manualData: {
+            amount: manualData.amount ? parseFloat(manualData.amount.replace(/,/g, '')) : null,
+            account_number: manualData.account_number || null,
+            bank_name: manualData.bank_name || null,
+            reference_number: manualData.reference_number || null
+          }
         }
       });
 
@@ -364,27 +418,111 @@ export default function DepositUpload() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5" />
+                <Edit3 className="h-5 w-5" />
                 ตรวจสอบและยืนยัน
               </CardTitle>
               <CardDescription>
-                กรุณาตรวจสอบรูปใบฝากเงินก่อนส่ง
+                ตรวจสอบข้อมูลและแก้ไขหากจำเป็น
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-lg overflow-hidden border">
+              {/* Slip Image */}
+              <div className="rounded-lg overflow-hidden border max-h-48 overflow-y-auto">
                 <img src={slipPhoto} alt="Deposit slip" className="w-full" />
               </div>
 
+              {/* AI Extract Button */}
+              {!extractedData && (
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={handleExtract}
+                  disabled={isExtracting}
+                >
+                  {isExtracting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      กำลังอ่านข้อมูล...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      อ่านข้อมูลอัตโนมัติ (AI)
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Confidence Warning */}
+              {extractedData && extractedData.confidence !== undefined && extractedData.confidence < 0.7 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    ความมั่นใจต่ำ ({Math.round((extractedData.confidence || 0) * 100)}%) กรุณาตรวจสอบข้อมูลให้ถูกต้อง
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Editable Fields */}
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="amount">ยอดฝาก (บาท) *</Label>
+                  <Input
+                    id="amount"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="เช่น 1,050.00"
+                    value={manualData.amount}
+                    onChange={(e) => setManualData(prev => ({ ...prev, amount: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="account_number">เลขบัญชี</Label>
+                  <Input
+                    id="account_number"
+                    type="text"
+                    placeholder="เช่น 194-1-73100-3"
+                    value={manualData.account_number}
+                    onChange={(e) => setManualData(prev => ({ ...prev, account_number: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bank_name">ธนาคาร</Label>
+                  <Input
+                    id="bank_name"
+                    type="text"
+                    placeholder="เช่น กสิกรไทย"
+                    value={manualData.bank_name}
+                    onChange={(e) => setManualData(prev => ({ ...prev, bank_name: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reference_number">เลขอ้างอิง</Label>
+                  <Input
+                    id="reference_number"
+                    type="text"
+                    placeholder="เช่น 9635136"
+                    value={manualData.reference_number}
+                    onChange={(e) => setManualData(prev => ({ ...prev, reference_number: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
               <div className="flex gap-3">
                 <Button 
                   variant="outline" 
                   className="flex-1"
                   onClick={() => {
                     setSlipPhoto(null);
+                    setExtractedData(null);
+                    setManualData({ amount: '', account_number: '', bank_name: '', reference_number: '' });
                     setStep('slip');
                   }}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isExtracting}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   ถ่ายใหม่
@@ -392,7 +530,7 @@ export default function DepositUpload() {
                 <Button 
                   className="flex-1"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isExtracting || !manualData.amount}
                 >
                   {isSubmitting ? (
                     <>
