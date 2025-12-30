@@ -10,6 +10,7 @@ import { DashboardLayout } from "./components/DashboardLayout";
 import { PortalLayout } from "./components/portal/PortalLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import Overview from "./pages/Overview";
 import Groups from "./pages/Groups";
 import GroupDetail from "./pages/GroupDetail";
@@ -94,6 +95,7 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               {/* Legacy route - kept for backward compatibility, redirects to portal */}
               <Route path="/employee-menu" element={<EmployeeMenu />} />
               <Route path="/attendance" element={<Attendance />} />
