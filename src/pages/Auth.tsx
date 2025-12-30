@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { z } from 'zod';
+import { ArrowLeft, Mail } from 'lucide-react';
 
 const signInSchema = z.object({
   email: z.string().email('Invalid email address').max(255, 'Email must be less than 255 characters'),
@@ -27,10 +28,16 @@ const signUpSchema = z.object({
     .max(50, 'Display name must be less than 50 characters'),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address').max(255, 'Email must be less than 255 characters'),
+});
+
 export default function Auth() {
-  const { user, signIn, signUp, loading } = useAuth();
+  const { user, signIn, signUp, resetPassword, loading } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   if (loading) {
     return (
@@ -118,6 +125,45 @@ export default function Auth() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const formData = new FormData(e.currentTarget);
+    const input = {
+      email: formData.get('email') as string,
+    };
+
+    const result = forgotPasswordSchema.safeParse(input);
+    if (!result.success) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation failed',
+        description: result.error.issues[0].message,
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    const { error } = await resetPassword(result.data.email);
+    
+    setIsLoading(false);
+    
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Request failed',
+        description: error.message,
+      });
+    } else {
+      setResetEmailSent(true);
+      toast({
+        title: 'Reset link sent',
+        description: 'Check your email for the password reset link.',
+      });
+    }
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
@@ -133,32 +179,100 @@ export default function Auth() {
             </TabsList>
             
             <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-3 sm:space-y-4">
-                <div className="space-y-1 sm:space-y-2">
-                  <Label htmlFor="signin-email" className="text-xs sm:text-sm">Email</Label>
-                  <Input
-                    id="signin-email"
-                    name="email"
-                    type="email"
-                    placeholder="admin@example.com"
-                    className="text-sm"
-                    required
-                  />
-                </div>
-                <div className="space-y-1 sm:space-y-2">
-                  <Label htmlFor="signin-password" className="text-xs sm:text-sm">Password</Label>
-                  <Input
-                    id="signin-password"
-                    name="password"
-                    type="password"
-                    className="text-sm"
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full text-sm sm:text-base h-9 sm:h-10" disabled={isLoading}>
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </Button>
-              </form>
+              {showForgotPassword ? (
+                resetEmailSent ? (
+                  <div className="space-y-4 text-center py-4">
+                    <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                      <Mail className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-medium">Check your email</h3>
+                      <p className="text-sm text-muted-foreground">
+                        We've sent a password reset link to your email address.
+                      </p>
+                    </div>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setResetEmailSent(false);
+                      }}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Back to Sign In
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <div className="text-center py-2">
+                      <h3 className="font-medium text-sm sm:text-base">Reset Your Password</h3>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                        Enter your email and we'll send you a reset link
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-email" className="text-xs sm:text-sm">Email</Label>
+                      <Input
+                        id="reset-email"
+                        name="email"
+                        type="email"
+                        placeholder="admin@example.com"
+                        className="text-sm"
+                        required
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? 'Sending...' : 'Send Reset Link'}
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      className="w-full text-xs sm:text-sm"
+                      onClick={() => setShowForgotPassword(false)}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Back to Sign In
+                    </Button>
+                  </form>
+                )
+              ) : (
+                <form onSubmit={handleSignIn} className="space-y-3 sm:space-y-4">
+                  <div className="space-y-1 sm:space-y-2">
+                    <Label htmlFor="signin-email" className="text-xs sm:text-sm">Email</Label>
+                    <Input
+                      id="signin-email"
+                      name="email"
+                      type="email"
+                      placeholder="admin@example.com"
+                      className="text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1 sm:space-y-2">
+                    <Label htmlFor="signin-password" className="text-xs sm:text-sm">Password</Label>
+                    <Input
+                      id="signin-password"
+                      name="password"
+                      type="password"
+                      className="text-sm"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full text-sm sm:text-base h-9 sm:h-10" disabled={isLoading}>
+                    {isLoading ? 'Signing in...' : 'Sign In'}
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="link" 
+                    className="w-full text-xs sm:text-sm text-muted-foreground"
+                    onClick={() => setShowForgotPassword(true)}
+                  >
+                    Forgot Password?
+                  </Button>
+                </form>
+              )}
             </TabsContent>
             
             <TabsContent value="signup">
