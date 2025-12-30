@@ -1282,6 +1282,220 @@ export type Database = {
           },
         ]
       }
+      daily_deposits: {
+        Row: {
+          account_number: string | null
+          admin_notes: string | null
+          amount: number | null
+          bank_branch: string | null
+          bank_name: string | null
+          branch_id: string | null
+          created_at: string
+          deposit_date: string
+          deposit_date_on_slip: string | null
+          employee_id: string
+          extraction_confidence: number | null
+          face_photo_url: string | null
+          face_verified_at: string | null
+          id: string
+          line_message_id: string | null
+          liveness_data: Json | null
+          notified_at: string | null
+          raw_ocr_result: Json | null
+          reference_number: string | null
+          rejection_reason: string | null
+          slip_photo_url: string | null
+          status: string
+          updated_at: string
+          verified_at: string | null
+          verified_by_admin_id: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          admin_notes?: string | null
+          amount?: number | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          branch_id?: string | null
+          created_at?: string
+          deposit_date: string
+          deposit_date_on_slip?: string | null
+          employee_id: string
+          extraction_confidence?: number | null
+          face_photo_url?: string | null
+          face_verified_at?: string | null
+          id?: string
+          line_message_id?: string | null
+          liveness_data?: Json | null
+          notified_at?: string | null
+          raw_ocr_result?: Json | null
+          reference_number?: string | null
+          rejection_reason?: string | null
+          slip_photo_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_admin_id?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          admin_notes?: string | null
+          amount?: number | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          branch_id?: string | null
+          created_at?: string
+          deposit_date?: string
+          deposit_date_on_slip?: string | null
+          employee_id?: string
+          extraction_confidence?: number | null
+          face_photo_url?: string | null
+          face_verified_at?: string | null
+          id?: string
+          line_message_id?: string | null
+          liveness_data?: Json | null
+          notified_at?: string | null
+          raw_ocr_result?: Json | null
+          reference_number?: string | null
+          rejection_reason?: string | null
+          slip_photo_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_admin_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_deposits_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deposit_reminders: {
+        Row: {
+          branch_id: string | null
+          branches_notified: Json | null
+          created_at: string
+          error_message: string | null
+          id: string
+          line_message_id: string | null
+          reminder_date: string
+          reminder_type: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          branches_notified?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          reminder_date: string
+          reminder_type: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          branches_notified?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          reminder_date?: string
+          reminder_type?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deposit_settings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          deposit_deadline: string
+          enable_face_verification: boolean
+          enable_reminder: boolean
+          id: string
+          notify_line_group_id: string | null
+          reminder_time: string
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          deposit_deadline?: string
+          enable_face_verification?: boolean
+          enable_reminder?: boolean
+          id?: string
+          notify_line_group_id?: string | null
+          reminder_time?: string
+          scope?: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          deposit_deadline?: string
+          enable_face_verification?: boolean
+          enable_reminder?: boolean
+          id?: string
+          notify_line_group_id?: string | null
+          reminder_time?: string
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       early_leave_requests: {
         Row: {
           actual_work_hours: number | null
