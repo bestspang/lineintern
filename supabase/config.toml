@@ -161,3 +161,15 @@ verify_jwt = false
 
 [functions.deposit-reminder]
 verify_jwt = false
+
+[functions.point-attendance-calculator]
+verify_jwt = false
+
+[functions.point-streak-calculator]
+verify_jwt = false
+
+[functions.point-health-manager]
+verify_jwt = false
+
+[functions.point-redemption]
+verify_jwt = false

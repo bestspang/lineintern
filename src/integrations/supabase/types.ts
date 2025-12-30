@@ -2061,6 +2061,65 @@ export type Database = {
         }
         Relationships: []
       }
+      happy_points: {
+        Row: {
+          created_at: string | null
+          current_punctuality_streak: number | null
+          daily_response_score: number | null
+          daily_score_date: string | null
+          employee_id: string
+          health_bonus_month: number | null
+          id: string
+          last_punctuality_date: string | null
+          longest_punctuality_streak: number | null
+          monthly_health_bonus: number | null
+          point_balance: number
+          total_earned: number
+          total_spent: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_punctuality_streak?: number | null
+          daily_response_score?: number | null
+          daily_score_date?: string | null
+          employee_id: string
+          health_bonus_month?: number | null
+          id?: string
+          last_punctuality_date?: string | null
+          longest_punctuality_streak?: number | null
+          monthly_health_bonus?: number | null
+          point_balance?: number
+          total_earned?: number
+          total_spent?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_punctuality_streak?: number | null
+          daily_response_score?: number | null
+          daily_score_date?: string | null
+          employee_id?: string
+          health_bonus_month?: number | null
+          id?: string
+          last_punctuality_date?: string | null
+          longest_punctuality_streak?: number | null
+          monthly_health_bonus?: number | null
+          point_balance?: number
+          total_earned?: number
+          total_spent?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "happy_points_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       holidays: {
         Row: {
           branch_id: string | null
@@ -2866,6 +2925,182 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: true
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      point_redemptions: {
+        Row: {
+          approved_at: string | null
+          approved_by_admin_id: string | null
+          created_at: string | null
+          employee_id: string
+          expires_at: string | null
+          id: string
+          notes: string | null
+          point_cost: number
+          rejection_reason: string | null
+          reward_id: string
+          status: string | null
+          updated_at: string | null
+          used_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          point_cost: number
+          rejection_reason?: string | null
+          reward_id: string
+          status?: string | null
+          updated_at?: string | null
+          used_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_admin_id?: string | null
+          created_at?: string | null
+          employee_id?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          point_cost?: number
+          rejection_reason?: string | null
+          reward_id?: string
+          status?: string | null
+          updated_at?: string | null
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "point_redemptions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "point_redemptions_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "point_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      point_rewards: {
+        Row: {
+          category: string
+          cooldown_days: number | null
+          created_at: string | null
+          description: string | null
+          description_th: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          name_th: string | null
+          point_cost: number
+          requires_approval: boolean | null
+          stock_limit: number | null
+          stock_used: number | null
+          updated_at: string | null
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          category: string
+          cooldown_days?: number | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          name_th?: string | null
+          point_cost: number
+          requires_approval?: boolean | null
+          stock_limit?: number | null
+          stock_used?: number | null
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          category?: string
+          cooldown_days?: number | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          name_th?: string | null
+          point_cost?: number
+          requires_approval?: boolean | null
+          stock_limit?: number | null
+          stock_used?: number | null
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
+      point_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          category: string
+          created_at: string | null
+          description: string | null
+          employee_id: string
+          id: string
+          metadata: Json | null
+          reference_id: string | null
+          reference_type: string | null
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          category: string
+          created_at?: string | null
+          description?: string | null
+          employee_id: string
+          id?: string
+          metadata?: Json | null
+          reference_id?: string | null
+          reference_type?: string | null
+          transaction_type: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          employee_id?: string
+          id?: string
+          metadata?: Json | null
+          reference_id?: string | null
+          reference_type?: string | null
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "point_transactions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
