@@ -62,34 +62,34 @@ export default function RedemptionApprovals() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, status, notes }: { id: string; status: string; notes?: string }) => {
-      const updates: any = {
-        status,
-        notes: notes || null,
-      };
+    mutationFn: async ({ id, action, notes }: { id: string; action: 'approve' | 'reject'; notes?: string }) => {
+      const response = await supabase.functions.invoke('point-redemption', {
+        body: {
+          action,
+          redemption_id: id,
+          admin_id: null, // Admin ID not available in this context
+          notes: action === 'approve' ? notes : undefined,
+          rejection_reason: action === 'reject' ? notes : undefined,
+        },
+      });
       
-      if (status === 'approved') {
-        updates.approved_at = new Date().toISOString();
-      }
+      if (response.error) throw new Error(response.error.message);
+      if (!response.data?.success) throw new Error(response.data?.error || 'Operation failed');
       
-      const { error } = await supabase
-        .from('point_redemptions')
-        .update(updates)
-        .eq('id', id);
-      
-      if (error) throw error;
+      return response.data;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['redemption-approvals'] });
       toast({
-        title: variables.status === 'approved' ? 'Redemption approved' : 'Redemption rejected',
+        title: variables.action === 'approve' ? '✅ อนุมัติสำเร็จ' : '❌ ปฏิเสธสำเร็จ',
+        description: variables.action === 'reject' ? 'คืนแต้มให้พนักงานแล้ว' : undefined,
       });
       setSelectedRedemption(null);
       setActionType(null);
       setNotes('');
     },
     onError: (error) => {
-      toast({ title: 'Error updating redemption', description: error.message, variant: 'destructive' });
+      toast({ title: 'เกิดข้อผิดพลาด', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -316,10 +316,10 @@ export default function RedemptionApprovals() {
             <Button
               variant={actionType === 'approve' ? 'default' : 'destructive'}
               onClick={() => {
-                if (selectedRedemption) {
+                if (selectedRedemption && actionType) {
                   updateMutation.mutate({
                     id: selectedRedemption.id,
-                    status: actionType === 'approve' ? 'approved' : 'rejected',
+                    action: actionType,
                     notes,
                   });
                 }
