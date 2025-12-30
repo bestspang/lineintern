@@ -1,0 +1,231 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { usePortal } from '@/contexts/PortalContext';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+
+export default function MyPoints() {
+  const { employee, locale } = usePortal();
+
+  const { data: happyPoints, isLoading } = useQuery({
+    queryKey: ['my-happy-points', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return null;
+      const { data, error } = await supabase
+        .from('happy_points')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+    enabled: !!employee?.id,
+  });
+
+  const { data: recentTransactions } = useQuery({
+    queryKey: ['my-recent-transactions', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return [];
+      const { data, error } = await supabase
+        .from('point_transactions')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!employee?.id,
+  });
+
+  const { data: pendingRedemptions } = useQuery({
+    queryKey: ['my-pending-redemptions', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return [];
+      const { data, error } = await supabase
+        .from('point_redemptions')
+        .select(`
+          *,
+          point_rewards (name, name_th, icon)
+        `)
+        .eq('employee_id', employee.id)
+        .eq('status', 'pending');
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!employee?.id,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  const dailyProgress = ((happyPoints?.daily_response_score || 0) / 20) * 100;
+
+  return (
+    <div className="space-y-4">
+      {/* Main Balance Card */}
+      <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20">
+        <CardHeader className="pb-2">
+          <CardDescription>{locale === 'th' ? 'แต้มของฉัน' : 'My Points'}</CardDescription>
+          <CardTitle className="text-4xl flex items-center gap-3">
+            <Coins className="h-8 w-8 text-yellow-500" />
+            {happyPoints?.point_balance?.toLocaleString() || 0}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-1 text-green-600">
+              <ArrowUpCircle className="h-4 w-4" />
+              <span>+{happyPoints?.total_earned?.toLocaleString() || 0}</span>
+            </div>
+            <div className="flex items-center gap-1 text-orange-600">
+              <ArrowDownCircle className="h-4 w-4" />
+              <span>-{happyPoints?.total_spent?.toLocaleString() || 0}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Flame className="h-5 w-5 text-orange-500" />
+              <span className="text-sm text-muted-foreground">Streak</span>
+            </div>
+            <p className="text-2xl font-bold">{happyPoints?.current_punctuality_streak || 0}</p>
+            <p className="text-xs text-muted-foreground">
+              Best: {happyPoints?.longest_punctuality_streak || 0} days
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Heart className="h-5 w-5 text-red-500" />
+              <span className="text-sm text-muted-foreground">Health HP</span>
+            </div>
+            <p className="text-2xl font-bold">{happyPoints?.monthly_health_bonus || 0}</p>
+            <p className="text-xs text-muted-foreground">
+              {locale === 'th' ? 'โบนัสสุขภาพ' : 'Monthly bonus'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Daily Progress */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            {locale === 'th' ? 'ความคืบหน้าวันนี้' : "Today's Progress"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>{locale === 'th' ? 'คะแนนตอบกลับ' : 'Response Score'}</span>
+              <span className="font-medium">{happyPoints?.daily_response_score || 0}/20</span>
+            </div>
+            <Progress value={dailyProgress} className="h-3" />
+            {dailyProgress >= 100 && (
+              <Badge className="bg-green-500">
+                {locale === 'th' ? '🎉 เต็มแล้ว! Grade S' : '🎉 Full! Grade S'}
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending Redemptions */}
+      {pendingRedemptions && pendingRedemptions.length > 0 && (
+        <Card className="border-yellow-200 bg-yellow-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-yellow-700">
+              <Gift className="h-4 w-4" />
+              {locale === 'th' ? 'รอการอนุมัติ' : 'Pending Approvals'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pendingRedemptions.map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between text-sm">
+                  <span>{r.point_rewards?.icon} {locale === 'th' ? r.point_rewards?.name_th : r.point_rewards?.name}</span>
+                  <Badge variant="outline" className="text-yellow-700">{r.point_cost} pts</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button asChild variant="outline" className="h-auto py-4">
+          <Link to="/portal/rewards">
+            <div className="text-center">
+              <Gift className="h-6 w-6 mx-auto mb-1 text-primary" />
+              <span className="text-sm">{locale === 'th' ? 'แลกรางวัล' : 'Rewards'}</span>
+            </div>
+          </Link>
+        </Button>
+        <Button asChild variant="outline" className="h-auto py-4">
+          <Link to="/portal/my-redemptions">
+            <div className="text-center">
+              <Trophy className="h-6 w-6 mx-auto mb-1 text-yellow-500" />
+              <span className="text-sm">{locale === 'th' ? 'ประวัติแลก' : 'History'}</span>
+            </div>
+          </Link>
+        </Button>
+      </div>
+
+      {/* Recent Transactions */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            {locale === 'th' ? 'ธุรกรรมล่าสุด' : 'Recent Transactions'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {recentTransactions?.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {locale === 'th' ? 'ยังไม่มีธุรกรรม' : 'No transactions yet'}
+              </p>
+            )}
+            {recentTransactions?.map((t: any) => (
+              <div key={t.id} className="flex items-center justify-between border-b pb-2 last:border-0">
+                <div>
+                  <p className="text-sm font-medium">{t.description || t.category}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(t.created_at), 'dd/MM HH:mm')}
+                  </p>
+                </div>
+                <span className={`font-medium ${t.amount > 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                  {t.amount > 0 ? '+' : ''}{t.amount}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
