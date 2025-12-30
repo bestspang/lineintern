@@ -82,6 +82,12 @@ import {
 import DepositUpload from "./pages/portal/DepositUpload";
 import Deposits from "./pages/attendance/Deposits";
 import DepositSettings from "./pages/attendance/DepositSettings";
+import HappyPoints from "./pages/attendance/HappyPoints";
+import AttendanceRewards from "./pages/attendance/Rewards";
+import PointTransactions from "./pages/attendance/PointTransactions";
+import MyPoints from "./pages/portal/MyPoints";
+import RewardShop from "./pages/portal/RewardShop";
+import MyRedemptions from "./pages/portal/MyRedemptions";
 
 const queryClient = new QueryClient();
 
@@ -123,6 +129,9 @@ const App = () => (
                       <Route path="/photos" element={<TodayPhotos />} />
                       <Route path="/daily-summary" element={<DailySummary />} />
                       <Route path="/deposit-upload" element={<DepositUpload />} />
+                      <Route path="/my-points" element={<MyPoints />} />
+                      <Route path="/rewards" element={<RewardShop />} />
+                      <Route path="/my-redemptions" element={<MyRedemptions />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </PortalLayout>
@@ -177,6 +186,9 @@ const App = () => (
                       <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
                       <Route path="/attendance/deposits" element={<Deposits />} />
                       <Route path="/attendance/deposit-settings" element={<DepositSettings />} />
+                      <Route path="/attendance/happy-points" element={<HappyPoints />} />
+                      <Route path="/attendance/rewards" element={<AttendanceRewards />} />
+                      <Route path="/attendance/point-transactions" element={<PointTransactions />} />
                       <Route path="/attendance/settings" element={<AttendanceSettings />} />
                       <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
