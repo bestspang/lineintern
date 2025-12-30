@@ -14,26 +14,42 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
+type SortOption = 'last_activity' | 'name';
+
 export default function Groups() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<SortOption>('last_activity');
 
   const { data: groups, isLoading } = useQuery({
-    queryKey: ['groups', search],
+    queryKey: ['groups', search, sortBy],
     queryFn: async () => {
       let query = supabase
         .from('groups')
-        .select('*')
-        .order('last_activity_at', { ascending: false, nullsFirst: false });
+        .select('*');
 
       if (search) {
         query = query.or(`display_name.ilike.%${search}%,line_group_id.ilike.%${search}%`);
+      }
+
+      // Apply sorting
+      if (sortBy === 'last_activity') {
+        query = query.order('last_activity_at', { ascending: false, nullsFirst: false });
+      } else {
+        query = query.order('display_name', { ascending: true });
       }
 
       const { data, error } = await query;
@@ -103,8 +119,22 @@ export default function Groups() {
 
       <Card>
         <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-base sm:text-lg">All Groups</CardTitle>
-          <CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-base sm:text-lg">All Groups</CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Sort by:</span>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="last_activity">Last Activity</SelectItem>
+                  <SelectItem value="name">Group Name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <CardDescription className="mt-3">
             <Input
               placeholder="Search by name or LINE ID..."
               value={search}
