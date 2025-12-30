@@ -812,6 +812,47 @@ serve(async (req) => {
       );
     }
 
+    // ============================================================
+    // HAPPY POINT SYSTEM: Award points for check-in
+    // ============================================================
+    if (token.type === 'check_in') {
+      try {
+        // Determine if on-time (check against shift_start_time or standard time)
+        const now = new Date();
+        const bangkokTimeStr = formatBangkokTime(now, 'HH:mm:ss');
+        const shiftStart = token.employee.shift_start_time || '09:00:00';
+        const isOnTime = bangkokTimeStr <= shiftStart;
+        
+        // Call point-attendance-calculator asynchronously (fire-and-forget)
+        const pointCalcUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/point-attendance-calculator`;
+        fetch(pointCalcUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({
+            employee_id: token.employee.id,
+            attendance_log_id: logData.id,
+            event_type: 'check_in',
+            is_on_time: isOnTime,
+            fraud_score: fraudScore
+          })
+        }).catch(err => {
+          logger.warn('Failed to call point-attendance-calculator', { error: err.message });
+        });
+        
+        logger.info('Happy Points calculation triggered', {
+          employee_id: token.employee.id,
+          is_on_time: isOnTime,
+          fraud_score: fraudScore
+        });
+      } catch (pointError) {
+        // Don't fail the attendance submission if points fail
+        logger.error('Error triggering point calculation', { error: pointError });
+      }
+    }
+
     // Multi-Shift Support: Track work_sessions for ALL employee types
     // (Both hours_based and time_based need work_sessions for Live Status tracking)
     {
