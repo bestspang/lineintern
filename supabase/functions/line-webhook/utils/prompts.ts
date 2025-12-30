@@ -147,17 +147,13 @@ Keep it structured with bullets and short sections.\n`;
 
 If analytics data is missing, give qualitative impression from recent messages.\n`;
   } else if (command === "help") {
-    prompt += `TASK: Briefly list main capabilities organized by category:
-- **General**: Q&A (@intern), /help, /status
-- **Conversations**: /summary, /find, /search, /mentions  
-- **Tasks & Work**: /todo, /work (assign), /remind, /confirm, /progress, /tasks, /reminders
-- **Attendance (DM only)**: /checkin, /checkout, /ot, /dayoff, /cancel-dayoff, /history, /menu
-- **Knowledge**: /faq, /train
-- **Analytics**: /report, /memory-summary (admin)
-- **Creative**: /imagine (AI images)
-- **Settings**: /mode
-
-Keep it short, friendly, and in the user's language (Thai or English).\n`;
+    // ⚠️ NOTE: This prompt is for AI fallback only. 
+    // The actual /help command uses handleHelpCommand() which fetches from database dynamically.
+    // Keep this as a generic guide, NOT a hardcoded command list.
+    prompt += `TASK: Inform the user that they can use /help to see all available commands.
+Briefly mention the main categories: General, Conversations, Tasks & Work, Attendance (DM only), Knowledge, Analytics, Creative, Settings, and Memory (Admin).
+Keep it short, friendly, and in the user's language (Thai or English).
+Do NOT list specific commands here - direct them to use /help for the complete up-to-date list.\n`;
   }
 
   return prompt;
