@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, User, FileText, ArrowRight, ArrowLeft, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LivenessCamera } from "@/components/attendance/LivenessCamera";
+import LivenessCamera, { LivenessData } from "@/components/attendance/LivenessCamera";
 
 type Step = 'face' | 'slip' | 'preview' | 'complete';
 
@@ -67,11 +67,16 @@ export default function DepositUpload() {
     checkTodayDeposit();
   }, [employee?.branch_id, today]);
 
-  // Handle face verification complete
-  const handleFaceVerified = useCallback((photoData: string, liveness: any) => {
-    setFacePhoto(photoData);
-    setLivenessData(liveness);
-    setStep('slip');
+  // Handle face verification complete - receives Blob from LivenessCamera
+  const handleFaceVerified = useCallback((blob: Blob, liveness: LivenessData) => {
+    // Convert blob to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFacePhoto(reader.result as string);
+      setLivenessData(liveness);
+      setStep('slip');
+    };
+    reader.readAsDataURL(blob);
   }, []);
 
   // Handle slip photo capture
@@ -182,7 +187,7 @@ export default function DepositUpload() {
 
   if (portalLoading || checkingDeposit) {
     return (
-      <PortalLayout title={locale === 'th' ? "อัพโหลดใบฝากเงิน" : "Deposit Upload"}>
+      <PortalLayout>
         <div className="space-y-4 p-4">
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -194,7 +199,7 @@ export default function DepositUpload() {
   // Already submitted today
   if (todayDeposit) {
     return (
-      <PortalLayout title={locale === 'th' ? "อัพโหลดใบฝากเงิน" : "Deposit Upload"}>
+      <PortalLayout>
         <div className="p-4 space-y-4">
           <Alert className="border-green-500 bg-green-50">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -240,61 +245,48 @@ export default function DepositUpload() {
   }
 
   return (
-    <PortalLayout title={locale === 'th' ? "อัพโหลดใบฝากเงิน" : "Deposit Upload"}>
-      <div className="p-4 space-y-4">
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <div className={`flex items-center gap-1 ${step === 'face' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-              step === 'face' ? 'bg-primary text-primary-foreground' : 
-              ['slip', 'preview', 'complete'].includes(step) ? 'bg-green-500 text-white' : 'bg-muted'
-            }`}>
-              {['slip', 'preview', 'complete'].includes(step) ? <CheckCircle2 className="h-4 w-4" /> : '1'}
-            </div>
-            <span className="text-xs hidden sm:inline">ยืนยันตัวตน</span>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <div className={`flex items-center gap-1 ${step === 'slip' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-              step === 'slip' ? 'bg-primary text-primary-foreground' : 
-              ['preview', 'complete'].includes(step) ? 'bg-green-500 text-white' : 'bg-muted'
-            }`}>
-              {['preview', 'complete'].includes(step) ? <CheckCircle2 className="h-4 w-4" /> : '2'}
-            </div>
-            <span className="text-xs hidden sm:inline">ถ่ายใบฝาก</span>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <div className={`flex items-center gap-1 ${step === 'preview' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-              step === 'preview' ? 'bg-primary text-primary-foreground' : 
-              step === 'complete' ? 'bg-green-500 text-white' : 'bg-muted'
-            }`}>
-              {step === 'complete' ? <CheckCircle2 className="h-4 w-4" /> : '3'}
-            </div>
-            <span className="text-xs hidden sm:inline">ยืนยัน</span>
-          </div>
-        </div>
+    <>
+      {/* Step 1: Face Verification - Full screen overlay */}
+      {step === 'face' && (
+        <LivenessCamera
+          onCapture={handleFaceVerified}
+          onCancel={() => window.history.back()}
+        />
+      )}
 
-        {/* Step 1: Face Verification */}
-        {step === 'face' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                ยืนยันตัวตน
-              </CardTitle>
-              <CardDescription>
-                กรุณาถ่ายรูปหน้าเพื่อยืนยันตัวตนก่อนอัพโหลดใบฝากเงิน
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LivenessCamera
-                onComplete={handleFaceVerified}
-                onError={(err) => toast.error(err)}
-              />
-            </CardContent>
-          </Card>
-        )}
+      {/* Other steps in PortalLayout */}
+      {step !== 'face' && (
+        <PortalLayout>
+          <div className="p-4 space-y-4">
+            {/* Progress Steps */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <div className={`flex items-center gap-1 ${step === 'slip' ? 'text-primary' : 'text-muted-foreground'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm bg-green-500 text-white`}>
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <span className="text-xs hidden sm:inline">ยืนยันตัวตน</span>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              <div className={`flex items-center gap-1 ${step === 'slip' ? 'text-primary' : 'text-muted-foreground'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                  step === 'slip' ? 'bg-primary text-primary-foreground' : 
+                  ['preview', 'complete'].includes(step) ? 'bg-green-500 text-white' : 'bg-muted'
+                }`}>
+                  {['preview', 'complete'].includes(step) ? <CheckCircle2 className="h-4 w-4" /> : '2'}
+                </div>
+                <span className="text-xs hidden sm:inline">ถ่ายใบฝาก</span>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              <div className={`flex items-center gap-1 ${step === 'preview' ? 'text-primary' : 'text-muted-foreground'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                  step === 'preview' ? 'bg-primary text-primary-foreground' : 
+                  step === 'complete' ? 'bg-green-500 text-white' : 'bg-muted'
+                }`}>
+                  {step === 'complete' ? <CheckCircle2 className="h-4 w-4" /> : '3'}
+                </div>
+                <span className="text-xs hidden sm:inline">ยืนยัน</span>
+              </div>
+            </div>
 
         {/* Step 2: Slip Photo */}
         {step === 'slip' && (
@@ -450,7 +442,9 @@ export default function DepositUpload() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </PortalLayout>
+          </div>
+        </PortalLayout>
+      )}
+    </>
   );
 }
