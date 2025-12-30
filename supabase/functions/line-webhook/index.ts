@@ -4421,6 +4421,7 @@ async function handleHelpCommand(
     }
 
     // Category icons and names
+    // ⚠️ SYNC: Must include all categories from bot_commands table
     const categoryInfo: Record<string, { icon: string; name_en: string; name_th: string }> = {
       general: { icon: '💬', name_en: 'General', name_th: 'ทั่วไป' },
       conversation: { icon: '📝', name_en: 'Conversations', name_th: 'สรุปการสนทนา' },
@@ -4430,6 +4431,7 @@ async function handleHelpCommand(
       analytics: { icon: '📊', name_en: 'Analytics', name_th: 'รายงาน' },
       creative: { icon: '🎨', name_en: 'Creative', name_th: 'สร้างสรรค์' },
       settings: { icon: '⚙️', name_en: 'Settings', name_th: 'ตั้งค่า' },
+      memory: { icon: '🧠', name_en: 'Memory (Admin)', name_th: 'ความจำ (ผู้ดูแล)' },
     };
 
     // Group commands by category
@@ -4447,7 +4449,8 @@ async function handleHelpCommand(
       : `🤖 **All Available Commands**\n\n`;
 
     // Iterate through categories in order
-    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'knowledge', 'analytics', 'creative', 'settings'];
+    // ⚠️ SYNC: Order must include all categories from categoryInfo above
+    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'knowledge', 'analytics', 'creative', 'settings', 'memory'];
     
     for (const category of categoryOrder) {
       const cmds = grouped[category];
