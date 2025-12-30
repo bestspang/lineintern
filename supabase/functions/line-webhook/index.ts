@@ -7521,6 +7521,18 @@ async function handleMessageEvent(event: LineEvent) {
     })
     .catch(err => console.error("[Memory Writer] Passive invoke error:", err));
 
+  // HAPPY POINTS: Track response for point-response-tracker (fire-and-forget)
+  // Check if user is an employee and award response points
+  supabase.functions
+    .invoke("point-response-tracker", {
+      body: {
+        line_user_id: user.line_user_id,
+        group_id: group.id,
+        message_text: event.message.text,
+      },
+    })
+    .catch(err => console.error("[Point Response Tracker] Passive invoke error:", err));
+
   // PHASE 2: Cognitive Processing - Analyze social interactions and update profiles
   // Run in background to avoid blocking message processing
   if (!isDM) {

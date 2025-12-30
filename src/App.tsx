@@ -88,6 +88,7 @@ import PointTransactions from "./pages/attendance/PointTransactions";
 import MyPoints from "./pages/portal/MyPoints";
 import RewardShop from "./pages/portal/RewardShop";
 import MyRedemptions from "./pages/portal/MyRedemptions";
+import RedemptionApprovals from "./pages/attendance/RedemptionApprovals";
 
 const queryClient = new QueryClient();
 
@@ -189,6 +190,7 @@ const App = () => (
                       <Route path="/attendance/happy-points" element={<HappyPoints />} />
                       <Route path="/attendance/rewards" element={<AttendanceRewards />} />
                       <Route path="/attendance/point-transactions" element={<PointTransactions />} />
+                      <Route path="/attendance/redemption-approvals" element={<RedemptionApprovals />} />
                       <Route path="/attendance/settings" element={<AttendanceSettings />} />
                       <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />

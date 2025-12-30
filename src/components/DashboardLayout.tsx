@@ -127,6 +127,7 @@ const navigationGroups = [
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
       { title: 'Happy Points', url: '/attendance/happy-points', icon: Trophy },
       { title: 'Rewards', url: '/attendance/rewards', icon: Gift },
+      { title: 'Redemptions', url: '/attendance/redemption-approvals', icon: Gift },
       { title: 'Point Transactions', url: '/attendance/point-transactions', icon: Wallet },
       { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
       { title: 'Payroll YTD', url: '/attendance/payroll/ytd', icon: TrendingUp },
