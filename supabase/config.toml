@@ -173,3 +173,6 @@ verify_jwt = false
 
 [functions.point-redemption]
 verify_jwt = false
+
+[functions.point-response-tracker]
+verify_jwt = false
