@@ -1449,6 +1449,7 @@ export type Database = {
           deposit_deadline: string
           enable_face_verification: boolean
           enable_reminder: boolean
+          enabled_deposit_groups: string[] | null
           id: string
           notify_line_group_id: string | null
           reminder_time: string
@@ -1461,6 +1462,7 @@ export type Database = {
           deposit_deadline?: string
           enable_face_verification?: boolean
           enable_reminder?: boolean
+          enabled_deposit_groups?: string[] | null
           id?: string
           notify_line_group_id?: string | null
           reminder_time?: string
@@ -1473,6 +1475,7 @@ export type Database = {
           deposit_deadline?: string
           enable_face_verification?: boolean
           enable_reminder?: boolean
+          enabled_deposit_groups?: string[] | null
           id?: string
           notify_line_group_id?: string | null
           reminder_time?: string

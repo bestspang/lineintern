@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Bell, Users, Save, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Clock, Bell, Users, Save, Loader2, Camera } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -21,6 +22,7 @@ interface DepositSettings {
   notify_line_group_id: string | null;
   enable_reminder: boolean;
   enable_face_verification: boolean;
+  enabled_deposit_groups: string[] | null;
 }
 
 export default function DepositSettings() {
@@ -31,6 +33,7 @@ export default function DepositSettings() {
   const [notifyGroupId, setNotifyGroupId] = useState("");
   const [enableReminder, setEnableReminder] = useState(true);
   const [enableFaceVerification, setEnableFaceVerification] = useState(true);
+  const [enabledDepositGroups, setEnabledDepositGroups] = useState<string[]>([]);
 
   // Fetch settings
   const { data: settings, isLoading } = useQuery({
@@ -68,8 +71,18 @@ export default function DepositSettings() {
       setNotifyGroupId(settings.notify_line_group_id || "");
       setEnableReminder(settings.enable_reminder);
       setEnableFaceVerification(settings.enable_face_verification);
+      setEnabledDepositGroups(settings.enabled_deposit_groups || []);
     }
   }, [settings]);
+
+  // Toggle group selection
+  const toggleDepositGroup = (lineGroupId: string) => {
+    setEnabledDepositGroups(prev => 
+      prev.includes(lineGroupId)
+        ? prev.filter(id => id !== lineGroupId)
+        : [...prev, lineGroupId]
+    );
+  };
 
   // Save mutation
   const saveMutation = useMutation({
@@ -81,6 +94,7 @@ export default function DepositSettings() {
         notify_line_group_id: notifyGroupId || null,
         enable_reminder: enableReminder,
         enable_face_verification: enableFaceVerification,
+        enabled_deposit_groups: enabledDepositGroups,
         updated_at: new Date().toISOString()
       };
 
@@ -238,6 +252,51 @@ export default function DepositSettings() {
                   onCheckedChange={setEnableFaceVerification}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* LINE Group Deposit Detection */}
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                กลุ่ม LINE ที่เปิดใช้งานการตรวจจับใบฝาก
+              </CardTitle>
+              <CardDescription>
+                เลือกกลุ่ม LINE ที่ต้องการให้ระบบตรวจจับและบันทึกใบฝากเงินอัตโนมัติ
+                เมื่อพนักงานส่งรูปใบฝากในกลุ่มที่เลือก ระบบจะสแกนและบันทึกข้อมูลโดยใช้ LINE ID ยืนยันตัวตน
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {groups && groups.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {groups.map(group => (
+                    <div
+                      key={group.id}
+                      className="flex items-center space-x-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <Checkbox
+                        id={`group-${group.id}`}
+                        checked={enabledDepositGroups.includes(group.line_group_id)}
+                        onCheckedChange={() => toggleDepositGroup(group.line_group_id)}
+                      />
+                      <label
+                        htmlFor={`group-${group.id}`}
+                        className="flex-1 cursor-pointer text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {group.display_name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  ยังไม่มีกลุ่ม LINE ที่เชื่อมต่อ
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-4">
+                💡 เมื่อเลือกกลุ่ม: พนักงานสามารถส่งรูปใบฝากเงินในกลุ่มนั้นได้เลย ระบบจะ OCR ข้อมูล ตรวจสอบซ้ำ และแจ้ง Admin อัตโนมัติ
+              </p>
             </CardContent>
           </Card>
         </div>
