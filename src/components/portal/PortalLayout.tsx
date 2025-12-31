@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins } from 'lucide-react';
+import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortal } from '@/contexts/PortalContext';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +20,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: Home, label: 'หน้าหลัก', labelEn: 'Home', path: '/portal' },
   { icon: Clock, label: 'ประวัติงาน', labelEn: 'History', path: '/portal/my-history' },
+  { icon: Banknote, label: 'ฝากเงิน', labelEn: 'Deposit', path: '/portal/deposit-upload' },
   { icon: Coins, label: 'แต้ม', labelEn: 'Points', path: '/portal/my-points' },
   { icon: Calendar, label: 'วันลา', labelEn: 'Leave', path: '/portal/my-leave' },
   { icon: CheckCircle, label: 'อนุมัติ', labelEn: 'Approve', path: '/portal/approvals', roles: ['manager', 'supervisor', 'admin', 'owner'] },
