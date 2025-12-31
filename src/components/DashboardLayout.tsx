@@ -147,6 +147,8 @@ const navigationGroups = [
       { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
       { title: 'Reminder Logs', url: '/attendance/reminder-logs', icon: Bell },
       { title: 'Settings', url: '/attendance/settings', icon: Settings },
+      { title: 'Deposits', url: '/attendance/deposits', icon: DollarSign },
+      { title: 'Deposit Settings', url: '/attendance/deposit-settings', icon: Settings },
     ],
   },
   {
