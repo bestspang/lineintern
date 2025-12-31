@@ -7388,6 +7388,20 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
+  // Check if this group is enabled for deposit detection in settings
+  const { data: depositSettings } = await supabase
+    .from('deposit_settings')
+    .select('enabled_deposit_groups')
+    .eq('scope', 'global')
+    .maybeSingle();
+  
+  const enabledGroups: string[] = (depositSettings?.enabled_deposit_groups as string[]) || [];
+  
+  if (enabledGroups.length > 0 && !enabledGroups.includes(rawLineGroupId)) {
+    console.log(`[handleImageMessage] Group ${rawLineGroupId} is not in enabled deposit groups list`);
+    return;
+  }
+  
   // Check if this group is a deposit-enabled group (linked to a branch)
   const { data: branch } = await supabase
     .from('branches')
