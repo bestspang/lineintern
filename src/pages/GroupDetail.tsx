@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Copy } from 'lucide-react';
+import { Copy, Building2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
 
@@ -18,7 +18,7 @@ export default function GroupDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState('');
-  const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [features, setFeatures] = useState<Record<string, boolean | string | null>>({});
 
   const { data: group, isLoading, error: groupError } = useQuery({
     queryKey: ['group', id],
@@ -53,6 +53,20 @@ export default function GroupDetail() {
         .eq('group_id', id)
         .order('sent_at', { ascending: false })
         .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch branches for linking
+  const { data: branches } = useQuery({
+    queryKey: ['branches-for-group'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, name')
+        .eq('is_deleted', false)
+        .order('name');
       if (error) throw error;
       return data || [];
     },
@@ -209,7 +223,7 @@ export default function GroupDetail() {
                     <div key={feature} className="flex items-center space-x-2">
                       <Checkbox
                         id={feature}
-                        checked={features[feature] || false}
+                        checked={!!features[feature]}
                         onCheckedChange={(checked) =>
                           setFeatures({ ...features, [feature]: !!checked })
                         }
@@ -220,6 +234,32 @@ export default function GroupDetail() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  เชื่อมต่อกับสาขา (สำหรับใบฝากเงิน)
+                </Label>
+                <Select 
+                  value={(features as any).branch_id || ''} 
+                  onValueChange={(value) => setFeatures({ ...features, branch_id: value || null })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="เลือกสาขา..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">ไม่ระบุ</SelectItem>
+                    {branches?.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  เมื่อเลือกสาขา: รูปใบฝากเงินที่ส่งในกลุ่มนี้จะถูกบันทึกเป็นการฝากของสาขาที่เลือก
+                </p>
               </div>
 
               <Button onClick={handleSave} disabled={updateMutation.isPending} className="w-full sm:w-auto">

@@ -7402,20 +7402,35 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
-  // Check if this group is a deposit-enabled group (linked to a branch)
+  // Check if this group has a branch linked via features
+  const { data: groupData } = await supabase
+    .from('groups')
+    .select('id, features')
+    .eq('line_group_id', rawLineGroupId)
+    .maybeSingle();
+  
+  const groupFeatures = (groupData?.features as Record<string, any>) || {};
+  const linkedBranchId = groupFeatures.branch_id;
+  
+  if (!linkedBranchId) {
+    console.log(`[handleImageMessage] Group ${rawLineGroupId} does not have a linked branch in features`);
+    return;
+  }
+  
+  // Get branch details
   const { data: branch } = await supabase
     .from('branches')
-    .select('id, name, line_group_id')
-    .eq('line_group_id', rawLineGroupId)
+    .select('id, name')
+    .eq('id', linkedBranchId)
     .eq('is_deleted', false)
     .maybeSingle();
   
   if (!branch) {
-    console.log(`[handleImageMessage] Group ${rawLineGroupId} is not a deposit-enabled branch group`);
+    console.log(`[handleImageMessage] Linked branch ${linkedBranchId} not found or deleted`);
     return;
   }
   
-  console.log(`[handleImageMessage] Deposit-enabled branch detected: ${branch.name}`);
+  console.log(`[handleImageMessage] Deposit-enabled branch detected via features: ${branch.name}`);
   
   // Find employee by LINE user ID
   const { data: employee } = await supabase
