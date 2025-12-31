@@ -7371,6 +7371,359 @@ async function handleMemberLeftEvent(event: LineEvent) {
   console.log(`[handleMemberLeftEvent] ✓ Member count will be updated automatically by trigger`);
 }
 
+// =============================
+// HANDLE IMAGE MESSAGE (DEPOSIT SLIPS VIA LINE GROUP)
+// =============================
+
+async function handleImageMessage(event: LineEvent) {
+  console.log(`\n╔═══ [handleImageMessage] START ═══╗`);
+  
+  const isDM = event.source.type === "user";
+  const rawLineUserId = event.source.userId!;
+  const rawLineGroupId = event.source.groupId || event.source.userId!;
+  
+  // Only handle images in groups (not DMs)
+  if (isDM) {
+    console.log(`[handleImageMessage] DM image - skipping deposit handling`);
+    return;
+  }
+  
+  // Check if this group is a deposit-enabled group (linked to a branch)
+  const { data: branch } = await supabase
+    .from('branches')
+    .select('id, name, line_group_id')
+    .eq('line_group_id', rawLineGroupId)
+    .eq('is_deleted', false)
+    .maybeSingle();
+  
+  if (!branch) {
+    console.log(`[handleImageMessage] Group ${rawLineGroupId} is not a deposit-enabled branch group`);
+    return;
+  }
+  
+  console.log(`[handleImageMessage] Deposit-enabled branch detected: ${branch.name}`);
+  
+  // Find employee by LINE user ID
+  const { data: employee } = await supabase
+    .from('employees')
+    .select('id, full_name, branch_id')
+    .eq('line_user_id', rawLineUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+  
+  if (!employee) {
+    console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee`);
+    // Reply with error
+    await replyToLine(event.replyToken, '❌ คุณยังไม่ได้ลงทะเบียนในระบบ\nกรุณาติดต่อ HR');
+    return;
+  }
+  
+  // Get deposit settings
+  const { data: settings } = await supabase
+    .from('deposit_settings')
+    .select('*')
+    .eq('scope', 'global')
+    .maybeSingle();
+  
+  const today = getBangkokDateString();
+  
+  // Check for duplicate deposit today for this branch
+  const { data: existingDeposit } = await supabase
+    .from('daily_deposits')
+    .select('id, employee_id, employees(full_name)')
+    .eq('branch_id', branch.id)
+    .eq('deposit_date', today)
+    .maybeSingle();
+  
+  if (existingDeposit) {
+    const submitter = (existingDeposit.employees as any)?.full_name || 'Unknown';
+    console.log(`[handleImageMessage] Duplicate deposit detected for branch ${branch.name}`);
+    await replyToLine(
+      event.replyToken,
+      `⚠️ วันนี้มีการฝากเงินแล้ว\n━━━━━━━━━━━━━━━━\n👤 โดย: ${submitter}\n🏢 สาขา: ${branch.name}\n\nหากต้องการแก้ไข กรุณาติดต่อ Admin`
+    );
+    return;
+  }
+  
+  // Download image from LINE
+  console.log(`[handleImageMessage] Downloading image from LINE...`);
+  const imageBase64 = await downloadLineImage(event.message!.id);
+  
+  if (!imageBase64) {
+    console.error(`[handleImageMessage] Failed to download image`);
+    await replyToLine(event.replyToken, '❌ ไม่สามารถดาวน์โหลดรูปภาพได้\nกรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  
+  console.log(`[handleImageMessage] Image downloaded, size: ${imageBase64.length} chars`);
+  
+  // Extract data from slip using AI
+  console.log(`[handleImageMessage] Extracting data from slip...`);
+  const extractedData = await extractDepositDataFromImage(imageBase64);
+  
+  // Check for duplicate by reference number
+  if (extractedData.reference_number) {
+    const { data: duplicateByRef } = await supabase
+      .from('daily_deposits')
+      .select('id, deposit_date, branches(name)')
+      .eq('reference_number', extractedData.reference_number)
+      .maybeSingle();
+    
+    if (duplicateByRef) {
+      console.log(`[handleImageMessage] Duplicate reference number detected: ${extractedData.reference_number}`);
+      await replyToLine(
+        event.replyToken,
+        `⚠️ ใบฝากนี้ถูกใช้แล้ว\n━━━━━━━━━━━━━━━━\n📄 Ref: ${extractedData.reference_number}\n📅 วันที่: ${duplicateByRef.deposit_date}\n🏢 สาขา: ${(duplicateByRef.branches as any)?.name || 'ไม่ระบุ'}\n\nกรุณาใช้ใบฝากใหม่`
+      );
+      return;
+    }
+  }
+  
+  // Upload image to storage
+  const timestamp = Date.now();
+  const slipPath = `${branch.id}/${today}/slip_${employee.id}_${timestamp}.jpg`;
+  const slipPhotoUrl = await uploadDepositImage(imageBase64, slipPath);
+  
+  if (!slipPhotoUrl) {
+    console.error(`[handleImageMessage] Failed to upload slip image`);
+    await replyToLine(event.replyToken, '❌ ไม่สามารถบันทึกรูปภาพได้\nกรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  
+  // Insert deposit record (pending status for admin verification)
+  const { data: deposit, error: insertError } = await supabase
+    .from('daily_deposits')
+    .insert({
+      branch_id: branch.id,
+      employee_id: employee.id,
+      deposit_date: today,
+      slip_photo_url: slipPhotoUrl,
+      face_photo_url: null, // No face verification in LINE group mode
+      amount: extractedData.amount,
+      account_number: extractedData.account_number,
+      bank_name: extractedData.bank_name,
+      bank_branch: extractedData.bank_branch,
+      deposit_date_on_slip: extractedData.deposit_date,
+      reference_number: extractedData.reference_number,
+      raw_ocr_result: { ...extractedData, source: 'line_group' },
+      extraction_confidence: extractedData.confidence,
+      status: 'pending'
+    })
+    .select()
+    .single();
+  
+  if (insertError) {
+    console.error(`[handleImageMessage] Failed to insert deposit:`, insertError);
+    await replyToLine(event.replyToken, '❌ ไม่สามารถบันทึกข้อมูลได้\nกรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  
+  console.log(`[handleImageMessage] Deposit created: ${deposit.id}`);
+  
+  // Format amount
+  const formatCurrency = (amount: number | null | undefined): string => {
+    if (amount === null || amount === undefined) return "ไม่ระบุ";
+    return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
+  };
+  
+  const now = getBangkokNow();
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  
+  // Send confirmation to employee
+  const confirmMessage = `✅ รับใบฝากเงินแล้ว
+━━━━━━━━━━━━━━━━
+👤 พนักงาน: ${employee.full_name}
+🏢 สาขา: ${branch.name}
+💰 ยอดฝาก: ${formatCurrency(extractedData.amount)}
+🏦 บัญชี: ${extractedData.account_number || 'ไม่ระบุ'}
+📄 Ref: ${extractedData.reference_number || 'ไม่ระบุ'}
+⏰ เวลา: ${timeStr} น.
+
+📋 สถานะ: รอ Admin ตรวจสอบ`;
+  
+  await replyToLine(event.replyToken, confirmMessage);
+  
+  // Send notification to admin LINE group if configured
+  if (settings?.notify_line_group_id) {
+    const adminMessage = `📥 แจ้งฝากเงินใหม่ (ผ่าน LINE Group)
+━━━━━━━━━━━━━━━━
+👤 พนักงาน: ${employee.full_name}
+🏢 สาขา: ${branch.name}
+💰 ยอดฝาก: ${formatCurrency(extractedData.amount)}
+🏦 บัญชี: ${extractedData.account_number || 'ไม่ระบุ'}
+📄 Ref: ${extractedData.reference_number || 'ไม่ระบุ'}
+⏰ เวลา: ${timeStr} น.
+
+⚠️ กรุณาตรวจสอบและยืนยัน`;
+    
+    try {
+      const response = await fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+        },
+        body: JSON.stringify({
+          to: settings.notify_line_group_id,
+          messages: [{ type: "text", text: adminMessage }],
+        }),
+      });
+      
+      if (response.ok) {
+        await supabase
+          .from('daily_deposits')
+          .update({ notified_at: new Date().toISOString() })
+          .eq('id', deposit.id);
+        console.log(`[handleImageMessage] Admin notification sent`);
+      }
+    } catch (error) {
+      console.error(`[handleImageMessage] Failed to send admin notification:`, error);
+    }
+  }
+  
+  console.log(`╚═══ [handleImageMessage] END ═══╝\n`);
+}
+
+// Download image from LINE
+async function downloadLineImage(messageId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: {
+        "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`[downloadLineImage] Failed: ${response.status}`);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error) {
+    console.error(`[downloadLineImage] Error:`, error);
+    return null;
+  }
+}
+
+// Extract deposit data from image using AI
+async function extractDepositDataFromImage(imageBase64: string): Promise<{
+  amount?: number;
+  account_number?: string;
+  bank_name?: string;
+  bank_branch?: string;
+  deposit_date?: string;
+  reference_number?: string;
+  confidence?: number;
+}> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.error("[extractDepositDataFromImage] LOVABLE_API_KEY not configured");
+    return {};
+  }
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this Thai bank deposit slip image and extract the following information. Return ONLY a valid JSON object with these fields:
+{
+  "amount": <number or null - the deposit amount in Thai Baht>,
+  "account_number": <string or null - the destination account number>,
+  "bank_name": <string or null - the bank name>,
+  "bank_branch": <string or null - the bank branch name if visible>,
+  "deposit_date": <string or null - the deposit date in YYYY-MM-DD format>,
+  "reference_number": <string or null - any reference/transaction number>,
+  "confidence": <number 0-1 - how confident you are in the extraction>
+}
+
+Important: 
+- Return ONLY the JSON object, no other text
+- If a field cannot be determined, use null
+- For amount, extract only the numeric value without currency symbols
+- Look for Thai text like "จำนวนเงิน", "เลขที่บัญชี", "วันที่", "เลขที่อ้างอิง"`
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageBase64
+                }
+              }
+            ]
+          }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[extractDepositDataFromImage] AI API error:", response.status);
+      return {};
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.error("[extractDepositDataFromImage] No content in AI response");
+      return {};
+    }
+
+    // Parse JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log("[extractDepositDataFromImage] Extracted:", parsed);
+      return parsed;
+    }
+
+    return {};
+  } catch (error) {
+    console.error("[extractDepositDataFromImage] Error:", error);
+    return {};
+  }
+}
+
+// Upload deposit image to storage
+async function uploadDepositImage(base64Data: string, path: string): Promise<string | null> {
+  try {
+    const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const binaryData = Uint8Array.from(atob(base64Content), c => c.charCodeAt(0));
+    
+    const { data, error } = await supabase.storage
+      .from('deposit-slips')
+      .upload(path, binaryData, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (error) {
+      console.error("[uploadDepositImage] Upload error:", error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('deposit-slips')
+      .getPublicUrl(path);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error("[uploadDepositImage] Error:", error);
+    return null;
+  }
+}
+
 async function handleMessageEvent(event: LineEvent) {
   console.log(`\n╔═══ [handleMessageEvent] START ═══╗`);
   
@@ -7381,6 +7734,14 @@ async function handleMessageEvent(event: LineEvent) {
   }
 
   console.log(`[handleMessageEvent] Message type: ${event.message.type}`);
+  
+  // Handle image messages for deposit slips
+  if (event.message.type === "image") {
+    console.log(`[handleMessageEvent] Image message detected, checking for deposit handling...`);
+    await handleImageMessage(event);
+    console.log(`╚═══ [handleMessageEvent] END (image processed) ═══╝\n`);
+    return;
+  }
   
   if (event.message.type !== "text") {
     console.log(`[handleMessageEvent] ⚠ Non-text message type (${event.message.type}), skipping`);
