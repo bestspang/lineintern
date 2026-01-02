@@ -242,14 +242,14 @@ export default function GroupDetail() {
                   เชื่อมต่อกับสาขา (สำหรับใบฝากเงิน)
                 </Label>
                 <Select 
-                  value={(features as any).branch_id || ''} 
-                  onValueChange={(value) => setFeatures({ ...features, branch_id: value || null })}
+                  value={(features as any).branch_id || '__none__'} 
+                  onValueChange={(value) => setFeatures({ ...features, branch_id: value === '__none__' ? null : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="เลือกสาขา..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">ไม่ระบุ</SelectItem>
+                    <SelectItem value="__none__">ไม่ระบุ</SelectItem>
                     {branches?.map((branch) => (
                       <SelectItem key={branch.id} value={branch.id}>
                         {branch.name}
