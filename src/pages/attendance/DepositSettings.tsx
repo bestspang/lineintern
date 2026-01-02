@@ -74,12 +74,16 @@ export default function DepositSettings() {
     queryFn: async () => {
       const { data } = await supabase
         .from('employees')
-        .select('id, full_name, code, line_user_id, role')
+        .select('id, full_name, code, line_user_id, role, role_id, employee_roles(role_key, display_name_th)')
         .eq('is_active', true)
-        .in('role', ['admin', 'manager', 'supervisor'])
         .not('line_user_id', 'is', null)
         .order('full_name');
-      return data || [];
+      
+      // Filter by role_key from employee_roles table
+      const adminRoleKeys = ['owner', 'admin', 'manager', 'supervisor'];
+      return (data || []).filter(emp => 
+        adminRoleKeys.includes((emp.employee_roles as any)?.role_key)
+      );
     }
   });
 
@@ -383,7 +387,7 @@ export default function DepositSettings() {
                         className="flex-1 cursor-pointer"
                       >
                         <div className="text-sm font-medium">{emp.full_name}</div>
-                        <div className="text-xs text-muted-foreground">{emp.code} • {emp.role}</div>
+                        <div className="text-xs text-muted-foreground">{emp.code} • {(emp.employee_roles as any)?.display_name_th || emp.role}</div>
                       </label>
                     </div>
                   ))}
