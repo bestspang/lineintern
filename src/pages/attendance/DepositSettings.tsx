@@ -234,12 +234,15 @@ export default function DepositSettings() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>กลุ่ม LINE รับแจ้งเตือน</Label>
-                <Select value={notifyGroupId} onValueChange={setNotifyGroupId}>
+                <Select 
+                  value={notifyGroupId || "__none__"} 
+                  onValueChange={(value) => setNotifyGroupId(value === "__none__" ? "" : value)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="เลือกกลุ่ม LINE" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">ไม่แจ้งเตือน</SelectItem>
+                    <SelectItem value="__none__">ไม่แจ้งเตือน</SelectItem>
                     {groups?.map(group => (
                       <SelectItem key={group.id} value={group.line_group_id}>
                         {group.display_name}
