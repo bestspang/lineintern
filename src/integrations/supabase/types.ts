@@ -1388,6 +1388,60 @@ export type Database = {
           },
         ]
       }
+      deposit_approval_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          decision_method: string | null
+          deposit_id: string
+          id: string
+          new_values: Json | null
+          old_values: Json | null
+          performed_by_admin_id: string | null
+          performed_by_name: string | null
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          decision_method?: string | null
+          deposit_id: string
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_admin_id?: string | null
+          performed_by_name?: string | null
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          decision_method?: string | null
+          deposit_id?: string
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_admin_id?: string | null
+          performed_by_name?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_approval_logs_deposit_id_fkey"
+            columns: ["deposit_id"]
+            isOneToOne: false
+            referencedRelation: "daily_deposits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_approval_logs_performed_by_admin_id_fkey"
+            columns: ["performed_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deposit_reminders: {
         Row: {
           branch_id: string | null
@@ -1451,6 +1505,8 @@ export type Database = {
           enable_reminder: boolean
           enabled_deposit_groups: string[] | null
           id: string
+          notify_additional_groups: string[] | null
+          notify_admin_ids: string[] | null
           notify_line_group_id: string | null
           reminder_time: string
           scope: string
@@ -1464,6 +1520,8 @@ export type Database = {
           enable_reminder?: boolean
           enabled_deposit_groups?: string[] | null
           id?: string
+          notify_additional_groups?: string[] | null
+          notify_admin_ids?: string[] | null
           notify_line_group_id?: string | null
           reminder_time?: string
           scope?: string
@@ -1477,6 +1535,8 @@ export type Database = {
           enable_reminder?: boolean
           enabled_deposit_groups?: string[] | null
           id?: string
+          notify_additional_groups?: string[] | null
+          notify_admin_ids?: string[] | null
           notify_line_group_id?: string | null
           reminder_time?: string
           scope?: string

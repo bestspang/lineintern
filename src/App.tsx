@@ -80,6 +80,7 @@ import {
   TodayPhotos, DailySummary
 } from "./pages/portal";
 import DepositUpload from "./pages/portal/DepositUpload";
+import DepositReview from "./pages/portal/DepositReview";
 import Deposits from "./pages/attendance/Deposits";
 import DepositSettings from "./pages/attendance/DepositSettings";
 import HappyPoints from "./pages/attendance/HappyPoints";
@@ -130,6 +131,7 @@ const App = () => (
                       <Route path="/photos" element={<TodayPhotos />} />
                       <Route path="/daily-summary" element={<DailySummary />} />
                       <Route path="/deposit-upload" element={<DepositUpload />} />
+                      <Route path="/deposit-review/:id" element={<DepositReview />} />
                       <Route path="/my-points" element={<MyPoints />} />
                       <Route path="/rewards" element={<RewardShop />} />
                       <Route path="/my-redemptions" element={<MyRedemptions />} />
