@@ -7573,41 +7573,152 @@ async function handleImageMessage(event: LineEvent) {
   await replyToLine(event.replyToken, confirmMessage);
   
   // Send notification to admin LINE group if configured
-  if (settings?.notify_line_group_id) {
-    const adminMessage = `📥 แจ้งฝากเงินใหม่ (ผ่าน LINE Group)
-━━━━━━━━━━━━━━━━
-👤 พนักงาน: ${employee.full_name}
-🏢 สาขา: ${branch.name}
-💰 ยอดฝาก: ${formatCurrency(extractedData.amount)}
-🏦 บัญชี: ${extractedData.account_number || 'ไม่ระบุ'}
-📄 Ref: ${extractedData.reference_number || 'ไม่ระบุ'}
-⏰ เวลา: ${timeStr} น.
-
-⚠️ กรุณาตรวจสอบและยืนยัน`;
+  if (settings?.notify_line_group_id || (settings?.notify_admin_ids as string[])?.length > 0 || (settings?.notify_additional_groups as string[])?.length > 0) {
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+    const reviewUrl = `${SUPABASE_URL.replace('.supabase.co', '.lovable.app')}/portal/deposit-review/${deposit.id}`;
     
-    try {
-      const response = await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    // Build Flex Message card
+    const flexMessage = {
+      type: "flex",
+      altText: `📥 แจ้งฝากเงินใหม่ - ${employee.full_name}`,
+      contents: {
+        type: "bubble",
+        size: "kilo",
+        header: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: "📥 แจ้งฝากเงินใหม่", weight: "bold", size: "lg", color: "#1DB446" }
+          ],
+          backgroundColor: "#F0FDF4",
+          paddingAll: "md"
         },
-        body: JSON.stringify({
-          to: settings.notify_line_group_id,
-          messages: [{ type: "text", text: adminMessage }],
-        }),
-      });
-      
-      if (response.ok) {
-        await supabase
-          .from('daily_deposits')
-          .update({ notified_at: new Date().toISOString() })
-          .eq('id', deposit.id);
-        console.log(`[handleImageMessage] Admin notification sent`);
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: employee.full_name, weight: "bold", size: "md", wrap: true },
+            { type: "text", text: branch.name, size: "sm", color: "#666666", margin: "xs" },
+            { type: "separator", margin: "md" },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "md",
+              contents: [
+                { type: "text", text: "💰 ยอดฝาก", size: "sm", color: "#666666", flex: 1 },
+                { type: "text", text: formatCurrency(extractedData.amount), size: "sm", weight: "bold", flex: 2, align: "end" }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "sm",
+              contents: [
+                { type: "text", text: "📄 Ref", size: "sm", color: "#666666", flex: 1 },
+                { type: "text", text: extractedData.reference_number || "-", size: "sm", flex: 2, align: "end" }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "sm",
+              contents: [
+                { type: "text", text: "⏰ เวลา", size: "sm", color: "#666666", flex: 1 },
+                { type: "text", text: `${timeStr} น.`, size: "sm", flex: 2, align: "end" }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "sm",
+              contents: [
+                { type: "text", text: "🤖 AI", size: "sm", color: "#666666", flex: 1 },
+                { type: "text", text: `${Math.round((extractedData.confidence || 0) * 100)}%`, size: "sm", color: (extractedData.confidence || 0) < 0.7 ? "#F59E0B" : "#22C55E", flex: 2, align: "end" }
+              ]
+            }
+          ],
+          paddingAll: "lg"
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "button",
+              action: { type: "uri", label: "ตรวจสอบ", uri: reviewUrl },
+              style: "primary",
+              color: "#1DB446"
+            }
+          ],
+          paddingAll: "md"
+        }
       }
-    } catch (error) {
-      console.error(`[handleImageMessage] Failed to send admin notification:`, error);
+    };
+
+    // Collect all notification targets
+    const notifyTargets: string[] = [];
+    
+    // Primary group
+    if (settings.notify_line_group_id) {
+      notifyTargets.push(settings.notify_line_group_id);
     }
+    
+    // Additional groups
+    const additionalGroups = (settings.notify_additional_groups as string[]) || [];
+    for (const groupId of additionalGroups) {
+      if (!notifyTargets.includes(groupId)) {
+        notifyTargets.push(groupId);
+      }
+    }
+    
+    // Send to groups
+    for (const targetId of notifyTargets) {
+      try {
+        await fetch("https://api.line.me/v2/bot/message/push", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+          },
+          body: JSON.stringify({
+            to: targetId,
+            messages: [flexMessage],
+          }),
+        });
+        console.log(`[handleImageMessage] Sent Flex card to group: ${targetId}`);
+      } catch (error) {
+        console.error(`[handleImageMessage] Failed to send to group ${targetId}:`, error);
+      }
+    }
+    
+    // Send DM to individual admins
+    const adminIds = (settings.notify_admin_ids as string[]) || [];
+    for (const adminLineId of adminIds) {
+      try {
+        await fetch("https://api.line.me/v2/bot/message/push", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+          },
+          body: JSON.stringify({
+            to: adminLineId,
+            messages: [flexMessage],
+          }),
+        });
+        console.log(`[handleImageMessage] Sent Flex card DM to admin: ${adminLineId}`);
+      } catch (error) {
+        console.error(`[handleImageMessage] Failed to send DM to ${adminLineId}:`, error);
+      }
+    }
+    
+    // Update notified timestamp
+    await supabase
+      .from('daily_deposits')
+      .update({ notified_at: new Date().toISOString() })
+      .eq('id', deposit.id);
+    
+    console.log(`[handleImageMessage] Admin notifications sent (${notifyTargets.length} groups, ${adminIds.length} DMs)`);
   }
   
   console.log(`╚═══ [handleImageMessage] END ═══╝\n`);
