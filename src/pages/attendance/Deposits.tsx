@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DashboardLayout } from "@/components/DashboardLayout";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -216,8 +216,7 @@ export default function Deposits() {
   const pendingCount = filteredDeposits?.filter(d => d.status === 'pending').length || 0;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">รายการฝากเงินประจำวัน</h1>
           <p className="text-muted-foreground">ตรวจสอบและจัดการใบฝากเงินจากทุกสาขา</p>
@@ -545,6 +544,5 @@ export default function Deposits() {
           </DialogContent>
         </Dialog>
       </div>
-    </DashboardLayout>
   );
 }

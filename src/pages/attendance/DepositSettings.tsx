@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DashboardLayout } from "@/components/DashboardLayout";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,18 +165,15 @@ export default function DepositSettings() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="space-y-6">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-[400px] w-full" />
-        </div>
-      </DashboardLayout>
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-[400px] w-full" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">ตั้งค่าระบบฝากเงิน</h1>
           <p className="text-muted-foreground">กำหนดเวลาฝากเงินและการแจ้งเตือน</p>
@@ -477,10 +474,9 @@ export default function DepositSettings() {
                 <Save className="mr-2 h-4 w-4" />
                 บันทึกการตั้งค่า
               </>
-            )}
-          </Button>
-        </div>
+          )}
+        </Button>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }

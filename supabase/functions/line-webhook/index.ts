@@ -7574,8 +7574,8 @@ async function handleImageMessage(event: LineEvent) {
   
   // Send notification to admin LINE group if configured
   if (settings?.notify_line_group_id || (settings?.notify_admin_ids as string[])?.length > 0 || (settings?.notify_additional_groups as string[])?.length > 0) {
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
-    const reviewUrl = `${SUPABASE_URL.replace('.supabase.co', '.lovable.app')}/portal/deposit-review/${deposit.id}`;
+    const APP_URL = Deno.env.get('APP_URL') || 'https://bjzzqfzgnslefqhnsmla.lovableproject.com';
+    const reviewUrl = `${APP_URL}/portal/deposit-review/${deposit.id}`;
     
     // Build Flex Message card
     const flexMessage = {
