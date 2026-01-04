@@ -108,6 +108,28 @@ const dayLabels: { [key: number]: { key: string; label: string } } = {
   6: { key: 'sat', label: 'เสาร์' },
 };
 
+// คำนวณชั่วโมงทำงานจากเวลาเข้า-ออก (หักพักเบรค)
+const calculateExpectedHours = (startTime: string, endTime: string, breakHours: number = 1): number => {
+  if (!startTime || !endTime) return 8;
+
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+
+  // Handle overnight shift (e.g., 22:00 - 06:00)
+  let totalMinutes = endMinutes - startMinutes;
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60;
+  }
+
+  const totalHours = totalMinutes / 60;
+  const netHours = Math.max(0, totalHours - breakHours);
+
+  return Math.round(netHours * 2) / 2; // Round to 0.5
+};
+
 const defaultWorkSchedule: WorkScheduleDay[] = [
   { day_of_week: 1, day_key: 'mon', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
   { day_of_week: 2, day_key: 'tue', is_working_day: true, start_time: '08:00', end_time: '17:00', expected_hours: 8 },
@@ -1633,6 +1655,12 @@ export default function EmployeeSettings() {
                             onChange={(e) => {
                               const updated = [...workSchedule];
                               updated[index].start_time = e.target.value;
+                              // Auto-calculate expected_hours
+                              updated[index].expected_hours = calculateExpectedHours(
+                                e.target.value,
+                                updated[index].end_time,
+                                parseFloat(formData.break_hours) || 1
+                              );
                               setWorkSchedule(updated);
                             }}
                             className="h-9 w-28"
@@ -1646,6 +1674,12 @@ export default function EmployeeSettings() {
                             onChange={(e) => {
                               const updated = [...workSchedule];
                               updated[index].end_time = e.target.value;
+                              // Auto-calculate expected_hours
+                              updated[index].expected_hours = calculateExpectedHours(
+                                updated[index].start_time,
+                                e.target.value,
+                                parseFloat(formData.break_hours) || 1
+                              );
                               setWorkSchedule(updated);
                             }}
                             className="h-9 w-28"
@@ -1653,19 +1687,9 @@ export default function EmployeeSettings() {
                         </div>
                         <div className="flex items-center gap-2">
                           <Label className="text-xs text-muted-foreground whitespace-nowrap">ชม./วัน</Label>
-                          <Input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="24"
-                            value={day.expected_hours}
-                            onChange={(e) => {
-                              const updated = [...workSchedule];
-                              updated[index].expected_hours = parseFloat(e.target.value) || 0;
-                              setWorkSchedule(updated);
-                            }}
-                            className="h-9 w-20 font-medium"
-                          />
+                          <Badge variant="secondary" className="h-9 px-3 font-medium text-sm flex items-center">
+                            {day.expected_hours} ชม.
+                          </Badge>
                         </div>
                       </div>
                     ) : (
