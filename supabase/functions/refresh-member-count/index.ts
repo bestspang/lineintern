@@ -12,12 +12,40 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate CRON_SECRET
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+  // Check for CRON_SECRET (for cron jobs) OR authenticated admin user (for manual refresh)
   const cronSecret = req.headers.get('x-cron-secret');
   const expectedSecret = Deno.env.get('CRON_SECRET');
+  const authHeader = req.headers.get('authorization');
 
-  if (!cronSecret || cronSecret !== expectedSecret) {
-    console.error('[refresh-member-count] Unauthorized: Invalid or missing CRON_SECRET');
+  let isAuthorized = false;
+
+  // Option 1: CRON_SECRET for automated cron jobs
+  if (cronSecret && cronSecret === expectedSecret) {
+    isAuthorized = true;
+    console.log('[refresh-member-count] Authorized via CRON_SECRET');
+  }
+
+  // Option 2: JWT for authenticated admin users from dashboard
+  if (!isAuthorized && authHeader) {
+    try {
+      const supabaseAuth = createClient(supabaseUrl, supabaseKey);
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+      
+      if (user && !error) {
+        isAuthorized = true;
+        console.log(`[refresh-member-count] Authorized via JWT for user: ${user.email}`);
+      }
+    } catch (authError) {
+      console.error('[refresh-member-count] JWT validation error:', authError);
+    }
+  }
+
+  if (!isAuthorized) {
+    console.error('[refresh-member-count] Unauthorized: No valid CRON_SECRET or JWT');
     return new Response(
       JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -25,8 +53,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lineToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')!;
     
     const supabase = createClient(supabaseUrl, supabaseKey);
