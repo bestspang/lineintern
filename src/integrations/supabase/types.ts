@@ -4201,6 +4201,7 @@ export type Database = {
           line_user_id: string
           memory_opt_out: boolean | null
           memory_preferences: Json | null
+          primary_group_id: string | null
           primary_language: string | null
           updated_at: string
         }
@@ -4213,6 +4214,7 @@ export type Database = {
           line_user_id: string
           memory_opt_out?: boolean | null
           memory_preferences?: Json | null
+          primary_group_id?: string | null
           primary_language?: string | null
           updated_at?: string
         }
@@ -4225,10 +4227,19 @@ export type Database = {
           line_user_id?: string
           memory_opt_out?: boolean | null
           memory_preferences?: Json | null
+          primary_group_id?: string | null
           primary_language?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "users_primary_group_id_fkey"
+            columns: ["primary_group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webapp_menu_config: {
         Row: {

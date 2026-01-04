@@ -3119,6 +3119,10 @@ async function ensureGroupMember(groupId: string, userId: string) {
     }
 
     console.log(`[ensureGroupMember] Member rejoined: ${userId} in group ${groupId}`);
+    
+    // Auto-assign primary group if not set and this is a branch group
+    await tryAutoAssignPrimaryGroup(userId, groupId);
+    
     return rejoinedMember;
   }
 
@@ -3140,7 +3144,67 @@ async function ensureGroupMember(groupId: string, userId: string) {
   }
 
   console.log(`[ensureGroupMember] Created new member: ${userId} in group ${groupId}`);
+  
+  // Auto-assign primary group if not set and this is a branch group
+  await tryAutoAssignPrimaryGroup(userId, groupId);
+  
   return newMember;
+}
+
+// Auto-assign primary group if user doesn't have one and this group is linked to a branch
+async function tryAutoAssignPrimaryGroup(userId: string, groupId: string) {
+  try {
+    // Check if user already has a primary group
+    const { data: user } = await supabase
+      .from("users")
+      .select("id, primary_group_id")
+      .eq("id", userId)
+      .maybeSingle();
+    
+    if (!user || user.primary_group_id) {
+      console.log(`[tryAutoAssignPrimaryGroup] User ${userId} already has primary group or not found`);
+      return;
+    }
+    
+    // Get the group's line_group_id
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id, line_group_id, display_name")
+      .eq("id", groupId)
+      .maybeSingle();
+    
+    if (!group || !group.line_group_id) {
+      console.log(`[tryAutoAssignPrimaryGroup] Group ${groupId} has no line_group_id`);
+      return;
+    }
+    
+    // Check if this group is linked to a branch
+    const { data: branch } = await supabase
+      .from("branches")
+      .select("id, name")
+      .eq("line_group_id", group.line_group_id)
+      .maybeSingle();
+    
+    if (!branch) {
+      console.log(`[tryAutoAssignPrimaryGroup] Group ${groupId} is not a branch group`);
+      return;
+    }
+    
+    // Auto-assign this branch group as primary
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ primary_group_id: groupId })
+      .eq("id", userId);
+    
+    if (updateError) {
+      console.error(`[tryAutoAssignPrimaryGroup] Error updating primary group:`, updateError);
+      return;
+    }
+    
+    console.log(`[tryAutoAssignPrimaryGroup] ✅ Auto-assigned primary group for user ${userId}: ${group.display_name} (branch: ${branch.name})`);
+  } catch (error) {
+    console.error(`[tryAutoAssignPrimaryGroup] Unexpected error:`, error);
+  }
 }
 
 // =============================
