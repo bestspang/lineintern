@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -6,7 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MessageSquare, Users, Star, Building2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft, MessageSquare, Users, Star, Building2, Plus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -30,6 +34,8 @@ export default function UserDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
 
   // Fetch user details with primary_group_id
   const { data: user, isLoading: userLoading } = useQuery({
@@ -126,6 +132,21 @@ export default function UserDetail() {
     },
   });
 
+  // Fetch all groups for "Add to Group" dialog
+  const { data: allAvailableGroups } = useQuery({
+    queryKey: ['all-groups'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, display_name, status')
+        .eq('status', 'active')
+        .order('display_name');
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Merge groups from both sources
   const allGroups: GroupWithMembership[] = [];
   const groupIds = new Set<string>();
@@ -203,6 +224,41 @@ export default function UserDetail() {
       console.error(error);
     },
   });
+
+  // Mutation to add user to group
+  const addToGroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      const { error } = await supabase
+        .from('group_members')
+        .insert({
+          user_id: id,
+          group_id: groupId,
+          role: 'member',
+          joined_at: new Date().toISOString(),
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-member-groups', id] });
+      setShowAddGroupDialog(false);
+      setSelectedGroupId('');
+      toast.success('User added to group');
+    },
+    onError: (error: any) => {
+      if (error.code === '23505') {
+        toast.error('User is already in this group');
+      } else {
+        toast.error('Failed to add user to group');
+      }
+      console.error(error);
+    },
+  });
+
+  // Filter out groups user is already in
+  const groupsNotIn = allAvailableGroups?.filter(
+    (g) => !groupIds.has(g.id)
+  ) || [];
 
   // Fetch recent messages
   const { data: recentMessages, isLoading: messagesLoading } = useQuery({
@@ -314,9 +370,61 @@ export default function UserDetail() {
       {/* Groups Card */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            <CardTitle>Groups</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              <CardTitle>Groups</CardTitle>
+            </div>
+            <Dialog open={showAddGroupDialog} onOpenChange={setShowAddGroupDialog}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add to Group
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add User to Group</DialogTitle>
+                  <DialogDescription>
+                    เลือก group ที่ต้องการเพิ่ม {user.display_name} เข้าไป
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label>Select Group</Label>
+                    <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือก group..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groupsNotIn.length > 0 ? (
+                          groupsNotIn.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.display_name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                            User อยู่ใน group ทั้งหมดแล้ว
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowAddGroupDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={() => selectedGroupId && addToGroupMutation.mutate(selectedGroupId)}
+                    disabled={!selectedGroupId || addToGroupMutation.isPending}
+                  >
+                    {addToGroupMutation.isPending ? 'Adding...' : 'Add to Group'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
           <CardDescription>
             All groups where this user is a member or has sent messages ({sortedGroups.length} groups)
