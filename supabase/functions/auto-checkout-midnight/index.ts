@@ -9,6 +9,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ✅ Helper function to check if a date is a holiday
+async function checkIfHoliday(supabase: any, dateString: string, branchId?: string | null): Promise<boolean> {
+  try {
+    const monthDay = dateString.slice(5); // "MM-DD"
+    
+    const { data: holidays, error } = await supabase
+      .from('holidays')
+      .select('id, name, date, is_recurring, branch_id')
+      .or(`date.eq.${dateString},and(is_recurring.eq.true,date.ilike.%-${monthDay})`)
+      .or(`branch_id.is.null,branch_id.eq.${branchId || 'null'}`);
+    
+    if (error) {
+      console.warn('[checkIfHoliday] Error:', error);
+      return false;
+    }
+    
+    return holidays && holidays.length > 0;
+  } catch (e) {
+    console.warn('[checkIfHoliday] Unexpected error:', e);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -64,8 +87,13 @@ serve(async (req) => {
           line_user_id,
           auto_ot_enabled,
           max_work_hours_per_day,
+          ot_rate_multiplier,
+          holiday_ot_rate_multiplier,
+          hours_per_day,
+          salary_per_month,
           announcement_group_line_id,
           branches (
+            id,
             name,
             line_group_id
           )
@@ -189,9 +217,19 @@ serve(async (req) => {
         const hoursPerDay = employee.hours_per_day || 8;
         const dailyRate = employee.salary_per_month / 30;
         const hourlyRate = dailyRate / hoursPerDay;
-        const otMultiplier = employee.ot_rate_multiplier || 1.5;
+        
+        // ✅ Check if target date is a holiday - use holiday OT rate if so
+        const isHoliday = await checkIfHoliday(supabase, targetDate, checkInLog.employees.branches?.id);
+        const otMultiplier = isHoliday
+          ? (employee.holiday_ot_rate_multiplier || 2.0)
+          : (employee.ot_rate_multiplier || 1.5);
+        
         const otRate = hourlyRate * otMultiplier;
         otPayAmount = otRate * overtimeHours;
+        
+        if (isHoliday) {
+          console.log(`[auto-checkout-midnight] ${employee.full_name}: Holiday OT rate applied (${otMultiplier}x)`);
+        }
       }
 
       // Perform auto checkout

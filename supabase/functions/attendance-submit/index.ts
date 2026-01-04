@@ -15,6 +15,36 @@ function createGoogleMapsLink(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
+// ✅ Helper function to check if today is a holiday
+async function checkIfHoliday(supabase: any, dateString: string, branchId?: string | null): Promise<boolean> {
+  try {
+    // Extract month-day for recurring holiday check (e.g., "01-01" from "2024-01-01")
+    const monthDay = dateString.slice(5); // "MM-DD"
+    
+    // Query holidays table
+    const { data: holidays, error } = await supabase
+      .from('holidays')
+      .select('id, name, date, is_recurring, branch_id')
+      .or(`date.eq.${dateString},and(is_recurring.eq.true,date.ilike.%-${monthDay})`)
+      .or(`branch_id.is.null,branch_id.eq.${branchId || 'null'}`);
+    
+    if (error) {
+      console.warn('[checkIfHoliday] Error querying holidays:', error);
+      return false;
+    }
+    
+    const isHoliday = holidays && holidays.length > 0;
+    if (isHoliday) {
+      console.log(`[checkIfHoliday] Found holiday for ${dateString}:`, holidays.map((h: any) => h.name).join(', '));
+    }
+    
+    return isHoliday;
+  } catch (e) {
+    console.warn('[checkIfHoliday] Unexpected error:', e);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -260,6 +290,7 @@ serve(async (req) => {
         *,
         salary_per_month,
         ot_rate_multiplier,
+        holiday_ot_rate_multiplier,
         auto_ot_enabled,
         max_work_hours_per_day,
         ot_warning_minutes,
@@ -758,7 +789,13 @@ serve(async (req) => {
               const hoursPerDay = token.employee.hours_per_day || 8;
               const dailyRate = token.employee.salary_per_month / 30;
               const hourlyRate = dailyRate / hoursPerDay;
-              const otMultiplier = token.employee.ot_rate_multiplier || 1.5;
+              
+              // ✅ Check if today is a holiday - use holiday OT rate if so
+              const isHoliday = await checkIfHoliday(supabase, today, token.employee.branch_id);
+              const otMultiplier = isHoliday
+                ? (token.employee.holiday_ot_rate_multiplier || 2.0)
+                : (token.employee.ot_rate_multiplier || 1.5);
+              
               const otRate = hourlyRate * otMultiplier;
               otPayAmount = otRate * overtimeHours;
               
@@ -766,6 +803,8 @@ serve(async (req) => {
                 employee: token.employee.full_name,
                 ot_hours: overtimeHours,
                 ot_rate: otRate,
+                ot_multiplier: otMultiplier,
+                is_holiday: isHoliday,
                 ot_amount: otPayAmount
               });
             }
