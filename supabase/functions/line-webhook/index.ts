@@ -8369,19 +8369,10 @@ async function handleMessageEvent(event: LineEvent) {
   }
 
   // =============================
-  // EMPLOYEE CHECK (CRITICAL SECURITY)
+  // STEP 1: RECORD MESSAGE DATA FIRST (before employee check)
+  // This ensures we capture ALL messages from ALL users
   // =============================
-  // Check if user is a registered employee
-  const { isEmployee, employee } = await checkIsEmployee(lineUserId);
-  if (!isEmployee) {
-    console.log(`[handleMessageEvent] SECURITY: User ${lineUserId} is NOT an employee - SILENT IGNORE`);
-    console.log(`[handleMessageEvent] - Message preview: ${event.message.text.substring(0, 50)}...`);
-    console.log(`[handleMessageEvent] - Context: ${isDM ? 'DM' : 'Group'}`);
-    console.log(`╚═══ [handleMessageEvent] END (non-employee ignored) ═══╝\n`);
-    return; // Silent ignore - do not respond or show Quick Reply
-  }
-  console.log(`[handleMessageEvent] ✓ User is employee: ${employee.full_name} (${employee.role || 'no role'})`);
-
+  
   // Ensure group exists first (if it's a group message)
   let group;
   let groupIdForUser; // For monitoring in ensureUser
@@ -8432,16 +8423,17 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-// Ensure user is a member of this group
+  // Ensure user is a member of this group
   await ensureGroupMember(group.id, user.id);
 
-  // Parse command dynamically from database
+  // Parse command dynamically from database (for message logging)
   const parsed = await parseCommandDynamic(event.message.text, isDM);
 
   // PHASE 1: Detect if this message is a reply to a previous message
   const replyContext = await detectReplyContext(group.id, user.id);
   
-  // Insert human message and get the inserted record
+  // Insert human message FIRST - before any employee check
+  // This ensures ALL messages are recorded regardless of employee status
   const insertedMessage = await insertMessage(
     group.id,
     user.id,
@@ -8450,6 +8442,22 @@ async function handleMessageEvent(event: LineEvent) {
     parsed.commandType,
     replyContext?.replyToMessageId || null
   );
+  console.log(`[handleMessageEvent] ✓ Message recorded: ${insertedMessage?.id || 'unknown'}`);
+
+  // =============================
+  // STEP 2: EMPLOYEE CHECK (for command processing only)
+  // Non-employees: message is already saved, just skip bot commands
+  // =============================
+  const { isEmployee, employee } = await checkIsEmployee(lineUserId);
+  if (!isEmployee) {
+    console.log(`[handleMessageEvent] User ${lineUserId} is NOT an employee - message saved, skipping commands`);
+    console.log(`[handleMessageEvent] - Message ID: ${insertedMessage?.id || 'unknown'}`);
+    console.log(`[handleMessageEvent] - Message preview: ${event.message.text.substring(0, 50)}...`);
+    console.log(`[handleMessageEvent] - Context: ${isDM ? 'DM' : 'Group'}`);
+    console.log(`╚═══ [handleMessageEvent] END (non-employee - message recorded) ═══╝\n`);
+    return; // Message is saved, but skip bot command processing
+  }
+  console.log(`[handleMessageEvent] ✓ User is employee: ${employee.full_name} (${employee.role || 'no role'})`);
 
   // PASSIVE LEARNING: Call memory-writer for ALL messages (fire-and-forget, before any early returns)
   supabase.functions
