@@ -6898,7 +6898,15 @@ async function pushToLine(to: string, text: string, context?: Partial<ReplyConte
 // Helper to notify admin group for errors (silent mode - doesn't reply to customer group)
 async function notifyAdminGroup(
   message: string,
-  context?: { userId?: string; groupId?: string; employeeName?: string; error?: any }
+  context?: { 
+    userId?: string; 
+    groupId?: string; 
+    groupName?: string;      // Display name of the group
+    branchName?: string;     // Branch name
+    userName?: string;       // User display name
+    employeeName?: string;   // Employee full name
+    error?: any 
+  }
 ): Promise<void> {
   try {
     // Get admin group from settings
@@ -6914,21 +6922,35 @@ async function notifyAdminGroup(
       return;
     }
     
-    // Build detailed message
+    // Build detailed message with full context
     const timestamp = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-    let fullMessage = `⚠️ Bot Alert\n━━━━━━━━━━━━━━━━\n${message}\n\n🕐 เวลา: ${timestamp}`;
+    let fullMessage = `⚠️ Bot Alert\n━━━━━━━━━━━━━━━━\n${message}`;
     
-    if (context?.userId) {
-      fullMessage += `\n👤 User ID: ${context.userId.substring(0, 10)}...`;
+    // Show group info with name (not just ID)
+    if (context?.groupName) {
+      fullMessage += `\n\n🏢 Group: ${context.groupName}`;
+    } else if (context?.groupId) {
+      fullMessage += `\n\n📍 Group ID: ${context.groupId.substring(0, 15)}...`;
     }
+    
+    // Show branch name
+    if (context?.branchName) {
+      fullMessage += `\n🏬 Branch: ${context.branchName}`;
+    }
+    
+    // Show user info - prefer display name
     if (context?.employeeName) {
-      fullMessage += `\n👤 ชื่อ: ${context.employeeName}`;
+      fullMessage += `\n👤 Employee: ${context.employeeName}`;
+    } else if (context?.userName) {
+      fullMessage += `\n👤 User: ${context.userName}`;
+    } else if (context?.userId) {
+      fullMessage += `\n👤 User ID: ${context.userId.substring(0, 15)}...`;
     }
-    if (context?.groupId) {
-      fullMessage += `\n📍 Group: ${context.groupId.substring(0, 10)}...`;
-    }
+    
+    fullMessage += `\n🕐 เวลา: ${timestamp}`;
+    
     if (context?.error) {
-      fullMessage += `\n❌ Error: ${context.error.message || String(context.error).substring(0, 100)}`;
+      fullMessage += `\n\n❌ Error: ${context.error.message || String(context.error).substring(0, 100)}`;
     }
     
     // Push to admin group (without logging to avoid loops)
@@ -7466,9 +7488,11 @@ async function handleImageMessage(event: LineEvent) {
   // Method 1: Via groups.features.branch_id
   const { data: groupData } = await supabase
     .from('groups')
-    .select('id, features')
+    .select('id, features, display_name')
     .eq('line_group_id', rawLineGroupId)
     .maybeSingle();
+  
+  const groupDisplayName = (groupData?.display_name as string) || undefined;
   
   const groupFeatures = (groupData?.features as Record<string, any>) || {};
   const linkedBranchIdFromFeatures = groupFeatures.branch_id;
@@ -7533,10 +7557,24 @@ async function handleImageMessage(event: LineEvent) {
   
   if (!employee) {
     console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee - SILENT MODE`);
+    
+    // Try to get user display name from LINE users table
+    const { data: lineUser } = await supabase
+      .from('users')
+      .select('display_name')
+      .eq('line_user_id', rawLineUserId)
+      .maybeSingle();
+    
     // Silent mode: Don't reply to customer group, notify admin instead
     await notifyAdminGroup(
       `📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`,
-      { userId: rawLineUserId, groupId: rawLineGroupId }
+      { 
+        userId: rawLineUserId, 
+        groupId: rawLineGroupId,
+        groupName: groupDisplayName,
+        branchName: branch?.name,
+        userName: lineUser?.display_name
+      }
     );
     return; // Silent return - no reply to group
   }
@@ -7559,7 +7597,13 @@ async function handleImageMessage(event: LineEvent) {
     // Silent mode: notify admin instead of replying to customer
     await notifyAdminGroup(
       `📸 ไม่สามารถดาวน์โหลดรูปภาพได้`,
-      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name }
+      { 
+        userId: rawLineUserId, 
+        groupId: rawLineGroupId,
+        groupName: groupDisplayName,
+        branchName: branch.name,
+        employeeName: employee.full_name 
+      }
     );
     return;
   }
@@ -7646,7 +7690,13 @@ async function handleImageMessage(event: LineEvent) {
     console.error(`[handleImageMessage] Failed to upload slip image - SILENT MODE`);
     await notifyAdminGroup(
       `📸 ไม่สามารถอัพโหลดรูปภาพได้`,
-      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name }
+      { 
+        userId: rawLineUserId, 
+        groupId: rawLineGroupId,
+        groupName: groupDisplayName,
+        branchName: branch.name,
+        employeeName: employee.full_name 
+      }
     );
     return;
   }
@@ -7684,7 +7734,14 @@ async function handleImageMessage(event: LineEvent) {
     console.error(`[handleImageMessage] Failed to insert deposit - SILENT MODE:`, insertError);
     await notifyAdminGroup(
       `📸 ไม่สามารถบันทึกข้อมูลใบฝากเงินได้`,
-      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name, error: insertError }
+      { 
+        userId: rawLineUserId, 
+        groupId: rawLineGroupId,
+        groupName: groupDisplayName,
+        branchName: branch.name,
+        employeeName: employee.full_name, 
+        error: insertError 
+      }
     );
     return;
   }
