@@ -127,6 +127,7 @@ export default function EmployeeSettings() {
     // === OT Settings ===
     salary_per_month: "",
     ot_rate_multiplier: "1.5",
+    holiday_ot_rate_multiplier: "2.0",
     auto_ot_enabled: false,
     max_work_hours_per_day: "8.0",
     ot_warning_minutes: "15",
@@ -267,6 +268,7 @@ export default function EmployeeSettings() {
         // OT Settings
         salary_per_month: employee.salary_per_month?.toString() || "",
         ot_rate_multiplier: employee.ot_rate_multiplier?.toString() || "1.5",
+        holiday_ot_rate_multiplier: (employee as any).holiday_ot_rate_multiplier?.toString() || "2.0",
         auto_ot_enabled: employee.auto_ot_enabled || false,
         max_work_hours_per_day: employee.max_work_hours_per_day?.toString() || "8.0",
         ot_warning_minutes: employee.ot_warning_minutes?.toString() || "15",
@@ -342,6 +344,7 @@ export default function EmployeeSettings() {
         // OT Settings
         salary_per_month: data.salary_per_month ? parseFloat(data.salary_per_month) : null,
         ot_rate_multiplier: parseFloat(data.ot_rate_multiplier),
+        holiday_ot_rate_multiplier: parseFloat(data.holiday_ot_rate_multiplier),
         auto_ot_enabled: data.auto_ot_enabled,
         max_work_hours_per_day: parseFloat(data.max_work_hours_per_day),
         ot_warning_minutes: parseInt(data.ot_warning_minutes),
@@ -1010,8 +1013,8 @@ export default function EmployeeSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Warning if salary is empty or 0 */}
-            {(!formData.salary_per_month || parseFloat(formData.salary_per_month) === 0) && (
+            {/* Warning if salary is empty or 0 - only for salary employees */}
+            {payrollData.pay_type === 'salary' && (!formData.salary_per_month || parseFloat(formData.salary_per_month) === 0) && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
@@ -1020,39 +1023,83 @@ export default function EmployeeSettings() {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="salary">เงินเดือน (บาท/เดือน) <span className="text-destructive">*</span></Label>
-              <Input
-                id="salary"
-                type="number"
-                step="0.01"
-                placeholder="เช่น 30000"
-                value={formData.salary_per_month}
-                onChange={(e) =>
-                  setFormData({ ...formData, salary_per_month: e.target.value })
-                }
-              />
-              <p className="text-sm text-muted-foreground">
-                ใช้สำหรับคำนวณค่า OT และ Payroll (จะถูก sync ไปยัง Payroll Settings โดยอัตโนมัติ)
-              </p>
+            {/* Salary field - only show for salary employees */}
+            {payrollData.pay_type === 'salary' && (
+              <div className="space-y-2">
+                <Label htmlFor="salary">เงินเดือน (บาท/เดือน) <span className="text-destructive">*</span></Label>
+                <Input
+                  id="salary"
+                  type="number"
+                  step="0.01"
+                  placeholder="เช่น 30000"
+                  value={formData.salary_per_month}
+                  onChange={(e) =>
+                    setFormData({ ...formData, salary_per_month: e.target.value })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  ใช้สำหรับคำนวณค่า OT และ Payroll (จะถูก sync ไปยัง Payroll Settings โดยอัตโนมัติ)
+                </p>
+              </div>
+            )}
+
+            {/* Part-time info box */}
+            {payrollData.pay_type === 'hourly' && (
+              <Alert className="bg-primary/5 border-primary/20">
+                <Clock className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>พนักงาน Part-time:</strong> ค่า OT คำนวณจากอัตราค่าจ้างรายชั่วโมง ({payrollData.hourly_rate || '0'} บาท/ชม.)
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ot_rate">อัตรา OT วันปกติ (เท่า)</Label>
+                <Input
+                  id="ot_rate"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="3"
+                  value={formData.ot_rate_multiplier}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ot_rate_multiplier: e.target.value })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  ค่าเริ่มต้น: 1.5 เท่า
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="holiday_ot_rate">อัตรา OT วันหยุดนักขัตฤกษ์ (เท่า)</Label>
+                <Input
+                  id="holiday_ot_rate"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="4"
+                  value={formData.holiday_ot_rate_multiplier}
+                  onChange={(e) =>
+                    setFormData({ ...formData, holiday_ot_rate_multiplier: e.target.value })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  ค่าเริ่มต้น: 2.0 เท่า
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="ot_rate">อัตราค่าจ้าง OT (เท่า)</Label>
-              <Input
-                id="ot_rate"
-                type="number"
-                step="0.1"
-                min="1"
-                max="3"
-                value={formData.ot_rate_multiplier}
-                onChange={(e) =>
-                  setFormData({ ...formData, ot_rate_multiplier: e.target.value })
-                }
-              />
-              <p className="text-sm text-muted-foreground">
-                ค่าเริ่มต้น: 1.5 เท่า (ตามกฎหมายแรงงาน)
-              </p>
+            {/* OT Rate Summary Box */}
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4 space-y-2">
+              <h4 className="font-medium flex items-center gap-2">
+                📅 อัตรา OT ตามกฎหมายแรงงาน
+              </h4>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>วันทำงานปกติ: <strong>{formData.ot_rate_multiplier}x</strong> ({payrollData.pay_type === 'hourly' ? `${(parseFloat(payrollData.hourly_rate || '0') * parseFloat(formData.ot_rate_multiplier)).toFixed(0)} บาท/ชม.` : 'คำนวณจากเงินเดือน'})</li>
+                <li>วันหยุดนักขัตฤกษ์: <strong>{formData.holiday_ot_rate_multiplier}x</strong> ({payrollData.pay_type === 'hourly' ? `${(parseFloat(payrollData.hourly_rate || '0') * parseFloat(formData.holiday_ot_rate_multiplier)).toFixed(0)} บาท/ชม.` : 'คำนวณจากเงินเดือน'})</li>
+              </ul>
             </div>
 
             <div className="space-y-2">

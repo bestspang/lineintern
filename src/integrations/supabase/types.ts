@@ -1898,6 +1898,7 @@ export type Database = {
           flexible_day_off_enabled: boolean | null
           flexible_days_per_week: number | null
           full_name: string
+          holiday_ot_rate_multiplier: number | null
           hours_per_day: number | null
           id: string
           is_active: boolean | null
@@ -1941,6 +1942,7 @@ export type Database = {
           flexible_day_off_enabled?: boolean | null
           flexible_days_per_week?: number | null
           full_name: string
+          holiday_ot_rate_multiplier?: number | null
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
@@ -1984,6 +1986,7 @@ export type Database = {
           flexible_day_off_enabled?: boolean | null
           flexible_days_per_week?: number | null
           full_name?: string
+          holiday_ot_rate_multiplier?: number | null
           hours_per_day?: number | null
           id?: string
           is_active?: boolean | null
