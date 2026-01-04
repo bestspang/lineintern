@@ -176,3 +176,6 @@ verify_jwt = false
 
 [functions.point-response-tracker]
 verify_jwt = false
+
+[functions.backfill-primary-groups]
+verify_jwt = false

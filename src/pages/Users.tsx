@@ -16,9 +16,10 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 export default function Users() {
   const navigate = useNavigate();
@@ -58,6 +59,25 @@ export default function Users() {
     },
   });
 
+  const backfillPrimaryGroupsMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('backfill-primary-groups');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(`Assigned primary groups: ${data.assigned} users updated, ${data.skipped} skipped`);
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to assign primary groups: ${error.message}`);
+    },
+  });
+
+  // Calculate stats
+  const usersWithPrimaryGroup = users?.filter((u) => u.primary_group_id).length || 0;
+  const usersWithoutPrimaryGroup = (users?.length || 0) - usersWithPrimaryGroup;
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
@@ -80,21 +100,43 @@ export default function Users() {
                 />
               </div>
 
-              <Button
-                onClick={() => fixNamesMutation.mutate()}
-                disabled={fixNamesMutation.isPending}
-                variant="outline"
-                className="w-full sm:w-auto shrink-0 text-sm"
-              >
-                <RefreshCw
-                  className={cn(
-                    'h-3 w-3 sm:h-4 sm:w-4 mr-2',
-                    fixNamesMutation.isPending && 'animate-spin',
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  onClick={() => backfillPrimaryGroupsMutation.mutate()}
+                  disabled={backfillPrimaryGroupsMutation.isPending || usersWithoutPrimaryGroup === 0}
+                  variant="outline"
+                  className="w-full sm:w-auto shrink-0 text-sm"
+                >
+                  <UsersIcon
+                    className={cn(
+                      'h-3 w-3 sm:h-4 sm:w-4 mr-2',
+                      backfillPrimaryGroupsMutation.isPending && 'animate-spin',
+                    )}
+                  />
+                  <span className="hidden sm:inline">Assign Primary Groups</span>
+                  <span className="sm:hidden">Assign Groups</span>
+                  {usersWithoutPrimaryGroup > 0 && (
+                    <Badge variant="secondary" className="ml-2 text-xs">
+                      {usersWithoutPrimaryGroup}
+                    </Badge>
                   )}
-                />
-                <span className="hidden sm:inline">Fix Display Names</span>
-                <span className="sm:hidden">Fix Names</span>
-              </Button>
+                </Button>
+                <Button
+                  onClick={() => fixNamesMutation.mutate()}
+                  disabled={fixNamesMutation.isPending}
+                  variant="outline"
+                  className="w-full sm:w-auto shrink-0 text-sm"
+                >
+                  <RefreshCw
+                    className={cn(
+                      'h-3 w-3 sm:h-4 sm:w-4 mr-2',
+                      fixNamesMutation.isPending && 'animate-spin',
+                    )}
+                  />
+                  <span className="hidden sm:inline">Fix Display Names</span>
+                  <span className="sm:hidden">Fix Names</span>
+                </Button>
+              </div>
             </div>
           </CardDescription>
         </CardHeader>
