@@ -142,6 +142,49 @@ export async function getGroupSummary(groupId: string): Promise<any> {
   return response.json();
 }
 
+// Helper to notify admin group for errors (silent mode - doesn't reply to user)
+export async function notifyAdminGroup(
+  supabase: any,
+  message: string,
+  context?: { userId?: string; groupId?: string; error?: any }
+): Promise<void> {
+  try {
+    // Get admin group from settings
+    const { data: setting } = await supabase
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'admin_notification_group')
+      .maybeSingle();
+    
+    const adminGroupId = setting?.setting_value?.line_group_id;
+    if (!adminGroupId) {
+      console.log('[notifyAdminGroup] No admin group configured - skipping notification');
+      return;
+    }
+    
+    // Build detailed message
+    const timestamp = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    let fullMessage = `⚠️ Bot Alert\n━━━━━━━━━━━━━━━━\n${message}\n\n🕐 เวลา: ${timestamp}`;
+    
+    if (context?.userId) {
+      fullMessage += `\n👤 User: ${context.userId}`;
+    }
+    if (context?.groupId) {
+      fullMessage += `\n📍 Group: ${context.groupId}`;
+    }
+    if (context?.error) {
+      fullMessage += `\n❌ Error: ${context.error.message || context.error}`;
+    }
+    
+    // Push to admin group
+    await pushToLine(adminGroupId, fullMessage);
+    console.log('[notifyAdminGroup] Notification sent to admin group');
+  } catch (error) {
+    console.error('[notifyAdminGroup] Failed to send notification:', error);
+    // Don't throw - this is a best-effort notification
+  }
+}
+
 export function getSimpleQuickReply(locale: 'th' | 'en'): QuickReply {
   return {
     items: [
