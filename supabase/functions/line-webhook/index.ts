@@ -6895,6 +6895,66 @@ async function pushToLine(to: string, text: string, context?: Partial<ReplyConte
   }
 }
 
+// Helper to notify admin group for errors (silent mode - doesn't reply to customer group)
+async function notifyAdminGroup(
+  message: string,
+  context?: { userId?: string; groupId?: string; employeeName?: string; error?: any }
+): Promise<void> {
+  try {
+    // Get admin group from settings
+    const { data: setting } = await supabase
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'admin_notification_group')
+      .maybeSingle();
+    
+    const adminGroupId = setting?.setting_value?.line_group_id;
+    if (!adminGroupId) {
+      console.log('[notifyAdminGroup] No admin group configured - skipping notification');
+      return;
+    }
+    
+    // Build detailed message
+    const timestamp = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    let fullMessage = `⚠️ Bot Alert\n━━━━━━━━━━━━━━━━\n${message}\n\n🕐 เวลา: ${timestamp}`;
+    
+    if (context?.userId) {
+      fullMessage += `\n👤 User ID: ${context.userId.substring(0, 10)}...`;
+    }
+    if (context?.employeeName) {
+      fullMessage += `\n👤 ชื่อ: ${context.employeeName}`;
+    }
+    if (context?.groupId) {
+      fullMessage += `\n📍 Group: ${context.groupId.substring(0, 10)}...`;
+    }
+    if (context?.error) {
+      fullMessage += `\n❌ Error: ${context.error.message || String(context.error).substring(0, 100)}`;
+    }
+    
+    // Push to admin group (without logging to avoid loops)
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: adminGroupId,
+        messages: [{ type: "text", text: fullMessage }],
+      }),
+    });
+    
+    if (response.ok) {
+      console.log('[notifyAdminGroup] Notification sent to admin group');
+    } else {
+      console.error('[notifyAdminGroup] Failed to send notification:', await response.text());
+    }
+  } catch (error) {
+    console.error('[notifyAdminGroup] Error:', error);
+    // Don't throw - this is a best-effort notification
+  }
+}
+
 async function replyToLineWithImage(replyToken: string, imageUrl: string, text?: string) {
   console.log(`[replyToLineWithImage] Sending image reply`);
   
@@ -7472,10 +7532,13 @@ async function handleImageMessage(event: LineEvent) {
     .maybeSingle();
   
   if (!employee) {
-    console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee`);
-    // Reply with error
-    await replyToLine(event.replyToken, '❌ คุณยังไม่ได้ลงทะเบียนในระบบ\nกรุณาติดต่อ HR');
-    return;
+    console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee - SILENT MODE`);
+    // Silent mode: Don't reply to customer group, notify admin instead
+    await notifyAdminGroup(
+      `📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`,
+      { userId: rawLineUserId, groupId: rawLineGroupId }
+    );
+    return; // Silent return - no reply to group
   }
   
   // Get deposit settings
@@ -7492,8 +7555,12 @@ async function handleImageMessage(event: LineEvent) {
   const imageBase64 = await downloadLineImage(event.message!.id);
   
   if (!imageBase64) {
-    console.error(`[handleImageMessage] Failed to download image`);
-    await replyToLine(event.replyToken, '❌ ไม่สามารถดาวน์โหลดรูปภาพได้\nกรุณาลองใหม่อีกครั้ง');
+    console.error(`[handleImageMessage] Failed to download image - SILENT MODE`);
+    // Silent mode: notify admin instead of replying to customer
+    await notifyAdminGroup(
+      `📸 ไม่สามารถดาวน์โหลดรูปภาพได้`,
+      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name }
+    );
     return;
   }
   
@@ -7508,13 +7575,10 @@ async function handleImageMessage(event: LineEvent) {
   const classification = await classifyDocumentType(imageBase64);
   console.log(`[handleImageMessage] Classification result: ${classification.document_type} (${Math.round(classification.confidence * 100)}%)`);
   
-  // Handle non-deposit documents
+  // Handle non-deposit documents - SILENT MODE (don't confuse customers with random images)
   if (classification.document_type === 'unknown' || classification.confidence < 0.4) {
-    console.log(`[handleImageMessage] Unknown or low confidence document - skipping`);
-    await replyToLine(
-      event.replyToken,
-      '❌ ไม่สามารถระบุประเภทเอกสารได้\n━━━━━━━━━━━━━━━━\n📋 เอกสารที่รองรับ:\n• ใบฝากเงิน/สลิปโอน\n• ใบเสร็จ (เร็วๆนี้)\n• ใบเบิก (เร็วๆนี้)\n\n💡 กรุณาถ่ายรูปเอกสารให้ชัดเจน'
-    );
+    console.log(`[handleImageMessage] Unknown or low confidence document - SILENT SKIP`);
+    // Silent return - don't reply for unrecognized images (could be random chat images)
     return;
   }
   
@@ -7579,8 +7643,11 @@ async function handleImageMessage(event: LineEvent) {
   const slipPhotoUrl = await uploadDepositImage(imageBase64, slipPath);
   
   if (!slipPhotoUrl) {
-    console.error(`[handleImageMessage] Failed to upload slip image`);
-    await replyToLine(event.replyToken, '❌ ไม่สามารถบันทึกรูปภาพได้\nกรุณาลองใหม่อีกครั้ง');
+    console.error(`[handleImageMessage] Failed to upload slip image - SILENT MODE`);
+    await notifyAdminGroup(
+      `📸 ไม่สามารถอัพโหลดรูปภาพได้`,
+      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name }
+    );
     return;
   }
   
@@ -7614,8 +7681,11 @@ async function handleImageMessage(event: LineEvent) {
     .single();
   
   if (insertError) {
-    console.error(`[handleImageMessage] Failed to insert deposit:`, insertError);
-    await replyToLine(event.replyToken, '❌ ไม่สามารถบันทึกข้อมูลได้\nกรุณาลองใหม่อีกครั้ง');
+    console.error(`[handleImageMessage] Failed to insert deposit - SILENT MODE:`, insertError);
+    await notifyAdminGroup(
+      `📸 ไม่สามารถบันทึกข้อมูลใบฝากเงินได้`,
+      { userId: rawLineUserId, groupId: rawLineGroupId, employeeName: employee.full_name, error: insertError }
+    );
     return;
   }
   
