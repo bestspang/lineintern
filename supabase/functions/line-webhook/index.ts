@@ -7487,24 +7487,6 @@ async function handleImageMessage(event: LineEvent) {
   
   const today = getBangkokDateString();
   
-  // Check for duplicate deposit today for this branch
-  const { data: existingDeposit } = await supabase
-    .from('daily_deposits')
-    .select('id, employee_id, employees(full_name)')
-    .eq('branch_id', branch.id)
-    .eq('deposit_date', today)
-    .maybeSingle();
-  
-  if (existingDeposit) {
-    const submitter = (existingDeposit.employees as any)?.full_name || 'Unknown';
-    console.log(`[handleImageMessage] Duplicate deposit detected for branch ${branch.name}`);
-    await replyToLine(
-      event.replyToken,
-      `⚠️ วันนี้มีการฝากเงินแล้ว\n━━━━━━━━━━━━━━━━\n👤 โดย: ${submitter}\n🏢 สาขา: ${branch.name}\n\nหากต้องการแก้ไข กรุณาติดต่อ Admin`
-    );
-    return;
-  }
-  
   // Download image from LINE
   console.log(`[handleImageMessage] Downloading image from LINE...`);
   const imageBase64 = await downloadLineImage(event.message!.id);
@@ -7517,25 +7499,77 @@ async function handleImageMessage(event: LineEvent) {
   
   console.log(`[handleImageMessage] Image downloaded, size: ${imageBase64.length} chars`);
   
+  // Compute image hash for duplicate detection
+  const photoHash = await computeImageHash(imageBase64);
+  console.log(`[handleImageMessage] Image hash computed: ${photoHash.substring(0, 16)}...`);
+  
+  // Classify document type first
+  console.log(`[handleImageMessage] Classifying document type...`);
+  const classification = await classifyDocumentType(imageBase64);
+  console.log(`[handleImageMessage] Classification result: ${classification.document_type} (${Math.round(classification.confidence * 100)}%)`);
+  
+  // Handle non-deposit documents
+  if (classification.document_type === 'unknown' || classification.confidence < 0.4) {
+    console.log(`[handleImageMessage] Unknown or low confidence document - skipping`);
+    await replyToLine(
+      event.replyToken,
+      '❌ ไม่สามารถระบุประเภทเอกสารได้\n━━━━━━━━━━━━━━━━\n📋 เอกสารที่รองรับ:\n• ใบฝากเงิน/สลิปโอน\n• ใบเสร็จ (เร็วๆนี้)\n• ใบเบิก (เร็วๆนี้)\n\n💡 กรุณาถ่ายรูปเอกสารให้ชัดเจน'
+    );
+    return;
+  }
+  
+  if (classification.document_type !== 'deposit_slip') {
+    console.log(`[handleImageMessage] Non-deposit document: ${classification.document_type}`);
+    await replyToLine(
+      event.replyToken,
+      `📋 ตรวจพบเอกสาร: ${getDocumentTypeName(classification.document_type)}\n━━━━━━━━━━━━━━━━\n⚠️ ขณะนี้รองรับเฉพาะใบฝากเงินเท่านั้น\n\n🔧 ฟีเจอร์อื่นกำลังพัฒนา:\n• ใบเสร็จร้านค้า\n• ใบเบิกค่าใช้จ่าย\n• ใบแจ้งหนี้`
+    );
+    return;
+  }
+  
+  // Check for duplicate by image hash
+  let isDuplicate = false;
+  let duplicateOfId: string | null = null;
+  let duplicateInfo: { deposit_date: string; employee_name: string; branch_name: string } | null = null;
+  
+  const { data: duplicateByHash } = await supabase
+    .from('daily_deposits')
+    .select('id, deposit_date, employees(full_name), branches(name)')
+    .eq('photo_hash', photoHash)
+    .maybeSingle();
+  
+  if (duplicateByHash) {
+    isDuplicate = true;
+    duplicateOfId = duplicateByHash.id;
+    duplicateInfo = {
+      deposit_date: duplicateByHash.deposit_date,
+      employee_name: (duplicateByHash.employees as any)?.full_name || 'ไม่ระบุ',
+      branch_name: (duplicateByHash.branches as any)?.name || 'ไม่ระบุ'
+    };
+    console.log(`[handleImageMessage] ⚠️ Duplicate image hash detected! Original: ${duplicateOfId}`);
+  }
+  
   // Extract data from slip using AI
   console.log(`[handleImageMessage] Extracting data from slip...`);
   const extractedData = await extractDepositDataFromImage(imageBase64);
   
-  // Check for duplicate by reference number
-  if (extractedData.reference_number) {
+  // Check for duplicate by reference number (even if hash is different)
+  if (extractedData.reference_number && !isDuplicate) {
     const { data: duplicateByRef } = await supabase
       .from('daily_deposits')
-      .select('id, deposit_date, branches(name)')
+      .select('id, deposit_date, branches(name), employees(full_name)')
       .eq('reference_number', extractedData.reference_number)
       .maybeSingle();
     
     if (duplicateByRef) {
-      console.log(`[handleImageMessage] Duplicate reference number detected: ${extractedData.reference_number}`);
-      await replyToLine(
-        event.replyToken,
-        `⚠️ ใบฝากนี้ถูกใช้แล้ว\n━━━━━━━━━━━━━━━━\n📄 Ref: ${extractedData.reference_number}\n📅 วันที่: ${duplicateByRef.deposit_date}\n🏢 สาขา: ${(duplicateByRef.branches as any)?.name || 'ไม่ระบุ'}\n\nกรุณาใช้ใบฝากใหม่`
-      );
-      return;
+      isDuplicate = true;
+      duplicateOfId = duplicateByRef.id;
+      duplicateInfo = {
+        deposit_date: duplicateByRef.deposit_date,
+        employee_name: (duplicateByRef.employees as any)?.full_name || 'ไม่ระบุ',
+        branch_name: (duplicateByRef.branches as any)?.name || 'ไม่ระบุ'
+      };
+      console.log(`[handleImageMessage] ⚠️ Duplicate reference number detected: ${extractedData.reference_number}`);
     }
   }
   
@@ -7550,7 +7584,7 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
-  // Insert deposit record (pending status for admin verification)
+  // Insert deposit record (with duplicate flag if applicable)
   const { data: deposit, error: insertError } = await supabase
     .from('daily_deposits')
     .insert({
@@ -7558,16 +7592,23 @@ async function handleImageMessage(event: LineEvent) {
       employee_id: employee.id,
       deposit_date: today,
       slip_photo_url: slipPhotoUrl,
-      face_photo_url: null, // No face verification in LINE group mode
+      face_photo_url: null,
       amount: extractedData.amount,
       account_number: extractedData.account_number,
       bank_name: extractedData.bank_name,
       bank_branch: extractedData.bank_branch,
       deposit_date_on_slip: extractedData.deposit_date,
       reference_number: extractedData.reference_number,
-      raw_ocr_result: { ...extractedData, source: 'line_group' },
+      raw_ocr_result: { ...extractedData, source: 'line_group', classification },
       extraction_confidence: extractedData.confidence,
-      status: 'pending'
+      // New fields for document classification and duplicate detection
+      document_type: 'deposit_slip',
+      photo_hash: photoHash,
+      is_duplicate: isDuplicate,
+      duplicate_of_id: duplicateOfId,
+      classification_confidence: classification.confidence,
+      classification_result: classification,
+      status: isDuplicate ? 'duplicate' : 'pending'
     })
     .select()
     .single();
@@ -7575,6 +7616,16 @@ async function handleImageMessage(event: LineEvent) {
   if (insertError) {
     console.error(`[handleImageMessage] Failed to insert deposit:`, insertError);
     await replyToLine(event.replyToken, '❌ ไม่สามารถบันทึกข้อมูลได้\nกรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  
+  // If duplicate, send warning and return
+  if (isDuplicate && duplicateInfo) {
+    console.log(`[handleImageMessage] Deposit saved as duplicate: ${deposit.id}`);
+    await replyToLine(
+      event.replyToken,
+      `⚠️ ตรวจพบรูปซ้ำ\n━━━━━━━━━━━━━━━━\n📅 เคยส่งเมื่อ: ${duplicateInfo.deposit_date}\n👤 โดย: ${duplicateInfo.employee_name}\n🏢 สาขา: ${duplicateInfo.branch_name}\n\n📋 บันทึกไว้แล้ว (สถานะ: ซ้ำ)\n💡 กรุณาใช้รูปใหม่หากต้องการส่งใบฝากใหม่`
+    );
     return;
   }
   
@@ -7775,6 +7826,115 @@ async function downloadLineImage(messageId: string): Promise<string | null> {
   } catch (error) {
     console.error(`[downloadLineImage] Error:`, error);
     return null;
+  }
+}
+
+// Document type names for user-facing messages
+function getDocumentTypeName(docType: string): string {
+  const names: Record<string, string> = {
+    'deposit_slip': 'ใบฝากเงิน/สลิปโอน',
+    'receipt': 'ใบเสร็จร้านค้า',
+    'expense_claim': 'ใบเบิกค่าใช้จ่าย',
+    'invoice': 'ใบแจ้งหนี้',
+    'unknown': 'ไม่ทราบประเภท'
+  };
+  return names[docType] || 'เอกสาร';
+}
+
+// Compute image hash for duplicate detection
+async function computeImageHash(base64Data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(base64Data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Classify document type using AI
+async function classifyDocumentType(imageBase64: string): Promise<{
+  document_type: 'deposit_slip' | 'receipt' | 'expense_claim' | 'invoice' | 'unknown';
+  confidence: number;
+  details?: string;
+}> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.error("[classifyDocumentType] LOVABLE_API_KEY not configured");
+    return { document_type: 'unknown', confidence: 0 };
+  }
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this image and classify the document type. Return ONLY a valid JSON object:
+{
+  "document_type": <one of: "deposit_slip", "receipt", "expense_claim", "invoice", "unknown">,
+  "confidence": <number 0-1>,
+  "details": <string - brief description of what you see>
+}
+
+Document type definitions:
+- deposit_slip: ใบฝากเงิน, สลิปโอนเงิน, bank transfer receipt, deposit receipt from Thai banks (e.g. SCB, KBANK, BBL, KTB)
+- receipt: ใบเสร็จร้านค้า, store receipt, POS receipt, purchase receipt
+- expense_claim: ใบเบิกค่าใช้จ่าย, expense form, reimbursement form
+- invoice: ใบแจ้งหนี้, ใบวางบิล, bill, invoice
+- unknown: Not a document, photo of people/food/scenery, or unrecognizable
+
+IMPORTANT:
+- If this is clearly NOT a document (e.g., selfie, food, landscape), return "unknown" with low confidence
+- Return ONLY the JSON object, no other text`
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageBase64
+                }
+              }
+            ]
+          }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[classifyDocumentType] AI API error:", response.status);
+      return { document_type: 'unknown', confidence: 0 };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.error("[classifyDocumentType] No content in AI response");
+      return { document_type: 'unknown', confidence: 0 };
+    }
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log("[classifyDocumentType] Result:", parsed);
+      return {
+        document_type: parsed.document_type || 'unknown',
+        confidence: parsed.confidence || 0,
+        details: parsed.details
+      };
+    }
+
+    return { document_type: 'unknown', confidence: 0 };
+  } catch (error) {
+    console.error("[classifyDocumentType] Error:", error);
+    return { document_type: 'unknown', confidence: 0 };
   }
 }
 

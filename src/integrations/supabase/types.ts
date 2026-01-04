@@ -1290,17 +1290,23 @@ export type Database = {
           bank_branch: string | null
           bank_name: string | null
           branch_id: string | null
+          classification_confidence: number | null
+          classification_result: Json | null
           created_at: string
           deposit_date: string
           deposit_date_on_slip: string | null
+          document_type: string | null
+          duplicate_of_id: string | null
           employee_id: string
           extraction_confidence: number | null
           face_photo_url: string | null
           face_verified_at: string | null
           id: string
+          is_duplicate: boolean | null
           line_message_id: string | null
           liveness_data: Json | null
           notified_at: string | null
+          photo_hash: string | null
           raw_ocr_result: Json | null
           reference_number: string | null
           rejection_reason: string | null
@@ -1317,17 +1323,23 @@ export type Database = {
           bank_branch?: string | null
           bank_name?: string | null
           branch_id?: string | null
+          classification_confidence?: number | null
+          classification_result?: Json | null
           created_at?: string
           deposit_date: string
           deposit_date_on_slip?: string | null
+          document_type?: string | null
+          duplicate_of_id?: string | null
           employee_id: string
           extraction_confidence?: number | null
           face_photo_url?: string | null
           face_verified_at?: string | null
           id?: string
+          is_duplicate?: boolean | null
           line_message_id?: string | null
           liveness_data?: Json | null
           notified_at?: string | null
+          photo_hash?: string | null
           raw_ocr_result?: Json | null
           reference_number?: string | null
           rejection_reason?: string | null
@@ -1344,17 +1356,23 @@ export type Database = {
           bank_branch?: string | null
           bank_name?: string | null
           branch_id?: string | null
+          classification_confidence?: number | null
+          classification_result?: Json | null
           created_at?: string
           deposit_date?: string
           deposit_date_on_slip?: string | null
+          document_type?: string | null
+          duplicate_of_id?: string | null
           employee_id?: string
           extraction_confidence?: number | null
           face_photo_url?: string | null
           face_verified_at?: string | null
           id?: string
+          is_duplicate?: boolean | null
           line_message_id?: string | null
           liveness_data?: Json | null
           notified_at?: string | null
+          photo_hash?: string | null
           raw_ocr_result?: Json | null
           reference_number?: string | null
           rejection_reason?: string | null
@@ -1377,6 +1395,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "daily_deposits"
             referencedColumns: ["id"]
           },
           {
@@ -1555,6 +1580,92 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_uploads: {
+        Row: {
+          admin_notes: string | null
+          branch_id: string | null
+          classification_confidence: number | null
+          created_at: string | null
+          document_type: string
+          duplicate_of_id: string | null
+          employee_id: string
+          extracted_data: Json | null
+          id: string
+          is_duplicate: boolean | null
+          line_message_id: string | null
+          photo_hash: string | null
+          photo_url: string | null
+          status: string | null
+          updated_at: string | null
+          upload_date: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          branch_id?: string | null
+          classification_confidence?: number | null
+          created_at?: string | null
+          document_type: string
+          duplicate_of_id?: string | null
+          employee_id: string
+          extracted_data?: Json | null
+          id?: string
+          is_duplicate?: boolean | null
+          line_message_id?: string | null
+          photo_hash?: string | null
+          photo_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          upload_date?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          branch_id?: string | null
+          classification_confidence?: number | null
+          created_at?: string | null
+          document_type?: string
+          duplicate_of_id?: string | null
+          employee_id?: string
+          extracted_data?: Json | null
+          id?: string
+          is_duplicate?: boolean | null
+          line_message_id?: string | null
+          photo_hash?: string | null
+          photo_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          upload_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_uploads_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_uploads_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_uploads_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "document_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_uploads_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
