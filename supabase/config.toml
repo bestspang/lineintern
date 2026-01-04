@@ -179,3 +179,6 @@ verify_jwt = false
 
 [functions.backfill-primary-groups]
 verify_jwt = false
+
+[functions.sync-employee-groups]
+verify_jwt = false
