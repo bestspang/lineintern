@@ -7402,7 +7402,8 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
-  // Check if this group has a branch linked via features
+  // Check if this group has a branch linked
+  // Method 1: Via groups.features.branch_id
   const { data: groupData } = await supabase
     .from('groups')
     .select('id, features')
@@ -7410,27 +7411,57 @@ async function handleImageMessage(event: LineEvent) {
     .maybeSingle();
   
   const groupFeatures = (groupData?.features as Record<string, any>) || {};
-  const linkedBranchId = groupFeatures.branch_id;
+  const linkedBranchIdFromFeatures = groupFeatures.branch_id;
   
-  if (!linkedBranchId) {
-    console.log(`[handleImageMessage] Group ${rawLineGroupId} does not have a linked branch in features`);
-    return;
+  let branch: { id: string; name: string } | null = null;
+  
+  if (linkedBranchIdFromFeatures) {
+    // Get branch via features.branch_id
+    const { data: branchData } = await supabase
+      .from('branches')
+      .select('id, name')
+      .eq('id', linkedBranchIdFromFeatures)
+      .eq('is_deleted', false)
+      .maybeSingle();
+    
+    branch = branchData;
+    if (branch) {
+      console.log(`[handleImageMessage] Branch linked via features: ${branch.name}`);
+    }
   }
   
-  // Get branch details
-  const { data: branch } = await supabase
-    .from('branches')
-    .select('id, name')
-    .eq('id', linkedBranchId)
-    .eq('is_deleted', false)
-    .maybeSingle();
-  
+  // Fallback Method 2: Via branches.line_group_id (direct link)
   if (!branch) {
-    console.log(`[handleImageMessage] Linked branch ${linkedBranchId} not found or deleted`);
+    const { data: directBranch } = await supabase
+      .from('branches')
+      .select('id, name')
+      .eq('line_group_id', rawLineGroupId)
+      .eq('is_deleted', false)
+      .maybeSingle();
+    
+    branch = directBranch;
+    if (branch) {
+      console.log(`[handleImageMessage] Branch linked directly via line_group_id: ${branch.name}`);
+    }
+  }
+  
+  // No branch found by either method
+  if (!branch) {
+    // Only show warning if this group is in enabled list (config issue)
+    if (enabledGroups.includes(rawLineGroupId)) {
+      console.warn(`[handleImageMessage] Group ${rawLineGroupId} is in enabled list but has no linked branch!`);
+      await replyToLine(
+        event.replyToken,
+        '⚠️ กลุ่มนี้ยังไม่ได้เชื่อมต่อกับสาขา\n' +
+        'กรุณาให้ Admin ตั้งค่าใน Branches → เลือกสาขา → LINE Group'
+      );
+    } else {
+      console.log(`[handleImageMessage] Group ${rawLineGroupId} is not a deposit-enabled branch group`);
+    }
     return;
   }
   
-  console.log(`[handleImageMessage] Deposit-enabled branch detected via features: ${branch.name}`);
+  console.log(`[handleImageMessage] Processing deposit for branch: ${branch.name}`);
   
   // Find employee by LINE user ID
   const { data: employee } = await supabase
