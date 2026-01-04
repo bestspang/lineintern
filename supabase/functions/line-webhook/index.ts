@@ -7933,25 +7933,87 @@ async function handleImageMessage(event: LineEvent) {
   console.log(`╚═══ [handleImageMessage] END ═══╝\n`);
 }
 
-// Download image from LINE
+// Download image from LINE with retry logic and chunked Base64 encoding
 async function downloadLineImage(messageId: string): Promise<string | null> {
+  const startTime = Date.now();
+  console.log(`[downloadLineImage] Starting download for message: ${messageId}`);
+  
   try {
-    const response = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
-      headers: {
-        "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-    });
+    let response: Response | null = null;
+    let lastError: Error | null = null;
     
-    if (!response.ok) {
-      console.error(`[downloadLineImage] Failed: ${response.status}`);
+    // Retry logic with 2 attempts
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        // Create abort controller for timeout (15 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        response = await fetch(
+          `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+          {
+            headers: {
+              "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+            },
+            signal: controller.signal,
+          }
+        );
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          console.log(`[downloadLineImage] Attempt ${attempt} succeeded: HTTP ${response.status}`);
+          break;
+        }
+        
+        // Log error details
+        const errorText = await response.text().catch(() => 'No error body');
+        console.error(`[downloadLineImage] Attempt ${attempt} failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`);
+        
+        if (attempt < 2) {
+          console.log(`[downloadLineImage] Waiting 1s before retry...`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        
+      } catch (fetchError: any) {
+        lastError = fetchError;
+        const errorMsg = fetchError.name === 'AbortError' ? 'Request timeout (15s)' : fetchError.message;
+        console.error(`[downloadLineImage] Attempt ${attempt} fetch error: ${errorMsg}`);
+        
+        if (attempt < 2) {
+          console.log(`[downloadLineImage] Waiting 1s before retry...`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    }
+    
+    if (!response || !response.ok) {
+      console.error(`[downloadLineImage] All attempts failed for message: ${messageId}, last error: ${lastError?.message || 'HTTP error'}`);
       return null;
     }
     
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const size = arrayBuffer.byteLength;
+    console.log(`[downloadLineImage] Downloaded ${size} bytes in ${Date.now() - startTime}ms`);
+    
+    // Use chunked approach for Base64 encoding to avoid stack overflow
+    // Processing 8KB chunks at a time prevents "Maximum call stack size exceeded" error
+    const uint8Array = new Uint8Array(arrayBuffer);
+    const CHUNK_SIZE = 8192;
+    let binaryStr = '';
+    
+    for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+      const chunk = uint8Array.slice(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+      binaryStr += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    
+    const base64 = btoa(binaryStr);
+    console.log(`[downloadLineImage] Successfully converted to base64, total time: ${Date.now() - startTime}ms`);
+    
     return `data:image/jpeg;base64,${base64}`;
-  } catch (error) {
-    console.error(`[downloadLineImage] Error:`, error);
+    
+  } catch (error: any) {
+    console.error(`[downloadLineImage] Fatal error after ${Date.now() - startTime}ms:`, error.message || error);
     return null;
   }
 }
