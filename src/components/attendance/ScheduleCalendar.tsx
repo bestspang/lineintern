@@ -11,7 +11,7 @@ import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
-import { Clock, Plus } from 'lucide-react';
+import { Clock, Plus, MoreVertical, X, Trash2 } from 'lucide-react';
 
 type ShiftTemplate = {
   id: string;
@@ -64,14 +64,17 @@ interface ScheduleCalendarProps {
   currentBranchId?: string;
   onAddTemporaryEmployee?: () => void;
   borrowedOutAssignments?: { employee_id: string; work_date: string }[];
+  onRemoveEmployeeFromSchedule?: (employeeId: string) => void;
+  onDeleteTemporaryEmployee?: (employeeId: string) => void;
 }
 
 const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProps>(
-  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel, currentBranchId, onAddTemporaryEmployee, borrowedOutAssignments = [] }, ref) => {
+  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel, currentBranchId, onAddTemporaryEmployee, borrowedOutAssignments = [], onRemoveEmployeeFromSchedule, onDeleteTemporaryEmployee }, ref) => {
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
     const [customStartTime, setCustomStartTime] = useState('09:00');
     const [customEndTime, setCustomEndTime] = useState('18:00');
     const tableRef = useRef<HTMLDivElement>(null);
+    const [employeeMenuOpen, setEmployeeMenuOpen] = useState<string | null>(null);
     const exportToImage = async () => {
       if (!tableRef.current) return;
 
@@ -433,6 +436,44 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                           <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-[10px] px-1.5 py-0">
                             ยืมมา
                           </Badge>
+                        )}
+                        {/* Employee action menu */}
+                        {isEditable && (isTemporary || isBorrowed) && (
+                          <Popover open={employeeMenuOpen === employee.id} onOpenChange={(open) => setEmployeeMenuOpen(open ? employee.id : null)}>
+                            <PopoverTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-auto">
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-48 p-1" align="start">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full justify-start text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  setEmployeeMenuOpen(null);
+                                  onRemoveEmployeeFromSchedule?.(employee.id);
+                                }}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                ลบออกจากตาราง
+                              </Button>
+                              {isTemporary && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full justify-start text-destructive hover:text-destructive"
+                                  onClick={() => {
+                                    setEmployeeMenuOpen(null);
+                                    onDeleteTemporaryEmployee?.(employee.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  ลบพนักงานถาวร
+                                </Button>
+                              )}
+                            </PopoverContent>
+                          </Popover>
                         )}
                       </div>
                     </td>

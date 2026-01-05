@@ -116,8 +116,12 @@ export default function Schedules() {
   const [tempEmployeeName, setTempEmployeeName] = useState('');
   const [tempEmployeeStartTime, setTempEmployeeStartTime] = useState('09:00');
   const [tempEmployeeEndTime, setTempEmployeeEndTime] = useState('18:00');
+  const [tempSelectedDays, setTempSelectedDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri by default
   const [borrowFromBranch, setBorrowFromBranch] = useState('');
   const [borrowEmployeeId, setBorrowEmployeeId] = useState('');
+  const [borrowSelectedDays, setBorrowSelectedDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri by default
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [showDeleteTempConfirm, setShowDeleteTempConfirm] = useState<{ id: string; name: string } | null>(null);
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -276,6 +280,45 @@ export default function Schedules() {
     return combined;
   }, [employees, borrowedEmployees]);
 
+  // Fetch borrowed out assignments (employees FROM this branch borrowed to OTHER schedules)
+  const { data: borrowedOutAssignments = [] } = useQuery({
+    queryKey: ['borrowed-out-assignments', selectedBranch, weekStartStr, employees.map(e => e.id)],
+    queryFn: async () => {
+      const employeeIds = employees.map(e => e.id);
+      if (employeeIds.length === 0) return [];
+      
+      const weekEnd = format(addDays(currentWeekStart, 6), 'yyyy-MM-dd');
+      
+      // Find shift_assignments where:
+      // - is_borrowed = true
+      // - employee_id belongs to current branch
+      // - schedule belongs to a DIFFERENT branch
+      const { data, error } = await supabase
+        .from('shift_assignments')
+        .select(`
+          id,
+          employee_id,
+          work_date,
+          schedule_id,
+          weekly_schedules!inner(branch_id)
+        `)
+        .in('employee_id', employeeIds)
+        .eq('is_borrowed', true)
+        .gte('work_date', weekStartStr)
+        .lte('work_date', weekEnd);
+      
+      if (error) throw error;
+      
+      // Filter to only include assignments where schedule is for a different branch
+      return (data || [])
+        .filter((d: any) => d.weekly_schedules?.branch_id !== selectedBranch)
+        .map(d => ({
+          employee_id: d.employee_id,
+          work_date: d.work_date
+        }));
+    },
+    enabled: !!selectedBranch && employees.length > 0,
+  });
   // Fetch work_schedules for employees
   const { data: workSchedules = [] } = useQuery({
     queryKey: ['work-schedules-for-auto', employees.map(e => e.id)],
@@ -736,6 +779,58 @@ export default function Schedules() {
     },
   });
 
+  // Remove employee from current schedule (deletes their assignments for this week)
+  const removeEmployeeFromScheduleMutation = useMutation({
+    mutationFn: async (employeeId: string) => {
+      if (!weeklySchedule) throw new Error('No schedule');
+      
+      const { error } = await supabase
+        .from('shift_assignments')
+        .delete()
+        .eq('schedule_id', weeklySchedule.id)
+        .eq('employee_id', employeeId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success('ลบพนักงานออกจากตารางเรียบร้อย');
+      setShowRemoveConfirm(null);
+    },
+    onError: (error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + (error as Error).message);
+    },
+  });
+
+  // Delete temporary employee permanently
+  const deleteTemporaryEmployeeMutation = useMutation({
+    mutationFn: async (employeeId: string) => {
+      // Delete all their assignments first
+      await supabase
+        .from('shift_assignments')
+        .delete()
+        .eq('employee_id', employeeId);
+      
+      // Delete the employee record
+      const { error } = await supabase
+        .from('employees')
+        .delete()
+        .eq('id', employeeId)
+        .eq('employee_type', 'temporary');
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees-branch'] });
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success('ลบพนักงานฉุกเฉินเรียบร้อย');
+      setShowDeleteTempConfirm(null);
+    },
+    onError: (error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + (error as Error).message);
+    },
+  });
+
   // Conflict detection
   const conflicts = useMemo((): Conflict[] => {
     const result: Conflict[] = [];
@@ -1013,6 +1108,15 @@ export default function Schedules() {
           weekLabel={`${format(currentWeekStart, 'd MMM', { locale: th })} - ${format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: th })}`}
           currentBranchId={selectedBranch}
           onAddTemporaryEmployee={() => setShowAddEmployeeDialog(true)}
+          borrowedOutAssignments={borrowedOutAssignments}
+          onRemoveEmployeeFromSchedule={(employeeId) => {
+            const emp = allEmployees.find(e => e.id === employeeId);
+            setShowRemoveConfirm({ id: employeeId, name: emp?.full_name || 'พนักงาน' });
+          }}
+          onDeleteTemporaryEmployee={(employeeId) => {
+            const emp = allEmployees.find(e => e.id === employeeId);
+            setShowDeleteTempConfirm({ id: employeeId, name: emp?.full_name || 'พนักงาน' });
+          }}
         />
       )}
 
@@ -1306,12 +1410,39 @@ export default function Schedules() {
                   />
                 </div>
               </div>
+              
+              {/* Day Selector */}
+              <div className="space-y-2">
+                <Label>เลือกวันทำงาน</Label>
+                <div className="flex flex-wrap gap-2">
+                  {dayLabels.map((dayLabel, index) => (
+                    <Button
+                      key={index}
+                      type="button"
+                      variant={tempSelectedDays.includes(index) ? 'default' : 'outline'}
+                      size="sm"
+                      className="w-10"
+                      onClick={() => {
+                        setTempSelectedDays(prev => 
+                          prev.includes(index) 
+                            ? prev.filter(d => d !== index)
+                            : [...prev, index].sort()
+                        );
+                      }}
+                    >
+                      {dayLabel}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">เลือก {tempSelectedDays.length} วัน</p>
+              </div>
+              
               <DialogFooter>
                 <Button variant="outline" onClick={() => setShowAddEmployeeDialog(false)}>
                   ยกเลิก
                 </Button>
                 <Button
-                  disabled={!tempEmployeeName.trim()}
+                  disabled={!tempEmployeeName.trim() || tempSelectedDays.length === 0}
                   onClick={async () => {
                     try {
                       // Create temporary employee
@@ -1331,16 +1462,18 @@ export default function Schedules() {
                       
                       if (empError) throw empError;
                       
-                      // Create shift assignments for the week
+                      // Create shift assignments for selected days only
                       if (weeklySchedule && newEmp) {
-                        const weekAssignments = weekDays.map(day => ({
-                          schedule_id: weeklySchedule.id,
-                          employee_id: newEmp.id,
-                          work_date: format(day, 'yyyy-MM-dd'),
-                          custom_start_time: tempEmployeeStartTime,
-                          custom_end_time: tempEmployeeEndTime,
-                          is_day_off: false,
-                        }));
+                        const weekAssignments = weekDays
+                          .filter((_, index) => tempSelectedDays.includes(index))
+                          .map(day => ({
+                            schedule_id: weeklySchedule.id,
+                            employee_id: newEmp.id,
+                            work_date: format(day, 'yyyy-MM-dd'),
+                            custom_start_time: tempEmployeeStartTime,
+                            custom_end_time: tempEmployeeEndTime,
+                            is_day_off: false,
+                          }));
                         
                         await supabase.from('shift_assignments').insert(weekAssignments);
                       }
@@ -1350,6 +1483,7 @@ export default function Schedules() {
                       toast.success('เพิ่มพนักงานฉุกเฉินเรียบร้อย');
                       setShowAddEmployeeDialog(false);
                       setTempEmployeeName('');
+                      setTempSelectedDays([0, 1, 2, 3, 4]); // Reset to Mon-Fri
                     } catch (error: any) {
                       toast.error(error.message || 'เกิดข้อผิดพลาด');
                     }
@@ -1406,9 +1540,37 @@ export default function Schedules() {
               )}
 
               {borrowEmployeeId && (
-                <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
-                  💡 พนักงานนี้จะถูกเพิ่มในตารางของสาขานี้ และจะแสดง tag "ยืมมา" ส่วนสาขาต้นทางจะแสดง tag "ยืมไป"
-                </div>
+                <>
+                  {/* Day Selector for Borrow */}
+                  <div className="space-y-2">
+                    <Label>เลือกวันที่ต้องการยืม</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {dayLabels.map((dayLabel, index) => (
+                        <Button
+                          key={index}
+                          type="button"
+                          variant={borrowSelectedDays.includes(index) ? 'default' : 'outline'}
+                          size="sm"
+                          className="w-10"
+                          onClick={() => {
+                            setBorrowSelectedDays(prev => 
+                              prev.includes(index) 
+                                ? prev.filter(d => d !== index)
+                                : [...prev, index].sort()
+                            );
+                          }}
+                        >
+                          {dayLabel}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">เลือก {borrowSelectedDays.length} วัน</p>
+                  </div>
+                  
+                  <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                    💡 พนักงานนี้จะถูกเพิ่มในตารางของสาขานี้ และจะแสดง tag "ยืมมา" ส่วนสาขาต้นทางจะแสดง tag "ยืมไป"
+                  </div>
+                </>
               )}
 
               <DialogFooter>
@@ -1416,7 +1578,7 @@ export default function Schedules() {
                   ยกเลิก
                 </Button>
                 <Button
-                  disabled={!borrowEmployeeId}
+                  disabled={!borrowEmployeeId || borrowSelectedDays.length === 0}
                   onClick={async () => {
                     try {
                       if (!weeklySchedule) throw new Error('ไม่พบตาราง');
@@ -1424,28 +1586,32 @@ export default function Schedules() {
                       const borrowedEmployee = otherBranchEmployees.find(e => e.id === borrowEmployeeId);
                       if (!borrowedEmployee) throw new Error('ไม่พบพนักงาน');
                       
-                      // Create shift assignments for the borrowed employee with is_borrowed = true
+                      // Create shift assignments for selected days only
                       const startTime = borrowedEmployee.shift_start_time || '09:00';
                       const endTime = borrowedEmployee.shift_end_time || '18:00';
                       
-                      const weekAssignments = weekDays.map(day => ({
-                        schedule_id: weeklySchedule.id,
-                        employee_id: borrowEmployeeId,
-                        work_date: format(day, 'yyyy-MM-dd'),
-                        custom_start_time: startTime,
-                        custom_end_time: endTime,
-                        is_day_off: false,
-                        is_borrowed: true,
-                      }));
+                      const weekAssignments = weekDays
+                        .filter((_, index) => borrowSelectedDays.includes(index))
+                        .map(day => ({
+                          schedule_id: weeklySchedule.id,
+                          employee_id: borrowEmployeeId,
+                          work_date: format(day, 'yyyy-MM-dd'),
+                          custom_start_time: startTime,
+                          custom_end_time: endTime,
+                          is_day_off: false,
+                          is_borrowed: true,
+                        }));
                       
                       const { error } = await supabase.from('shift_assignments').insert(weekAssignments);
                       if (error) throw error;
                       
                       queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+                      queryClient.invalidateQueries({ queryKey: ['borrowed-out-assignments'] });
                       toast.success(`ยืมพนักงาน ${borrowedEmployee.full_name} เรียบร้อย`);
                       setShowAddEmployeeDialog(false);
                       setBorrowFromBranch('');
                       setBorrowEmployeeId('');
+                      setBorrowSelectedDays([0, 1, 2, 3, 4]); // Reset to Mon-Fri
                     } catch (error: any) {
                       toast.error(error.message || 'เกิดข้อผิดพลาด');
                     }
@@ -1458,6 +1624,54 @@ export default function Schedules() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Remove Employee from Schedule Confirmation */}
+      <AlertDialog open={!!showRemoveConfirm} onOpenChange={(open) => !open && setShowRemoveConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ลบพนักงานออกจากตาราง</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบ "{showRemoveConfirm?.name}" ออกจากตารางสัปดาห์นี้หรือไม่?
+              <br />
+              <span className="text-muted-foreground">การดำเนินการนี้จะลบกะทำงานทั้งหมดของพนักงานในสัปดาห์นี้</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => showRemoveConfirm && removeEmployeeFromScheduleMutation.mutate(showRemoveConfirm.id)}
+              disabled={removeEmployeeFromScheduleMutation.isPending}
+            >
+              ลบออกจากตาราง
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Temporary Employee Permanently Confirmation */}
+      <AlertDialog open={!!showDeleteTempConfirm} onOpenChange={(open) => !open && setShowDeleteTempConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ลบพนักงานฉุกเฉินถาวร</AlertDialogTitle>
+            <AlertDialogDescription>
+              ⚠️ ต้องการลบ "{showDeleteTempConfirm?.name}" ออกจากระบบถาวรหรือไม่?
+              <br />
+              <span className="text-destructive font-medium">การดำเนินการนี้จะลบข้อมูลพนักงานและกะทำงานทั้งหมดอย่างถาวร ไม่สามารถกู้คืนได้</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => showDeleteTempConfirm && deleteTemporaryEmployeeMutation.mutate(showDeleteTempConfirm.id)}
+              disabled={deleteTemporaryEmployeeMutation.isPending}
+            >
+              ลบถาวร
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
