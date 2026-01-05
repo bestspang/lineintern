@@ -438,6 +438,8 @@ export default function Schedules() {
             is_day_off: data.is_day_off || false,
             day_off_type: data.day_off_type,
             note: data.note,
+            custom_start_time: data.custom_start_time,
+            custom_end_time: data.custom_end_time,
           });
         if (error) throw error;
         
