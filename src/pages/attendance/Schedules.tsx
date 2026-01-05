@@ -20,8 +20,20 @@ import {
   AlertCircle,
   Copy,
   AlertTriangle,
-  UserPlus
+  UserPlus,
+  Pencil,
+  Trash2
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isWeekend } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -94,6 +106,7 @@ export default function Schedules() {
   const [bulkSelectedShift, setBulkSelectedShift] = useState<string>('');
   const [bulkSelectedDays, setBulkSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri
   const [showConflictsDialog, setShowConflictsDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -283,6 +296,67 @@ export default function Schedules() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['weekly-schedule'] });
       toast.success('เผยแพร่ตารางเรียบร้อย');
+    },
+  });
+
+  // Unpublish mutation (revert to draft)
+  const unpublishMutation = useMutation({
+    mutationFn: async () => {
+      if (!weeklySchedule) throw new Error('No schedule');
+      
+      const { error } = await supabase
+        .from('weekly_schedules')
+        .update({
+          status: 'draft',
+          published_at: null,
+        })
+        .eq('id', weeklySchedule.id);
+      
+      if (error) throw error;
+      
+      // Log the change
+      await supabase.from('schedule_change_logs').insert({
+        schedule_id: weeklySchedule.id,
+        change_type: 'unpublished',
+        reason: 'Reverted to draft for editing',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekly-schedule'] });
+      toast.success('เปลี่ยนเป็นฉบับร่างเรียบร้อย สามารถแก้ไขได้แล้ว');
+    },
+    onError: (error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + (error as Error).message);
+    },
+  });
+
+  // Delete schedule mutation
+  const deleteScheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!weeklySchedule) throw new Error('No schedule');
+      
+      // Delete assignments first
+      await supabase
+        .from('shift_assignments')
+        .delete()
+        .eq('schedule_id', weeklySchedule.id);
+      
+      // Delete schedule
+      const { error } = await supabase
+        .from('weekly_schedules')
+        .delete()
+        .eq('id', weeklySchedule.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekly-schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success('ลบตารางเรียบร้อย');
+      setShowDeleteDialog(false);
+    },
+    onError: (error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + (error as Error).message);
     },
   });
 
@@ -700,6 +774,16 @@ export default function Schedules() {
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
+              {weeklySchedule && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
               {weeklySchedule?.status === 'draft' && (
                 <Button
                   onClick={() => publishMutation.mutate()}
@@ -707,6 +791,16 @@ export default function Schedules() {
                 >
                   <Send className="w-4 h-4 mr-2" />
                   เผยแพร่
+                </Button>
+              )}
+              {weeklySchedule?.status === 'published' && (
+                <Button
+                  variant="outline"
+                  onClick={() => unpublishMutation.mutate()}
+                  disabled={unpublishMutation.isPending}
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  แก้ไข
                 </Button>
               )}
             </div>
@@ -939,6 +1033,33 @@ export default function Schedules() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบตาราง</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบตารางกะสัปดาห์นี้หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+              {weeklySchedule?.status === 'published' && (
+                <span className="block mt-2 text-amber-600 font-medium">
+                  ⚠️ ตารางนี้เผยแพร่แล้ว พนักงานอาจเห็นตารางนี้อยู่
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => deleteScheduleMutation.mutate()}
+              disabled={deleteScheduleMutation.isPending}
+            >
+              ลบตาราง
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
