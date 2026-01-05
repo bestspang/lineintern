@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,12 +14,13 @@ import {
   Send, 
   Calendar as CalendarIcon,
   Users,
-  AlertCircle
+  AlertCircle,
+  History
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isSameDay, isWeekend } from 'date-fns';
 import { th } from 'date-fns/locale';
-import ScheduleCalendar from '@/components/attendance/ScheduleCalendar';
+import ScheduleCalendar, { ScheduleCalendarHandle } from '@/components/attendance/ScheduleCalendar';
 
 interface Branch {
   id: string;
@@ -70,6 +71,7 @@ interface ShiftAssignment {
 
 export default function Schedules() {
   const queryClient = useQueryClient();
+  const calendarRef = useRef<ScheduleCalendarHandle>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [currentWeekStart, setCurrentWeekStart] = useState(() => 
     startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -266,9 +268,11 @@ export default function Schedules() {
     },
   });
 
-  // Update assignment mutation
+  // Update assignment mutation with change tracking
   const updateAssignmentMutation = useMutation({
     mutationFn: async (data: Partial<ShiftAssignment> & { id?: string; employee_id: string; work_date: string }) => {
+      const oldAssignment = data.id ? assignments.find(a => a.id === data.id) : null;
+      
       if (data.id) {
         // Update existing
         const { error } = await supabase
@@ -283,6 +287,24 @@ export default function Schedules() {
           })
           .eq('id', data.id);
         if (error) throw error;
+        
+        // Log change
+        await supabase.from('schedule_change_logs').insert({
+          schedule_id: weeklySchedule!.id,
+          employee_id: data.employee_id,
+          work_date: data.work_date,
+          change_type: 'modified',
+          old_value: oldAssignment ? {
+            shift_template_id: oldAssignment.shift_template_id,
+            is_day_off: oldAssignment.is_day_off,
+            day_off_type: oldAssignment.day_off_type,
+          } : null,
+          new_value: {
+            shift_template_id: data.shift_template_id,
+            is_day_off: data.is_day_off,
+            day_off_type: data.day_off_type,
+          },
+        });
       } else {
         // Insert new
         const { error } = await supabase
@@ -297,6 +319,19 @@ export default function Schedules() {
             note: data.note,
           });
         if (error) throw error;
+        
+        // Log addition
+        await supabase.from('schedule_change_logs').insert({
+          schedule_id: weeklySchedule!.id,
+          employee_id: data.employee_id,
+          work_date: data.work_date,
+          change_type: 'added',
+          new_value: {
+            shift_template_id: data.shift_template_id,
+            is_day_off: data.is_day_off,
+            day_off_type: data.day_off_type,
+          },
+        });
       }
     },
     onSuccess: () => {
@@ -392,10 +427,8 @@ export default function Schedules() {
               </TooltipProvider>
               <Button
                 variant="outline"
-                onClick={() => {
-                  // Export to image - will implement with html2canvas
-                  toast.info('กำลังพัฒนา...');
-                }}
+                onClick={() => calendarRef.current?.exportToImage()}
+                disabled={employees.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export
@@ -436,12 +469,15 @@ export default function Schedules() {
         </Card>
       ) : (
         <ScheduleCalendar
+          ref={calendarRef}
           weekDays={weekDays}
           employees={employees}
           assignments={assignments}
           shiftTemplates={shiftTemplates}
           onAssignmentChange={(data) => updateAssignmentMutation.mutate(data)}
           isEditable={weeklySchedule?.status === 'draft'}
+          branchName={selectedBranchName}
+          weekLabel={`${format(currentWeekStart, 'd MMM', { locale: th })} - ${format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: th })}`}
         />
       )}
 

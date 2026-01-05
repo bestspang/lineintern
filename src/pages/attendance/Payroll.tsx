@@ -396,6 +396,43 @@ export default function Payroll() {
     },
   });
 
+  // Fetch shift assignments for the period (Phase 2: Shift Scheduling Integration)
+  const { data: allShiftAssignments } = useQuery({
+    queryKey: ["all-shift-assignments", format(currentMonth, "yyyy-MM")],
+    queryFn: async () => {
+      const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+      
+      const { data, error } = await supabase
+        .from("shift_assignments")
+        .select("employee_id, work_date, is_day_off, shift_template_id")
+        .gte("work_date", startDate)
+        .lte("work_date", endDate);
+      
+      if (error) {
+        // Table may not exist yet - graceful fallback
+        console.log("shift_assignments not available, using work_schedules");
+        return null;
+      }
+      return data;
+    },
+  });
+
+  // Build shift assignments map per employee
+  const employeeShiftMap = useMemo(() => {
+    const map = new Map<string, Map<string, { is_day_off: boolean; shift_template_id: string | null }>>();
+    allShiftAssignments?.forEach(sa => {
+      if (!map.has(sa.employee_id)) {
+        map.set(sa.employee_id, new Map());
+      }
+      map.get(sa.employee_id)!.set(sa.work_date, {
+        is_day_off: sa.is_day_off,
+        shift_template_id: sa.shift_template_id,
+      });
+    });
+    return map;
+  }, [allShiftAssignments]);
+
   // Build adjustments map per employee
   const employeeAdjustmentsMap = useMemo(() => {
     const map = new Map<string, Map<string, any>>();
