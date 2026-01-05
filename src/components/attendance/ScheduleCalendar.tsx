@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 
-interface ShiftTemplate {
+type ShiftTemplate = {
   id: string;
   name: string;
   short_code: string;
@@ -18,15 +18,15 @@ interface ShiftTemplate {
   end_time: string;
   color: string;
   break_hours: number;
-}
+};
 
-interface Employee {
+type Employee = {
   id: string;
   full_name: string;
   nickname?: string | null;
-}
+};
 
-interface ShiftAssignment {
+type ShiftAssignment = {
   id: string;
   schedule_id: string;
   employee_id: string;
@@ -38,7 +38,7 @@ interface ShiftAssignment {
   day_off_type: string | null;
   note: string | null;
   shift_templates?: ShiftTemplate | null;
-}
+};
 
 export interface ScheduleCalendarHandle {
   exportToImage: () => Promise<void>;
@@ -337,3 +337,4 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
 ScheduleCalendar.displayName = 'ScheduleCalendar';
 
 export default ScheduleCalendar;
+
