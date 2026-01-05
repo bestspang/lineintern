@@ -44,11 +44,12 @@ export function usePageAccess() {
     // Find the page config for this path
     const pageConfig = pageConfigs?.find(pc => pc.page_path === path);
     
-    // If no specific page config, check menu group access
+    // If no specific page config, deny access (security first)
     if (!pageConfig) {
       // Find menu group from path
       const menuGroup = getMenuGroupFromPath(path);
-      return menuGroup ? canAccessMenuGroup(menuGroup) : true;
+      if (!menuGroup) return false; // Unknown path = deny
+      return canAccessMenuGroup(menuGroup);
     }
     
     // First check if menu group is accessible
