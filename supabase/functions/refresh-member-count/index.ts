@@ -57,11 +57,12 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get all active groups
+    // Get all active groups (exclude DM groups which start with 'dm_')
     const { data: groups, error: groupsError } = await supabase
       .from('groups')
       .select('id, line_group_id, display_name')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .not('line_group_id', 'like', 'dm_%');
 
     if (groupsError) {
       throw groupsError;
@@ -82,9 +83,20 @@ serve(async (req) => {
     let successCount = 0;
     let errorCount = 0;
 
-    // Process each group
     for (const group of groups) {
       try {
+        // Skip if line_group_id is not a valid LINE group format (should start with 'C' for groups or 'R' for rooms)
+        if (!group.line_group_id.startsWith('C') && !group.line_group_id.startsWith('R')) {
+          results.push({
+            group_id: group.id,
+            group_name: group.display_name,
+            status: 'skipped',
+            reason: 'Not a valid LINE group ID format (expected C... or R...)'
+          });
+          console.log(`⊘ Skipped ${group.display_name}: Invalid LINE group ID format`);
+          continue;
+        }
+
         // Fetch group summary from LINE API
         const response = await fetch(
           `https://api.line.me/v2/bot/group/${group.line_group_id}/summary`,
@@ -95,9 +107,13 @@ serve(async (req) => {
           }
         );
 
+        const responseText = await response.text();
+        console.log(`[${group.display_name}] LINE API status: ${response.status}, response: ${responseText}`);
+
         if (response.ok) {
-          const summary = await response.json();
-          const memberCount = summary.count || 0;
+          const summary = JSON.parse(responseText);
+          const memberCount = summary.memberCount || summary.count || 0;
+          console.log(`[${group.display_name}] Parsed memberCount: ${memberCount}`);
 
           // Update member_count in database
           const { error: updateError } = await supabase
@@ -128,7 +144,7 @@ serve(async (req) => {
             group_id: group.id,
             group_name: group.display_name,
             status: 'error',
-            error: `LINE API error: ${status}`
+            error: `LINE API error: ${status} - ${responseText}`
           });
           errorCount++;
           
