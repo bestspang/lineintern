@@ -287,7 +287,7 @@ export default function AttendanceEmployees() {
                   </div>
                   <div>
                     <Label htmlFor="line_user_id">LINE User</Label>
-                    <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+                    <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen} modal={true}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -308,7 +308,7 @@ export default function AttendanceEmployees() {
                             value={userSearchTerm}
                             onValueChange={setUserSearchTerm}
                           />
-                          <CommandList className="max-h-[200px]">
+                          <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
                             <CommandEmpty>No user found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
@@ -363,7 +363,7 @@ export default function AttendanceEmployees() {
                   </div>
                   <div>
                     <Label htmlFor="announcement_group">Announcement Group</Label>
-                    <Popover open={groupSearchOpen} onOpenChange={setGroupSearchOpen}>
+                    <Popover open={groupSearchOpen} onOpenChange={setGroupSearchOpen} modal={true}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -384,7 +384,7 @@ export default function AttendanceEmployees() {
                             value={groupSearchTerm}
                             onValueChange={setGroupSearchTerm}
                           />
-                          <CommandList className="max-h-[200px]">
+                          <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
                             <CommandEmpty>No group found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
