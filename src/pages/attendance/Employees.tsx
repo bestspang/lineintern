@@ -11,11 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, Clock, History, Settings } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
@@ -24,6 +26,8 @@ export default function AttendanceEmployees() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [selectedImportUsers, setSelectedImportUsers] = useState<string[]>([]);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
@@ -90,7 +94,7 @@ export default function AttendanceEmployees() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('users')
-        .select('id, display_name, line_user_id')
+        .select('id, display_name, line_user_id, avatar_url')
         .order('display_name');
       if (error) throw error;
       return data;
@@ -110,18 +114,49 @@ export default function AttendanceEmployees() {
     }
   });
 
+  // Get LINE users that can be imported (have display_name and avatar but not linked to employee)
+  const unlinkedLineUsers = lineUsers?.filter(user => {
+    // Must have display name and avatar
+    if (!user.display_name || !user.avatar_url) return false;
+    // Must not be already linked to an employee
+    const isLinked = employees?.some(emp => emp.line_user_id === user.line_user_id);
+    return !isLinked;
+  }) || [];
+
+  // Get next employee code
+  const getNextEmployeeCode = (offset = 0): string => {
+    if (!employees || employees.length === 0) return String(1 + offset).padStart(3, '0');
+    
+    const maxCode = employees.reduce((max, emp) => {
+      const num = parseInt(emp.code, 10);
+      return !isNaN(num) && num > max ? num : max;
+    }, 0);
+    
+    return String(maxCode + 1 + offset).padStart(3, '0');
+  };
+
+  // Get default employee role ID (พนักงาน)
+  const defaultEmployeeRoleId = employeeRoles?.find(r => r.role_key === 'employee')?.id;
+
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Auto-determine status based on required fields
+      const isComplete = data.full_name && data.role_id && data.branch_id;
+      const dataWithStatus = {
+        ...data,
+        status: isComplete ? 'active' : 'new'
+      };
+      
       if (editingEmployee) {
         const { error } = await supabase
           .from('employees')
-          .update(data)
+          .update(dataWithStatus)
           .eq('id', editingEmployee.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('employees')
-          .insert(data);
+          .insert(dataWithStatus);
         if (error) throw error;
       }
     },
@@ -132,6 +167,44 @@ export default function AttendanceEmployees() {
       toast({
         title: 'Success',
         description: `Employee ${editingEmployee ? 'updated' : 'created'} successfully`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  // Bulk import mutation
+  const bulkImportMutation = useMutation({
+    mutationFn: async (lineUserIds: string[]) => {
+      const employeesToCreate = lineUserIds.map((lineUserId, index) => {
+        const user = lineUsers?.find(u => u.line_user_id === lineUserId);
+        return {
+          code: getNextEmployeeCode(index),
+          full_name: user?.display_name || lineUserId,
+          line_user_id: lineUserId,
+          role_id: defaultEmployeeRoleId,
+          status: 'new',
+          is_active: true
+        };
+      });
+      
+      const { error } = await supabase
+        .from('employees')
+        .insert(employeesToCreate);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setImportDialogOpen(false);
+      setSelectedImportUsers([]);
+      toast({
+        title: 'สำเร็จ',
+        description: `Import พนักงานเรียบร้อย`,
       });
     },
     onError: (error: any) => {
@@ -219,16 +292,94 @@ export default function AttendanceEmployees() {
                 Manage employee records and LINE account linking
               </CardDescription>
             </div>
-            <Dialog open={dialogOpen} onOpenChange={(open) => {
-              setDialogOpen(open);
-              if (!open) resetForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Employee
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2 w-full sm:w-auto">
+              {/* Import from LINE Dialog */}
+              <Dialog open={importDialogOpen} onOpenChange={(open) => {
+                setImportDialogOpen(open);
+                if (!open) setSelectedImportUsers([]);
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" disabled={unlinkedLineUsers.length === 0} className="flex-1 sm:flex-none">
+                    <Download className="h-4 w-4 mr-2" />
+                    Import LINE ({unlinkedLineUsers.length})
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Import จาก LINE</DialogTitle>
+                    <DialogDescription>
+                      เลือก LINE users ที่ต้องการ import เป็นพนักงาน รหัสจะรันต่อจาก {getNextEmployeeCode()} โดยอัตโนมัติ
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                    {unlinkedLineUsers.map((user, index) => {
+                      const isSelected = selectedImportUsers.includes(user.line_user_id);
+                      const selectedIndex = selectedImportUsers.indexOf(user.line_user_id);
+                      const willGetCode = isSelected ? getNextEmployeeCode(selectedIndex) : null;
+                      
+                      return (
+                        <div
+                          key={user.id}
+                          className={cn(
+                            "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                            isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                          )}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedImportUsers(selectedImportUsers.filter(id => id !== user.line_user_id));
+                            } else {
+                              setSelectedImportUsers([...selectedImportUsers, user.line_user_id]);
+                            }
+                          }}
+                        >
+                          <Checkbox checked={isSelected} />
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={user.avatar_url || undefined} />
+                            <AvatarFallback>{user.display_name?.[0] || '?'}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{user.display_name}</div>
+                            {willGetCode && (
+                              <div className="text-xs text-muted-foreground">
+                                รหัส: {willGetCode}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {unlinkedLineUsers.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        ไม่มี LINE users ที่พร้อม import
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-4 border-t">
+                    <Button
+                      onClick={() => bulkImportMutation.mutate(selectedImportUsers)}
+                      disabled={selectedImportUsers.length === 0 || bulkImportMutation.isPending}
+                      className="flex-1"
+                    >
+                      {bulkImportMutation.isPending ? 'กำลัง Import...' : `Import ${selectedImportUsers.length} คน`}
+                    </Button>
+                    <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                      ยกเลิก
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Add Employee Dialog */}
+              <Dialog open={dialogOpen} onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (!open) resetForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="flex-1 sm:flex-none">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Employee
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingEmployee ? 'Edit' : 'Add'} Employee</DialogTitle>
@@ -461,6 +612,7 @@ export default function AttendanceEmployees() {
                 </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
@@ -522,8 +674,17 @@ export default function AttendanceEmployees() {
                     )}
                   </TableCell>
                   <TableCell className="py-2">
-                    <Badge variant={employee.is_active ? 'default' : 'secondary'} className="text-xs">
-                      {employee.is_active ? 'Active' : 'Inactive'}
+                    <Badge 
+                      variant={
+                        employee.status === 'new' ? 'secondary' : 
+                        employee.status === 'active' || employee.is_active ? 'default' : 'outline'
+                      }
+                      className={cn(
+                        "text-xs",
+                        employee.status === 'new' && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200"
+                      )}
+                    >
+                      {employee.status === 'new' ? 'New' : employee.status === 'active' || employee.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right py-2">

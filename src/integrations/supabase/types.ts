@@ -1917,6 +1917,7 @@ export type Database = {
           salary_per_month: number | null
           shift_end_time: string | null
           shift_start_time: string | null
+          status: string | null
           updated_at: string | null
           working_time_type: string | null
         }
@@ -1961,6 +1962,7 @@ export type Database = {
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
+          status?: string | null
           updated_at?: string | null
           working_time_type?: string | null
         }
@@ -2005,6 +2007,7 @@ export type Database = {
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
+          status?: string | null
           updated_at?: string | null
           working_time_type?: string | null
         }
