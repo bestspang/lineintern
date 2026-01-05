@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -15,10 +18,12 @@ import {
   Calendar as CalendarIcon,
   Users,
   AlertCircle,
-  History
+  Copy,
+  AlertTriangle,
+  UserPlus
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, startOfWeek, addDays, addWeeks, subWeeks, isSameDay, isWeekend } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, subWeeks, isWeekend } from 'date-fns';
 import { th } from 'date-fns/locale';
 import ScheduleCalendar, { ScheduleCalendarHandle } from '@/components/attendance/ScheduleCalendar';
 
@@ -69,6 +74,14 @@ type ShiftAssignment = {
   shift_templates?: ShiftTemplate | null;
 };
 
+type Conflict = {
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  type: 'overtime' | 'double_shift' | 'consecutive_days';
+  message: string;
+};
+
 export default function Schedules() {
   const queryClient = useQueryClient();
   const calendarRef = useRef<ScheduleCalendarHandle>(null);
@@ -76,6 +89,11 @@ export default function Schedules() {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => 
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [bulkSelectedEmployees, setBulkSelectedEmployees] = useState<string[]>([]);
+  const [bulkSelectedShift, setBulkSelectedShift] = useState<string>('');
+  const [bulkSelectedDays, setBulkSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri
+  const [showConflictsDialog, setShowConflictsDialog] = useState(false);
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -339,12 +357,220 @@ export default function Schedules() {
     },
   });
 
+  // Copy from previous week mutation
+  const copyFromPreviousWeekMutation = useMutation({
+    mutationFn: async () => {
+      if (!weeklySchedule) throw new Error('No schedule');
+      
+      const prevWeekStart = format(subWeeks(currentWeekStart, 1), 'yyyy-MM-dd');
+      
+      // Find previous week's schedule
+      const { data: prevSchedule } = await supabase
+        .from('weekly_schedules')
+        .select('id')
+        .eq('branch_id', selectedBranch)
+        .eq('week_start_date', prevWeekStart)
+        .maybeSingle();
+      
+      if (!prevSchedule) {
+        throw new Error('ไม่พบตารางสัปดาห์ก่อนหน้า');
+      }
+      
+      // Fetch previous week's assignments
+      const { data: prevAssignments, error: fetchError } = await supabase
+        .from('shift_assignments')
+        .select('employee_id, shift_template_id, is_day_off, day_off_type, note, custom_start_time, custom_end_time, work_date')
+        .eq('schedule_id', prevSchedule.id);
+      
+      if (fetchError) throw fetchError;
+      if (!prevAssignments?.length) {
+        throw new Error('ไม่พบข้อมูลกะในสัปดาห์ก่อนหน้า');
+      }
+      
+      // Delete existing assignments
+      await supabase
+        .from('shift_assignments')
+        .delete()
+        .eq('schedule_id', weeklySchedule.id);
+      
+      // Map previous assignments to current week
+      const newAssignments = prevAssignments.map(prev => {
+        const prevDate = new Date(prev.work_date);
+        const dayOfWeek = prevDate.getDay() === 0 ? 6 : prevDate.getDay() - 1; // Convert to Mon=0
+        const newDate = format(addDays(currentWeekStart, dayOfWeek), 'yyyy-MM-dd');
+        
+        return {
+          schedule_id: weeklySchedule.id,
+          employee_id: prev.employee_id,
+          work_date: newDate,
+          shift_template_id: prev.shift_template_id,
+          is_day_off: prev.is_day_off,
+          day_off_type: prev.day_off_type,
+          note: prev.note,
+          custom_start_time: prev.custom_start_time,
+          custom_end_time: prev.custom_end_time,
+        };
+      });
+      
+      const { error: insertError } = await supabase
+        .from('shift_assignments')
+        .insert(newAssignments);
+      
+      if (insertError) throw insertError;
+      
+      return newAssignments.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success(`คัดลอก ${count} รายการจากสัปดาห์ก่อนหน้า`);
+    },
+    onError: (error) => {
+      toast.error((error as Error).message);
+    },
+  });
+
+  // Bulk assignment mutation
+  const bulkAssignMutation = useMutation({
+    mutationFn: async () => {
+      if (!weeklySchedule) throw new Error('No schedule');
+      if (!bulkSelectedEmployees.length) throw new Error('กรุณาเลือกพนักงาน');
+      if (!bulkSelectedDays.length) throw new Error('กรุณาเลือกวัน');
+      
+      const newAssignments: any[] = [];
+      
+      for (const employeeId of bulkSelectedEmployees) {
+        for (const dayIndex of bulkSelectedDays) {
+          const workDate = format(addDays(currentWeekStart, dayIndex), 'yyyy-MM-dd');
+          
+          // Check if assignment exists
+          const existing = assignments.find(
+            a => a.employee_id === employeeId && a.work_date === workDate
+          );
+          
+          if (existing) {
+            // Update existing
+            await supabase
+              .from('shift_assignments')
+              .update({
+                shift_template_id: bulkSelectedShift || null,
+                is_day_off: bulkSelectedShift === 'off',
+                day_off_type: bulkSelectedShift === 'off' ? 'regular' : null,
+              })
+              .eq('id', existing.id);
+          } else {
+            newAssignments.push({
+              schedule_id: weeklySchedule.id,
+              employee_id: employeeId,
+              work_date: workDate,
+              shift_template_id: bulkSelectedShift === 'off' ? null : bulkSelectedShift,
+              is_day_off: bulkSelectedShift === 'off',
+              day_off_type: bulkSelectedShift === 'off' ? 'regular' : null,
+            });
+          }
+        }
+      }
+      
+      if (newAssignments.length > 0) {
+        const { error } = await supabase
+          .from('shift_assignments')
+          .insert(newAssignments);
+        if (error) throw error;
+      }
+      
+      return bulkSelectedEmployees.length * bulkSelectedDays.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success(`อัปเดต ${count} รายการ`);
+      setShowBulkDialog(false);
+      setBulkSelectedEmployees([]);
+      setBulkSelectedShift('');
+    },
+    onError: (error) => {
+      toast.error((error as Error).message);
+    },
+  });
+
+  // Conflict detection
+  const conflicts = useMemo((): Conflict[] => {
+    const result: Conflict[] = [];
+    
+    for (const employee of employees) {
+      const empAssignments = assignments.filter(a => a.employee_id === employee.id && !a.is_day_off);
+      
+      // Check consecutive working days (more than 6)
+      let consecutiveDays = 0;
+      const sortedAssignments = [...empAssignments].sort((a, b) => 
+        new Date(a.work_date).getTime() - new Date(b.work_date).getTime()
+      );
+      
+      for (let i = 0; i < sortedAssignments.length; i++) {
+        if (i === 0) {
+          consecutiveDays = 1;
+        } else {
+          const prevDate = new Date(sortedAssignments[i - 1].work_date);
+          const currDate = new Date(sortedAssignments[i].work_date);
+          const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 1) {
+            consecutiveDays++;
+            if (consecutiveDays >= 7) {
+              result.push({
+                employeeId: employee.id,
+                employeeName: employee.full_name,
+                date: sortedAssignments[i].work_date,
+                type: 'consecutive_days',
+                message: `ทำงานติดต่อกัน ${consecutiveDays} วัน`,
+              });
+            }
+          } else {
+            consecutiveDays = 1;
+          }
+        }
+      }
+      
+      // Check weekly hours (rough estimate)
+      const weeklyShifts = empAssignments.filter(a => {
+        const assignDate = new Date(a.work_date);
+        return assignDate >= currentWeekStart && assignDate <= addDays(currentWeekStart, 6);
+      });
+      
+      let totalHours = 0;
+      for (const shift of weeklyShifts) {
+        const template = shift.shift_templates;
+        if (template) {
+          const start = template.start_time.split(':').map(Number);
+          const end = template.end_time.split(':').map(Number);
+          const hours = (end[0] + end[1] / 60) - (start[0] + start[1] / 60) - template.break_hours;
+          totalHours += hours;
+        } else if (shift.custom_start_time && shift.custom_end_time) {
+          const start = shift.custom_start_time.split(':').map(Number);
+          const end = shift.custom_end_time.split(':').map(Number);
+          totalHours += (end[0] + end[1] / 60) - (start[0] + start[1] / 60);
+        }
+      }
+      
+      if (totalHours > 48) {
+        result.push({
+          employeeId: employee.id,
+          employeeName: employee.full_name,
+          date: weekStartStr,
+          type: 'overtime',
+          message: `ชั่วโมงทำงานรวม ${Math.round(totalHours)} ชม./สัปดาห์ (เกิน 48 ชม.)`,
+        });
+      }
+    }
+    
+    return result;
+  }, [assignments, employees, currentWeekStart, weekStartStr]);
+
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
   const isLoading = scheduleLoading || assignmentsLoading;
   const selectedBranchName = branches.find(b => b.id === selectedBranch)?.name;
+  const dayLabels = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
 
   return (
     <div className="space-y-6">
@@ -400,8 +626,19 @@ export default function Schedules() {
                   {weeklySchedule.status === 'published' ? 'เผยแพร่แล้ว' : 'ฉบับร่าง'}
                 </Badge>
               )}
+              {conflicts.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-amber-600 hover:text-amber-700"
+                  onClick={() => setShowConflictsDialog(true)}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-1" />
+                  {conflicts.length} ข้อขัดแย้ง
+                </Button>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant="outline"
                 onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
@@ -413,15 +650,45 @@ export default function Schedules() {
                   <TooltipTrigger asChild>
                     <Button
                       variant="outline"
+                      onClick={() => copyFromPreviousWeekMutation.mutate()}
+                      disabled={copyFromPreviousWeekMutation.isPending || weeklySchedule?.status !== 'draft'}
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      คัดลอกสัปดาห์ก่อน
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>คัดลอกตารางจากสัปดาห์ก่อนหน้า</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowBulkDialog(true)}
+                      disabled={!employees.length || weeklySchedule?.status !== 'draft'}
+                    >
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      กำหนดเป็นกลุ่ม
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>กำหนดกะให้พนักงานหลายคนพร้อมกัน</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
                       onClick={() => autoGenerateMutation.mutate()}
-                      disabled={autoGenerateMutation.isPending || !employees.length}
+                      disabled={autoGenerateMutation.isPending || !employees.length || weeklySchedule?.status !== 'draft'}
                     >
                       <Wand2 className="w-4 h-4 mr-2" />
                       สร้างอัตโนมัติ
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    สร้างตารางจากข้อมูล work_schedules ของพนักงาน
+                    สร้างตารางจากข้อมูลกะของพนักงาน
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -534,6 +801,144 @@ export default function Schedules() {
           </Card>
         </div>
       )}
+
+      {/* Bulk Assignment Dialog */}
+      <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>กำหนดกะเป็นกลุ่ม</DialogTitle>
+            <DialogDescription>
+              เลือกพนักงานและกะที่ต้องการกำหนด
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Select Shift */}
+            <div>
+              <Label className="mb-2 block">เลือกกะ</Label>
+              <Select value={bulkSelectedShift} onValueChange={setBulkSelectedShift}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกกะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {shiftTemplates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: template.color }}
+                        />
+                        {template.name} ({template.start_time.slice(0, 5)}-{template.end_time.slice(0, 5)})
+                      </div>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="off">
+                    <span className="text-orange-500">หยุด</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Select Days */}
+            <div>
+              <Label className="mb-2 block">เลือกวัน</Label>
+              <div className="flex flex-wrap gap-2">
+                {dayLabels.map((label, idx) => (
+                  <label key={idx} className="flex items-center gap-1 cursor-pointer">
+                    <Checkbox
+                      checked={bulkSelectedDays.includes(idx)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setBulkSelectedDays([...bulkSelectedDays, idx]);
+                        } else {
+                          setBulkSelectedDays(bulkSelectedDays.filter(d => d !== idx));
+                        }
+                      }}
+                    />
+                    <span className={idx >= 5 ? 'text-orange-500' : ''}>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Select Employees */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <Label>เลือกพนักงาน</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (bulkSelectedEmployees.length === employees.length) {
+                      setBulkSelectedEmployees([]);
+                    } else {
+                      setBulkSelectedEmployees(employees.map(e => e.id));
+                    }
+                  }}
+                >
+                  {bulkSelectedEmployees.length === employees.length ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                </Button>
+              </div>
+              <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                {employees.map((emp) => (
+                  <label key={emp.id} className="flex items-center gap-2 cursor-pointer p-1 hover:bg-muted rounded">
+                    <Checkbox
+                      checked={bulkSelectedEmployees.includes(emp.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setBulkSelectedEmployees([...bulkSelectedEmployees, emp.id]);
+                        } else {
+                          setBulkSelectedEmployees(bulkSelectedEmployees.filter(id => id !== emp.id));
+                        }
+                      }}
+                    />
+                    <span>{emp.full_name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDialog(false)}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={() => bulkAssignMutation.mutate()}
+              disabled={bulkAssignMutation.isPending || !bulkSelectedShift || !bulkSelectedEmployees.length}
+            >
+              กำหนดกะ ({bulkSelectedEmployees.length} คน × {bulkSelectedDays.length} วัน)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Conflicts Dialog */}
+      <Dialog open={showConflictsDialog} onOpenChange={setShowConflictsDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="w-5 h-5" />
+              ข้อขัดแย้งในตาราง
+            </DialogTitle>
+            <DialogDescription>
+              พบปัญหาที่ควรตรวจสอบก่อนเผยแพร่
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {conflicts.map((conflict, idx) => (
+              <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">{conflict.employeeName}</p>
+                  <p className="text-sm text-muted-foreground">{conflict.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowConflictsDialog(false)}>ปิด</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
