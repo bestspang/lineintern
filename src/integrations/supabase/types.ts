@@ -3591,6 +3591,194 @@ export type Database = {
           },
         ]
       }
+      schedule_change_logs: {
+        Row: {
+          assignment_id: string | null
+          change_type: string
+          changed_by: string | null
+          created_at: string | null
+          employee_id: string | null
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          reason: string | null
+          schedule_id: string
+          work_date: string | null
+        }
+        Insert: {
+          assignment_id?: string | null
+          change_type: string
+          changed_by?: string | null
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          schedule_id: string
+          work_date?: string | null
+        }
+        Update: {
+          assignment_id?: string | null
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          schedule_id?: string
+          work_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_change_logs_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "shift_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_assignments: {
+        Row: {
+          created_at: string | null
+          custom_end_time: string | null
+          custom_start_time: string | null
+          day_off_type: string | null
+          employee_id: string
+          id: string
+          is_day_off: boolean | null
+          note: string | null
+          schedule_id: string
+          shift_template_id: string | null
+          updated_at: string | null
+          work_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          custom_end_time?: string | null
+          custom_start_time?: string | null
+          day_off_type?: string | null
+          employee_id: string
+          id?: string
+          is_day_off?: boolean | null
+          note?: string | null
+          schedule_id: string
+          shift_template_id?: string | null
+          updated_at?: string | null
+          work_date: string
+        }
+        Update: {
+          created_at?: string | null
+          custom_end_time?: string | null
+          custom_start_time?: string | null
+          day_off_type?: string | null
+          employee_id?: string
+          id?: string
+          is_day_off?: boolean | null
+          note?: string | null
+          schedule_id?: string
+          shift_template_id?: string | null
+          updated_at?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_assignments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_assignments_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_assignments_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            isOneToOne: false
+            referencedRelation: "shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_templates: {
+        Row: {
+          branch_id: string | null
+          break_hours: number | null
+          color: string | null
+          created_at: string | null
+          end_time: string
+          id: string
+          is_active: boolean | null
+          name: string
+          short_code: string
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          break_hours?: number | null
+          color?: string | null
+          created_at?: string | null
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          short_code: string
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          break_hours?: number | null
+          color?: string | null
+          created_at?: string | null
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          short_code?: string
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       summary_delivery_config: {
         Row: {
           created_at: string | null
@@ -4306,6 +4494,60 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      weekly_schedules: {
+        Row: {
+          branch_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          notes: string | null
+          published_at: string | null
+          published_by: string | null
+          status: string | null
+          updated_at: string | null
+          week_start_date: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          published_at?: string | null
+          published_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+          week_start_date: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          published_at?: string | null
+          published_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_schedules_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_schedules_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       work_patterns: {
         Row: {
