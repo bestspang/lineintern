@@ -89,13 +89,13 @@ const roleDefinitions: Record<AppRole, {
 };
 
 const menuGroupLabels: Record<string, { label: string; description: string }> = {
-  dashboard: { label: 'Dashboard', description: 'หน้าแรก ภาพรวมระบบ' },
-  attendance: { label: 'Attendance', description: 'ระบบลงเวลา พนักงาน สาขา' },
-  management: { label: 'Management', description: 'จัดการงาน คำสั่ง การแจ้งเตือน' },
-  ai_features: { label: 'AI Features', description: 'ความจำ บุคลิกภาพ การวิเคราะห์' },
-  communication: { label: 'Communication', description: 'Broadcast ข้อความส่วนตัว' },
-  configuration: { label: 'Configuration', description: 'ตั้งค่าระบบ การเชื่อมต่อ' },
-  monitoring: { label: 'Monitoring', description: 'Logs การตรวจสอบสุขภาพระบบ' },
+  'Dashboard': { label: 'Dashboard', description: 'หน้าแรก ภาพรวมระบบ' },
+  'Attendance': { label: 'Attendance', description: 'ระบบลงเวลา พนักงาน สาขา' },
+  'Management': { label: 'Management', description: 'จัดการงาน คำสั่ง การแจ้งเตือน' },
+  'AI Features': { label: 'AI Features', description: 'ความจำ บุคลิกภาพ การวิเคราะห์' },
+  'Content & Knowledge': { label: 'Content & Knowledge', description: 'FAQ Knowledge Base การฝึกอบรม' },
+  'Configuration': { label: 'Configuration', description: 'ตั้งค่าระบบ การเชื่อมต่อ' },
+  'Monitoring & Tools': { label: 'Monitoring & Tools', description: 'Logs การตรวจสอบสุขภาพระบบ' },
 };
 
 export default function RoleManagement() {
