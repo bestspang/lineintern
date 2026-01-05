@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,59 @@ export default function DirectMessages() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'employees' | 'non-employees'>('all');
   const [selectedConversation, setSelectedConversation] = useState<DMConversation | null>(null);
+  const queryClient = useQueryClient();
+
+  // Realtime subscription for DM groups
+  useEffect(() => {
+    const channel = supabase
+      .channel('dm-groups-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'groups',
+          filter: 'line_group_id=like.dm_%'
+        },
+        (payload) => {
+          console.log('DM group changed:', payload);
+          queryClient.invalidateQueries({ queryKey: ['dm-conversations'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  // Realtime subscription for messages
+  useEffect(() => {
+    const channel = supabase
+      .channel('dm-messages-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload) => {
+          console.log('New message:', payload);
+          queryClient.invalidateQueries({ queryKey: ['dm-conversations'] });
+          if (selectedConversation) {
+            queryClient.invalidateQueries({ 
+              queryKey: ['dm-messages', selectedConversation.id] 
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, selectedConversation]);
 
   // Fetch DM conversations (groups where line_group_id starts with 'dm_' for user DMs)
   const { data: conversations, isLoading } = useQuery({
