@@ -2,6 +2,8 @@ import { useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { format, isToday, isWeekend } from 'date-fns';
@@ -9,6 +11,7 @@ import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
+import { Clock } from 'lucide-react';
 
 type ShiftTemplate = {
   id: string;
@@ -58,8 +61,9 @@ interface ScheduleCalendarProps {
 const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProps>(
   ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, isEditable, branchName, weekLabel }, ref) => {
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
+    const [customStartTime, setCustomStartTime] = useState('09:00');
+    const [customEndTime, setCustomEndTime] = useState('18:00');
     const tableRef = useRef<HTMLDivElement>(null);
-
     const exportToImage = async () => {
       if (!tableRef.current) return;
 
@@ -109,6 +113,8 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
           employee_id: employeeId,
           work_date: dateStr,
           shift_template_id: null,
+          custom_start_time: null,
+          custom_end_time: null,
           is_day_off: true,
           day_off_type: 'regular',
         });
@@ -118,10 +124,30 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
           employee_id: employeeId,
           work_date: dateStr,
           shift_template_id: value,
+          custom_start_time: null,
+          custom_end_time: null,
           is_day_off: false,
           day_off_type: null,
         });
       }
+      setEditingCell(null);
+    };
+
+    const handleCustomTimeSelect = (employeeId: string, date: Date) => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const existingAssignment = getAssignment(employeeId, date);
+
+      onAssignmentChange({
+        id: existingAssignment?.id,
+        employee_id: employeeId,
+        work_date: dateStr,
+        shift_template_id: null,
+        custom_start_time: customStartTime,
+        custom_end_time: customEndTime,
+        is_day_off: false,
+        day_off_type: null,
+        note: null,
+      });
       setEditingCell(null);
     };
 
@@ -138,25 +164,67 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
             <PopoverTrigger asChild>
               <div className="w-full h-full" />
             </PopoverTrigger>
-            <PopoverContent className="w-48 p-2">
-              <div className="space-y-1">
-                {shiftTemplates.map((template) => (
+            <PopoverContent className="w-56 p-2">
+              <div className="space-y-2">
+                {/* Shift Templates */}
+                {shiftTemplates.length > 0 && (
+                  <>
+                    {shiftTemplates.map((template) => (
+                      <Button
+                        key={template.id}
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => handleShiftSelect(employee.id, date, template.id)}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-full mr-2"
+                          style={{ backgroundColor: template.color }}
+                        />
+                        <span>{template.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {template.start_time.slice(0, 5)}
+                        </span>
+                      </Button>
+                    ))}
+                    <hr className="my-1" />
+                  </>
+                )}
+                
+                {/* Custom Time Section */}
+                <div className="p-2 bg-muted/50 rounded-md space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Clock className="h-4 w-4" />
+                    <span>กำหนดเวลาเอง</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">เริ่ม</Label>
+                      <Input
+                        type="time"
+                        value={customStartTime}
+                        onChange={(e) => setCustomStartTime(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">สิ้นสุด</Label>
+                      <Input
+                        type="time"
+                        value={customEndTime}
+                        onChange={(e) => setCustomEndTime(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
                   <Button
-                    key={template.id}
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => handleShiftSelect(employee.id, date, template.id)}
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleCustomTimeSelect(employee.id, date)}
                   >
-                    <div
-                      className="w-3 h-3 rounded-full mr-2"
-                      style={{ backgroundColor: template.color }}
-                    />
-                    <span>{template.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {template.start_time.slice(0, 5)}
-                    </span>
+                    ยืนยัน
                   </Button>
-                ))}
+                </div>
+                
                 <hr className="my-1" />
                 <Button
                   variant="ghost"
