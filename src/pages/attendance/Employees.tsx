@@ -14,11 +14,13 @@ import { Switch } from '@/components/ui/switch';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, Clock, History, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
   const { toast } = useToast();
+  const { canAssignEmployeeRole } = useUserRole();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -264,7 +266,9 @@ export default function AttendanceEmployees() {
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
-                        {employeeRoles?.map((role) => (
+                        {employeeRoles
+                          ?.filter(role => canAssignEmployeeRole(role.priority))
+                          .map((role) => (
                           <SelectItem key={role.id} value={role.id}>
                             {role.display_name_th} ({role.display_name_en})
                           </SelectItem>
