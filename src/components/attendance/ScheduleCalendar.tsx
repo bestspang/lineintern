@@ -304,7 +304,9 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
       }
 
       const template = assignment.shift_templates;
-      const displayTime = assignment.custom_start_time || template?.start_time;
+      const startTime = assignment.custom_start_time || template?.start_time;
+      const endTime = assignment.custom_end_time || template?.end_time;
+      const isCustomTime = assignment.custom_start_time && !assignment.shift_template_id;
 
       return (
         <TooltipProvider>
@@ -312,8 +314,9 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
             <TooltipTrigger asChild>
               <div
                 className={cn(
-                  'w-full h-full flex items-center justify-center font-medium cursor-pointer transition-colors',
-                  !isEditable && 'cursor-default'
+                  'w-full h-full flex flex-col items-center justify-center cursor-pointer transition-colors',
+                  !isEditable && 'cursor-default',
+                  isCustomTime && 'bg-violet-100 dark:bg-violet-900/30'
                 )}
                 style={{
                   backgroundColor: template?.color ? `${template.color}20` : undefined,
@@ -321,13 +324,22 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                 }}
                 onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
               >
-                {template?.short_code || displayTime?.slice(0, 5) || '?'}
+                {template?.short_code ? (
+                  <span className="font-medium">{template.short_code}</span>
+                ) : startTime && endTime ? (
+                  <>
+                    <span className="text-xs font-medium">{startTime.slice(0, 5)}</span>
+                    <span className="text-xs text-muted-foreground">{endTime.slice(0, 5)}</span>
+                  </>
+                ) : (
+                  <span className="font-medium">?</span>
+                )}
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-medium">{template?.name || 'กะพิเศษ'}</p>
               <p className="text-xs">
-                {displayTime?.slice(0, 5)} - {(assignment.custom_end_time || template?.end_time)?.slice(0, 5)}
+                {startTime?.slice(0, 5)} - {endTime?.slice(0, 5)}
               </p>
               {assignment.note && <p className="text-xs mt-1">{assignment.note}</p>}
             </TooltipContent>
