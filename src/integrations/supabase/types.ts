@@ -4763,6 +4763,17 @@ export type Database = {
         }
         Returns: string
       }
+      get_all_webapp_users: {
+        Args: never
+        Returns: {
+          email: string
+          granted_at: string
+          role: string
+          role_id: string
+          user_created_at: string
+          user_id: string
+        }[]
+      }
       get_cron_history: {
         Args: { limit_count?: number }
         Returns: {
