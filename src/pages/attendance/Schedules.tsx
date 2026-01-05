@@ -22,21 +22,21 @@ import { format, startOfWeek, addDays, addWeeks, subWeeks, isSameDay, isWeekend 
 import { th } from 'date-fns/locale';
 import ScheduleCalendar, { ScheduleCalendarHandle } from '@/components/attendance/ScheduleCalendar';
 
-interface Branch {
+type Branch = {
   id: string;
   name: string;
-}
+};
 
-interface WeeklySchedule {
+type WeeklySchedule = {
   id: string;
   branch_id: string;
   week_start_date: string;
   status: 'draft' | 'published' | 'archived';
   notes: string | null;
   published_at: string | null;
-}
+};
 
-interface ShiftTemplate {
+type ShiftTemplate = {
   id: string;
   name: string;
   short_code: string;
@@ -44,18 +44,18 @@ interface ShiftTemplate {
   end_time: string;
   color: string;
   break_hours: number;
-}
+};
 
-interface Employee {
+type Employee = {
   id: string;
   full_name: string;
   branch_id: string | null;
   is_active: boolean;
   shift_start_time: string | null;
   shift_end_time: string | null;
-}
+};
 
-interface ShiftAssignment {
+type ShiftAssignment = {
   id: string;
   schedule_id: string;
   employee_id: string;
@@ -67,7 +67,7 @@ interface ShiftAssignment {
   day_off_type: string | null;
   note: string | null;
   shift_templates?: ShiftTemplate | null;
-}
+};
 
 export default function Schedules() {
   const queryClient = useQueryClient();
