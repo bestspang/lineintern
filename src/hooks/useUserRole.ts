@@ -89,9 +89,12 @@ export function useUserRole() {
     // Admin and owner can access everything
     if (roleData === 'admin' || roleData === 'owner') return true;
     
-    // Default to true if menu config not loaded yet or empty
+    // If no role assigned, deny access
+    if (!roleData) return false;
+    
+    // If menu config not loaded yet, deny access for safety
     if (!menuConfig || Object.keys(menuConfig).length === 0) {
-      return true;
+      return false;
     }
     
     // For other roles, check config
