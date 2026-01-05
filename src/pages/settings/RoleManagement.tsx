@@ -11,10 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Shield, Crown, ShieldCheck, User, Settings2, Users, Briefcase, Eye, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react';
-import { useAdminRole } from '@/hooks/useAdminRole';
-
-type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
+import { Shield, Crown, ShieldCheck, User, Settings2, Users, Briefcase, Eye, ChevronDown, ChevronRight, CheckSquare, Square, Lock } from 'lucide-react';
+import { useUserRole, AppRole } from '@/hooks/useUserRole';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface MenuConfig {
   id: string;
@@ -115,7 +114,7 @@ export default function RoleManagement() {
   const [pendingPageChanges, setPendingPageChanges] = useState<Record<string, boolean>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
-  const { isAdmin } = useAdminRole();
+  const { isAdmin, isOwner, canManageRole, role: currentUserRole } = useUserRole();
 
   // Fetch menu configs
   const { data: menuConfigs, isLoading } = useQuery({
@@ -287,7 +286,7 @@ export default function RoleManagement() {
   const sortedRoles = Object.entries(roleDefinitions)
     .sort(([, a], [, b]) => a.priority - b.priority);
 
-  if (!isAdmin) {
+  if (!isAdmin && !isOwner) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
@@ -368,14 +367,33 @@ export default function RoleManagement() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenPermissions(role)}
-                          >
-                            <Settings2 className="h-4 w-4 mr-1" />
-                            สิทธิ์
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenPermissions(role)}
+                                    disabled={!canManageRole(role)}
+                                    className={!canManageRole(role) ? 'opacity-50 cursor-not-allowed' : ''}
+                                  >
+                                    {canManageRole(role) ? (
+                                      <Settings2 className="h-4 w-4 mr-1" />
+                                    ) : (
+                                      <Lock className="h-4 w-4 mr-1" />
+                                    )}
+                                    สิทธิ์
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              {!canManageRole(role) && (
+                                <TooltipContent>
+                                  <p>ไม่สามารถแก้ไขสิทธิ์ Role ที่สูงกว่าหรือเท่ากับตัวเองได้</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     );

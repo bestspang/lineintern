@@ -3,6 +3,17 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
 
+// Role priority: lower number = higher authority
+const rolePriority: Record<AppRole, number> = {
+  owner: 1,
+  admin: 2,
+  executive: 3,
+  manager: 4,
+  moderator: 5,
+  field: 6,
+  user: 7,
+};
+
 interface MenuConfig {
   menu_group: string;
   can_access: boolean;
@@ -77,10 +88,25 @@ export function useUserRole() {
 
   const hasFullAccess = roleData === 'admin' || roleData === 'owner';
 
+  // Check if current user can manage (edit permissions of) a target role
+  // User can only manage roles with LOWER priority (higher number)
+  const canManageRole = (targetRole: AppRole): boolean => {
+    if (!roleData) return false;
+    // Must be admin or owner to manage any roles
+    if (roleData !== 'admin' && roleData !== 'owner') return false;
+    
+    const myPriority = rolePriority[roleData];
+    const targetPriority = rolePriority[targetRole];
+    
+    // Can only manage roles with strictly lower priority (higher number)
+    return targetPriority > myPriority;
+  };
+
   return {
     role: roleData,
     isLoading: isUserLoading || isRoleLoading || isMenuLoading,
     canAccessMenuGroup,
+    canManageRole,
     isAdmin: roleData === 'admin',
     isOwner: roleData === 'owner',
     hasFullAccess,
