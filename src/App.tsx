@@ -179,17 +179,17 @@ const App = () => (
                       <Route path="/attendance/summaries" element={<AttendanceSummaries />} />
                       <Route path="/attendance/reminder-logs" element={<AttendanceReminderLogs />} />
                       <Route path="/attendance/live-tracking" element={<AttendanceLiveTracking />} />
-                      <Route path="/attendance/overtime" element={<OvertimeManagement />} />
+                      <Route path="/attendance/overtime-management" element={<OvertimeManagement />} />
                       <Route path="/attendance/overtime-summary" element={<OvertimeSummary />} />
                       <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
-                      <Route path="/attendance/early-leave" element={<EarlyLeaveRequests />} />
+                      <Route path="/attendance/early-leave-requests" element={<EarlyLeaveRequests />} />
                       <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
                       
                       <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
                       <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
                       <Route path="/attendance/roles" element={<AttendanceRoles />} />
                       <Route path="/attendance/payroll" element={<Payroll />} />
-                      <Route path="/attendance/payroll/ytd" element={<PayrollYTD />} />
+                      <Route path="/attendance/payroll-ytd" element={<PayrollYTD />} />
                       <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
                       <Route path="/attendance/deposits" element={<Deposits />} />
                       <Route path="/attendance/deposit-settings" element={<DepositSettings />} />
