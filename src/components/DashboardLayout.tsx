@@ -128,6 +128,8 @@ const navigationGroups = [
       { title: 'Dashboard', url: '/attendance/dashboard', icon: Gauge },
       { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
       { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
+      { title: 'Shift Templates', url: '/attendance/shift-templates', icon: Clock },
+      { title: 'Weekly Schedules', url: '/attendance/schedules', icon: Calendar },
       { title: 'Happy Points', url: '/attendance/happy-points', icon: Trophy },
       { title: 'Rewards', url: '/attendance/rewards', icon: Gift },
       { title: 'Redemptions', url: '/attendance/redemption-approvals', icon: Gift },
