@@ -4271,6 +4271,39 @@ export type Database = {
         }
         Relationships: []
       }
+      webapp_page_config: {
+        Row: {
+          can_access: boolean | null
+          created_at: string | null
+          id: string
+          menu_group: string
+          page_name: string
+          page_path: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_group: string
+          page_name: string
+          page_path: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_group?: string
+          page_name?: string
+          page_path?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       work_patterns: {
         Row: {
           confidence_score: number | null

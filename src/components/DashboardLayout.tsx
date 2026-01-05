@@ -78,6 +78,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
 import { useUserRole } from '@/hooks/useUserRole';
+import { usePageAccess } from '@/hooks/usePageAccess';
 
 const navigationGroups = [
   {
@@ -176,11 +177,17 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
   const location = useLocation();
   const { canAccessMenuGroup, isLoading: isRoleLoading } = useUserRole();
+  const { canAccessPage, loading: isPageAccessLoading } = usePageAccess();
 
   // Filter navigation groups based on role permissions
-  const filteredNavigationGroups = navigationGroups.filter(group => 
-    canAccessMenuGroup(group.title)
-  );
+  // Then filter items within each group based on page-level permissions
+  const filteredNavigationGroups = navigationGroups
+    .filter(group => canAccessMenuGroup(group.title))
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => canAccessPage(item.url)),
+    }))
+    .filter(group => group.items.length > 0); // Remove empty groups
 
   // Check if any item in a group is active
   const isGroupActive = (items: typeof navigationGroups[0]['items']) => {
@@ -202,7 +209,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           
           <SidebarContent>
-            {isRoleLoading ? (
+            {isRoleLoading || isPageAccessLoading ? (
               <div className="flex items-center justify-center p-4">
                 <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
               </div>
