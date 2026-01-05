@@ -462,7 +462,41 @@ export default function Schedules() {
     },
   });
 
-  // Copy from previous week mutation
+  // Delete assignment mutation
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const assignment = assignments.find(a => a.id === assignmentId);
+      
+      const { error } = await supabase
+        .from('shift_assignments')
+        .delete()
+        .eq('id', assignmentId);
+      if (error) throw error;
+      
+      // Log deletion
+      if (assignment && weeklySchedule) {
+        await supabase.from('schedule_change_logs').insert({
+          schedule_id: weeklySchedule.id,
+          employee_id: assignment.employee_id,
+          work_date: assignment.work_date,
+          change_type: 'deleted',
+          old_value: {
+            shift_template_id: assignment.shift_template_id,
+            is_day_off: assignment.is_day_off,
+            day_off_type: assignment.day_off_type,
+          },
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+      toast.success('ล้างข้อมูลเรียบร้อย');
+    },
+    onError: (error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + (error as Error).message);
+    },
+  });
+
   const copyFromPreviousWeekMutation = useMutation({
     mutationFn: async () => {
       if (!weeklySchedule) throw new Error('No schedule');
@@ -867,6 +901,7 @@ export default function Schedules() {
           assignments={assignments}
           shiftTemplates={shiftTemplates}
           onAssignmentChange={(data) => updateAssignmentMutation.mutate(data)}
+          onAssignmentDelete={(id) => deleteAssignmentMutation.mutate(id)}
           isEditable={weeklySchedule?.status === 'draft'}
           branchName={selectedBranchName}
           weekLabel={`${format(currentWeekStart, 'd MMM', { locale: th })} - ${format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: th })}`}
