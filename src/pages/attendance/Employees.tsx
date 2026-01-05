@@ -17,12 +17,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
   const { toast } = useToast();
-  const { canAssignEmployeeRole } = useUserRole();
+  const { canAssignEmployeeRole, canManageEmployee } = useUserRole();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -53,12 +53,39 @@ export default function AttendanceEmployees() {
         .select(`
           *, 
           branch:branches(name),
-          employee_role:employee_roles(id, display_name_th, display_name_en, role_key)
+          employee_role:employee_roles(id, display_name_th, display_name_en, role_key, priority)
         `)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       return data;
+    }
+  });
+
+  // Get current user's employee ID to detect "self"
+  const { data: currentUserEmployee } = useQuery({
+    queryKey: ['current-user-employee'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      // Try to find employee linked via users table (LINE account)
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('line_user_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (lineUser?.line_user_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('line_user_id', lineUser.line_user_id)
+          .maybeSingle();
+        return employee;
+      }
+      
+      return null;
     }
   });
 
@@ -631,7 +658,13 @@ export default function AttendanceEmployees() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employees?.map((employee) => (
+              {employees?.map((employee) => {
+                // Check permissions for this employee
+                const isSelf = currentUserEmployee?.id === employee.id;
+                const employeePriority = employee.employee_role?.priority ?? 0;
+                const { canEdit, canView } = canManageEmployee(employeePriority, isSelf);
+                
+                return (
                 <TableRow key={employee.id}>
                   <TableCell className="font-medium font-mono text-xs sm:text-sm py-2">{employee.code}</TableCell>
                   <TableCell className="py-2">
@@ -692,43 +725,60 @@ export default function AttendanceEmployees() {
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="h-7 w-7 sm:h-8 sm:w-8"
-                        onClick={() => handleEdit(employee)}
-                        title="Edit"
+                        disabled={!canEdit}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          !canEdit && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canEdit && handleEdit(employee)}
+                        title={canEdit ? "Edit" : isSelf ? "ไม่สามารถแก้ไขตัวเองได้" : "ไม่มีสิทธิ์แก้ไข"}
                       >
                         <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="h-7 w-7 sm:h-8 sm:w-8"
-                        onClick={() => navigate(`/attendance/employees/${employee.id}/history`)}
-                        title="View History"
+                        disabled={!canView}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          !canView && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canView && navigate(`/attendance/employees/${employee.id}/history`)}
+                        title={canView ? "View History" : "ไม่มีสิทธิ์ดู"}
                       >
                         <History className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="h-7 w-7 sm:h-8 sm:w-8"
-                        onClick={() => navigate(`/attendance/employees/${employee.id}/settings`)}
-                        title="Time & OT Settings"
+                        disabled={!canEdit}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          !canEdit && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canEdit && navigate(`/attendance/employees/${employee.id}/settings`)}
+                        title={canEdit ? "Time & OT Settings" : isSelf ? "ไม่สามารถแก้ไขตัวเองได้" : "ไม่มีสิทธิ์แก้ไข"}
                       >
                         <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="h-7 w-7 sm:h-8 sm:w-8"
-                        onClick={() => navigate(`/attendance/employees/${employee.id}`)}
-                        title="View Detail"
+                        disabled={!canView}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          !canView && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canView && navigate(`/attendance/employees/${employee.id}`)}
+                        title={canView ? "View Detail" : "ไม่มีสิทธิ์ดู"}
                       >
                         <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
           {(!employees || employees.length === 0) && (
