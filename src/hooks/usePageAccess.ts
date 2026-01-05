@@ -108,7 +108,7 @@ export function usePageAccess() {
     getPagesByMenuGroup,
     getFirstAccessiblePage,
     pageConfigs,
-    loading: roleLoading || pageConfigLoading || isFetching || (!!role && !pageConfigs),
+    loading: roleLoading || pageConfigLoading || isFetching,
   };
 }
 
