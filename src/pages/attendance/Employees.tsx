@@ -25,6 +25,8 @@ export default function AttendanceEmployees() {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [groupSearchTerm, setGroupSearchTerm] = useState('');
   
   // Simplified form - only basic employee info
   const [formData, setFormData] = useState({
@@ -300,16 +302,21 @@ export default function AttendanceEmployees() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search LINE users..." />
+                        <Command shouldFilter={false}>
+                          <CommandInput 
+                            placeholder="Search LINE users..." 
+                            value={userSearchTerm}
+                            onValueChange={setUserSearchTerm}
+                          />
                           <CommandList>
                             <CommandEmpty>No user found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
-                                value=""
+                                value="none"
                                 onSelect={() => {
                                   setFormData({ ...formData, line_user_id: '' });
                                   setUserSearchOpen(false);
+                                  setUserSearchTerm('');
                                 }}
                               >
                                 <Check
@@ -320,13 +327,20 @@ export default function AttendanceEmployees() {
                                 />
                                 (None - Not linked)
                               </CommandItem>
-                              {lineUsers?.map((user) => (
+                              {lineUsers
+                                ?.filter(user => 
+                                  !userSearchTerm || 
+                                  user.display_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                                  user.line_user_id.toLowerCase().includes(userSearchTerm.toLowerCase())
+                                )
+                                .map((user) => (
                                 <CommandItem
                                   key={user.id}
-                                  value={user.display_name || user.line_user_id}
+                                  value={user.line_user_id}
                                   onSelect={() => {
                                     setFormData({ ...formData, line_user_id: user.line_user_id });
                                     setUserSearchOpen(false);
+                                    setUserSearchTerm('');
                                   }}
                                 >
                                   <Check
@@ -364,16 +378,21 @@ export default function AttendanceEmployees() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search LINE groups..." />
+                        <Command shouldFilter={false}>
+                          <CommandInput 
+                            placeholder="Search LINE groups..." 
+                            value={groupSearchTerm}
+                            onValueChange={setGroupSearchTerm}
+                          />
                           <CommandList>
                             <CommandEmpty>No group found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
-                                value=""
+                                value="none"
                                 onSelect={() => {
                                   setFormData({ ...formData, announcement_group_line_id: '' });
                                   setGroupSearchOpen(false);
+                                  setGroupSearchTerm('');
                                 }}
                               >
                                 <Check
@@ -384,13 +403,20 @@ export default function AttendanceEmployees() {
                                 />
                                 (None)
                               </CommandItem>
-                              {lineGroups?.map((group) => (
+                              {lineGroups
+                                ?.filter(group => 
+                                  !groupSearchTerm || 
+                                  group.display_name?.toLowerCase().includes(groupSearchTerm.toLowerCase()) ||
+                                  group.line_group_id.toLowerCase().includes(groupSearchTerm.toLowerCase())
+                                )
+                                .map((group) => (
                                 <CommandItem
                                   key={group.id}
-                                  value={group.display_name || group.line_group_id}
+                                  value={group.line_group_id}
                                   onSelect={() => {
                                     setFormData({ ...formData, announcement_group_line_id: group.line_group_id });
                                     setGroupSearchOpen(false);
+                                    setGroupSearchTerm('');
                                   }}
                                 >
                                   <Check
