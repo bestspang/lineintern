@@ -411,9 +411,11 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee) => {
-                const isTemporary = employee.employee_type === 'temporary';
-                const isBorrowed = employee.primary_branch_id && employee.primary_branch_id !== currentBranchId;
+            {employees.map((employee) => {
+              const isTemporary = employee.employee_type === 'temporary';
+              // Check if this employee has any borrowed assignments in this schedule
+              const hasBorrowedAssignments = assignments.some(a => a.employee_id === employee.id && a.is_borrowed);
+              const isBorrowed = hasBorrowedAssignments || (employee.primary_branch_id && employee.primary_branch_id !== currentBranchId && employee.branch_id !== currentBranchId);
                 
                 return (
                   <tr key={employee.id} className="border-b hover:bg-muted/30">

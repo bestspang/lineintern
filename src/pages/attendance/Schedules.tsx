@@ -112,9 +112,12 @@ export default function Schedules() {
   const [showConflictsDialog, setShowConflictsDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddEmployeeDialog, setShowAddEmployeeDialog] = useState(false);
+  const [addEmployeeTab, setAddEmployeeTab] = useState<'temporary' | 'borrow'>('temporary');
   const [tempEmployeeName, setTempEmployeeName] = useState('');
   const [tempEmployeeStartTime, setTempEmployeeStartTime] = useState('09:00');
   const [tempEmployeeEndTime, setTempEmployeeEndTime] = useState('18:00');
+  const [borrowFromBranch, setBorrowFromBranch] = useState('');
+  const [borrowEmployeeId, setBorrowEmployeeId] = useState('');
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -169,6 +172,23 @@ export default function Schedules() {
     enabled: !!selectedBranch,
   });
 
+  // Fetch employees from OTHER branches (for borrowing)
+  const { data: otherBranchEmployees = [] } = useQuery({
+    queryKey: ['employees-other-branches', selectedBranch, borrowFromBranch],
+    queryFn: async () => {
+      if (!borrowFromBranch) return [];
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time')
+        .eq('branch_id', borrowFromBranch)
+        .eq('is_active', true)
+        .order('full_name');
+      if (error) throw error;
+      return data as Employee[];
+    },
+    enabled: !!borrowFromBranch && borrowFromBranch !== selectedBranch,
+  });
+
   // Fetch or create weekly schedule
   const weekStartStr = format(currentWeekStart, 'yyyy-MM-dd');
   
@@ -217,6 +237,44 @@ export default function Schedules() {
     },
     enabled: !!weeklySchedule?.id,
   });
+
+  // Fetch borrowed employees (employees from other branches who are borrowed into this schedule)
+  const borrowedEmployeeIds = useMemo(() => {
+    return [...new Set(
+      assignments
+        .filter(a => a.is_borrowed)
+        .map(a => a.employee_id)
+    )];
+  }, [assignments]);
+
+  const { data: borrowedEmployees = [] } = useQuery({
+    queryKey: ['borrowed-employees', borrowedEmployeeIds],
+    queryFn: async () => {
+      if (borrowedEmployeeIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time, working_time_type, employee_type, primary_branch_id')
+        .in('id', borrowedEmployeeIds);
+      if (error) throw error;
+      return (data || []).map(emp => ({
+        ...emp,
+        // Mark as borrowed for display purposes
+        primary_branch_id: emp.branch_id, // Their home branch
+      })) as Employee[];
+    },
+    enabled: borrowedEmployeeIds.length > 0,
+  });
+
+  // Combine regular employees with borrowed employees
+  const allEmployees = useMemo(() => {
+    const combined = [...employees];
+    for (const borrowed of borrowedEmployees) {
+      if (!combined.some(e => e.id === borrowed.id)) {
+        combined.push(borrowed);
+      }
+    }
+    return combined;
+  }, [employees, borrowedEmployees]);
 
   // Fetch work_schedules for employees
   const { data: workSchedules = [] } = useQuery({
@@ -882,7 +940,7 @@ export default function Schedules() {
               <Button
                 variant="outline"
                 onClick={() => calendarRef.current?.exportToImage()}
-                disabled={employees.length === 0}
+                disabled={allEmployees.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export
@@ -934,7 +992,7 @@ export default function Schedules() {
             กำลังโหลด...
           </CardContent>
         </Card>
-      ) : employees.length === 0 ? (
+      ) : allEmployees.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -945,7 +1003,7 @@ export default function Schedules() {
         <ScheduleCalendar
           ref={calendarRef}
           weekDays={weekDays}
-          employees={employees}
+          employees={allEmployees}
           assignments={assignments}
           shiftTemplates={shiftTemplates}
           onAssignmentChange={(data) => updateAssignmentMutation.mutate(data)}
@@ -959,14 +1017,14 @@ export default function Schedules() {
       )}
 
       {/* Stats */}
-      {employees.length > 0 && (
+      {allEmployees.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <Users className="w-8 h-8 text-primary" />
                 <div>
-                  <p className="text-2xl font-bold">{employees.length}</p>
+                  <p className="text-2xl font-bold">{allEmployees.length}</p>
                   <p className="text-sm text-muted-foreground">พนักงานทั้งหมด</p>
                 </div>
               </div>
@@ -1177,99 +1235,227 @@ export default function Schedules() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add Temporary Employee Dialog */}
-      <Dialog open={showAddEmployeeDialog} onOpenChange={setShowAddEmployeeDialog}>
-        <DialogContent>
+      {/* Add Temporary Employee / Borrow Employee Dialog */}
+      <Dialog open={showAddEmployeeDialog} onOpenChange={(open) => {
+        setShowAddEmployeeDialog(open);
+        if (!open) {
+          setAddEmployeeTab('temporary');
+          setTempEmployeeName('');
+          setBorrowFromBranch('');
+          setBorrowEmployeeId('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>เพิ่มพนักงานชั่วคราว</DialogTitle>
             <DialogDescription>
-              เพิ่มพนักงาน Daywork/ฉุกเฉินสำหรับสัปดาห์นี้
+              เพิ่มพนักงาน Daywork หรือยืมพนักงานจากสาขาอื่น
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>ชื่อ-นามสกุล</Label>
-              <input
-                type="text"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="กรอกชื่อพนักงาน"
-                value={tempEmployeeName}
-                onChange={(e) => setTempEmployeeName(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>เวลาเริ่ม</Label>
-                <input
-                  type="time"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={tempEmployeeStartTime}
-                  onChange={(e) => setTempEmployeeStartTime(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>เวลาสิ้นสุด</Label>
-                <input
-                  type="time"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={tempEmployeeEndTime}
-                  onChange={(e) => setTempEmployeeEndTime(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddEmployeeDialog(false)}>
-              ยกเลิก
+          
+          {/* Tab Buttons */}
+          <div className="flex gap-2 border-b pb-3">
+            <Button
+              variant={addEmployeeTab === 'temporary' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAddEmployeeTab('temporary')}
+              className="flex-1"
+            >
+              ⚡ พนักงานฉุกเฉิน
             </Button>
             <Button
-              disabled={!tempEmployeeName.trim()}
-              onClick={async () => {
-                try {
-                  // Create temporary employee
-                  const code = `TEMP-${Date.now().toString().slice(-6)}`;
-                  const { data: newEmp, error: empError } = await supabase
-                    .from('employees')
-                    .insert({
-                      code,
-                      full_name: tempEmployeeName.trim(),
-                      branch_id: selectedBranch,
-                      primary_branch_id: selectedBranch,
-                      employee_type: 'temporary',
-                      is_active: true,
-                    })
-                    .select()
-                    .single();
-                  
-                  if (empError) throw empError;
-                  
-                  // Create shift assignments for the week
-                  if (weeklySchedule && newEmp) {
-                    const weekAssignments = weekDays.map(day => ({
-                      schedule_id: weeklySchedule.id,
-                      employee_id: newEmp.id,
-                      work_date: format(day, 'yyyy-MM-dd'),
-                      custom_start_time: tempEmployeeStartTime,
-                      custom_end_time: tempEmployeeEndTime,
-                      is_day_off: false,
-                    }));
-                    
-                    await supabase.from('shift_assignments').insert(weekAssignments);
-                  }
-                  
-                  queryClient.invalidateQueries({ queryKey: ['employees-branch'] });
-                  queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
-                  toast.success('เพิ่มพนักงานฉุกเฉินเรียบร้อย');
-                  setShowAddEmployeeDialog(false);
-                  setTempEmployeeName('');
-                } catch (error: any) {
-                  toast.error(error.message || 'เกิดข้อผิดพลาด');
-                }
-              }}
+              variant={addEmployeeTab === 'borrow' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAddEmployeeTab('borrow')}
+              className="flex-1"
             >
-              เพิ่มพนักงาน
+              🔄 ยืมจากสาขาอื่น
             </Button>
-          </DialogFooter>
+          </div>
+
+          {/* Tab Content: Temporary Employee */}
+          {addEmployeeTab === 'temporary' && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>ชื่อ-นามสกุล</Label>
+                <input
+                  type="text"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="กรอกชื่อพนักงาน"
+                  value={tempEmployeeName}
+                  onChange={(e) => setTempEmployeeName(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>เวลาเริ่ม</Label>
+                  <input
+                    type="time"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={tempEmployeeStartTime}
+                    onChange={(e) => setTempEmployeeStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>เวลาสิ้นสุด</Label>
+                  <input
+                    type="time"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={tempEmployeeEndTime}
+                    onChange={(e) => setTempEmployeeEndTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAddEmployeeDialog(false)}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  disabled={!tempEmployeeName.trim()}
+                  onClick={async () => {
+                    try {
+                      // Create temporary employee
+                      const code = `TEMP-${Date.now().toString().slice(-6)}`;
+                      const { data: newEmp, error: empError } = await supabase
+                        .from('employees')
+                        .insert({
+                          code,
+                          full_name: tempEmployeeName.trim(),
+                          branch_id: selectedBranch,
+                          primary_branch_id: selectedBranch,
+                          employee_type: 'temporary',
+                          is_active: true,
+                        })
+                        .select()
+                        .single();
+                      
+                      if (empError) throw empError;
+                      
+                      // Create shift assignments for the week
+                      if (weeklySchedule && newEmp) {
+                        const weekAssignments = weekDays.map(day => ({
+                          schedule_id: weeklySchedule.id,
+                          employee_id: newEmp.id,
+                          work_date: format(day, 'yyyy-MM-dd'),
+                          custom_start_time: tempEmployeeStartTime,
+                          custom_end_time: tempEmployeeEndTime,
+                          is_day_off: false,
+                        }));
+                        
+                        await supabase.from('shift_assignments').insert(weekAssignments);
+                      }
+                      
+                      queryClient.invalidateQueries({ queryKey: ['employees-branch'] });
+                      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+                      toast.success('เพิ่มพนักงานฉุกเฉินเรียบร้อย');
+                      setShowAddEmployeeDialog(false);
+                      setTempEmployeeName('');
+                    } catch (error: any) {
+                      toast.error(error.message || 'เกิดข้อผิดพลาด');
+                    }
+                  }}
+                >
+                  เพิ่มพนักงาน
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {/* Tab Content: Borrow Employee */}
+          {addEmployeeTab === 'borrow' && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>เลือกสาขาต้นทาง</Label>
+                <Select value={borrowFromBranch} onValueChange={(v) => {
+                  setBorrowFromBranch(v);
+                  setBorrowEmployeeId(''); // Reset employee selection
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="เลือกสาขา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.filter(b => b.id !== selectedBranch).map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {borrowFromBranch && (
+                <div className="space-y-2">
+                  <Label>เลือกพนักงาน</Label>
+                  <Select value={borrowEmployeeId} onValueChange={setBorrowEmployeeId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="เลือกพนักงาน" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {otherBranchEmployees.length === 0 ? (
+                        <div className="px-2 py-1 text-sm text-muted-foreground">ไม่พบพนักงานในสาขานี้</div>
+                      ) : (
+                        otherBranchEmployees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.full_name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {borrowEmployeeId && (
+                <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                  💡 พนักงานนี้จะถูกเพิ่มในตารางของสาขานี้ และจะแสดง tag "ยืมมา" ส่วนสาขาต้นทางจะแสดง tag "ยืมไป"
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAddEmployeeDialog(false)}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  disabled={!borrowEmployeeId}
+                  onClick={async () => {
+                    try {
+                      if (!weeklySchedule) throw new Error('ไม่พบตาราง');
+                      
+                      const borrowedEmployee = otherBranchEmployees.find(e => e.id === borrowEmployeeId);
+                      if (!borrowedEmployee) throw new Error('ไม่พบพนักงาน');
+                      
+                      // Create shift assignments for the borrowed employee with is_borrowed = true
+                      const startTime = borrowedEmployee.shift_start_time || '09:00';
+                      const endTime = borrowedEmployee.shift_end_time || '18:00';
+                      
+                      const weekAssignments = weekDays.map(day => ({
+                        schedule_id: weeklySchedule.id,
+                        employee_id: borrowEmployeeId,
+                        work_date: format(day, 'yyyy-MM-dd'),
+                        custom_start_time: startTime,
+                        custom_end_time: endTime,
+                        is_day_off: false,
+                        is_borrowed: true,
+                      }));
+                      
+                      const { error } = await supabase.from('shift_assignments').insert(weekAssignments);
+                      if (error) throw error;
+                      
+                      queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+                      toast.success(`ยืมพนักงาน ${borrowedEmployee.full_name} เรียบร้อย`);
+                      setShowAddEmployeeDialog(false);
+                      setBorrowFromBranch('');
+                      setBorrowEmployeeId('');
+                    } catch (error: any) {
+                      toast.error(error.message || 'เกิดข้อผิดพลาด');
+                    }
+                  }}
+                >
+                  ยืมพนักงาน
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
