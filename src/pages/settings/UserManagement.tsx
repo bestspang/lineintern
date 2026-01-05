@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User } from 'lucide-react';
+import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User, Briefcase, Eye, Mail, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useAdminRole } from '@/hooks/useAdminRole';
@@ -26,23 +26,24 @@ interface UserWithRole {
   email?: string;
 }
 
-const roleConfig: Record<AppRole, { label: string; color: string; icon: typeof Shield }> = {
-  owner: { label: 'Owner', color: 'bg-amber-500', icon: Crown },
-  admin: { label: 'Admin', color: 'bg-red-500', icon: ShieldCheck },
-  executive: { label: 'Executive', color: 'bg-purple-500', icon: Shield },
-  manager: { label: 'Manager', color: 'bg-blue-500', icon: Shield },
-  field: { label: 'Field', color: 'bg-green-500', icon: User },
-  moderator: { label: 'Moderator', color: 'bg-orange-500', icon: Shield },
-  user: { label: 'User', color: 'bg-gray-500', icon: User },
+const roleConfig: Record<AppRole, { label: string; labelTh: string; color: string; bgColor: string; icon: typeof Shield }> = {
+  owner: { label: 'Owner', labelTh: 'เจ้าของ', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', icon: Crown },
+  admin: { label: 'Admin', labelTh: 'แอดมิน', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', icon: ShieldCheck },
+  executive: { label: 'Executive', labelTh: 'ผู้บริหาร', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: Briefcase },
+  manager: { label: 'Manager', labelTh: 'หัวหน้า', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Users },
+  moderator: { label: 'Moderator', labelTh: 'ผู้ดูแล', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', icon: Eye },
+  field: { label: 'Field', labelTh: 'ภาคสนาม', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', icon: User },
+  user: { label: 'User', labelTh: 'ผู้ใช้', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', icon: User },
 };
 
 export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [emailSearch, setEmailSearch] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
   const [selectedRole, setSelectedRole] = useState<AppRole>('admin');
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { isAdmin } = useAdminRole();
 
@@ -55,11 +56,10 @@ export default function UserManagement() {
     },
   });
 
-  // Fetch all users with roles
+  // Fetch all users with roles - now with email from auth metadata
   const { data: usersWithRoles, isLoading } = useQuery({
     queryKey: ['webapp-users-with-roles'],
     queryFn: async () => {
-      // Get all user_roles
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
         .select('*')
@@ -67,33 +67,30 @@ export default function UserManagement() {
 
       if (rolesError) throw rolesError;
 
-      // Get user emails from auth admin API via edge function would be ideal
-      // For now, we'll show user_id and role
-      return roles as UserWithRole[];
-    },
-  });
-
-  // Search for user by email
-  const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['search-auth-users', emailSearch],
-    queryFn: async () => {
-      if (!emailSearch || emailSearch.length < 3) return [];
+      // Try to get current user's email to show at least for them
+      const { data: { user: authUser } } = await supabase.auth.getUser();
       
-      // This would ideally call an edge function that uses admin API
-      // For now, we just check if user already has a role
-      const { data } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .limit(10);
-      
-      return data || [];
+      return (roles as UserWithRole[]).map(role => ({
+        ...role,
+        email: role.user_id === authUser?.id ? authUser.email : undefined,
+      }));
     },
-    enabled: emailSearch.length >= 3,
   });
 
   // Add user role mutation
   const addRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
+      // First check if user already has a role
+      const { data: existing } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existing) {
+        throw new Error('ผู้ใช้นี้มี Role อยู่แล้ว กรุณาแก้ไข Role แทน');
+      }
+
       const { error } = await supabase
         .from('user_roles')
         .insert({ user_id: userId, role });
@@ -104,7 +101,7 @@ export default function UserManagement() {
       toast.success('เพิ่ม role สำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['webapp-users-with-roles'] });
       setIsAddDialogOpen(false);
-      setEmailSearch('');
+      setNewUserEmail('');
     },
     onError: (error: any) => {
       toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
@@ -153,15 +150,22 @@ export default function UserManagement() {
 
   const filteredUsers = usersWithRoles?.filter(user => 
     user.user_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchTerm.toLowerCase())
+    user.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const handleAddByUserId = () => {
-    if (!emailSearch.trim()) {
+    if (!newUserEmail.trim()) {
       toast.error('กรุณาใส่ User ID');
       return;
     }
-    addRoleMutation.mutate({ userId: emailSearch.trim(), role: selectedRole });
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(newUserEmail.trim())) {
+      toast.error('รูปแบบ User ID ไม่ถูกต้อง (ต้องเป็น UUID)');
+      return;
+    }
+    addRoleMutation.mutate({ userId: newUserEmail.trim(), role: selectedRole });
   };
 
   const handleEditRole = () => {
@@ -174,9 +178,15 @@ export default function UserManagement() {
       toast.error('ไม่สามารถลบ role ของตัวเองได้');
       return;
     }
-    if (confirm(`ต้องการลบ role "${user.role}" หรือไม่?`)) {
+    if (confirm(`ต้องการลบ role "${roleConfig[user.role].label}" หรือไม่?`)) {
       deleteRoleMutation.mutate(user.id);
     }
+  };
+
+  const handleCopyId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   if (!isAdmin) {
@@ -201,7 +211,7 @@ export default function UserManagement() {
                 จัดการผู้ใช้งาน Dashboard
               </CardTitle>
               <CardDescription>
-                จัดการ roles สำหรับผู้ใช้งานระบบ Admin Dashboard
+                กำหนด Role สำหรับผู้ใช้งานระบบ Admin Dashboard
               </CardDescription>
             </div>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -214,17 +224,21 @@ export default function UserManagement() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>เพิ่ม Role ให้ผู้ใช้</DialogTitle>
+                  <DialogDescription>
+                    ใส่ User ID ของผู้ใช้ที่ต้องการเพิ่ม Role
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>User ID (จาก auth.users)</Label>
+                    <Label>User ID</Label>
                     <Input
                       placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      value={emailSearch}
-                      onChange={(e) => setEmailSearch(e.target.value)}
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      className="font-mono text-sm"
                     />
                     <p className="text-xs text-muted-foreground">
-                      ใส่ UUID ของ user จาก auth.users table
+                      UUID ของ user ที่ได้จากการสมัครสมาชิก
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -237,8 +251,9 @@ export default function UserManagement() {
                         {Object.entries(roleConfig).map(([key, config]) => (
                           <SelectItem key={key} value={key}>
                             <div className="flex items-center gap-2">
-                              <config.icon className="h-4 w-4" />
-                              {config.label}
+                              <config.icon className={`h-4 w-4 ${config.color}`} />
+                              <span>{config.label}</span>
+                              <span className="text-muted-foreground">({config.labelTh})</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -261,22 +276,25 @@ export default function UserManagement() {
         <CardContent>
           {/* Search */}
           <div className="flex items-center gap-2 mb-4">
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="ค้นหา User ID หรือ Role..."
+                placeholder="ค้นหา User ID, Email หรือ Role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
               />
             </div>
+            <Badge variant="secondary" className="hidden sm:flex">
+              {filteredUsers?.length || 0} ผู้ใช้
+            </Badge>
           </div>
 
           {/* Table */}
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
           ) : filteredUsers && filteredUsers.length > 0 ? (
@@ -284,9 +302,9 @@ export default function UserManagement() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User ID</TableHead>
+                    <TableHead>ผู้ใช้</TableHead>
                     <TableHead>Role</TableHead>
-                    <TableHead>วันที่เพิ่ม</TableHead>
+                    <TableHead className="hidden sm:table-cell">วันที่เพิ่ม</TableHead>
                     <TableHead className="text-right">จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -294,23 +312,47 @@ export default function UserManagement() {
                   {filteredUsers.map((user) => {
                     const config = roleConfig[user.role] || roleConfig.user;
                     const isCurrentUser = user.user_id === currentUser?.id;
+                    const IconComponent = config.icon;
+                    
                     return (
                       <TableRow key={user.id}>
-                        <TableCell className="font-mono text-sm">
-                          <div className="flex items-center gap-2">
-                            {user.user_id.slice(0, 8)}...
-                            {isCurrentUser && (
-                              <Badge variant="outline" className="text-xs">คุณ</Badge>
+                        <TableCell>
+                          <div className="space-y-1">
+                            {user.email && (
+                              <div className="flex items-center gap-1.5 text-sm font-medium">
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                {user.email}
+                              </div>
                             )}
+                            <div className="flex items-center gap-1.5">
+                              <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                {user.user_id.slice(0, 8)}...{user.user_id.slice(-4)}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => handleCopyId(user.user_id)}
+                              >
+                                {copiedId === user.user_id ? (
+                                  <Check className="h-3 w-3 text-green-500" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                              </Button>
+                              {isCurrentUser && (
+                                <Badge variant="outline" className="text-xs">คุณ</Badge>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${config.color} text-white`}>
-                            <config.icon className="h-3 w-3 mr-1" />
+                          <Badge className={`${config.bgColor} ${config.color} border-0`}>
+                            <IconComponent className="h-3 w-3 mr-1" />
                             {config.label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
+                        <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
                           {format(new Date(user.granted_at), 'd MMM yyyy', { locale: th })}
                         </TableCell>
                         <TableCell className="text-right">
@@ -347,6 +389,7 @@ export default function UserManagement() {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>ยังไม่มีผู้ใช้งานในระบบ</p>
+              <p className="text-sm mt-1">กดปุ่ม "เพิ่มผู้ใช้" เพื่อเพิ่มผู้ใช้ใหม่</p>
             </div>
           )}
         </CardContent>
@@ -357,11 +400,29 @@ export default function UserManagement() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>แก้ไข Role</DialogTitle>
+            <DialogDescription>
+              เปลี่ยน Role สำหรับผู้ใช้นี้
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>User ID</Label>
-              <Input value={selectedUser?.user_id || ''} disabled />
+              <div className="flex items-center gap-2">
+                <Input value={selectedUser?.user_id || ''} disabled className="font-mono text-sm" />
+                {selectedUser && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyId(selectedUser.user_id)}
+                  >
+                    {copiedId === selectedUser.user_id ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
@@ -373,8 +434,9 @@ export default function UserManagement() {
                   {Object.entries(roleConfig).map(([key, config]) => (
                     <SelectItem key={key} value={key}>
                       <div className="flex items-center gap-2">
-                        <config.icon className="h-4 w-4" />
-                        {config.label}
+                        <config.icon className={`h-4 w-4 ${config.color}`} />
+                        <span>{config.label}</span>
+                        <span className="text-muted-foreground">({config.labelTh})</span>
                       </div>
                     </SelectItem>
                   ))}
