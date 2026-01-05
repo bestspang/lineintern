@@ -1,14 +1,29 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePageAccess } from '@/hooks/usePageAccess';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+// Fallback paths for each menu group when getFirstAccessiblePage fails
+const MENU_GROUP_FALLBACK_PATHS: Record<string, string> = {
+  'Attendance': '/attendance/logs',
+  'Management': '/groups',
+  'Dashboard': '/',
+  'Content & Knowledge': '/knowledge',
+  'AI Features': '/memory',
+  'Monitoring & Tools': '/bot-logs',
+  'Configuration': '/settings',
+};
+
+const MENU_GROUP_ORDER = ['Attendance', 'Management', 'Dashboard', 'Content & Knowledge', 'AI Features', 'Monitoring & Tools', 'Configuration'];
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   const { canAccessPage, getFirstAccessiblePage, loading: pageAccessLoading } = usePageAccess();
+  const { canAccessMenuGroup } = useUserRole();
 
   if (loading || pageAccessLoading) {
     return (
@@ -29,6 +44,13 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
       const firstAccessiblePage = getFirstAccessiblePage();
       if (firstAccessiblePage) {
         return <Navigate to={firstAccessiblePage} replace />;
+      }
+      
+      // Fallback: use hardcoded path based on accessible menu group
+      for (const menuGroup of MENU_GROUP_ORDER) {
+        if (canAccessMenuGroup(menuGroup)) {
+          return <Navigate to={MENU_GROUP_FALLBACK_PATHS[menuGroup]} replace />;
+        }
       }
     }
     
