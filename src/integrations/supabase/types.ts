@@ -4835,6 +4835,7 @@ export type Database = {
           task_title: string
         }[]
       }
+      get_role_priority: { Args: { role_name: string }; Returns: number }
       get_thread_context: {
         Args: { p_limit?: number; p_thread_id: string }
         Returns: {
@@ -4847,6 +4848,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_user_role_priority: { Args: { user_id: string }; Returns: number }
       get_work_hours_today: { Args: { p_employee_id: string }; Returns: number }
       get_working_memory_context: {
         Args: { p_group_id: string; p_limit?: number; p_thread_id?: string }
