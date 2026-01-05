@@ -35,6 +35,7 @@ import Commands from "./pages/Commands";
 import Summaries from "./pages/Summaries";
 import Personality from "./pages/Personality";
 import Broadcast from "./pages/Broadcast";
+import DirectMessages from "./pages/DirectMessages";
 import SettingsLayout from "./pages/SettingsLayout";
 import NotFound from "./pages/NotFound";
 import NetworkError from "./pages/NetworkError";
@@ -161,6 +162,7 @@ const App = () => (
                       <Route path="/bot-logs" element={<BotLogs />} />
                       <Route path="/personality" element={<Personality />} />
                       <Route path="/broadcast" element={<Broadcast />} />
+                      <Route path="/direct-messages" element={<DirectMessages />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/memory-analytics" element={<MemoryAnalytics />} />
                       <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />

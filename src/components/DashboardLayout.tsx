@@ -53,7 +53,8 @@ import {
   PartyPopper,
   Radio,
   Trophy,
-  Gift
+  Gift,
+  Mail
 } from 'lucide-react';
 import {
   Sidebar,
@@ -104,6 +105,7 @@ const navigationGroups = [
     items: [
       { title: 'Groups', url: '/groups', icon: MessageSquare },
       { title: 'Users', url: '/users', icon: Users },
+      { title: 'Direct Messages', url: '/direct-messages', icon: Mail },
       { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
       { title: 'Broadcast', url: '/broadcast', icon: Radio },
       { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
