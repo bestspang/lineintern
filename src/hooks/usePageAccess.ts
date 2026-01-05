@@ -103,7 +103,7 @@ function getMenuGroupFromPath(path: string): string | null {
   if (['/memory', '/memory-analytics', '/personality', '/analytics'].includes(path)) {
     return 'AI Features';
   }
-  if (['/faq-logs', '/knowledge-base', '/training', '/safety-rules'].includes(path)) {
+  if (['/faq-logs', '/knowledge', '/training', '/safety-rules'].includes(path)) {
     return 'Content & Knowledge';
   }
   if (['/settings', '/integrations'].includes(path) || path.startsWith('/settings/')) {
