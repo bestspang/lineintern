@@ -2,11 +2,14 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NavLink } from '@/components/NavLink';
 import { Shield, Webhook, AlertTriangle, FileText, Settings as SettingsIcon, Users, ShieldCheck } from 'lucide-react';
+import { usePageAccess } from '@/hooks/usePageAccess';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SettingsLayout() {
   const location = useLocation();
+  const { canAccessPage, loading } = usePageAccess();
   
-  const tabs = [
+  const allTabs = [
     { label: 'General', path: '/settings', icon: SettingsIcon },
     { label: 'Users', path: '/settings/users', icon: Users },
     { label: 'Roles', path: '/settings/roles', icon: ShieldCheck },
@@ -15,6 +18,21 @@ export default function SettingsLayout() {
     { label: 'Alerts & Logs', path: '/settings/alerts', icon: AlertTriangle },
     { label: 'Reports', path: '/settings/reports', icon: FileText },
   ];
+
+  // Filter tabs based on user permissions
+  const tabs = allTabs.filter(tab => canAccessPage(tab.path));
+
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div>
+          <Skeleton className="h-8 w-32 mb-2" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <Skeleton className="h-10 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6">
