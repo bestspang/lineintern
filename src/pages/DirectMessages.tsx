@@ -40,15 +40,15 @@ export default function DirectMessages() {
   const [filter, setFilter] = useState<'all' | 'employees' | 'non-employees'>('all');
   const [selectedConversation, setSelectedConversation] = useState<DMConversation | null>(null);
 
-  // Fetch DM conversations (groups where line_group_id starts with 'U' for user DMs)
+  // Fetch DM conversations (groups where line_group_id starts with 'dm_' for user DMs)
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['dm-conversations'],
     queryFn: async () => {
-      // Get all groups that are DMs (line_group_id starts with 'U' means it's a user ID)
+      // Get all groups that are DMs (line_group_id starts with 'dm_U...')
       const { data: groups, error } = await supabase
         .from('groups')
         .select('id, line_group_id, display_name')
-        .like('line_group_id', 'U%')
+        .like('line_group_id', 'dm_%')
         .order('last_activity_at', { ascending: false });
 
       if (error) throw error;
@@ -57,21 +57,24 @@ export default function DirectMessages() {
       const dmConversations: DMConversation[] = [];
 
       for (const group of groups || []) {
-        // Find user by line_user_id matching line_group_id
+        // Extract LINE User ID by removing 'dm_' prefix
+        const lineUserId = group.line_group_id.replace('dm_', '');
+        
+        // Find user by line_user_id
         const { data: user } = await supabase
           .from('users')
           .select('id, display_name, avatar_url')
-          .eq('line_user_id', group.line_group_id)
-          .single();
+          .eq('line_user_id', lineUserId)
+          .maybeSingle();
 
         // Check if user is an employee
         let employeeInfo = null;
         const { data: employee } = await supabase
           .from('employees')
           .select('id, full_name, branch_id, branches(name)')
-          .eq('line_user_id', group.line_group_id)
+          .eq('line_user_id', lineUserId)
           .eq('is_active', true)
-          .single();
+          .maybeSingle();
         
         if (employee) {
           employeeInfo = {
@@ -81,14 +84,20 @@ export default function DirectMessages() {
           };
         }
 
-        // Get message stats
-        const { count, data: lastMsg } = await supabase
+        // Get message count
+        const { count } = await supabase
           .from('messages')
-          .select('id, text, sent_at', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
+          .eq('group_id', group.id);
+
+        // Get last message
+        const { data: lastMsg } = await supabase
+          .from('messages')
+          .select('text, sent_at')
           .eq('group_id', group.id)
           .order('sent_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         dmConversations.push({
           id: group.id,
