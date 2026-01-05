@@ -54,7 +54,7 @@ export default function ShiftTemplates() {
     end_time: '17:00',
     break_hours: 1,
     color: '#3B82F6',
-    branch_id: '',
+    branch_id: 'all',
   });
 
   // Fetch branches
@@ -100,7 +100,7 @@ export default function ShiftTemplates() {
         end_time: data.end_time,
         break_hours: data.break_hours,
         color: data.color,
-        branch_id: data.branch_id || null,
+        branch_id: data.branch_id === 'all' ? null : data.branch_id,
       };
 
       if (data.id) {
@@ -168,7 +168,7 @@ export default function ShiftTemplates() {
       end_time: '17:00',
       break_hours: 1,
       color: '#3B82F6',
-      branch_id: '',
+      branch_id: 'all',
     });
   };
 
@@ -181,7 +181,7 @@ export default function ShiftTemplates() {
       end_time: template.end_time,
       break_hours: template.break_hours,
       color: template.color,
-      branch_id: template.branch_id || '',
+      branch_id: template.branch_id || 'all',
     });
     setIsDialogOpen(true);
   };
@@ -302,7 +302,7 @@ export default function ShiftTemplates() {
                         <SelectValue placeholder="เลือกสาขา" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">ใช้ได้ทุกสาขา</SelectItem>
+                        <SelectItem value="all">ใช้ได้ทุกสาขา</SelectItem>
                         {branches.map((branch) => (
                           <SelectItem key={branch.id} value={branch.id}>
                             {branch.name}
