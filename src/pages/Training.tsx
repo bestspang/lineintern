@@ -265,7 +265,7 @@ export default function Training() {
                 Training requests are created when users submit documents, URLs, or text for the bot to learn from. 
                 You can create knowledge items directly from the Knowledge Base page.
               </p>
-              <Button variant="outline" size="sm" onClick={() => window.location.href = '/knowledge-base'}>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = '/knowledge'}>
                 Go to Knowledge Base
               </Button>
             </div>
