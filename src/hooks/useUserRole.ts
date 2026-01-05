@@ -14,17 +14,22 @@ const rolePriority: Record<AppRole, number> = {
   user: 7,
 };
 
-// Mapping user role to max employee role priority they can assign
-// Higher number = can assign more roles (employee_roles.priority)
+// Mapping user role to max employee role priority they can manage
+// Higher number = can manage more roles (employee_roles.priority)
 const userToMaxEmployeeRolePriority: Record<AppRole, number> = {
-  owner: 999,     // Can assign any role
-  admin: 8,       // Can assign up to admin (priority 8)
-  executive: 5,   // Can assign up to manager (priority 5)
-  manager: 1,     // Can assign up to field (priority 1)
+  owner: 999,     // Can manage any role
+  admin: 8,       // Can manage up to admin (priority 8)
+  executive: 5,   // Can manage up to manager (priority 5)
+  manager: 1,     // Can manage up to field (priority 1)
   moderator: 0,   // Employee only (priority 0)
-  field: 0,       // Employee only
+  field: 0,       // Can only view employees with priority 0
   user: 0,        // Employee only
 };
+
+interface EmployeeManagePermission {
+  canEdit: boolean;
+  canView: boolean;
+}
 
 interface MenuConfig {
   menu_group: string;
@@ -125,12 +130,43 @@ export function useUserRole() {
     return (employeeRolePriority ?? 0) <= maxPriority;
   };
 
+  // Check if current user can manage (edit/view) a specific employee
+  // Returns { canEdit, canView } based on role priority comparison
+  // Rules:
+  // 1. Admin/Owner can manage everyone
+  // 2. If target is self: can view but not edit
+  // 3. Can only manage employees with lower or equal priority
+  const canManageEmployee = (employeeRolePriority: number | null, isSelf: boolean = false): EmployeeManagePermission => {
+    if (!roleData) return { canEdit: false, canView: false };
+    
+    // Admin/Owner can do everything
+    if (roleData === 'admin' || roleData === 'owner') {
+      return { canEdit: true, canView: true };
+    }
+    
+    const myMaxPriority = userToMaxEmployeeRolePriority[roleData];
+    const targetPriority = employeeRolePriority ?? 0;
+    
+    // If self: can view but not edit
+    if (isSelf) {
+      return { canEdit: false, canView: true };
+    }
+    
+    // If target priority is higher than what we can manage: no access
+    if (targetPriority > myMaxPriority) {
+      return { canEdit: false, canView: false };
+    }
+    
+    return { canEdit: true, canView: true };
+  };
+
   return {
     role: roleData,
     isLoading: isUserLoading || isRoleLoading || isMenuLoading,
     canAccessMenuGroup,
     canManageRole,
     canAssignEmployeeRole,
+    canManageEmployee,
     isAdmin: roleData === 'admin',
     isOwner: roleData === 'owner',
     hasFullAccess,
