@@ -14,7 +14,7 @@ interface PageConfig {
 export function usePageAccess() {
   const { role, canAccessMenuGroup, isAdmin, isOwner, isLoading: roleLoading } = useUserRole();
 
-  const { data: pageConfigs, isLoading: pageConfigLoading, isFetching } = useQuery({
+  const { data: pageConfigs, isLoading: pageConfigLoading } = useQuery({
     queryKey: ['webapp-page-config', role],
     queryFn: async () => {
       if (!role) return [];
@@ -108,7 +108,7 @@ export function usePageAccess() {
     getPagesByMenuGroup,
     getFirstAccessiblePage,
     pageConfigs,
-    loading: roleLoading || pageConfigLoading || isFetching,
+    loading: roleLoading || pageConfigLoading,
   };
 }
 
