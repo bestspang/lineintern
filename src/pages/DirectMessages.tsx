@@ -124,7 +124,7 @@ export default function DirectMessages() {
         let employeeInfo = null;
         const { data: employee } = await supabase
           .from('employees')
-          .select('id, full_name, branch_id, branches(name)')
+          .select('id, full_name, branch_id, branches!branch_id(name)')
           .eq('line_user_id', lineUserId)
           .eq('is_active', true)
           .maybeSingle();

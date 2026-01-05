@@ -52,7 +52,7 @@ export default function RedemptionApprovals() {
         .select(`
           *,
           reward:point_rewards(name, name_th, icon, category),
-          employee:employees(full_name, code, branch:branches(name))
+          employee:employees(full_name, code, branch:branches!branch_id(name))
         `)
         .order('created_at', { ascending: false });
       

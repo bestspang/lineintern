@@ -53,7 +53,7 @@ export default function EmployeeHistory() {
 
           const { data: logs, error: logsErr } = await supabase
             .from('attendance_logs')
-            .select('*, branch:branches(name)')
+            .select('*, branch:branches!branch_id(name)')
             .eq('employee_id', employeeId)
             .gte('server_time', thirtyDaysAgo.toISOString())
             .order('server_time', { ascending: false });

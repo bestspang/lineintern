@@ -51,7 +51,7 @@ export default function EmployeeDetail() {
         .from('employees')
         .select(`
           *,
-          branch:branches(id, name, address)
+          branch:branches!branch_id(id, name, address)
         `)
         .eq('id', id)
         .maybeSingle();
@@ -82,7 +82,7 @@ export default function EmployeeDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_logs')
-        .select('*, branch:branches(name)')
+        .select('*, branch:branches!branch_id(name)')
         .eq('employee_id', id)
         .order('server_time', { ascending: false })
         .limit(50);
@@ -198,7 +198,7 @@ export default function EmployeeDetail() {
           server_time,
           event_type,
           is_remote_checkin,
-          branch:branches(name)
+          branch:branches!branch_id(name)
         `)
         .eq('employee_id', id)
         .not('latitude', 'is', null)

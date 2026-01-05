@@ -52,7 +52,7 @@ export default function AttendanceEmployees() {
         .from('employees')
         .select(`
           *, 
-          branch:branches(name),
+          branch:branches!branch_id(name),
           employee_role:employee_roles(id, display_name_th, display_name_en, role_key, priority)
         `)
         .order('created_at', { ascending: false });

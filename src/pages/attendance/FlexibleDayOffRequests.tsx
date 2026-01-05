@@ -36,7 +36,7 @@ export default function FlexibleDayOffRequests() {
         employees (
           full_name,
           code,
-          branch:branches(name)
+          branch:branches!branch_id(name)
         )
       `)
       .order('requested_at', { ascending: false })

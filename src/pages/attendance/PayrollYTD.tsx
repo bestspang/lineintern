@@ -84,7 +84,7 @@ export default function PayrollYTD() {
             full_name,
             code,
             branch_id,
-            branches (name)
+            branches!branch_id (name)
           )
         `)
         .in("period_id", periods.map(p => p.id));

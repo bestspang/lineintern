@@ -177,7 +177,7 @@ export default function AttendanceDashboard() {
           full_name,
           working_time_type,
           shift_start_time,
-          branch:branches (
+          branch:branches!branch_id (
             id,
             name
           )
@@ -208,7 +208,7 @@ export default function AttendanceDashboard() {
             full_name,
             working_time_type,
             shift_start_time,
-            branch:branches (
+            branch:branches!branch_id (
               id,
               name
             )
