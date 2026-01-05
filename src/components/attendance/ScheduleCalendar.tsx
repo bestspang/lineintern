@@ -11,7 +11,7 @@ import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
-import { Clock } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 
 type ShiftTemplate = {
   id: string;
@@ -27,6 +27,9 @@ type Employee = {
   id: string;
   full_name: string;
   nickname?: string | null;
+  employee_type?: string | null;
+  primary_branch_id?: string | null;
+  branch_id?: string | null;
 };
 
 type ShiftAssignment = {
@@ -40,6 +43,7 @@ type ShiftAssignment = {
   is_day_off: boolean;
   day_off_type: string | null;
   note: string | null;
+  is_borrowed?: boolean;
   shift_templates?: ShiftTemplate | null;
 };
 
@@ -57,10 +61,13 @@ interface ScheduleCalendarProps {
   isEditable: boolean;
   branchName?: string;
   weekLabel?: string;
+  currentBranchId?: string;
+  onAddTemporaryEmployee?: () => void;
+  borrowedOutAssignments?: { employee_id: string; work_date: string }[];
 }
 
 const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProps>(
-  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel }, ref) => {
+  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel, currentBranchId, onAddTemporaryEmployee, borrowedOutAssignments = [] }, ref) => {
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
     const [customStartTime, setCustomStartTime] = useState('09:00');
     const [customEndTime, setCustomEndTime] = useState('18:00');
@@ -404,27 +411,78 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee) => (
-                <tr key={employee.id} className="border-b hover:bg-muted/30">
-                  <td className="p-3 bg-muted/50 sticky left-0 z-10">
-                    <div className="font-medium truncate max-w-[140px]">
-                      {employee.nickname || employee.full_name}
+              {employees.map((employee) => {
+                const isTemporary = employee.employee_type === 'temporary';
+                const isBorrowed = employee.primary_branch_id && employee.primary_branch_id !== currentBranchId;
+                
+                return (
+                  <tr key={employee.id} className="border-b hover:bg-muted/30">
+                    <td className="p-3 bg-muted/50 sticky left-0 z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium truncate max-w-[100px]">
+                          {employee.nickname || employee.full_name}
+                        </div>
+                        {isTemporary && (
+                          <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] px-1.5 py-0">
+                            ฉุกเฉิน
+                          </Badge>
+                        )}
+                        {isBorrowed && (
+                          <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-[10px] px-1.5 py-0">
+                            ยืมมา
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
+                    {weekDays.map((day) => {
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isBorrowedOut = borrowedOutAssignments.some(
+                        b => b.employee_id === employee.id && b.work_date === dateStr
+                      );
+                      
+                      return (
+                        <td
+                          key={day.toISOString()}
+                          className={cn(
+                            'p-0 text-center h-12 border-l',
+                            isToday(day) && 'bg-primary/5',
+                            isWeekend(day) && 'bg-orange-50/50 dark:bg-orange-900/10'
+                          )}
+                        >
+                          {isBorrowedOut ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="w-full h-full flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 text-purple-600 text-xs font-medium">
+                                    ยืมไป
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>พนักงานถูกยืมไปสาขาอื่น</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            renderShiftCell(employee, day)
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              
+              {/* Add Employee Row */}
+              {isEditable && onAddTemporaryEmployee && (
+                <tr className="border-b hover:bg-muted/30 cursor-pointer" onClick={onAddTemporaryEmployee}>
+                  <td colSpan={8} className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors">
+                      <Plus className="h-4 w-4" />
+                      <span>เพิ่มพนักงานชั่วคราว</span>
                     </div>
                   </td>
-                  {weekDays.map((day) => (
-                    <td
-                      key={day.toISOString()}
-                      className={cn(
-                        'p-0 text-center h-12 border-l',
-                        isToday(day) && 'bg-primary/5',
-                        isWeekend(day) && 'bg-orange-50/50 dark:bg-orange-900/10'
-                      )}
-                    >
-                      {renderShiftCell(employee, day)}
-                    </td>
-                  ))}
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
           
@@ -448,6 +506,24 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                 OFF
               </Badge>
               <span>= วันหยุด</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px]">
+                ฉุกเฉิน
+              </Badge>
+              <span>= พนักงานชั่วคราว</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-[10px]">
+                ยืมมา
+              </Badge>
+              <span>= ยืมจากสาขาอื่น</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Badge variant="outline" className="bg-purple-100 text-purple-600 border-purple-300 text-[10px]">
+                ยืมไป
+              </Badge>
+              <span>= ถูกยืมไปสาขาอื่น</span>
             </div>
           </div>
         </CardContent>

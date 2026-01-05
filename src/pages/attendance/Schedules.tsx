@@ -71,6 +71,8 @@ type Employee = {
   shift_start_time: string | null;
   shift_end_time: string | null;
   working_time_type: string | null;
+  employee_type?: string | null;
+  primary_branch_id?: string | null;
 };
 
 type ShiftAssignment = {
@@ -84,6 +86,7 @@ type ShiftAssignment = {
   is_day_off: boolean;
   day_off_type: string | null;
   note: string | null;
+  is_borrowed?: boolean;
   shift_templates?: ShiftTemplate | null;
 };
 
@@ -108,6 +111,10 @@ export default function Schedules() {
   const [bulkSelectedDays, setBulkSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri
   const [showConflictsDialog, setShowConflictsDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAddEmployeeDialog, setShowAddEmployeeDialog] = useState(false);
+  const [tempEmployeeName, setTempEmployeeName] = useState('');
+  const [tempEmployeeStartTime, setTempEmployeeStartTime] = useState('09:00');
+  const [tempEmployeeEndTime, setTempEmployeeEndTime] = useState('18:00');
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -152,7 +159,7 @@ export default function Schedules() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time, working_time_type')
+        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time, working_time_type, employee_type, primary_branch_id')
         .eq('branch_id', selectedBranch)
         .eq('is_active', true)
         .order('full_name');
@@ -946,6 +953,8 @@ export default function Schedules() {
           isEditable={weeklySchedule?.status === 'draft'}
           branchName={selectedBranchName}
           weekLabel={`${format(currentWeekStart, 'd MMM', { locale: th })} - ${format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: th })}`}
+          currentBranchId={selectedBranch}
+          onAddTemporaryEmployee={() => setShowAddEmployeeDialog(true)}
         />
       )}
 
@@ -1167,6 +1176,102 @@ export default function Schedules() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Temporary Employee Dialog */}
+      <Dialog open={showAddEmployeeDialog} onOpenChange={setShowAddEmployeeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>เพิ่มพนักงานชั่วคราว</DialogTitle>
+            <DialogDescription>
+              เพิ่มพนักงาน Daywork/ฉุกเฉินสำหรับสัปดาห์นี้
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>ชื่อ-นามสกุล</Label>
+              <input
+                type="text"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="กรอกชื่อพนักงาน"
+                value={tempEmployeeName}
+                onChange={(e) => setTempEmployeeName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>เวลาเริ่ม</Label>
+                <input
+                  type="time"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={tempEmployeeStartTime}
+                  onChange={(e) => setTempEmployeeStartTime(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>เวลาสิ้นสุด</Label>
+                <input
+                  type="time"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={tempEmployeeEndTime}
+                  onChange={(e) => setTempEmployeeEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddEmployeeDialog(false)}>
+              ยกเลิก
+            </Button>
+            <Button
+              disabled={!tempEmployeeName.trim()}
+              onClick={async () => {
+                try {
+                  // Create temporary employee
+                  const code = `TEMP-${Date.now().toString().slice(-6)}`;
+                  const { data: newEmp, error: empError } = await supabase
+                    .from('employees')
+                    .insert({
+                      code,
+                      full_name: tempEmployeeName.trim(),
+                      branch_id: selectedBranch,
+                      primary_branch_id: selectedBranch,
+                      employee_type: 'temporary',
+                      is_active: true,
+                    })
+                    .select()
+                    .single();
+                  
+                  if (empError) throw empError;
+                  
+                  // Create shift assignments for the week
+                  if (weeklySchedule && newEmp) {
+                    const weekAssignments = weekDays.map(day => ({
+                      schedule_id: weeklySchedule.id,
+                      employee_id: newEmp.id,
+                      work_date: format(day, 'yyyy-MM-dd'),
+                      custom_start_time: tempEmployeeStartTime,
+                      custom_end_time: tempEmployeeEndTime,
+                      is_day_off: false,
+                    }));
+                    
+                    await supabase.from('shift_assignments').insert(weekAssignments);
+                  }
+                  
+                  queryClient.invalidateQueries({ queryKey: ['employees-branch'] });
+                  queryClient.invalidateQueries({ queryKey: ['shift-assignments'] });
+                  toast.success('เพิ่มพนักงานฉุกเฉินเรียบร้อย');
+                  setShowAddEmployeeDialog(false);
+                  setTempEmployeeName('');
+                } catch (error: any) {
+                  toast.error(error.message || 'เกิดข้อผิดพลาด');
+                }
+              }}
+            >
+              เพิ่มพนักงาน
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

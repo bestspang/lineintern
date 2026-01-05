@@ -38,7 +38,7 @@ export default function LiveAttendanceStatus() {
       // Fetch all employees
       const { data: employees, error: empError } = await supabase
         .from('employees')
-        .select('id, full_name, code, branch_id, branches(name)')
+        .select('id, full_name, code, branch_id, branches!branch_id(name)')
         .eq('is_active', true)
         .order('full_name');
 

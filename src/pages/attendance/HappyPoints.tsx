@@ -39,7 +39,7 @@ export default function HappyPoints() {
           employees!inner (
             full_name,
             code,
-            branch:branches(name)
+            branch:branches!branch_id(name)
           )
         `)
         .order('point_balance', { ascending: false });

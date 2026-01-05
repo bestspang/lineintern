@@ -40,7 +40,7 @@ export default function TodayPhotos() {
           photo_url,
           latitude,
           longitude,
-          employee:employees!inner(id, full_name, code, branch:branches(name))
+          employee:employees!inner(id, full_name, code, branch:branches!branch_id(name))
         `)
         .gte('server_time', `${today}T00:00:00+07:00`)
         .lt('server_time', `${today}T23:59:59+07:00`)

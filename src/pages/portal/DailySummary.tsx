@@ -34,7 +34,7 @@ export default function DailySummary() {
       // Get employees
       let empQuery = supabase
         .from('employees')
-        .select('id, full_name, code, branch:branches(name)')
+        .select('id, full_name, code, branch:branches!branch_id(name)')
         .eq('is_active', true);
       
       if (selectedBranch !== 'all') {

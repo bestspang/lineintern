@@ -41,7 +41,7 @@ export default function WorkHistory() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('*, branch:branches(name)')
+        .select('*, branch:branches!branch_id(name)')
         .eq('id', id)
         .single();
       

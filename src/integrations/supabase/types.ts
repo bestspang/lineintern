@@ -1891,6 +1891,7 @@ export type Database = {
           code: string
           created_at: string | null
           earliest_checkin_time: string | null
+          employee_type: string | null
           enable_pattern_learning: boolean | null
           enable_second_checkin_reminder: boolean | null
           flexible_advance_days_required: number | null
@@ -1910,6 +1911,7 @@ export type Database = {
           ot_rate_multiplier: number | null
           ot_warning_minutes: number | null
           preferred_start_time: string | null
+          primary_branch_id: string | null
           reminder_preferences: Json | null
           require_photo: boolean | null
           role: string | null
@@ -1936,6 +1938,7 @@ export type Database = {
           code: string
           created_at?: string | null
           earliest_checkin_time?: string | null
+          employee_type?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
           flexible_advance_days_required?: number | null
@@ -1955,6 +1958,7 @@ export type Database = {
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           preferred_start_time?: string | null
+          primary_branch_id?: string | null
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
@@ -1981,6 +1985,7 @@ export type Database = {
           code?: string
           created_at?: string | null
           earliest_checkin_time?: string | null
+          employee_type?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
           flexible_advance_days_required?: number | null
@@ -2000,6 +2005,7 @@ export type Database = {
           ot_rate_multiplier?: number | null
           ot_warning_minutes?: number | null
           preferred_start_time?: string | null
+          primary_branch_id?: string | null
           reminder_preferences?: Json | null
           require_photo?: boolean | null
           role?: string | null
@@ -2022,6 +2028,20 @@ export type Database = {
           {
             foreignKeyName: "employees_branch_id_fkey"
             columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_primary_branch_id_fkey"
+            columns: ["primary_branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_primary_branch_id_fkey"
+            columns: ["primary_branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
@@ -3663,6 +3683,7 @@ export type Database = {
           day_off_type: string | null
           employee_id: string
           id: string
+          is_borrowed: boolean | null
           is_day_off: boolean | null
           note: string | null
           schedule_id: string
@@ -3677,6 +3698,7 @@ export type Database = {
           day_off_type?: string | null
           employee_id: string
           id?: string
+          is_borrowed?: boolean | null
           is_day_off?: boolean | null
           note?: string | null
           schedule_id: string
@@ -3691,6 +3713,7 @@ export type Database = {
           day_off_type?: string | null
           employee_id?: string
           id?: string
+          is_borrowed?: boolean | null
           is_day_off?: boolean | null
           note?: string | null
           schedule_id?: string

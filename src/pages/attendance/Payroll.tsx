@@ -299,7 +299,7 @@ export default function Payroll() {
             full_name,
             code,
             branch_id,
-            branches (name)
+            branches!branch_id (name)
           )
         `)
         .eq("period_id", currentPeriod.id);

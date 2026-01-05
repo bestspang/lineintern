@@ -202,7 +202,7 @@ export default function AttendanceSummaries() {
             ot_rate_multiplier,
             hours_per_day,
             branch_id,
-            branches (name),
+            branches!branch_id (name),
             employee_payroll_settings(salary_per_month)
           )
         `)
@@ -251,7 +251,7 @@ export default function AttendanceSummaries() {
             full_name,
             code,
             branch_id,
-            branches (name)
+            branches!branch_id (name)
           )
         `)
         .order('requested_at', { ascending: false });

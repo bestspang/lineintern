@@ -81,7 +81,7 @@ export default function FlexibleDayOff() {
             flexible_days_per_week,
             flexible_advance_days_required,
             flexible_auto_approve,
-            branch:branches(name)
+            branch:branches!branch_id(name)
           `)
           .eq('id', data.employee.id)
           .single();
