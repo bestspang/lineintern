@@ -63,7 +63,7 @@ export default function UserManagement() {
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('granted_at', { ascending: false });
 
       if (rolesError) throw rolesError;
 
