@@ -38,8 +38,8 @@ export function usePageAccess() {
     // Owner and Admin always have full access
     if (isOwner || isAdmin) return true;
     
-    // If still loading, default to true to prevent flash
-    if (roleLoading || pageConfigLoading) return true;
+    // If still loading, default to false to prevent showing unauthorized menus
+    if (roleLoading || pageConfigLoading) return false;
     
     // Find the page config for this path
     const pageConfig = pageConfigs?.find(pc => pc.page_path === path);
@@ -80,10 +80,33 @@ export function usePageAccess() {
     return pageConfigs?.filter(pc => pc.menu_group === menuGroup) || [];
   };
 
+  // Get the first accessible page for redirect purposes
+  const getFirstAccessiblePage = (): string | null => {
+    if (!pageConfigs || pageConfigs.length === 0) return null;
+    
+    // Priority order of menu groups
+    const menuGroupOrder = ['Dashboard', 'Attendance', 'Management', 'Content & Knowledge', 'AI Features', 'Monitoring & Tools', 'Configuration'];
+    
+    for (const menuGroup of menuGroupOrder) {
+      if (!canAccessMenuGroup(menuGroup)) continue;
+      
+      const accessiblePages = pageConfigs
+        .filter(pc => pc.menu_group === menuGroup && pc.can_access)
+        .sort((a, b) => a.page_path.localeCompare(b.page_path));
+      
+      if (accessiblePages.length > 0) {
+        return accessiblePages[0].page_path;
+      }
+    }
+    
+    return null;
+  };
+
   return {
     canAccessPage,
     getAccessiblePages,
     getPagesByMenuGroup,
+    getFirstAccessiblePage,
     pageConfigs,
     loading: roleLoading || pageConfigLoading,
   };
