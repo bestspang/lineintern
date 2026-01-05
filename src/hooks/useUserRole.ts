@@ -14,6 +14,18 @@ const rolePriority: Record<AppRole, number> = {
   user: 7,
 };
 
+// Mapping user role to max employee role priority they can assign
+// Higher number = can assign more roles (employee_roles.priority)
+const userToMaxEmployeeRolePriority: Record<AppRole, number> = {
+  owner: 999,     // Can assign any role
+  admin: 8,       // Can assign up to admin (priority 8)
+  executive: 5,   // Can assign up to manager (priority 5)
+  manager: 1,     // Can assign up to field (priority 1)
+  moderator: 0,   // Employee only (priority 0)
+  field: 0,       // Employee only
+  user: 0,        // Employee only
+};
+
 interface MenuConfig {
   menu_group: string;
   can_access: boolean;
@@ -102,11 +114,20 @@ export function useUserRole() {
     return targetPriority > myPriority;
   };
 
+  // Check if current user can assign a specific employee role
+  // Based on employee_roles.priority from the database
+  const canAssignEmployeeRole = (employeeRolePriority: number | null): boolean => {
+    if (!roleData) return false;
+    const maxPriority = userToMaxEmployeeRolePriority[roleData];
+    return (employeeRolePriority ?? 0) <= maxPriority;
+  };
+
   return {
     role: roleData,
     isLoading: isUserLoading || isRoleLoading || isMenuLoading,
     canAccessMenuGroup,
     canManageRole,
+    canAssignEmployeeRole,
     isAdmin: roleData === 'admin',
     isOwner: roleData === 'owner',
     hasFullAccess,
