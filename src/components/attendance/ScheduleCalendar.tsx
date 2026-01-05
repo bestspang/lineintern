@@ -185,6 +185,32 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
         );
       }
 
+      // Case: Has note but no shift (flexible or not configured)
+      if (assignment.note && !assignment.shift_template_id && !assignment.custom_start_time && !assignment.is_day_off) {
+        const isWarning = assignment.note.includes('ยังไม่ได้ตั้งค่า');
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'w-full h-full flex items-center justify-center cursor-pointer text-xs font-medium',
+                    isWarning ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
+                    !isEditable && 'cursor-default'
+                  )}
+                  onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
+                >
+                  {isWarning ? '⚠️' : '🕐'}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{assignment.note}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
+
       if (assignment.is_day_off) {
         return (
           <TooltipProvider>

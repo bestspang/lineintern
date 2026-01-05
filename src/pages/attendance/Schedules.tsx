@@ -70,6 +70,7 @@ type Employee = {
   is_active: boolean;
   shift_start_time: string | null;
   shift_end_time: string | null;
+  working_time_type: string | null;
 };
 
 type ShiftAssignment = {
@@ -151,7 +152,7 @@ export default function Schedules() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time')
+        .select('id, full_name, branch_id, is_active, shift_start_time, shift_end_time, working_time_type')
         .eq('branch_id', selectedBranch)
         .eq('is_active', true)
         .order('full_name');
@@ -231,11 +232,24 @@ export default function Schedules() {
           const workDate = format(date, 'yyyy-MM-dd');
           const isWeekendDay = isWeekend(date);
           
-          // If employee has shift times set, use them for weekdays
-          if (employee.shift_start_time && !isWeekendDay) {
+          // Case 1: Weekend = day off
+          if (isWeekendDay) {
+            newAssignments.push({
+              schedule_id: weeklySchedule.id,
+              employee_id: employee.id,
+              work_date: workDate,
+              is_day_off: true,
+              day_off_type: 'weekend',
+            });
+            continue;
+          }
+          
+          // Case 2: Employee has shift times set - use them
+          if (employee.shift_start_time && employee.shift_end_time) {
             // Find matching shift template
             const matchingTemplate = shiftTemplates.find(t => 
-              t.start_time.slice(0, 5) === employee.shift_start_time?.slice(0, 5)
+              t.start_time.slice(0, 5) === employee.shift_start_time?.slice(0, 5) &&
+              t.end_time.slice(0, 5) === employee.shift_end_time?.slice(0, 5)
             );
             
             newAssignments.push({
@@ -247,16 +261,31 @@ export default function Schedules() {
               custom_end_time: matchingTemplate ? null : employee.shift_end_time,
               is_day_off: false,
             });
-          } else {
-            // Weekend or no shift set = day off
+            continue;
+          }
+          
+          // Case 3: hours_based employee (flexible hours)
+          if (employee.working_time_type === 'hours_based') {
+            const defaultTemplate = shiftTemplates[0];
             newAssignments.push({
               schedule_id: weeklySchedule.id,
               employee_id: employee.id,
               work_date: workDate,
-              is_day_off: true,
-              day_off_type: isWeekendDay ? 'weekend' : 'regular',
+              shift_template_id: defaultTemplate?.id || null,
+              is_day_off: false,
+              note: 'ชั่วโมงยืดหยุ่น',
             });
+            continue;
           }
+          
+          // Case 4: time_based but no shift times set - mark as work day with warning
+          newAssignments.push({
+            schedule_id: weeklySchedule.id,
+            employee_id: employee.id,
+            work_date: workDate,
+            is_day_off: false,
+            note: 'ยังไม่ได้ตั้งค่าเวลาทำงาน',
+          });
         }
       }
       
