@@ -19,11 +19,12 @@ import { useAdminRole } from '@/hooks/useAdminRole';
 type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
 
 interface UserWithRole {
-  id: string;
   user_id: string;
-  role: AppRole;
-  granted_at: string;
-  email?: string;
+  email: string | null;
+  user_created_at: string;
+  role_id: string | null;
+  role: AppRole | null;
+  granted_at: string | null;
 }
 
 const roleConfig: Record<AppRole, { label: string; labelTh: string; color: string; bgColor: string; icon: typeof Shield }> = {
@@ -56,24 +57,13 @@ export default function UserManagement() {
     },
   });
 
-  // Fetch all users with roles - now with email from auth metadata
+  // Fetch all users with roles using RPC function
   const { data: usersWithRoles, isLoading } = useQuery({
     queryKey: ['webapp-users-with-roles'],
     queryFn: async () => {
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .order('granted_at', { ascending: false });
-
-      if (rolesError) throw rolesError;
-
-      // Try to get current user's email to show at least for them
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      
-      return (roles as UserWithRole[]).map(role => ({
-        ...role,
-        email: role.user_id === authUser?.id ? authUser.email : undefined,
-      }));
+      const { data, error } = await supabase.rpc('get_all_webapp_users');
+      if (error) throw error;
+      return data as UserWithRole[];
     },
   });
 
@@ -169,8 +159,8 @@ export default function UserManagement() {
   };
 
   const handleEditRole = () => {
-    if (!selectedUser) return;
-    updateRoleMutation.mutate({ id: selectedUser.id, role: selectedRole });
+    if (!selectedUser || !selectedUser.role_id) return;
+    updateRoleMutation.mutate({ id: selectedUser.role_id, role: selectedRole });
   };
 
   const handleDelete = (user: UserWithRole) => {
@@ -178,8 +168,9 @@ export default function UserManagement() {
       toast.error('ไม่สามารถลบ role ของตัวเองได้');
       return;
     }
+    if (!user.role || !user.role_id) return;
     if (confirm(`ต้องการลบ role "${roleConfig[user.role].label}" หรือไม่?`)) {
-      deleteRoleMutation.mutate(user.id);
+      deleteRoleMutation.mutate(user.role_id);
     }
   };
 
@@ -310,12 +301,13 @@ export default function UserManagement() {
                 </TableHeader>
                 <TableBody>
                   {filteredUsers.map((user) => {
-                    const config = roleConfig[user.role] || roleConfig.user;
+                    const hasRole = user.role !== null;
+                    const config = hasRole ? (roleConfig[user.role as AppRole] || roleConfig.user) : null;
                     const isCurrentUser = user.user_id === currentUser?.id;
-                    const IconComponent = config.icon;
+                    const IconComponent = config?.icon || User;
                     
                     return (
-                      <TableRow key={user.id}>
+                      <TableRow key={user.user_id}>
                         <TableCell>
                           <div className="space-y-1">
                             {user.email && (
@@ -347,36 +339,59 @@ export default function UserManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${config.bgColor} ${config.color} border-0`}>
-                            <IconComponent className="h-3 w-3 mr-1" />
-                            {config.label}
-                          </Badge>
+                          {hasRole && config ? (
+                            <Badge className={`${config.bgColor} ${config.color} border-0`}>
+                              <IconComponent className="h-3 w-3 mr-1" />
+                              {config.label}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              ยังไม่กำหนด Role
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
-                          {format(new Date(user.granted_at), 'd MMM yyyy', { locale: th })}
+                          {user.granted_at ? format(new Date(user.granted_at), 'd MMM yyyy', { locale: th }) : '-'}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedUser(user);
-                                setSelectedRole(user.role);
-                                setIsEditDialogOpen(true);
-                              }}
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(user)}
-                              disabled={isCurrentUser || deleteRoleMutation.isPending}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {hasRole ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedUser(user);
+                                    setSelectedRole(user.role as AppRole);
+                                    setIsEditDialogOpen(true);
+                                  }}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDelete(user)}
+                                  disabled={isCurrentUser || deleteRoleMutation.isPending}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setNewUserEmail(user.user_id);
+                                  setSelectedRole('field');
+                                  setIsAddDialogOpen(true);
+                                }}
+                              >
+                                <UserPlus className="h-4 w-4 mr-1" />
+                                กำหนด Role
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
