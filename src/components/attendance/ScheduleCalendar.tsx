@@ -53,13 +53,14 @@ interface ScheduleCalendarProps {
   assignments: ShiftAssignment[];
   shiftTemplates: ShiftTemplate[];
   onAssignmentChange: (data: Partial<ShiftAssignment> & { employee_id: string; work_date: string }) => void;
+  onAssignmentDelete?: (assignmentId: string) => void;
   isEditable: boolean;
   branchName?: string;
   weekLabel?: string;
 }
 
 const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProps>(
-  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, isEditable, branchName, weekLabel }, ref) => {
+  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel }, ref) => {
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
     const [customStartTime, setCustomStartTime] = useState('09:00');
     const [customEndTime, setCustomEndTime] = useState('18:00');
@@ -233,6 +234,21 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                 >
                   หยุด
                 </Button>
+                {getAssignment(employee.id, date) && onAssignmentDelete && (
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-muted-foreground"
+                    onClick={() => {
+                      const assignment = getAssignment(employee.id, date);
+                      if (assignment?.id) {
+                        onAssignmentDelete(assignment.id);
+                        setEditingCell(null);
+                      }
+                    }}
+                  >
+                    ล้าง
+                  </Button>
+                )}
               </div>
             </PopoverContent>
           </Popover>
