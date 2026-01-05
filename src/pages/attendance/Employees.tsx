@@ -301,14 +301,14 @@ export default function AttendanceEmployees() {
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0" align="start">
+                      <PopoverContent className="w-[400px] p-0 z-[100]" align="start">
                         <Command shouldFilter={false}>
                           <CommandInput 
                             placeholder="Search LINE users..." 
                             value={userSearchTerm}
                             onValueChange={setUserSearchTerm}
                           />
-                          <CommandList>
+                          <CommandList className="max-h-[200px]">
                             <CommandEmpty>No user found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
@@ -377,14 +377,14 @@ export default function AttendanceEmployees() {
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0" align="start">
+                      <PopoverContent className="w-[400px] p-0 z-[100]" align="start">
                         <Command shouldFilter={false}>
                           <CommandInput 
                             placeholder="Search LINE groups..." 
                             value={groupSearchTerm}
                             onValueChange={setGroupSearchTerm}
                           />
-                          <CommandList>
+                          <CommandList className="max-h-[200px]">
                             <CommandEmpty>No group found.</CommandEmpty>
                             <CommandGroup>
                               <CommandItem
