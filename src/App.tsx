@@ -38,6 +38,7 @@ import Broadcast from "./pages/Broadcast";
 import DirectMessages from "./pages/DirectMessages";
 import SettingsLayout from "./pages/SettingsLayout";
 import UserManagement from "./pages/settings/UserManagement";
+import RoleManagement from "./pages/settings/RoleManagement";
 import NotFound from "./pages/NotFound";
 import NetworkError from "./pages/NetworkError";
 import ServerError from "./pages/ServerError";
@@ -203,6 +204,7 @@ const App = () => (
                       <Route path="/settings" element={<SettingsLayout />}>
                         <Route index element={<Settings />} />
                         <Route path="users" element={<UserManagement />} />
+                        <Route path="roles" element={<RoleManagement />} />
                         <Route path="safety" element={<SafetyRules />} />
                         <Route path="integrations" element={<Integrations />} />
                         <Route path="alerts" element={<Alerts />} />
