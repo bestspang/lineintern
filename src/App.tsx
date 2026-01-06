@@ -80,7 +80,8 @@ import {
   PortalHome, PortalPlaceholder, 
   MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile,
   Approvals, ApproveOT, ApproveLeave, ApproveEarlyLeave, TeamSummary,
-  TodayPhotos, DailySummary
+  TodayPhotos, DailySummary,
+  MyReceipts, ReceiptDetail, ReceiptBusinesses
 } from "./pages/portal";
 import DepositUpload from "./pages/portal/DepositUpload";
 import DepositReview from "./pages/portal/DepositReview";
@@ -95,6 +96,10 @@ import MyRedemptions from "./pages/portal/MyRedemptions";
 import RedemptionApprovals from "./pages/attendance/RedemptionApprovals";
 import ShiftTemplates from "./pages/attendance/ShiftTemplates";
 import Schedules from "./pages/attendance/Schedules";
+// Receipt admin pages
+import ReceiptsAdmin from "./pages/receipts/Receipts";
+import ReceiptBusinessesAdmin from "./pages/receipts/ReceiptBusinessesAdmin";
+import ReceiptExport from "./pages/receipts/ReceiptExport";
 
 const queryClient = new QueryClient();
 
@@ -140,6 +145,9 @@ const App = () => (
                       <Route path="/my-points" element={<MyPoints />} />
                       <Route path="/rewards" element={<RewardShop />} />
                       <Route path="/my-redemptions" element={<MyRedemptions />} />
+                      <Route path="/my-receipts" element={<MyReceipts />} />
+                      <Route path="/receipts/:id" element={<ReceiptDetail />} />
+                      <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </PortalLayout>
@@ -203,6 +211,9 @@ const App = () => (
                       <Route path="/attendance/schedules" element={<Schedules />} />
                       <Route path="/attendance/settings" element={<AttendanceSettings />} />
                       <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
+                      <Route path="/receipts" element={<ReceiptsAdmin />} />
+                      <Route path="/receipts/businesses" element={<ReceiptBusinessesAdmin />} />
+                      <Route path="/receipts/export" element={<ReceiptExport />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
                       <Route path="/config-validator" element={<ConfigurationValidator />} />
                       <Route path="/settings" element={<SettingsLayout />}>

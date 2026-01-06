@@ -9,6 +9,11 @@ export { default as RequestOT } from './RequestOT';
 export { default as RequestLeave } from './RequestLeave';
 export { default as MyProfile } from './MyProfile';
 
+// Receipt pages
+export { default as MyReceipts } from './MyReceipts';
+export { default as ReceiptDetail } from './ReceiptDetail';
+export { default as ReceiptBusinesses } from './ReceiptBusinesses';
+
 // Manager pages
 export { default as Approvals } from './Approvals';
 export { default as ApproveOT } from './ApproveOT';
