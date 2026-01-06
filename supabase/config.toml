@@ -182,3 +182,6 @@ verify_jwt = false
 
 [functions.sync-employee-groups]
 verify_jwt = false
+
+[functions.backfill-work-sessions-time-based]
+verify_jwt = false

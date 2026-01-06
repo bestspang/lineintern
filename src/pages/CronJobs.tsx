@@ -56,6 +56,10 @@ const calculateDuration = (start: string, end: string): string => {
   return `${(ms / 60000).toFixed(1)}m`;
 };
 
+/**
+ * ⚠️ SYNC REMINDER: When adding new cron jobs in database,
+ * also add description here. Keep in sync with cron.job table.
+ */
 const getJobDescription = (jobname: string): string => {
   const descriptions: Record<string, string> = {
     // Attendance - exact matches from database
@@ -89,6 +93,12 @@ const getJobDescription = (jobname: string): string => {
     'pattern-learner-daily': 'เรียนรู้ patterns จาก data รายวัน',
     // Broadcast
     'broadcast-scheduler-every-min': 'ตรวจสอบ scheduled broadcasts ทุกนาที',
+    // Happy Points System
+    'point-daily-reset': 'รีเซ็ตคะแนนประจำวันและอัพเดท streaks',
+    'point-health-monthly': 'ตรวจสอบสุขภาพระบบคะแนนรายเดือน',
+    'point-streak-weekly': 'คำนวณ streak bonus ทุกวันศุกร์',
+    // Deposit System
+    'deposit-reminder-daily': 'เตือนการส่งใบเสร็จค่าน้ำมัน',
   };
   return descriptions[jobname] || 'Scheduled job';
 };
