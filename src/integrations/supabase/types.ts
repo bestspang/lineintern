@@ -3332,6 +3332,287 @@ export type Database = {
         }
         Relationships: []
       }
+      receipt_businesses: {
+        Row: {
+          created_at: string | null
+          currency: string | null
+          id: string
+          is_default: boolean | null
+          line_user_id: string | null
+          name: string
+          tax_id: string | null
+          timezone: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          is_default?: boolean | null
+          line_user_id?: string | null
+          name: string
+          tax_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          is_default?: boolean | null
+          line_user_id?: string | null
+          name?: string
+          tax_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      receipt_categories: {
+        Row: {
+          business_id: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_preset: boolean | null
+          name: string
+          name_th: string | null
+        }
+        Insert: {
+          business_id?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_preset?: boolean | null
+          name: string
+          name_th?: string | null
+        }
+        Update: {
+          business_id?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_preset?: boolean | null
+          name?: string
+          name_th?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_categories_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_files: {
+        Row: {
+          created_at: string | null
+          file_hash: string | null
+          id: string
+          mime_type: string | null
+          original_filename: string | null
+          receipt_id: string | null
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_hash?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          receipt_id?: string | null
+          storage_path: string
+        }
+        Update: {
+          created_at?: string | null
+          file_hash?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          receipt_id?: string | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_files_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_plans: {
+        Row: {
+          ai_receipts_limit: number
+          businesses_limit: number
+          created_at: string | null
+          id: string
+          name: string
+          price_thb: number | null
+        }
+        Insert: {
+          ai_receipts_limit?: number
+          businesses_limit?: number
+          created_at?: string | null
+          id: string
+          name: string
+          price_thb?: number | null
+        }
+        Update: {
+          ai_receipts_limit?: number
+          businesses_limit?: number
+          created_at?: string | null
+          id?: string
+          name?: string
+          price_thb?: number | null
+        }
+        Relationships: []
+      }
+      receipt_subscriptions: {
+        Row: {
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          line_user_id: string
+          plan_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          line_user_id: string
+          plan_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          line_user_id?: string
+          plan_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_usage: {
+        Row: {
+          ai_receipts_used: number | null
+          created_at: string | null
+          id: string
+          line_user_id: string
+          period_yyyymm: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_receipts_used?: number | null
+          created_at?: string | null
+          id?: string
+          line_user_id: string
+          period_yyyymm: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_receipts_used?: number | null
+          created_at?: string | null
+          id?: string
+          line_user_id?: string
+          period_yyyymm?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      receipts: {
+        Row: {
+          business_id: string | null
+          category: string | null
+          confidence: Json | null
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          id: string
+          line_user_id: string
+          payment_method: string | null
+          receipt_date: string | null
+          source: string
+          status: string | null
+          subtotal: number | null
+          tags: string[] | null
+          total: number | null
+          updated_at: string | null
+          vat: number | null
+          vendor: string | null
+          warnings: string[] | null
+        }
+        Insert: {
+          business_id?: string | null
+          category?: string | null
+          confidence?: Json | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          id?: string
+          line_user_id: string
+          payment_method?: string | null
+          receipt_date?: string | null
+          source?: string
+          status?: string | null
+          subtotal?: number | null
+          tags?: string[] | null
+          total?: number | null
+          updated_at?: string | null
+          vat?: number | null
+          vendor?: string | null
+          warnings?: string[] | null
+        }
+        Update: {
+          business_id?: string | null
+          category?: string | null
+          confidence?: Json | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          id?: string
+          line_user_id?: string
+          payment_method?: string | null
+          receipt_date?: string | null
+          source?: string
+          status?: string | null
+          subtotal?: number | null
+          tags?: string[] | null
+          total?: number | null
+          updated_at?: string | null
+          vat?: number | null
+          vendor?: string | null
+          warnings?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recipient_group_members: {
         Row: {
           created_at: string | null
