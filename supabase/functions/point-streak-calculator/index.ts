@@ -25,6 +25,17 @@ serve(async (req) => {
   }
 
   try {
+    // CRON_SECRET validation - this function is called by cron jobs only
+    const cronSecret = req.headers.get('x-cron-secret');
+    const expectedSecret = Deno.env.get('CRON_SECRET');
+    if (!cronSecret || cronSecret !== expectedSecret) {
+      logger.warn('Unauthorized access attempt to point-streak-calculator');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
