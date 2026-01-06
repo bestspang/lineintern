@@ -32,7 +32,7 @@ export interface ParsedCommand {
     | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
     | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | 'cancel_dayoff' 
-    | 'memory_summary' | null;
+    | 'memory_summary' | 'receipt' | 'receipt_summary' | 'businesses' | null;
   userQuestion: string;
   rawText: string;
   isMentioned: boolean;
@@ -155,6 +155,15 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     'ขอสรุปเดือนนี้': 'memory_summary',
     'ขอสรุประยะยาว': 'memory_summary',
     'สรุปความจำ': 'memory_summary',
+    
+    // Receipt Management
+    '/receipt': 'receipt',
+    '/ใบเสร็จ': 'receipt',
+    '/บันทึกใบเสร็จ': 'receipt',
+    '/receiptsummary': 'receipt_summary',
+    '/สรุปใบเสร็จ': 'receipt_summary',
+    '/businesses': 'businesses',
+    '/ธุรกิจ': 'businesses',
   };
   
   let commandType: ParsedCommand['commandType'] = null;
