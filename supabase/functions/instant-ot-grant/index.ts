@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { sanitizeInput } from "../_shared/validators.ts";
+import { getBangkokDateString } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -138,7 +139,7 @@ serve(async (req) => {
     const adminName = adminProfile?.display_name || 'Admin';
 
     // Check if employee has checked in today
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokDateString();
     const { data: todayCheckIn, error: checkInError } = await supabase
       .from('attendance_logs')
       .select('id')

@@ -32,8 +32,17 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { action, employee_id, has_certificate, leave_request_id } = body;
 
-    // Monthly bonus distribution
+    // CRON_SECRET validation for cron-triggered actions (monthly_bonus)
     if (action === 'monthly_bonus' || !action) {
+      const cronSecret = req.headers.get('x-cron-secret');
+      const expectedSecret = Deno.env.get('CRON_SECRET');
+      if (!cronSecret || cronSecret !== expectedSecret) {
+        logger.warn('Unauthorized access attempt to point-health-manager', { action });
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return await distributeMonthlyBonus(supabase);
     }
 

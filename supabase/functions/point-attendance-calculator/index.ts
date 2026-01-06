@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
+import { getBangkokDateString, getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,7 +68,7 @@ serve(async (req) => {
 
     let totalPointsAwarded = 0;
     const transactions: any[] = [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokDateString();
 
     // 1. Punctuality Points (+10)
     if (is_on_time) {
@@ -107,9 +108,10 @@ serve(async (req) => {
 
     if (is_on_time) {
       const lastDate = happyPoints.last_punctuality_date;
-      const yesterday = new Date();
+      const bangkokNow = getBangkokNow();
+      const yesterday = new Date(bangkokNow);
       yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayStr = getBangkokDateString(yesterday);
 
       if (lastDate === yesterdayStr) {
         // Consecutive day

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokDateString, formatBangkokTime, getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,10 +51,9 @@ serve(async (req) => {
   }
 
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const now = new Date();
-    const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-    const currentTime = bangkokTime.toTimeString().slice(0, 5);
+    const now = getBangkokNow();
+    const today = getBangkokDateString(now);
+    const currentTime = formatBangkokTime(now, 'HH:mm');
 
     console.log(`Running deposit reminder check at ${currentTime} for ${today}`);
 
