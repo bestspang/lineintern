@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
-  Receipt, Camera, TrendingUp, Calendar, ChevronRight, 
+  Receipt, TrendingUp, Calendar, ChevronRight, 
   Building2, Plus, Filter
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
@@ -30,19 +30,19 @@ interface ReceiptSummary {
 
 interface ReceiptItem {
   id: string;
-  vendor_name: string | null;
-  total_amount: number | null;
+  vendor: string | null;
+  total: number | null;
   receipt_date: string | null;
   category: string | null;
-  created_at: string;
-  status: string;
+  created_at: string | null;
+  status: string | null;
   business_id: string | null;
 }
 
 interface Business {
   id: string;
   name: string;
-  is_default: boolean;
+  is_default: boolean | null;
 }
 
 export default function MyReceipts() {
@@ -74,7 +74,7 @@ export default function MyReceipts() {
       if (!employee?.line_user_id) return [];
       let query = supabase
         .from('receipts')
-        .select('id, vendor_name, total_amount, receipt_date, category, created_at, status, business_id')
+        .select('id, vendor, total, receipt_date, category, created_at, status, business_id')
         .eq('line_user_id', employee.line_user_id)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -107,7 +107,7 @@ export default function MyReceipts() {
   receipts.forEach((r) => {
     if (!r.receipt_date || r.status !== 'saved') return;
     const receiptDate = new Date(r.receipt_date);
-    const amount = r.total_amount || 0;
+    const amount = r.total || 0;
 
     if (receiptDate >= thisMonthStart) {
       summary.thisMonth += amount;
@@ -249,7 +249,7 @@ export default function MyReceipts() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-medium truncate">
-                        {receipt.vendor_name || (locale === 'th' ? 'ไม่ระบุร้าน' : 'Unknown vendor')}
+                        {receipt.vendor || (locale === 'th' ? 'ไม่ระบุร้าน' : 'Unknown vendor')}
                       </p>
                       {receipt.category && (
                         <Badge variant="secondary" className={getCategoryColor(receipt.category)}>
@@ -260,12 +260,14 @@ export default function MyReceipts() {
                     <p className="text-sm text-muted-foreground">
                       {receipt.receipt_date
                         ? format(new Date(receipt.receipt_date), 'd MMM yyyy', { locale: dateLocale })
-                        : format(new Date(receipt.created_at), 'd MMM yyyy', { locale: dateLocale })}
+                        : receipt.created_at 
+                          ? format(new Date(receipt.created_at), 'd MMM yyyy', { locale: dateLocale })
+                          : '-'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-lg">
-                      {formatCurrency(receipt.total_amount || 0)}
+                      {formatCurrency(receipt.total || 0)}
                     </p>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>

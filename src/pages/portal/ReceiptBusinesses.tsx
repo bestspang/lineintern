@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,8 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { 
-  ArrowLeft, Building2, Plus, Star, Trash2, Pencil, 
-  Check, X, CreditCard, TrendingUp
+  ArrowLeft, Building2, Plus, Star, Trash2, Pencil
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,10 +38,9 @@ import {
 interface Business {
   id: string;
   name: string;
-  is_default: boolean;
+  is_default: boolean | null;
   tax_id: string | null;
-  address: string | null;
-  created_at: string;
+  created_at: string | null;
 }
 
 export default function ReceiptBusinesses() {
@@ -55,7 +53,6 @@ export default function ReceiptBusinesses() {
   const [formData, setFormData] = useState({
     name: '',
     tax_id: '',
-    address: '',
     is_default: false,
   });
 
@@ -66,7 +63,7 @@ export default function ReceiptBusinesses() {
       if (!employee?.line_user_id) return [];
       const { data, error } = await supabase
         .from('receipt_businesses')
-        .select('*')
+        .select('id, name, is_default, tax_id, created_at')
         .eq('line_user_id', employee.line_user_id)
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true });
@@ -81,13 +78,49 @@ export default function ReceiptBusinesses() {
     queryKey: ['my-quota', employee?.line_user_id],
     queryFn: async () => {
       if (!employee?.line_user_id) return null;
-      const { data, error } = await supabase
+      
+      // Get current period
+      const now = new Date();
+      const period = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Get usage
+      const { data: usage } = await supabase
         .from('receipt_usage')
-        .select('*, receipt_subscriptions(*, receipt_plans(*))')
+        .select('ai_receipts_used')
         .eq('line_user_id', employee.line_user_id)
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      return data;
+        .eq('period_yyyymm', period)
+        .maybeSingle();
+      
+      // Get subscription and plan
+      const { data: subscription } = await supabase
+        .from('receipt_subscriptions')
+        .select('plan_id')
+        .eq('line_user_id', employee.line_user_id)
+        .maybeSingle();
+      
+      let plan = null;
+      if (subscription?.plan_id) {
+        const { data: planData } = await supabase
+          .from('receipt_plans')
+          .select('*')
+          .eq('id', subscription.plan_id)
+          .single();
+        plan = planData;
+      } else {
+        // Default to free plan
+        const { data: freePlan } = await supabase
+          .from('receipt_plans')
+          .select('*')
+          .eq('id', 'free')
+          .single();
+        plan = freePlan;
+      }
+      
+      return {
+        used: usage?.ai_receipts_used || 0,
+        limit: plan?.ai_receipts_limit || 5,
+        planName: plan?.name || 'Free',
+      };
     },
     enabled: !!employee?.line_user_id,
   });
@@ -102,7 +135,6 @@ export default function ReceiptBusinesses() {
           .update({
             name: formData.name,
             tax_id: formData.tax_id || null,
-            address: formData.address || null,
             is_default: formData.is_default,
           })
           .eq('id', editingBusiness.id);
@@ -124,7 +156,6 @@ export default function ReceiptBusinesses() {
             line_user_id: employee?.line_user_id,
             name: formData.name,
             tax_id: formData.tax_id || null,
-            address: formData.address || null,
             is_default: formData.is_default || businesses.length === 0,
           });
         if (error) throw error;
@@ -172,7 +203,7 @@ export default function ReceiptBusinesses() {
   });
 
   const resetForm = () => {
-    setFormData({ name: '', tax_id: '', address: '', is_default: false });
+    setFormData({ name: '', tax_id: '', is_default: false });
     setEditingBusiness(null);
   };
 
@@ -181,15 +212,10 @@ export default function ReceiptBusinesses() {
     setFormData({
       name: business.name,
       tax_id: business.tax_id || '',
-      address: business.address || '',
-      is_default: business.is_default,
+      is_default: business.is_default || false,
     });
     setDialogOpen(true);
   };
-
-  const plan = quota?.receipt_subscriptions?.receipt_plans;
-  const usedQuota = quota?.ai_extractions_used || 0;
-  const maxQuota = plan?.max_ai_extractions || 5;
 
   return (
     <div className="space-y-6 pb-20">
@@ -217,12 +243,12 @@ export default function ReceiptBusinesses() {
                 {locale === 'th' ? 'โควตา AI เดือนนี้' : 'AI Quota This Month'}
               </p>
               <p className="text-2xl font-bold">
-                {usedQuota} / {maxQuota}
+                {quota?.used || 0} / {quota?.limit || 5}
               </p>
             </div>
             <div className="text-right">
               <Badge variant="secondary" className="bg-white/20 text-white">
-                {plan?.name || 'Free'}
+                {quota?.planName || 'Free'}
               </Badge>
               <p className="text-xs opacity-80 mt-1">
                 {locale === 'th' ? 'รายการ AI ที่ใช้' : 'AI extractions used'}
@@ -276,14 +302,6 @@ export default function ReceiptBusinesses() {
                     value={formData.tax_id}
                     onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
                     placeholder="0000000000000"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{locale === 'th' ? 'ที่อยู่' : 'Address'}</Label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder={locale === 'th' ? 'ที่อยู่ธุรกิจ' : 'Business address'}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -349,11 +367,6 @@ export default function ReceiptBusinesses() {
                     {business.tax_id && (
                       <p className="text-sm text-muted-foreground">
                         Tax ID: {business.tax_id}
-                      </p>
-                    )}
-                    {business.address && (
-                      <p className="text-xs text-muted-foreground truncate mt-1">
-                        {business.address}
                       </p>
                     )}
                   </div>

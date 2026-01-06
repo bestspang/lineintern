@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { 
-  Receipt, Search, Download, Filter, Calendar, 
+  Receipt, Search, Download, Calendar, 
   TrendingUp, Building2, Eye, FileText
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -30,12 +30,12 @@ import { useNavigate } from 'react-router-dom';
 
 interface ReceiptRow {
   id: string;
-  vendor_name: string | null;
-  total_amount: number | null;
+  vendor: string | null;
+  total: number | null;
   receipt_date: string | null;
   category: string | null;
-  status: string;
-  created_at: string;
+  status: string | null;
+  created_at: string | null;
   line_user_id: string;
   business: { name: string } | null;
 }
@@ -53,7 +53,7 @@ export default function Receipts() {
       let query = supabase
         .from('receipts')
         .select(`
-          id, vendor_name, total_amount, receipt_date, category, 
+          id, vendor, total, receipt_date, category, 
           status, created_at, line_user_id,
           business:receipt_businesses(name)
         `)
@@ -61,7 +61,7 @@ export default function Receipts() {
         .limit(100);
 
       if (search) {
-        query = query.or(`vendor_name.ilike.%${search}%,tax_id.ilike.%${search}%`);
+        query = query.ilike('vendor', `%${search}%`);
       }
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
@@ -79,7 +79,7 @@ export default function Receipts() {
   // Calculate stats
   const stats = {
     total: receipts.length,
-    totalAmount: receipts.reduce((sum, r) => sum + (r.total_amount || 0), 0),
+    totalAmount: receipts.reduce((sum, r) => sum + (r.total || 0), 0),
     saved: receipts.filter(r => r.status === 'saved').length,
     pending: receipts.filter(r => r.status === 'pending').length,
   };
@@ -103,7 +103,7 @@ export default function Receipts() {
     return colors[category || 'other'] || colors.other;
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'saved':
         return <Badge className="bg-emerald-100 text-emerald-700">Saved</Badge>;
@@ -201,7 +201,7 @@ export default function Receipts() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search vendor name or tax ID..."
+                placeholder="Search vendor name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -266,20 +266,22 @@ export default function Receipts() {
                 {receipts.map((receipt) => (
                   <TableRow key={receipt.id}>
                     <TableCell className="font-medium">
-                      {receipt.vendor_name || '-'}
+                      {receipt.vendor || '-'}
                     </TableCell>
                     <TableCell>
                       {receipt.business?.name || '-'}
                     </TableCell>
                     <TableCell>
-                      {receipt.total_amount 
-                        ? formatCurrency(receipt.total_amount) 
+                      {receipt.total 
+                        ? formatCurrency(receipt.total) 
                         : '-'}
                     </TableCell>
                     <TableCell>
                       {receipt.receipt_date 
                         ? format(new Date(receipt.receipt_date), 'dd MMM yyyy')
-                        : format(new Date(receipt.created_at), 'dd MMM yyyy')}
+                        : receipt.created_at
+                          ? format(new Date(receipt.created_at), 'dd MMM yyyy')
+                          : '-'}
                     </TableCell>
                     <TableCell>
                       {receipt.category && (
