@@ -47,7 +47,7 @@ export default function ReceiptExport() {
     queryFn: async () => {
       let query = supabase
         .from('receipts')
-        .select('id, total_amount', { count: 'exact' })
+        .select('id, total', { count: 'exact' })
         .gte('receipt_date', dateFrom)
         .lte('receipt_date', dateTo)
         .eq('status', 'saved');
@@ -62,7 +62,7 @@ export default function ReceiptExport() {
       const { count, data, error } = await query;
       if (error) throw error;
 
-      const totalAmount = data?.reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0;
+      const totalAmount = data?.reduce((sum, r) => sum + (r.total || 0), 0) || 0;
       return { count: count || 0, totalAmount };
     },
   });
@@ -73,8 +73,8 @@ export default function ReceiptExport() {
       let query = supabase
         .from('receipts')
         .select(`
-          id, vendor_name, total_amount, receipt_date, tax_id, 
-          category, notes, created_at,
+          id, vendor, total, receipt_date, 
+          category, description, created_at,
           business:receipt_businesses(name, tax_id)
         `)
         .gte('receipt_date', dateFrom)
@@ -101,7 +101,6 @@ export default function ReceiptExport() {
       const headers = [
         'Receipt Date',
         'Vendor Name',
-        'Tax ID',
         'Amount',
         'Category',
         'Business Name',
@@ -112,19 +111,18 @@ export default function ReceiptExport() {
 
       const rows = data.map(r => [
         r.receipt_date || '',
-        r.vendor_name || '',
-        r.tax_id || '',
-        r.total_amount?.toString() || '0',
+        r.vendor || '',
+        r.total?.toString() || '0',
         r.category || '',
         r.business?.name || '',
         r.business?.tax_id || '',
-        r.notes || '',
+        r.description || '',
         r.created_at ? format(new Date(r.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
       ]);
 
       const csvContent = [
         headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
       ].join('\n');
 
       // Download
@@ -320,7 +318,6 @@ export default function ReceiptExport() {
                 <Badge variant="secondary">Receipt Date</Badge>
                 <Badge variant="secondary">Vendor</Badge>
                 <Badge variant="secondary">Amount</Badge>
-                <Badge variant="secondary">Tax ID</Badge>
                 <Badge variant="secondary">Category</Badge>
                 <Badge variant="secondary">Business</Badge>
               </div>

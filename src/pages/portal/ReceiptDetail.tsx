@@ -1,15 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   ArrowLeft, Save, Trash2, Receipt, Calendar, Store, 
-  Hash, FileText, Building2, Image
+  FileText, Building2
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,12 +50,11 @@ export default function ReceiptDetail() {
   const dateLocale = locale === 'th' ? th : enUS;
 
   const [formData, setFormData] = useState({
-    vendor_name: '',
-    total_amount: '',
+    vendor: '',
+    total: '',
     receipt_date: '',
-    tax_id: '',
     category: '',
-    notes: '',
+    description: '',
     business_id: '',
   });
 
@@ -74,12 +72,11 @@ export default function ReceiptDetail() {
       
       // Populate form
       setFormData({
-        vendor_name: data.vendor_name || '',
-        total_amount: data.total_amount?.toString() || '',
+        vendor: data.vendor || '',
+        total: data.total?.toString() || '',
         receipt_date: data.receipt_date || '',
-        tax_id: data.tax_id || '',
         category: data.category || '',
-        notes: data.notes || '',
+        description: data.description || '',
         business_id: data.business_id || '',
       });
       
@@ -104,18 +101,25 @@ export default function ReceiptDetail() {
     enabled: !!employee?.line_user_id,
   });
 
+  // Get public URL for receipt image
+  const imageUrl = useMemo(() => {
+    const receiptFile = receipt?.receipt_files?.[0];
+    if (!receiptFile?.storage_path) return null;
+    const { data } = supabase.storage.from('receipts').getPublicUrl(receiptFile.storage_path);
+    return data?.publicUrl;
+  }, [receipt]);
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
         .from('receipts')
         .update({
-          vendor_name: formData.vendor_name || null,
-          total_amount: formData.total_amount ? parseFloat(formData.total_amount) : null,
+          vendor: formData.vendor || null,
+          total: formData.total ? parseFloat(formData.total) : null,
           receipt_date: formData.receipt_date || null,
-          tax_id: formData.tax_id || null,
           category: formData.category || null,
-          notes: formData.notes || null,
+          description: formData.description || null,
           business_id: formData.business_id || null,
           updated_at: new Date().toISOString(),
         })
@@ -175,8 +179,6 @@ export default function ReceiptDetail() {
     );
   }
 
-  const receiptFile = receipt.receipt_files?.[0];
-
   return (
     <div className="space-y-6 pb-24">
       {/* Header */}
@@ -189,17 +191,17 @@ export default function ReceiptDetail() {
             {locale === 'th' ? 'แก้ไขใบเสร็จ' : 'Edit Receipt'}
           </h1>
           <p className="text-xs text-muted-foreground">
-            {format(new Date(receipt.created_at), 'd MMM yyyy HH:mm', { locale: dateLocale })}
+            {receipt.created_at && format(new Date(receipt.created_at), 'd MMM yyyy HH:mm', { locale: dateLocale })}
           </p>
         </div>
       </div>
 
       {/* Receipt Image */}
-      {receiptFile?.file_url && (
+      {imageUrl && (
         <Card>
           <CardContent className="p-2">
             <img
-              src={receiptFile.file_url}
+              src={imageUrl}
               alt="Receipt"
               className="w-full max-h-64 object-contain rounded-lg bg-muted"
             />
@@ -223,8 +225,8 @@ export default function ReceiptDetail() {
               {locale === 'th' ? 'ชื่อร้าน' : 'Vendor'}
             </Label>
             <Input
-              value={formData.vendor_name}
-              onChange={(e) => setFormData({ ...formData, vendor_name: e.target.value })}
+              value={formData.vendor}
+              onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
               placeholder={locale === 'th' ? 'ชื่อร้านค้า/บริษัท' : 'Store/company name'}
             />
           </div>
@@ -234,8 +236,8 @@ export default function ReceiptDetail() {
             <Label>{locale === 'th' ? 'จำนวนเงิน (บาท)' : 'Amount (THB)'}</Label>
             <Input
               type="number"
-              value={formData.total_amount}
-              onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
+              value={formData.total}
+              onChange={(e) => setFormData({ ...formData, total: e.target.value })}
               placeholder="0.00"
             />
           </div>
@@ -250,19 +252,6 @@ export default function ReceiptDetail() {
               type="date"
               value={formData.receipt_date}
               onChange={(e) => setFormData({ ...formData, receipt_date: e.target.value })}
-            />
-          </div>
-
-          {/* Tax ID */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Hash className="h-4 w-4" />
-              {locale === 'th' ? 'เลขที่ผู้เสียภาษี' : 'Tax ID'}
-            </Label>
-            <Input
-              value={formData.tax_id}
-              onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
-              placeholder="0000000000000"
             />
           </div>
 
@@ -309,12 +298,12 @@ export default function ReceiptDetail() {
             </Select>
           </div>
 
-          {/* Notes */}
+          {/* Description */}
           <div className="space-y-2">
             <Label>{locale === 'th' ? 'หมายเหตุ' : 'Notes'}</Label>
             <Input
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder={locale === 'th' ? 'หมายเหตุเพิ่มเติม' : 'Additional notes'}
             />
           </div>
