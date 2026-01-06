@@ -9,7 +9,7 @@
  * 2. Social security capped at 750 THB (5% of 15,000 base)
  * 3. Work hours must be non-negative (negative = invalid checkout pairing)
  * 4. OT calculation uses employee's ot_rate_multiplier (default 1.5x)
- * 5. Late detection uses work_schedules.start_time, not hardcoded 09:00
+ * 5. Schedule priority: shift_assignments > work_schedules > default (Mon-Fri 09:00-18:00)
  * 
  * COMMON BUGS TO AVOID:
  * - Division by zero in hourly rate calculation (check hoursPerDay > 0)
@@ -20,8 +20,8 @@
  * VALIDATION CHECKLIST FOR AI MODIFICATIONS:
  * □ Monetary calculations preserve precision?
  * □ Social security cap applied correctly?
- * □ Leave days calculated using work_schedules, not hardcoded Mon-Fri?
- * □ Late detection uses employee's scheduled start time?
+ * □ Leave days calculated using effective schedule, not hardcoded Mon-Fri?
+ * □ Late detection uses employee's effective scheduled start time?
  * □ LINE notification format matches expected output?
  */
 
@@ -30,6 +30,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getBangkokNow, formatBangkokISODate, getBangkokHoursMinutes } from "@/lib/timezone";
+import { getEffectiveSchedule, type ShiftAssignment, type ShiftTemplate, type WorkSchedule, type EffectiveSchedule } from "@/lib/schedule-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -405,7 +406,7 @@ export default function Payroll() {
       
       const { data, error } = await supabase
         .from("shift_assignments")
-        .select("employee_id, work_date, is_day_off, shift_template_id")
+        .select("employee_id, work_date, is_day_off, day_off_type, shift_template_id, custom_start_time, custom_end_time, is_borrowed")
         .gte("work_date", startDate)
         .lte("work_date", endDate);
       
@@ -414,11 +415,37 @@ export default function Payroll() {
         console.log("shift_assignments not available, using work_schedules");
         return null;
       }
-      return data;
+      return data as ShiftAssignment[];
     },
   });
 
-  // Build shift assignments map per employee
+  // Fetch shift templates for resolving shift times
+  const { data: allShiftTemplates } = useQuery({
+    queryKey: ["all-shift-templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shift_templates")
+        .select("id, name, start_time, end_time, break_hours")
+        .eq("is_active", true);
+      
+      if (error) {
+        console.log("shift_templates not available");
+        return null;
+      }
+      return data as ShiftTemplate[];
+    },
+  });
+
+  // Build shift templates map for quick lookup
+  const shiftTemplatesMap = useMemo(() => {
+    const map = new Map<string, ShiftTemplate>();
+    allShiftTemplates?.forEach(st => {
+      map.set(st.id, st);
+    });
+    return map;
+  }, [allShiftTemplates]);
+
+  // Build shift assignments map per employee (legacy - kept for backward compatibility)
   const employeeShiftMap = useMemo(() => {
     const map = new Map<string, Map<string, { is_day_off: boolean; shift_template_id: string | null }>>();
     allShiftAssignments?.forEach(sa => {
@@ -426,7 +453,7 @@ export default function Payroll() {
         map.set(sa.employee_id, new Map());
       }
       map.get(sa.employee_id)!.set(sa.work_date, {
-        is_day_off: sa.is_day_off,
+        is_day_off: sa.is_day_off ?? false,
         shift_template_id: sa.shift_template_id,
       });
     });
@@ -489,39 +516,34 @@ export default function Payroll() {
   }, [allLeaveRequests]);
 
   // Build attendance data map per employee for mini calendars
+  // Uses effective schedule: shift_assignments > work_schedules > default
   const employeeAttendanceMap = useMemo(() => {
     if (!allAttendanceData || !employees) return new Map<string, DayStatus[]>();
     
     const map = new Map<string, DayStatus[]>();
     const today = getBangkokNow();
-    const todayStr = formatBangkokISODate(today);
     const calDays = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
-    
-    // Build schedule map per employee
-    const employeeScheduleMap = new Map<string, Map<number, { start_time: string | null }>>();
-    const employeeWorkingDaysMap = new Map<string, Set<number>>();
-    
-    allWorkSchedules?.forEach(ws => {
-      if (!employeeScheduleMap.has(ws.employee_id)) {
-        employeeScheduleMap.set(ws.employee_id, new Map());
-        employeeWorkingDaysMap.set(ws.employee_id, new Set());
-      }
-      employeeScheduleMap.get(ws.employee_id)!.set(ws.day_of_week, { start_time: ws.start_time });
-      if (ws.is_working_day) {
-        employeeWorkingDaysMap.get(ws.employee_id)!.add(ws.day_of_week);
-      }
-    });
     
     employees.forEach(emp => {
       const empLogs = allAttendanceData.filter(l => l.employee_id === emp.id);
       const empLeaves = employeeLeaveMap.get(emp.id) || [];
-      const scheduleMap = employeeScheduleMap.get(emp.id) || new Map();
-      const workingDays = employeeWorkingDaysMap.get(emp.id) || new Set([1, 2, 3, 4, 5]);
       
       const dailyStatuses: DayStatus[] = calDays.map(day => {
         const dateStr = format(day, "yyyy-MM-dd");
-        const dayOfWeek = getDay(day);
-        const isWorkingDay = workingDays.has(dayOfWeek);
+        
+        // Get effective schedule for this day using priority: shift > work_schedule > default
+        const effectiveSchedule = getEffectiveSchedule({
+          employeeId: emp.id,
+          date: day,
+          shiftAssignments: allShiftAssignments,
+          shiftTemplates: shiftTemplatesMap,
+          workSchedules: allWorkSchedules as WorkSchedule[] | null,
+          employeeSettings: {
+            shift_start_time: (emp as any).shift_start_time,
+            shift_end_time: (emp as any).shift_end_time,
+            break_hours: (emp as any).break_hours,
+          },
+        });
         
         // Check if this day is a holiday (national or branch-specific)
         const holiday = holidaysSet.get(dateStr);
@@ -550,13 +572,13 @@ export default function Payroll() {
           status = 'holiday';
         } else if (isOnLeave && !checkIn) {
           status = 'leave';
-        } else if (!isWorkingDay) {
-          status = checkIn ? 'present' : 'weekend';
+        } else if (effectiveSchedule.isDayOff || !effectiveSchedule.isWorkingDay) {
+          // Day off from shift schedule or non-working day
+          status = checkIn ? 'present' : (effectiveSchedule.source === 'shift' ? 'day_off' : 'weekend');
         } else if (checkIn) {
           // Use Bangkok timezone for check-in time calculation
           const checkInBangkok = getBangkokHoursMinutes(checkIn.server_time);
-          const schedule = scheduleMap.get(dayOfWeek);
-          const startTime = schedule?.start_time || '09:00';
+          const startTime = effectiveSchedule.startTime || '09:00';
           const [startHour, startMinute] = startTime.split(':').map(Number);
           
           if (!checkInBangkok) {
@@ -598,7 +620,7 @@ export default function Payroll() {
         if (adjustment?.override_status) {
           const statusMapping: Record<string, DayStatus['status']> = {
             'present': 'present',
-            'day_off': 'weekend',
+            'day_off': 'day_off',
             'vacation': 'leave',
             'sick': 'leave',
             'personal': 'leave',
@@ -617,6 +639,7 @@ export default function Payroll() {
           is_overtime: checkIn?.is_overtime || checkOut?.is_overtime,
           late_minutes: lateMinutes,
           has_adjustment: hasAdjustment,
+          schedule_source: effectiveSchedule.source, // Track where schedule came from
         };
       });
       
@@ -624,7 +647,7 @@ export default function Payroll() {
     });
     
     return map;
-  }, [allAttendanceData, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet, gracePeriodMinutes, employeeAdjustmentsMap]);
+  }, [allAttendanceData, allShiftAssignments, shiftTemplatesMap, allWorkSchedules, employees, currentMonth, employeeLeaveMap, holidaysSet, gracePeriodMinutes, employeeAdjustmentsMap]);
 
   // Calculate payroll summaries and warnings
   const payrollSummary = useMemo(() => {
@@ -899,6 +922,28 @@ export default function Payroll() {
       
       const gracePeriodMinutes = attendanceSettings?.grace_period_minutes || 15;
       
+      // Fetch shift assignments for the period (once for all employees)
+      const periodStart = parseISO(startDate);
+      const periodEnd = parseISO(endDate);
+      const periodDays = eachDayOfInterval({ start: periodStart, end: periodEnd });
+      
+      const { data: periodShiftAssignments } = await supabase
+        .from("shift_assignments")
+        .select("employee_id, work_date, is_day_off, day_off_type, shift_template_id, custom_start_time, custom_end_time, is_borrowed")
+        .gte("work_date", startDate)
+        .lte("work_date", endDate);
+      
+      const { data: shiftTemplatesList } = await supabase
+        .from("shift_templates")
+        .select("id, name, start_time, end_time, break_hours")
+        .eq("is_active", true);
+      
+      // Build shift templates map
+      const shiftTemplatesMapLocal = new Map<string, ShiftTemplate>();
+      shiftTemplatesList?.forEach(st => {
+        shiftTemplatesMapLocal.set(st.id, st);
+      });
+      
       for (const emp of employees) {
         // Fetch attendance logs for this employee
         const { data: logs } = await supabase
@@ -908,22 +953,30 @@ export default function Payroll() {
           .gte("server_time", startDate)
           .lte("server_time", endDate + "T23:59:59");
         
-        // Fetch work schedules for this employee
+        // Fetch work schedules for this employee (fallback)
         const { data: workSchedules } = await supabase
           .from("work_schedules")
           .select("*")
           .eq("employee_id", emp.id);
         
-        // Create working days set from work_schedules (default Mon-Fri if no schedules)
-        const workingDaysSet = new Set<number>(
-          workSchedules?.filter(s => s.is_working_day).map(s => s.day_of_week) || 
-          [1, 2, 3, 4, 5] // Default: Monday to Friday
-        );
-        
-        // Create schedule map for start times
-        const scheduleMap = new Map<number, { start_time: string | null; end_time: string | null }>(
-          workSchedules?.map(s => [s.day_of_week, { start_time: s.start_time, end_time: s.end_time }]) || []
-        );
+        // Build effective schedule map for this employee for the period
+        const effectiveScheduleMap = new Map<string, EffectiveSchedule>();
+        periodDays.forEach(day => {
+          const dateStr = format(day, "yyyy-MM-dd");
+          const schedule = getEffectiveSchedule({
+            employeeId: emp.id,
+            date: day,
+            shiftAssignments: periodShiftAssignments as ShiftAssignment[] | null,
+            shiftTemplates: shiftTemplatesMapLocal,
+            workSchedules: workSchedules as WorkSchedule[] | null,
+            employeeSettings: {
+              shift_start_time: (emp as any).shift_start_time,
+              shift_end_time: (emp as any).shift_end_time,
+              break_hours: (emp as any).break_hours,
+            },
+          });
+          effectiveScheduleMap.set(dateStr, schedule);
+        });
         
         // Calculate metrics
         const checkIns = logs?.filter(l => l.event_type === "check_in") || [];
@@ -932,16 +985,18 @@ export default function Payroll() {
         const actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
         const totalOTHours = logs?.reduce((sum, l) => sum + (l.overtime_hours || 0), 0) || 0;
         
-        // Late detection using work_schedules start_time + calculate late_minutes
+        // Late detection using effective schedule start_time + calculate late_minutes
         let lateCount = 0;
         let totalLateMinutes = 0;
         checkIns.forEach(l => {
           const checkInDate = parseISO(l.server_time);
-          const dayOfWeek = getDay(checkInDate);
-          const schedule = scheduleMap.get(dayOfWeek);
+          const dateStr = format(checkInDate, "yyyy-MM-dd");
+          const schedule = effectiveScheduleMap.get(dateStr);
           
-          // If no schedule, use default 09:00
-          const startTime = schedule?.start_time || '09:00';
+          // Skip if day off or not working day
+          if (!schedule || schedule.isDayOff || !schedule.isWorkingDay) return;
+          
+          const startTime = schedule.startTime || '09:00';
           const [startHour, startMinute] = startTime.split(':').map(Number);
           
           const checkInHour = checkInDate.getHours();
@@ -970,21 +1025,24 @@ export default function Payroll() {
           .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
         
         // Calculate total leave days (overlap with current period)
+        // Using effective schedule to count only actual working days
         let leaveDays = 0;
         (leaveRequests || []).forEach(lr => {
           const leaveStart = parseISO(lr.start_date);
           const leaveEnd = parseISO(lr.end_date);
-          const periodStart = parseISO(startDate);
-          const periodEnd = parseISO(endDate);
           
           // Calculate overlap
           const overlapStart = leaveStart > periodStart ? leaveStart : periodStart;
           const overlapEnd = leaveEnd < periodEnd ? leaveEnd : periodEnd;
           
           if (overlapStart <= overlapEnd) {
-            // Count only working days in the overlap
+            // Count only working days in the overlap using effective schedule
             const overlapDays = eachDayOfInterval({ start: overlapStart, end: overlapEnd });
-            const workingLeaveDays = overlapDays.filter(d => workingDaysSet.has(getDay(d))).length;
+            const workingLeaveDays = overlapDays.filter(d => {
+              const dateStr = format(d, "yyyy-MM-dd");
+              const schedule = effectiveScheduleMap.get(dateStr);
+              return schedule && schedule.isWorkingDay && !schedule.isDayOff;
+            }).length;
             leaveDays += workingLeaveDays;
           }
         });
@@ -1019,14 +1077,15 @@ export default function Payroll() {
         const baseSalary = payrollSettings?.salary_per_month || emp.salary_per_month || 0;
         const hourlyRate = payrollSettings?.hourly_rate || 0;
         
-        // Calculate scheduled work days using actual work_schedules
-        const periodStart = parseISO(startDate);
-        const periodEnd = parseISO(endDate);
+        // Calculate scheduled work days using effective schedule
         const today = getBangkokNow(); // Use Bangkok timezone for consistency
         
         // Full month scheduled days (for pay calculation)
-        const periodDays = eachDayOfInterval({ start: periodStart, end: periodEnd });
-        const scheduledWorkDays = periodDays.filter(d => workingDaysSet.has(getDay(d))).length;
+        const scheduledWorkDays = periodDays.filter(d => {
+          const dateStr = format(d, "yyyy-MM-dd");
+          const schedule = effectiveScheduleMap.get(dateStr);
+          return schedule && schedule.isWorkingDay && !schedule.isDayOff;
+        }).length;
         
         // Scheduled days up to today only (for absent calculation)
         // If today is before periodStart, scheduledWorkDaysToDate = 0
@@ -1034,7 +1093,11 @@ export default function Payroll() {
         const daysToDate = today >= periodStart 
           ? eachDayOfInterval({ start: periodStart, end: effectiveEndDate })
           : [];
-        const scheduledWorkDaysToDate = daysToDate.filter(d => workingDaysSet.has(getDay(d))).length;
+        const scheduledWorkDaysToDate = daysToDate.filter(d => {
+          const dateStr = format(d, "yyyy-MM-dd");
+          const schedule = effectiveScheduleMap.get(dateStr);
+          return schedule && schedule.isWorkingDay && !schedule.isDayOff;
+        }).length;
         
         // Calculate pay
         let grossPay = 0;
