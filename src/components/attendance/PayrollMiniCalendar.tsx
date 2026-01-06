@@ -144,6 +144,12 @@ export function PayrollMiniCalendar({
                       {dayData.is_overtime && <span className="text-orange-600 ml-1">(OT)</span>}
                     </div>
                   )}
+                  {dayData?.schedule_source && (
+                    <div className="text-[10px] text-muted-foreground/70 pt-0.5 border-t border-border/50">
+                      ที่มา: {dayData.schedule_source === 'shift' ? 'ตารางกะ' : 
+                        dayData.schedule_source === 'work_schedule' ? 'ตั้งค่า OT' : 'ค่าเริ่มต้น'}
+                    </div>
+                  )}
                 </div>
               </TooltipContent>
             </Tooltip>
