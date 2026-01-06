@@ -8855,6 +8855,33 @@ async function handleMessageEvent(event: LineEvent) {
       .catch((err) => console.error("[Personality Engine] Passive tracking error:", err));
   }
 
+  /**
+   * ⚠️ CRITICAL COMMAND HANDLERS - DO NOT MODIFY WITHOUT REVIEW
+   * 
+   * Handler Registry (must match ParsedCommand types in command-parser.ts):
+   * - train → handleTrainingCommand()
+   * - report → handleReportCommand()
+   * - summary → handleSummaryCommand()
+   * - find → handleFindCommand()
+   * - mentions → handleMentionsCommand()
+   * - tasks → inline handler (shows group tasks or user tasks)
+   * - todo → handleTodoCommand()
+   * - remind → handleRemindCommand()
+   * - list_reminders → handleRemindersCommand()
+   * - imagine → handleImagineCommand()
+   * - mode → handleModeCommand()
+   * - help → handleHelpCommand()
+   * - status → handleStatusCommand()
+   * - work → inline handler (shows work assignment help)
+   * - memory_summary → handleMemorySummaryCommand() [Admin/Owner only]
+   * - progress_report → inline handler (uses detectAndHandleProgressReport)
+   * - confirm_with_feedback → inline handler (uses detectAndHandleWorkApproval)
+   * - faq, ask → AI reply (no dedicated handler)
+   * 
+   * Attendance commands (DM only, handled in separate section):
+   * - checkin, checkout, history, menu, ot, dayoff, cancel_dayoff
+   */
+
   // PHASE 1: Handle /train command
   if (parsed.commandType === 'train') {
     await handleTrainingCommand(group.id, user.id, parsed.userMessage, event.replyToken);
@@ -8949,6 +8976,16 @@ async function handleMessageEvent(event: LineEvent) {
   // Handle /status command
   if (parsed.commandType === 'status') {
     await handleStatusCommand(group.id, user.id, event.replyToken);
+    return;
+  }
+
+  // Handle /work command - show work assignment help
+  if (parsed.commandType === 'work') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const helpMsg = locale === 'th'
+      ? `📋 **การมอบหมายงาน**\n\n**วิธีใช้:**\n• @ชื่อ [รายละเอียดงาน] ภายใน [เวลา]\n• /tasks - ดูงานทั้งหมด\n• /tasks @ชื่อ - ดูงานของคนนั้น\n• /confirm @ชื่อ - อนุมัติงานเสร็จ\n\n**ตัวอย่าง:**\n@สมชาย เตรียมรายงานยอดขาย ภายในพรุ่งนี้ 17:00`
+      : `📋 **Work Assignment**\n\n**Usage:**\n• @name [task details] by [deadline]\n• /tasks - view all tasks\n• /tasks @name - view tasks for person\n• /confirm @name - approve task completion\n\n**Example:**\n@john prepare sales report by tomorrow 5pm`;
+    await replyToLine(event.replyToken, helpMsg);
     return;
   }
 
