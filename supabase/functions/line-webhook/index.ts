@@ -5,6 +5,19 @@ import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
 import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
 import { getBangkokDateString, formatBangkokTime, getBangkokNow, toBangkokTime, getBangkokTimeComponents } from "../_shared/timezone.ts";
+import {
+  checkReceiptQuota,
+  getUserBusinesses,
+  getDefaultBusiness,
+  getReceiptSummary,
+  submitReceiptImage,
+  buildReceiptProcessingFlex,
+  buildReceiptSavedFlex,
+  buildQuotaExceededFlex,
+  buildReceiptSummaryFlex,
+  buildReceiptHelpFlex,
+  buildBusinessSelectQuickReply,
+} from "./handlers/receipt-handler.ts";
 
 // =============================
 // UTILITY FUNCTIONS
@@ -7518,6 +7531,90 @@ async function handleMemberLeftEvent(event: LineEvent) {
 }
 
 // =============================
+// HANDLE RECEIPT IMAGE IN DM
+// =============================
+
+async function handleReceiptImageInDM(event: LineEvent, lineUserId: string) {
+  console.log(`[handleReceiptImageInDM] Processing receipt image from ${lineUserId}`);
+  const locale: "th" | "en" = "th";
+  
+  try {
+    // Check quota first
+    const quota = await checkReceiptQuota(lineUserId);
+    if (!quota.allowed) {
+      console.log(`[handleReceiptImageInDM] Quota exceeded for ${lineUserId}`);
+      const flexMessage = buildQuotaExceededFlex(quota, locale);
+      await sendFlexMessage(event.replyToken, flexMessage);
+      return;
+    }
+    
+    // Send processing message
+    const processingFlex = buildReceiptProcessingFlex(locale);
+    // Note: We can't send processing message and then another reply, so we skip it
+    
+    // Get default business or prompt selection
+    const businesses = await getUserBusinesses(lineUserId);
+    let businessId: string | undefined;
+    
+    if (businesses.length === 1) {
+      businessId = businesses[0].id;
+    } else if (businesses.length > 1) {
+      const defaultBiz = await getDefaultBusiness(lineUserId);
+      businessId = defaultBiz?.id;
+    }
+    // If no businesses, receipt-submit will create one automatically
+    
+    // Submit the receipt
+    const result = await submitReceiptImage(lineUserId, event.message!.id, businessId);
+    
+    if (!result.success) {
+      if (result.error === "quota_exceeded") {
+        const quotaStatus = await checkReceiptQuota(lineUserId);
+        const flexMessage = buildQuotaExceededFlex(quotaStatus, locale);
+        await sendFlexMessage(event.replyToken, flexMessage);
+      } else if (result.error === "duplicate") {
+        await replyToLine(event.replyToken, locale === "th" 
+          ? "⚠️ พบใบเสร็จนี้แล้วในระบบ" 
+          : "⚠️ This receipt has already been submitted");
+      } else {
+        await replyToLine(event.replyToken, locale === "th"
+          ? `❌ เกิดข้อผิดพลาด: ${result.message}`
+          : `❌ Error: ${result.message}`);
+      }
+      return;
+    }
+    
+    // Send success message
+    const LIFF_URL = Deno.env.get("LIFF_URL") || "";
+    const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
+    await sendFlexMessage(event.replyToken, savedFlex);
+    
+    console.log(`[handleReceiptImageInDM] Receipt saved: ${result.receiptId}`);
+  } catch (error) {
+    console.error(`[handleReceiptImageInDM] Error:`, error);
+    await replyToLine(event.replyToken, locale === "th"
+      ? "❌ เกิดข้อผิดพลาดในการประมวลผลใบเสร็จ"
+      : "❌ Error processing receipt");
+  }
+}
+
+// Helper to send flex message
+async function sendFlexMessage(replyToken: string, flexMessage: object) {
+  const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
+  await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({
+      replyToken,
+      messages: [flexMessage],
+    }),
+  });
+}
+
+// =============================
 // HANDLE IMAGE MESSAGE (DEPOSIT SLIPS VIA LINE GROUP)
 // =============================
 
@@ -7528,9 +7625,10 @@ async function handleImageMessage(event: LineEvent) {
   const rawLineUserId = event.source.userId!;
   const rawLineGroupId = event.source.groupId || event.source.userId!;
   
-  // Only handle images in groups (not DMs)
+  // Handle DM images as receipts
   if (isDM) {
-    console.log(`[handleImageMessage] DM image - skipping deposit handling`);
+    console.log(`[handleImageMessage] DM image - handling as receipt`);
+    await handleReceiptImageInDM(event, rawLineUserId);
     return;
   }
   
