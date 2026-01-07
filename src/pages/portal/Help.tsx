@@ -3,7 +3,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { usePortal } from '@/contexts/PortalContext';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
-  MessageCircle, Phone, Mail, CheckCircle
+  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User
 } from 'lucide-react';
 
 export default function Help() {
@@ -33,6 +33,18 @@ export default function Help() {
     {
       question: 'ฉันเช็คอินไม่ได้ แสดง "นอกพื้นที่"',
       answer: 'ตรวจสอบว่าอยู่ในพื้นที่ที่กำหนดและเปิด GPS แล้ว ถ้ายังมีปัญหาให้ติดต่อ HR'
+    },
+    {
+      question: 'วันหยุดยืดหยุ่น (Flexible Day-Off) คืออะไร?',
+      answer: 'ระบบวันหยุดพิเศษที่ให้คุณเลือกวันหยุดได้ตามต้องการ โดยต้องแจ้งล่วงหน้าตามที่บริษัทกำหนด'
+    },
+    {
+      question: 'ระบบใบเสร็จใช้งานอย่างไร?',
+      answer: 'ถ่ายรูปใบเสร็จส่งในแชท LINE หรือเพิ่มใบเสร็จด้วยตนเองในเมนู "ใบเสร็จ" AI จะดึงข้อมูลให้อัตโนมัติ'
+    },
+    {
+      question: 'ยกเลิกคำขอ OT/ลา ได้ไหม?',
+      answer: 'ได้ ถ้าคำขอยังไม่ได้รับการอนุมัติ ใช้คำสั่ง "ยกเลิก OT" หรือ "ยกเลิกลา" ในแชท LINE'
     }
   ] : [
     {
@@ -58,6 +70,18 @@ export default function Help() {
     {
       question: 'I cannot check in, shows "Out of area"',
       answer: 'Make sure you are within the designated area and GPS is enabled. If still having issues, contact HR.'
+    },
+    {
+      question: 'What is Flexible Day-Off?',
+      answer: 'A special leave system that lets you choose your own days off, with advance notice as required by company policy.'
+    },
+    {
+      question: 'How do I use the receipts feature?',
+      answer: 'Take a photo of the receipt in LINE chat, or add receipts manually in "Receipts" menu. AI will extract data automatically.'
+    },
+    {
+      question: 'Can I cancel OT/leave requests?',
+      answer: 'Yes, if the request is still pending. Use "ยกเลิก OT" or "ยกเลิกลา" commands in LINE chat.'
     }
   ];
 
@@ -85,6 +109,24 @@ export default function Help() {
       title: locale === 'th' ? 'แลกของรางวัล' : 'Redeem Rewards',
       description: locale === 'th' ? 'ใช้คะแนนแลกของรางวัล' : 'Use points for rewards',
       path: '/portal/rewards'
+    },
+    {
+      icon: Star,
+      title: locale === 'th' ? 'คะแนนของฉัน' : 'My Points',
+      description: locale === 'th' ? 'ดู Happy Points และประวัติ' : 'View points and history',
+      path: '/portal/my-points'
+    },
+    {
+      icon: Receipt,
+      title: locale === 'th' ? 'ใบเสร็จ' : 'Receipts',
+      description: locale === 'th' ? 'จัดการใบเสร็จและค่าใช้จ่าย' : 'Manage receipts & expenses',
+      path: '/portal/my-receipts'
+    },
+    {
+      icon: User,
+      title: locale === 'th' ? 'โปรไฟล์' : 'My Profile',
+      description: locale === 'th' ? 'ดูข้อมูลส่วนตัว' : 'View your profile',
+      path: '/portal/my-profile'
     }
   ];
 
