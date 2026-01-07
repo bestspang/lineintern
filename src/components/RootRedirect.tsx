@@ -43,14 +43,13 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     return { detected: true, reason: 'URL contains liff.line.me' };
   }
   
-  // 5. Check sessionStorage for LIFF markers (set by LIFF SDK)
-  try {
-    const keys = Object.keys(sessionStorage);
-    const liffKey = keys.find(k => k.toLowerCase().includes('liff'));
-    if (liffKey) {
-      return { detected: true, reason: `sessionStorage: ${liffKey}` };
-    }
-  } catch { /* ignore */ }
+  // 5. Check for debug=liff parameter (intentional testing)
+  const debugParam = new URLSearchParams(window.location.search).get('debug');
+  if (debugParam === 'liff') {
+    return { detected: true, reason: 'debug=liff parameter' };
+  }
+  
+  // NOTE: sessionStorage check removed - it persists across tabs and causes false positives
   
   return { detected: false, reason: 'No LIFF indicators found' };
 }
@@ -84,7 +83,7 @@ export function RootRedirect() {
   }, []);
 
   useEffect(() => {
-    const maxWait = 5000; // 5 seconds max wait
+    const maxWait = 3000; // 3 seconds max wait (reduced from 5)
     const checkInterval = 100;
     let elapsed = 0;
     let finalized = false;
@@ -108,11 +107,36 @@ export function RootRedirect() {
 
     // *** EARLY DETECTION: Check LIFF indicators IMMEDIATELY ***
     const indicators = hasLiffIndicators();
+    const ua = navigator.userAgent;
+    const isLineUserAgent = /line\/|liff\/|lineboot/i.test(ua);
+    
+    console.log('[RootRedirect] Checking context:', {
+      indicators,
+      isLineUserAgent,
+      userAgent: ua.substring(0, 100)
+    });
+
+    // If strong LIFF indicators detected, go to portal immediately
     if (indicators.detected) {
       finalize(true, `Early detection: ${indicators.reason}`);
       return;
     }
 
+    // Check for LINE User-Agent patterns
+    if (isLineUserAgent) {
+      finalize(true, 'LINE User-Agent detected');
+      return;
+    }
+
+    // ★ NEW: If no indicators AND not LINE UA, finalize immediately (don't wait for LIFF SDK)
+    // This prevents regular browsers from getting stuck or waiting for LIFF
+    if (!indicators.detected && !isLineUserAgent) {
+      console.log('[RootRedirect] Regular browser detected, skipping LIFF wait');
+      finalize(false, 'No LIFF indicators, regular browser');
+      return;
+    }
+
+    // For edge cases only (shouldn't reach here normally)
     // Get current context from ref
     const ctx = liffContextRef.current;
 
@@ -134,8 +158,8 @@ export function RootRedirect() {
       return;
     }
 
-    // Case 4: LIFF not ready yet - poll with interval
-    console.log('[RootRedirect] Waiting for LIFF SDK...');
+    // Case 4: LIFF not ready yet - poll with interval (edge case only)
+    console.log('[RootRedirect] Waiting for LIFF SDK (edge case)...');
     
     intervalRef.current = setInterval(() => {
       elapsed += checkInterval;
