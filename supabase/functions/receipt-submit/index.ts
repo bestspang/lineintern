@@ -259,7 +259,10 @@ Rules:
     if (!extracted.date?.value) warnings.push("Date missing");
     if (!extracted.vendor?.value) warnings.push("Vendor unclear");
 
-    return { ...extracted, warnings };
+    // Apply vendor category hints if category confidence is low
+    const enhancedExtraction = await applyCategoryHints(extracted);
+
+    return { ...enhancedExtraction, warnings };
   } catch (error) {
     console.error("AI extraction error:", error);
     return getEmptyExtraction(["AI extraction error"]);
@@ -277,6 +280,60 @@ function getEmptyExtraction(warnings: string[]): ExtractionResult {
     category: { value: null, confidence: 0 },
     warnings,
   };
+}
+
+// =============================================
+// Category Hints Integration
+// =============================================
+
+async function applyCategoryHints(extraction: ExtractionResult): Promise<ExtractionResult> {
+  // Only apply hints if category is missing or low confidence
+  if (extraction.category?.value && extraction.category.confidence >= 0.8) {
+    return extraction;
+  }
+
+  const vendor = extraction.vendor?.value;
+  if (!vendor) return extraction;
+
+  try {
+    const { data: hints } = await supabase
+      .from("vendor_category_hints")
+      .select("suggested_category, confidence")
+      .order("usage_count", { ascending: false })
+      .limit(20);
+
+    if (!hints || hints.length === 0) return extraction;
+
+    // Search for matching vendor pattern
+    const vendorLower = vendor.toLowerCase();
+    for (const hint of hints) {
+      // Hints use patterns like "7-eleven|seven|เซเว่น"
+      const patterns = (hint as any).vendor_pattern?.split("|") || [];
+      const matched = patterns.some((p: string) => vendorLower.includes(p.toLowerCase().trim()));
+
+      if (matched) {
+        console.log(`[applyCategoryHints] Matched vendor "${vendor}" to category "${hint.suggested_category}"`);
+        
+        // Update usage count
+        await supabase
+          .from("vendor_category_hints")
+          .update({ usage_count: ((hint as any).usage_count || 0) + 1 })
+          .eq("id", (hint as any).id);
+
+        return {
+          ...extraction,
+          category: {
+            value: hint.suggested_category,
+            confidence: hint.confidence || 0.75,
+          },
+        };
+      }
+    }
+  } catch (error) {
+    console.error("[applyCategoryHints] Error:", error);
+  }
+
+  return extraction;
 }
 
 // =============================================
