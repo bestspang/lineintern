@@ -70,6 +70,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
   const [liff, setLiff] = useState<any>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const isInitializing = React.useRef(false);
 
   const MAX_RETRIES = 2;
 
@@ -95,7 +96,72 @@ export function LiffProvider({ children }: LiffProviderProps) {
     return { type: 'unknown', message: 'เกิดข้อผิดพลาด กรุณาลองใหม่', originalError: err };
   };
 
+  // Helper function to determine if we should init LIFF
+  const checkShouldInitLiff = useCallback((): { shouldInit: boolean; reason: string } => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ua = navigator.userAgent;
+    const pathname = window.location.pathname;
+    
+    // 1. Always init on /portal or /liff routes
+    if (pathname.startsWith('/portal') || pathname.startsWith('/liff')) {
+      const hasLiffParams = Array.from(urlParams.keys()).some(k => 
+        k.startsWith('liff.') || k === 'access_token' || k === 'code'
+      );
+      const hasToken = urlParams.has('token');
+      const hasDebug = urlParams.get('debug') === 'liff';
+      const isLineUA = /line\/|liff\/|lineboot/i.test(ua);
+      
+      if (hasLiffParams || hasToken || hasDebug || isLineUA) {
+        return { shouldInit: true, reason: 'LIFF route with indicators' };
+      }
+      
+      // No indicators on portal/liff route - still try but with safe mode
+      return { shouldInit: true, reason: 'LIFF route (will use safe mode)' };
+    }
+    
+    // 2. Root path "/" - only init if LIFF indicators present
+    if (pathname === '/') {
+      const hasLiffParams = Array.from(urlParams.keys()).some(k => 
+        k.startsWith('liff.') || k === 'access_token' || k === 'code'
+      );
+      const hasDebug = urlParams.get('debug') === 'liff';
+      const isLineUA = /line\/|liff\/|lineboot/i.test(ua);
+      const ref = document.referrer;
+      const isFromLine = ref.includes('line.me');
+      
+      if (hasLiffParams || hasDebug || isLineUA || isFromLine) {
+        return { shouldInit: true, reason: 'Root with LIFF indicators' };
+      }
+      
+      // Root path without LINE context - skip LIFF init entirely
+      return { shouldInit: false, reason: 'Root path on regular browser' };
+    }
+    
+    // 3. Other paths - skip LIFF
+    return { shouldInit: false, reason: `Non-LIFF path: ${pathname}` };
+  }, []);
+
   const initLiff = useCallback(async (isRetry = false) => {
+    if (isInitializing.current && !isRetry) {
+      console.log('[LIFF] Already initializing, skipping...');
+      return;
+    }
+    
+    // Check if we should skip LIFF initialization
+    const shouldInitCheck = checkShouldInitLiff();
+    
+    if (!shouldInitCheck.shouldInit) {
+      console.log('[LIFF] Skipping init:', shouldInitCheck.reason);
+      setIsReady(true);
+      setIsInClient(false);
+      setIsLoggedIn(false);
+      isInitializing.current = false;
+      return;
+    }
+    
+    console.log('[LIFF] Proceeding with init:', shouldInitCheck.reason);
+    isInitializing.current = true;
+    
     try {
       // Debug logging for URL state
       console.log('[LIFF] Window location:', {
@@ -155,7 +221,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       console.log('[LIFF] Calling liff.init()...');
       await liffInstance.init({
         liffId: config.key_value,
-        withLoginOnExternalBrowser: true,
+        withLoginOnExternalBrowser: false, // Don't auto-redirect on external browsers
       });
 
       console.log('[LIFF] Init complete!');
