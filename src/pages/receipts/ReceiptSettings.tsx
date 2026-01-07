@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/select';
 import { 
   Settings, Save, Building2, MessageSquare, 
-  CheckCircle2, AlertCircle, ArrowLeft, RefreshCcw
+  CheckCircle2, AlertCircle, ArrowLeft, RefreshCcw,
+  Plus, X, Search, Link2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -29,12 +30,22 @@ interface ReceiptSetting {
   description: string | null;
 }
 
+interface Branch {
+  id: string;
+  name: string;
+}
+
 interface LineGroup {
   id: string;
   line_group_id: string;
   display_name: string;
-  features: { receipts?: boolean } | null;
-  branches?: { id: string; name: string } | null;
+}
+
+interface GroupMapping {
+  id?: string;
+  group_id: string;
+  branch_id: string | null;
+  is_enabled: boolean;
 }
 
 export default function ReceiptSettings() {
@@ -45,9 +56,11 @@ export default function ReceiptSettings() {
   const [systemEnabled, setSystemEnabled] = useState(true);
   const [requireBusiness, setRequireBusiness] = useState(false);
   const [autoAssignBranch, setAutoAssignBranch] = useState(true);
-  const [groupMode, setGroupMode] = useState<'all' | 'selected' | 'branch_linked'>('all');
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Mappings state - local copy that we modify
+  const [localMappings, setLocalMappings] = useState<GroupMapping[]>([]);
 
   // Fetch settings
   const { data: settings, isLoading: settingsLoading } = useQuery({
@@ -61,22 +74,43 @@ export default function ReceiptSettings() {
     },
   });
 
-  // Fetch LINE groups with branch info
+  // Fetch LINE groups
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
-    queryKey: ['line-groups-with-branches'],
+    queryKey: ['line-groups-for-receipts'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('groups')
-        .select(`
-          id, line_group_id, display_name, features,
-          branches:branches!branches_line_group_id_fkey(id, name)
-        `)
+        .select('id, line_group_id, display_name')
         .order('display_name');
       if (error) throw error;
-      return (data || []).map(g => ({
-        ...g,
-        branches: Array.isArray(g.branches) ? g.branches[0] : g.branches
-      })) as LineGroup[];
+      return (data || []) as LineGroup[];
+    },
+  });
+
+  // Fetch branches
+  const { data: branches = [], isLoading: branchesLoading } = useQuery({
+    queryKey: ['branches-for-receipts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, name')
+        .eq('is_deleted', false)
+        .order('name');
+      if (error) throw error;
+      return (data || []) as Branch[];
+    },
+  });
+
+  // Fetch existing mappings
+  const { data: existingMappings = [], isLoading: mappingsLoading } = useQuery({
+    queryKey: ['receipt-group-mappings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('receipt_group_mappings')
+        .select('id, group_id, branch_id, is_enabled')
+        .order('created_at');
+      if (error) throw error;
+      return (data || []) as GroupMapping[];
     },
   });
 
@@ -86,7 +120,6 @@ export default function ReceiptSettings() {
       const enabledSetting = settings.find(s => s.setting_key === 'system_enabled');
       const requireSetting = settings.find(s => s.setting_key === 'require_business');
       const autoAssignSetting = settings.find(s => s.setting_key === 'auto_assign_branch');
-      const groupsSetting = settings.find(s => s.setting_key === 'enabled_groups');
 
       if (enabledSetting) {
         setSystemEnabled((enabledSetting.setting_value as { enabled?: boolean }).enabled ?? true);
@@ -97,22 +130,24 @@ export default function ReceiptSettings() {
       if (autoAssignSetting) {
         setAutoAssignBranch((autoAssignSetting.setting_value as { enabled?: boolean }).enabled ?? true);
       }
-      if (groupsSetting) {
-        const groupValue = groupsSetting.setting_value as { mode?: string; group_ids?: string[] };
-        setGroupMode((groupValue.mode || 'all') as 'all' | 'selected' | 'branch_linked');
-        setSelectedGroupIds(groupValue.group_ids || []);
-      }
     }
   }, [settings]);
+
+  // Initialize local mappings from DB
+  useEffect(() => {
+    if (existingMappings) {
+      setLocalMappings(existingMappings);
+    }
+  }, [existingMappings]);
 
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Save general settings
       const updates = [
         { key: 'system_enabled', value: { enabled: systemEnabled } },
         { key: 'require_business', value: { enabled: requireBusiness } },
         { key: 'auto_assign_branch', value: { enabled: autoAssignBranch } },
-        { key: 'enabled_groups', value: { mode: groupMode, group_ids: selectedGroupIds } },
       ];
 
       for (const { key, value } of updates) {
@@ -122,37 +157,124 @@ export default function ReceiptSettings() {
           .eq('setting_key', key);
         if (error) throw error;
       }
+
+      // Sync mappings - delete removed, update existing, insert new
+      const existingIds = existingMappings.map(m => m.id).filter(Boolean);
+      const localIds = localMappings.map(m => m.id).filter(Boolean);
+      
+      // Delete removed mappings
+      const toDelete = existingIds.filter(id => !localIds.includes(id));
+      if (toDelete.length > 0) {
+        const { error } = await supabase
+          .from('receipt_group_mappings')
+          .delete()
+          .in('id', toDelete);
+        if (error) throw error;
+      }
+
+      // Upsert all local mappings
+      for (const mapping of localMappings) {
+        if (mapping.id) {
+          // Update existing
+          const { error } = await supabase
+            .from('receipt_group_mappings')
+            .update({
+              branch_id: mapping.branch_id,
+              is_enabled: mapping.is_enabled,
+            })
+            .eq('id', mapping.id);
+          if (error) throw error;
+        } else {
+          // Insert new
+          const { error } = await supabase
+            .from('receipt_group_mappings')
+            .insert({
+              group_id: mapping.group_id,
+              branch_id: mapping.branch_id,
+              is_enabled: mapping.is_enabled,
+            });
+          if (error) throw error;
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Settings saved successfully');
       setHasChanges(false);
       queryClient.invalidateQueries({ queryKey: ['receipt-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt-group-mappings'] });
     },
     onError: (error) => {
       toast.error('Failed to save settings: ' + error.message);
     },
   });
 
-  const handleGroupToggle = (groupId: string, checked: boolean) => {
-    setSelectedGroupIds(prev => 
-      checked 
-        ? [...prev, groupId] 
-        : prev.filter(id => id !== groupId)
+  // Mapping handlers
+  const toggleMappingEnabled = (groupId: string, enabled: boolean) => {
+    setLocalMappings(prev => 
+      prev.map(m => m.group_id === groupId ? { ...m, is_enabled: enabled } : m)
     );
     setHasChanges(true);
   };
 
-  const handleSelectAll = () => {
-    setSelectedGroupIds(groups.map(g => g.id));
+  const updateMappingBranch = (groupId: string, branchId: string | null) => {
+    setLocalMappings(prev => 
+      prev.map(m => m.group_id === groupId ? { ...m, branch_id: branchId } : m)
+    );
     setHasChanges(true);
   };
 
-  const handleDeselectAll = () => {
-    setSelectedGroupIds([]);
+  const addGroupMapping = (groupId: string) => {
+    const exists = localMappings.some(m => m.group_id === groupId);
+    if (exists) {
+      toast.error('This group is already added');
+      return;
+    }
+    setLocalMappings(prev => [
+      ...prev,
+      { group_id: groupId, branch_id: null, is_enabled: true }
+    ]);
     setHasChanges(true);
   };
 
-  const isLoading = settingsLoading || groupsLoading;
+  const removeGroupMapping = (groupId: string) => {
+    setLocalMappings(prev => prev.filter(m => m.group_id !== groupId));
+    setHasChanges(true);
+  };
+
+  const enableAllGroups = () => {
+    // Add all groups that aren't already in mappings
+    const existingGroupIds = new Set(localMappings.map(m => m.group_id));
+    const newMappings = groups
+      .filter(g => !existingGroupIds.has(g.id))
+      .map(g => ({ group_id: g.id, branch_id: null, is_enabled: true }));
+    
+    setLocalMappings(prev => [...prev, ...newMappings]);
+    setHasChanges(true);
+  };
+
+  const disableAllGroups = () => {
+    setLocalMappings([]);
+    setHasChanges(true);
+  };
+
+  // Helper functions
+  const getGroupById = (id: string) => groups.find(g => g.id === id);
+  const getBranchById = (id: string | null) => id ? branches.find(b => b.id === id) : null;
+
+  const isLoading = settingsLoading || groupsLoading || branchesLoading || mappingsLoading;
+
+  // Filter groups for search
+  const filteredGroups = groups.filter(g => 
+    g.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    g.line_group_id?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Groups that are mapped
+  const mappedGroupIds = new Set(localMappings.map(m => m.group_id));
+  const enabledCount = localMappings.filter(m => m.is_enabled).length;
+
+  // Groups not yet added
+  const unmappedGroups = filteredGroups.filter(g => !mappedGroupIds.has(g.id));
 
   if (isLoading) {
     return (
@@ -163,14 +285,6 @@ export default function ReceiptSettings() {
       </div>
     );
   }
-
-  // Count groups by mode
-  const branchLinkedGroups = groups.filter(g => g.branches);
-  const enabledCount = groupMode === 'all' 
-    ? groups.length 
-    : groupMode === 'branch_linked' 
-      ? branchLinkedGroups.length 
-      : selectedGroupIds.length;
 
   return (
     <div className="space-y-6">
@@ -186,7 +300,7 @@ export default function ReceiptSettings() {
               Receipt Settings
             </h1>
             <p className="text-muted-foreground">
-              Configure receipt system behavior and access control
+              Configure receipt system and group-to-branch mapping
             </p>
           </div>
         </div>
@@ -211,7 +325,6 @@ export default function ReceiptSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* System Enabled */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="system-enabled">Enable Receipt System</Label>
@@ -229,7 +342,6 @@ export default function ReceiptSettings() {
             />
           </div>
 
-          {/* Require Business */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="require-business">Require Business Creation</Label>
@@ -247,12 +359,11 @@ export default function ReceiptSettings() {
             />
           </div>
 
-          {/* Auto Assign Branch */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="auto-assign-branch">Auto-assign Branch</Label>
               <p className="text-sm text-muted-foreground">
-                Automatically assign receipts to branches based on the LINE group
+                Automatically assign receipts to branches based on the mapping below
               </p>
             </div>
             <Switch
@@ -267,145 +378,141 @@ export default function ReceiptSettings() {
         </CardContent>
       </Card>
 
-      {/* Group Access Control */}
+      {/* Group to Branch Mapping */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            Group Access Control
+            <Link2 className="h-5 w-5" />
+            Group to Branch Mapping
           </CardTitle>
           <CardDescription>
-            Select which LINE groups can submit receipts ({enabledCount} enabled)
+            Map LINE groups to branches for receipt auto-assignment ({enabledCount} enabled)
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Mode Selection */}
-          <div className="space-y-2">
-            <Label>Access Mode</Label>
-            <Select 
-              value={groupMode} 
-              onValueChange={(value: 'all' | 'selected' | 'branch_linked') => {
-                setGroupMode(value);
-                setHasChanges(true);
-              }}
-            >
-              <SelectTrigger className="w-[300px]">
-                <SelectValue placeholder="Select mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    All Groups - ทุก Group สามารถส่งได้
-                  </div>
-                </SelectItem>
-                <SelectItem value="selected">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    Selected Groups - เลือกเฉพาะ Group
-                  </div>
-                </SelectItem>
-                <SelectItem value="branch_linked">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-blue-500" />
-                    Branch-linked Only - เฉพาะ Group ที่เชื่อมกับสาขา
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+        <CardContent className="space-y-4">
+          {/* Actions Bar */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search groups..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button variant="outline" size="sm" onClick={enableAllGroups}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add All Groups
+            </Button>
+            <Button variant="outline" size="sm" onClick={disableAllGroups}>
+              <X className="h-4 w-4 mr-1" />
+              Clear All
+            </Button>
           </div>
 
-          {/* Group List - only show when mode is 'selected' */}
-          {groupMode === 'selected' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Select Groups</Label>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleSelectAll}>
-                    Select All
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleDeselectAll}>
-                    Deselect All
-                  </Button>
-                </div>
+          {/* Mapped Groups */}
+          <div className="border rounded-lg divide-y max-h-[500px] overflow-y-auto">
+            {localMappings.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No groups configured for receipt submission</p>
+                <p className="text-sm mt-1">Add groups below to enable them</p>
               </div>
-              
-              <div className="border rounded-lg divide-y max-h-[400px] overflow-y-auto">
-                {groups.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No LINE groups found</p>
-                  </div>
-                ) : (
-                  groups.map((group) => (
-                    <div
-                      key={group.id}
-                      className="flex items-center justify-between p-4 hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={group.id}
-                          checked={selectedGroupIds.includes(group.id)}
-                          onCheckedChange={(checked) => 
-                            handleGroupToggle(group.id, checked as boolean)
-                          }
-                        />
-                        <div>
-                          <Label htmlFor={group.id} className="font-medium cursor-pointer">
+            ) : (
+              localMappings.map((mapping) => {
+                const group = getGroupById(mapping.group_id);
+                const branch = getBranchById(mapping.branch_id);
+                if (!group) return null;
+
+                return (
+                  <div
+                    key={mapping.group_id}
+                    className={`p-4 ${mapping.is_enabled ? 'bg-background' : 'bg-muted/30'}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={mapping.is_enabled}
+                            onCheckedChange={(checked) => toggleMappingEnabled(mapping.group_id, checked)}
+                          />
+                          <span className={`font-medium truncate ${!mapping.is_enabled ? 'text-muted-foreground' : ''}`}>
                             {group.display_name || 'Unnamed Group'}
-                          </Label>
-                          <p className="text-xs text-muted-foreground">
-                            {group.line_group_id}
-                          </p>
+                          </span>
                         </div>
+                        <p className="text-xs text-muted-foreground mt-1 ml-11 truncate">
+                          {group.line_group_id}
+                        </p>
                       </div>
+
                       <div className="flex items-center gap-2">
-                        {group.branches ? (
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                            <Building2 className="h-3 w-3 mr-1" />
-                            {group.branches.name}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-muted-foreground">
-                            No branch
-                          </Badge>
-                        )}
+                        <Select
+                          value={mapping.branch_id || 'none'}
+                          onValueChange={(val) => updateMappingBranch(mapping.group_id, val === 'none' ? null : val)}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Select branch" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">
+                              <span className="text-muted-foreground">No branch</span>
+                            </SelectItem>
+                            {branches.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-3 w-3" />
+                                  {b.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeGroupMapping(mapping.group_id)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Info for other modes */}
-          {groupMode === 'all' && (
-            <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-              <p className="text-sm text-green-700 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 inline mr-2" />
-                All {groups.length} LINE groups can submit receipts
-              </p>
-            </div>
-          )}
+                    {branch && mapping.is_enabled && (
+                      <div className="mt-2 ml-11">
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                          <Building2 className="h-3 w-3 mr-1" />
+                          {branch.name}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-          {groupMode === 'branch_linked' && (
-            <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <p className="text-sm text-blue-700 dark:text-blue-400">
-                <Building2 className="h-4 w-4 inline mr-2" />
-                Only {branchLinkedGroups.length} groups linked to branches can submit receipts
-              </p>
-              {branchLinkedGroups.length > 0 && (
-                <ul className="mt-2 ml-6 text-sm text-blue-600 dark:text-blue-400 list-disc">
-                  {branchLinkedGroups.slice(0, 5).map(g => (
-                    <li key={g.id}>
-                      {g.display_name} → {g.branches?.name}
-                    </li>
+          {/* Add Group */}
+          {unmappedGroups.length > 0 && (
+            <div className="space-y-2">
+              <Label>Add Group</Label>
+              <Select onValueChange={(val) => addGroupMapping(val)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a group to add..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {unmappedGroups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-3 w-3" />
+                        {g.display_name || 'Unnamed Group'}
+                      </div>
+                    </SelectItem>
                   ))}
-                  {branchLinkedGroups.length > 5 && (
-                    <li>...and {branchLinkedGroups.length - 5} more</li>
-                  )}
-                </ul>
-              )}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </CardContent>
@@ -417,7 +524,7 @@ export default function ReceiptSettings() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {systemEnabled ? (
-                <Badge className="bg-green-100 text-green-700">
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   System Active
                 </Badge>
@@ -436,7 +543,10 @@ export default function ReceiptSettings() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['receipt-settings'] })}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['receipt-settings'] });
+                queryClient.invalidateQueries({ queryKey: ['receipt-group-mappings'] });
+              }}
             >
               <RefreshCcw className="h-4 w-4 mr-2" />
               Refresh
