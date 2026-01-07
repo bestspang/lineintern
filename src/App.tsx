@@ -10,6 +10,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { PortalLayout } from "./components/portal/PortalLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { LiffDebugOverlay } from "./components/LiffDebugOverlay";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Overview from "./pages/Overview";
@@ -139,6 +140,7 @@ const App = () => (
               {/* LIFF Routes - LINE In-App Mini App */}
               <Route path="/liff/*" element={
                 <LiffProvider>
+                  <LiffDebugOverlay />
                   <LiffLayout>
                     <Routes>
                       <Route path="/receipts" element={<LiffReceiptList />} />
@@ -153,6 +155,7 @@ const App = () => (
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={
                 <LiffProvider>
+                  <LiffDebugOverlay />
                   <PortalProvider>
                     <PortalLayout>
                       <Routes>
@@ -191,6 +194,7 @@ const App = () => (
               {/* Root redirect - detects LINE context, wrapped in LiffProvider */}
               <Route path="/" element={
                 <LiffProvider>
+                  <LiffDebugOverlay />
                   <RootRedirect />
                 </LiffProvider>
               } />
