@@ -212,7 +212,7 @@ export default function EmployeeSettings() {
         .from("employees")
         .select(`
           *,
-          branches (
+          branch:branches!branch_id (
             id,
             name
           )
