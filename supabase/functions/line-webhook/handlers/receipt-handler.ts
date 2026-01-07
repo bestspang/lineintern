@@ -49,6 +49,23 @@ interface QuotaStatus {
   remaining: number;
 }
 
+interface ReceiptApprover {
+  id: string;
+  type: 'user' | 'group';
+  line_user_id: string | null;
+  group_id: string | null;
+  branch_id: string | null;
+  display_name: string | null;
+  is_active: boolean;
+  priority: number;
+}
+
+interface SubmitterInfo {
+  name: string;
+  branch: string | null;
+  lineUserId: string;
+}
+
 // =============================
 // Utility Functions
 // =============================
@@ -731,6 +748,214 @@ export async function submitReceiptImage(
       message: "Failed to process receipt",
     };
   }
+}
+
+// =============================
+// Approval System Functions
+// =============================
+
+/**
+ * Get all active receipt approvers
+ */
+export async function getReceiptApprovers(branchId?: string): Promise<ReceiptApprover[]> {
+  let query = supabase
+    .from("receipt_approvers")
+    .select("*")
+    .eq("is_active", true)
+    .order("priority", { ascending: false });
+
+  // Optionally filter by branch
+  if (branchId) {
+    query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("[getReceiptApprovers] Error:", error);
+    return [];
+  }
+  return (data || []) as ReceiptApprover[];
+}
+
+/**
+ * Check if submission group is same as any approver group (fallback to in-group behavior)
+ */
+export async function isSameGroupApproval(submissionGroupId: string | null): Promise<boolean> {
+  if (!submissionGroupId) return false;
+  
+  const { data: group } = await supabase
+    .from("groups")
+    .select("id")
+    .eq("line_group_id", submissionGroupId)
+    .single();
+  
+  if (!group) return false;
+  
+  const { data: approver } = await supabase
+    .from("receipt_approvers")
+    .select("id")
+    .eq("type", "group")
+    .eq("group_id", group.id)
+    .eq("is_active", true)
+    .maybeSingle();
+  
+  return !!approver;
+}
+
+/**
+ * Send approval notifications to all approvers via DM
+ */
+export async function sendApprovalNotifications(
+  result: ReceiptResult,
+  submitterInfo: SubmitterInfo,
+  locale: "th" | "en",
+  liffUrl?: string
+): Promise<void> {
+  const approvers = await getReceiptApprovers();
+  if (approvers.length === 0) {
+    console.log("[sendApprovalNotifications] No approvers configured");
+    return;
+  }
+
+  const flexMessage = buildApproverFlexMessage(result, submitterInfo, locale, liffUrl);
+  const notifiedTo: string[] = [];
+
+  for (const approver of approvers) {
+    try {
+      if (approver.type === "user" && approver.line_user_id) {
+        // Send DM to user
+        await sendLineMessage(approver.line_user_id, [flexMessage]);
+        notifiedTo.push(approver.line_user_id);
+      } else if (approver.type === "group" && approver.group_id) {
+        // Get group's line_group_id
+        const { data: group } = await supabase
+          .from("groups")
+          .select("line_group_id")
+          .eq("id", approver.group_id)
+          .single();
+        
+        if (group?.line_group_id) {
+          await sendLineMessage(group.line_group_id, [flexMessage]);
+          notifiedTo.push(group.line_group_id);
+        }
+      }
+    } catch (error) {
+      console.error(`[sendApprovalNotifications] Error sending to approver:`, error);
+    }
+  }
+
+  // Update receipt with notification info
+  if (result.receiptId && notifiedTo.length > 0) {
+    await supabase
+      .from("receipts")
+      .update({ notification_sent_to: notifiedTo })
+      .eq("id", result.receiptId);
+  }
+}
+
+/**
+ * Send LINE message helper
+ */
+async function sendLineMessage(to: string, messages: object[]): Promise<void> {
+  await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({ to, messages }),
+  });
+}
+
+/**
+ * Build Flex Message for approvers (with Edit button)
+ */
+export function buildApproverFlexMessage(
+  result: ReceiptResult,
+  submitterInfo: SubmitterInfo,
+  locale: "th" | "en",
+  liffUrl?: string
+): object {
+  const contents: any[] = [
+    { type: "text", text: "🧾", size: "xxl", align: "center" },
+    {
+      type: "text",
+      text: locale === "th" ? "ใบเสร็จรอตรวจสอบ" : "Receipt Pending Review",
+      size: "lg", weight: "bold", align: "center", margin: "md",
+    },
+    { type: "separator", margin: "lg" },
+    {
+      type: "box", layout: "horizontal", margin: "lg",
+      contents: [
+        { type: "text", text: locale === "th" ? "ผู้ส่ง:" : "From:", size: "sm", color: "#888888", flex: 1 },
+        { type: "text", text: submitterInfo.name, size: "sm", weight: "bold", flex: 2, wrap: true },
+      ],
+    },
+  ];
+
+  if (submitterInfo.branch) {
+    contents.push({
+      type: "box", layout: "horizontal", margin: "sm",
+      contents: [
+        { type: "text", text: locale === "th" ? "สาขา:" : "Branch:", size: "sm", color: "#888888", flex: 1 },
+        { type: "text", text: submitterInfo.branch, size: "sm", flex: 2 },
+      ],
+    });
+  }
+
+  if (result.vendor) {
+    contents.push({ type: "separator", margin: "lg" });
+    contents.push({ type: "text", text: result.vendor, size: "md", weight: "bold", margin: "lg", wrap: true });
+  }
+
+  if (result.total) {
+    contents.push({
+      type: "box", layout: "horizontal", margin: "md",
+      contents: [
+        { type: "text", text: locale === "th" ? "ยอดรวม:" : "Total:", size: "lg", weight: "bold" },
+        { type: "text", text: `฿${result.total.toLocaleString()}`, size: "lg", weight: "bold", align: "end" },
+      ],
+    });
+  }
+
+  if (result.date) {
+    contents.push({ type: "text", text: `📅 ${result.date}`, size: "xs", color: "#888888", margin: "sm" });
+  }
+
+  // Actions
+  const actions: any[] = [
+    {
+      type: "button", style: "primary",
+      action: { type: "postback", label: locale === "th" ? "✓ อนุมัติ" : "✓ Approve", data: `action=approve_receipt&receipt_id=${result.receiptId}` },
+    },
+  ];
+
+  if (liffUrl && result.receiptId) {
+    actions.push({
+      type: "button", style: "secondary",
+      action: { type: "uri", label: locale === "th" ? "✏️ แก้ไข" : "✏️ Edit", uri: `${liffUrl}/portal/receipts/${result.receiptId}` },
+    });
+  }
+
+  actions.push({
+    type: "button", style: "secondary",
+    action: { type: "postback", label: locale === "th" ? "📷 ขอถ่ายใหม่" : "📷 Retake", data: `action=request_retake&receipt_id=${result.receiptId}` },
+  });
+
+  actions.push({
+    type: "button", style: "secondary",
+    action: { type: "postback", label: locale === "th" ? "🗑 ลบ" : "🗑 Delete", data: `action=delete_receipt&receipt_id=${result.receiptId}` },
+  });
+
+  return {
+    type: "flex",
+    altText: locale === "th" ? "ใบเสร็จรอตรวจสอบ" : "Receipt Pending Review",
+    contents: {
+      type: "bubble", size: "mega",
+      body: { type: "box", layout: "vertical", contents, paddingAll: "20px" },
+      footer: { type: "box", layout: "vertical", contents: actions, spacing: "sm" },
+    },
+  };
 }
 
 // =============================

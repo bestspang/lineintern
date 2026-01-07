@@ -19,7 +19,7 @@ import {
 import { 
   Settings, Save, Building2, MessageSquare, 
   CheckCircle2, AlertCircle, ArrowLeft, RefreshCcw,
-  Plus, X, Search, Link2, Users
+  Plus, X, Search, Link2, Users, UserCheck, Trash2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -43,11 +43,28 @@ interface LineGroup {
   display_name: string;
 }
 
+interface User {
+  id: string;
+  line_user_id: string;
+  display_name: string | null;
+}
+
 interface GroupMapping {
   id?: string;
   group_id: string;
   branch_id: string | null;
   is_enabled: boolean;
+}
+
+interface ReceiptApprover {
+  id?: string;
+  type: 'user' | 'group';
+  line_user_id: string | null;
+  group_id: string | null;
+  branch_id: string | null;
+  display_name: string | null;
+  is_active: boolean;
+  priority: number;
 }
 
 export default function ReceiptSettings() {
@@ -63,9 +80,11 @@ export default function ReceiptSettings() {
   const [trackSubmitterBranch, setTrackSubmitterBranch] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [approverSearchQuery, setApproverSearchQuery] = useState('');
   
   // Mappings state - local copy that we modify
   const [localMappings, setLocalMappings] = useState<GroupMapping[]>([]);
+  const [localApprovers, setLocalApprovers] = useState<ReceiptApprover[]>([]);
 
   // Fetch settings
   const { data: settings, isLoading: settingsLoading } = useQuery({
@@ -119,6 +138,32 @@ export default function ReceiptSettings() {
     },
   });
 
+  // Fetch users for approver selection
+  const { data: users = [], isLoading: usersLoading } = useQuery({
+    queryKey: ['users-for-approvers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, line_user_id, display_name')
+        .order('display_name');
+      if (error) throw error;
+      return (data || []) as User[];
+    },
+  });
+
+  // Fetch existing approvers
+  const { data: existingApprovers = [], isLoading: approversLoading } = useQuery({
+    queryKey: ['receipt-approvers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('receipt_approvers')
+        .select('*')
+        .order('priority', { ascending: false });
+      if (error) throw error;
+      return (data || []) as ReceiptApprover[];
+    },
+  });
+
   // Initialize local state from settings
   useEffect(() => {
     if (settings) {
@@ -155,6 +200,13 @@ export default function ReceiptSettings() {
       setLocalMappings(existingMappings);
     }
   }, [existingMappings]);
+
+  // Initialize local approvers from DB
+  useEffect(() => {
+    if (existingApprovers) {
+      setLocalApprovers(existingApprovers);
+    }
+  }, [existingApprovers]);
 
   // Save mutation
   const saveMutation = useMutation({
@@ -213,12 +265,57 @@ export default function ReceiptSettings() {
           if (error) throw error;
         }
       }
+
+      // Sync approvers - delete removed, update existing, insert new
+      const existingApproverIds = existingApprovers.map(a => a.id).filter(Boolean);
+      const localApproverIds = localApprovers.map(a => a.id).filter(Boolean);
+      
+      // Delete removed approvers
+      const toDeleteApprovers = existingApproverIds.filter(id => !localApproverIds.includes(id));
+      if (toDeleteApprovers.length > 0) {
+        const { error } = await supabase
+          .from('receipt_approvers')
+          .delete()
+          .in('id', toDeleteApprovers);
+        if (error) throw error;
+      }
+
+      // Upsert all local approvers
+      for (const approver of localApprovers) {
+        if (approver.id) {
+          // Update existing
+          const { error } = await supabase
+            .from('receipt_approvers')
+            .update({
+              is_active: approver.is_active,
+              priority: approver.priority,
+              branch_id: approver.branch_id,
+            })
+            .eq('id', approver.id);
+          if (error) throw error;
+        } else {
+          // Insert new
+          const { error } = await supabase
+            .from('receipt_approvers')
+            .insert({
+              type: approver.type,
+              line_user_id: approver.line_user_id,
+              group_id: approver.group_id,
+              branch_id: approver.branch_id,
+              display_name: approver.display_name,
+              is_active: approver.is_active,
+              priority: approver.priority,
+            });
+          if (error) throw error;
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Settings saved successfully');
       setHasChanges(false);
       queryClient.invalidateQueries({ queryKey: ['receipt-settings'] });
       queryClient.invalidateQueries({ queryKey: ['receipt-group-mappings'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt-approvers'] });
     },
     onError: (error) => {
       toast.error('Failed to save settings: ' + error.message);
@@ -274,11 +371,87 @@ export default function ReceiptSettings() {
     setHasChanges(true);
   };
 
+  // Approver handlers
+  const addUserApprover = (user: User) => {
+    const exists = localApprovers.some(a => a.type === 'user' && a.line_user_id === user.line_user_id);
+    if (exists) {
+      toast.error('This user is already an approver');
+      return;
+    }
+    setLocalApprovers(prev => [
+      ...prev,
+      { 
+        type: 'user', 
+        line_user_id: user.line_user_id, 
+        group_id: null, 
+        branch_id: null, 
+        display_name: user.display_name, 
+        is_active: true, 
+        priority: 0 
+      }
+    ]);
+    setHasChanges(true);
+  };
+
+  const addGroupApprover = (group: LineGroup) => {
+    const exists = localApprovers.some(a => a.type === 'group' && a.group_id === group.id);
+    if (exists) {
+      toast.error('This group is already an approver');
+      return;
+    }
+    setLocalApprovers(prev => [
+      ...prev,
+      { 
+        type: 'group', 
+        line_user_id: null, 
+        group_id: group.id, 
+        branch_id: null, 
+        display_name: group.display_name, 
+        is_active: true, 
+        priority: 0 
+      }
+    ]);
+    setHasChanges(true);
+  };
+
+  const removeApprover = (approver: ReceiptApprover) => {
+    setLocalApprovers(prev => 
+      prev.filter(a => {
+        if (approver.id) return a.id !== approver.id;
+        if (a.type === 'user') return a.line_user_id !== approver.line_user_id;
+        return a.group_id !== approver.group_id;
+      })
+    );
+    setHasChanges(true);
+  };
+
+  const toggleApproverActive = (approver: ReceiptApprover, active: boolean) => {
+    setLocalApprovers(prev => 
+      prev.map(a => {
+        if (approver.id && a.id === approver.id) return { ...a, is_active: active };
+        if (a.type === 'user' && a.line_user_id === approver.line_user_id) return { ...a, is_active: active };
+        if (a.type === 'group' && a.group_id === approver.group_id) return { ...a, is_active: active };
+        return a;
+      })
+    );
+    setHasChanges(true);
+  };
+
   // Helper functions
   const getGroupById = (id: string) => groups.find(g => g.id === id);
   const getBranchById = (id: string | null) => id ? branches.find(b => b.id === id) : null;
+  const getUserById = (lineUserId: string | null) => lineUserId ? users.find(u => u.line_user_id === lineUserId) : null;
 
-  const isLoading = settingsLoading || groupsLoading || branchesLoading || mappingsLoading;
+  // Check if same group is used for both receipt submission and approval (fallback to in-group behavior)
+  const isSameGroupForApproval = (groupId: string | null) => {
+    if (!groupId) return false;
+    return localApprovers.some(a => a.type === 'group' && a.group_id === groupId && a.is_active);
+  };
+
+  // For centralized mode - check if the centralized group is also an approver group
+  const centralizedGroupIsApprover = centralizedGroupId ? isSameGroupForApproval(centralizedGroupId) : false;
+
+  const isLoading = settingsLoading || groupsLoading || branchesLoading || mappingsLoading || usersLoading || approversLoading;
 
   // Filter groups for search
   const filteredGroups = groups.filter(g => 
@@ -503,6 +676,169 @@ export default function ReceiptSettings() {
                 </AlertDescription>
               </Alert>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Receipt Approvers */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5" />
+            Receipt Approvers
+          </CardTitle>
+          <CardDescription>
+            Configure users and groups who can approve receipts. When a receipt is submitted, 
+            approval requests will be sent to these approvers via DM.
+            {centralizedGroupIsApprover && (
+              <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                ⚠️ Same group is used for submission and approval - approvals will be sent to the group directly.
+              </span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current Approvers */}
+          <div className="border rounded-lg divide-y max-h-[400px] overflow-y-auto">
+            {localApprovers.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <UserCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No approvers configured</p>
+                <p className="text-sm mt-1">Add users or groups below to enable receipt approval</p>
+              </div>
+            ) : (
+              localApprovers.map((approver, index) => {
+                const displayName = approver.type === 'user'
+                  ? (getUserById(approver.line_user_id)?.display_name || approver.display_name || 'Unknown User')
+                  : (getGroupById(approver.group_id || '')?.display_name || approver.display_name || 'Unknown Group');
+
+                return (
+                  <div
+                    key={approver.id || `${approver.type}-${approver.line_user_id || approver.group_id}-${index}`}
+                    className={`p-4 ${approver.is_active ? 'bg-background' : 'bg-muted/30'}`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={approver.is_active}
+                          onCheckedChange={(checked) => toggleApproverActive(approver, checked)}
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            {approver.type === 'user' ? (
+                              <Users className="h-4 w-4 text-blue-500" />
+                            ) : (
+                              <MessageSquare className="h-4 w-4 text-green-500" />
+                            )}
+                            <span className={`font-medium ${!approver.is_active ? 'text-muted-foreground' : ''}`}>
+                              {displayName}
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {approver.type === 'user' ? 'User' : 'Group'}
+                            </Badge>
+                          </div>
+                          {approver.type === 'user' && approver.line_user_id && (
+                            <p className="text-xs text-muted-foreground mt-0.5 ml-6 truncate max-w-[200px]">
+                              {approver.line_user_id.substring(0, 20)}...
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeApprover(approver)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Add User Approver */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                Add User Approver
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search users..."
+                  value={approverSearchQuery}
+                  onChange={(e) => setApproverSearchQuery(e.target.value)}
+                  className="pl-9 mb-2"
+                />
+              </div>
+              <Select onValueChange={(val) => {
+                const user = users.find(u => u.id === val);
+                if (user) addUserApprover(user);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a user..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {users
+                    .filter(u => 
+                      !localApprovers.some(a => a.type === 'user' && a.line_user_id === u.line_user_id) &&
+                      (u.display_name?.toLowerCase().includes(approverSearchQuery.toLowerCase()) ||
+                       u.line_user_id?.toLowerCase().includes(approverSearchQuery.toLowerCase()))
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-3 w-3" />
+                          {u.display_name || 'Unknown'}
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Add Group Approver */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <MessageSquare className="h-4 w-4" />
+                Add Group Approver
+              </Label>
+              <Select onValueChange={(val) => {
+                const group = groups.find(g => g.id === val);
+                if (group) addGroupApprover(group);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a group..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups
+                    .filter(g => !localApprovers.some(a => a.type === 'group' && a.group_id === g.id))
+                    .map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-3 w-3" />
+                          {g.display_name || 'Unnamed Group'}
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Same group info */}
+          {centralizedGroupIsApprover && (
+            <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                Since the submission group and approval group are the same, receipts will be approved 
+                directly in the group (like the current "slip test" behavior).
+              </AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
