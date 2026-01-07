@@ -26,7 +26,7 @@ interface LiffError {
   originalError?: any;
 }
 
-interface LiffContextType {
+export interface LiffContextType {
   isReady: boolean;
   isLoggedIn: boolean;
   isInClient: boolean;
