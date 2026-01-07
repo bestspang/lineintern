@@ -60,6 +60,7 @@ export default function ReceiptSettings() {
   const [autoAssignBranch, setAutoAssignBranch] = useState(true);
   const [collectionMode, setCollectionMode] = useState<'mapped' | 'centralized'>('mapped');
   const [centralizedGroupId, setCentralizedGroupId] = useState<string | null>(null);
+  const [trackSubmitterBranch, setTrackSubmitterBranch] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -136,9 +137,14 @@ export default function ReceiptSettings() {
         setAutoAssignBranch((autoAssignSetting.setting_value as { enabled?: boolean }).enabled ?? true);
       }
       if (modeSetting) {
-        const modeValue = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
+        const modeValue = modeSetting.setting_value as { 
+          mode?: string; 
+          centralized_group_id?: string | null; 
+          track_submitter_branch?: boolean;
+        };
         setCollectionMode((modeValue.mode as 'mapped' | 'centralized') ?? 'mapped');
         setCentralizedGroupId(modeValue.centralized_group_id ?? null);
+        setTrackSubmitterBranch(modeValue.track_submitter_branch ?? false);
       }
     }
   }, [settings]);
@@ -158,7 +164,7 @@ export default function ReceiptSettings() {
         { key: 'system_enabled', value: { enabled: systemEnabled } },
         { key: 'require_business', value: { enabled: requireBusiness } },
         { key: 'auto_assign_branch', value: { enabled: autoAssignBranch } },
-        { key: 'collection_mode', value: { mode: collectionMode, centralized_group_id: centralizedGroupId } },
+        { key: 'collection_mode', value: { mode: collectionMode, centralized_group_id: centralizedGroupId, track_submitter_branch: trackSubmitterBranch } },
       ];
 
       for (const { key, value } of updates) {
@@ -462,11 +468,38 @@ export default function ReceiptSettings() {
                 </SelectContent>
               </Select>
 
+              <div className="flex items-center justify-between p-3 rounded-lg border">
+                <div className="space-y-0.5">
+                  <Label htmlFor="track-submitter" className="font-medium">Track branch from submitter</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Use the employee's branch if available (tagged as "from submitter")
+                  </p>
+                </div>
+                <Switch
+                  id="track-submitter"
+                  checked={trackSubmitterBranch}
+                  onCheckedChange={(checked) => {
+                    setTrackSubmitterBranch(checked);
+                    setHasChanges(true);
+                  }}
+                />
+              </div>
+
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>Note:</strong> In centralized mode, receipts will NOT have branch information. 
-                  All receipts will be collected without automatic branch assignment.
+                  {trackSubmitterBranch ? (
+                    <>
+                      <strong>Note:</strong> Receipts will be tagged with the submitter's branch 
+                      (if they are a registered employee). The source will be marked as "from submitter".
+                      If the submitter is not an employee or has no branch assigned, no branch will be set.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Note:</strong> In centralized mode without tracking, receipts will NOT have 
+                      branch information. All receipts will be collected without automatic branch assignment.
+                    </>
+                  )}
                 </AlertDescription>
               </Alert>
             </div>

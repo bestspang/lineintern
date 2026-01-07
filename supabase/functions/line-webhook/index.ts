@@ -11,6 +11,7 @@ import {
   getDefaultBusiness,
   getReceiptSummary,
   submitReceiptImage,
+  getBranchFromGroup,
   buildReceiptProcessingFlex,
   buildReceiptSavedFlex,
   buildQuotaExceededFlex,
@@ -7572,8 +7573,19 @@ async function handleReceiptImageInDM(event: LineEvent, lineUserId: string) {
     }
     // If no businesses, receipt-submit will create one automatically
     
+    // Get branch info (for centralized mode with submitter tracking)
+    // DMs don't have a group, but we still check submitter's branch
+    const branchInfo = await getBranchFromGroup(null, lineUserId);
+    console.log(`[handleReceiptImageInDM] Branch info: ${JSON.stringify(branchInfo)}`);
+    
     // Submit the receipt
-    const result = await submitReceiptImage(lineUserId, event.message!.id, businessId);
+    const result = await submitReceiptImage(
+      lineUserId, 
+      event.message!.id, 
+      businessId,
+      branchInfo.branchId,
+      branchInfo.branchSource
+    );
     
     if (!result.success) {
       if (result.error === "quota_exceeded") {

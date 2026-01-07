@@ -3714,6 +3714,7 @@ export type Database = {
       receipts: {
         Row: {
           branch_id: string | null
+          branch_source: string | null
           business_id: string | null
           category: string | null
           confidence: Json | null
@@ -3736,6 +3737,7 @@ export type Database = {
         }
         Insert: {
           branch_id?: string | null
+          branch_source?: string | null
           business_id?: string | null
           category?: string | null
           confidence?: Json | null
@@ -3758,6 +3760,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string | null
+          branch_source?: string | null
           business_id?: string | null
           category?: string | null
           confidence?: Json | null

@@ -193,12 +193,20 @@ export async function canGroupSubmitReceipts(lineGroupId: string | null): Promis
   }
 }
 
+// Result type for branch lookup
+interface BranchInfo {
+  branchId: string | null;
+  branchSource: 'group_mapping' | 'submitter' | null;
+}
+
 /**
  * Get branch ID(s) from LINE group ID using receipt_group_mappings
+ * Also returns the source of the branch information
  */
-export async function getBranchFromGroup(lineGroupId: string | null): Promise<string | null> {
-  if (!lineGroupId) return null;
-
+export async function getBranchFromGroup(
+  lineGroupId: string | null,
+  lineUserId?: string
+): Promise<BranchInfo> {
   try {
     // Check collection mode first
     const { data: modeSetting } = await supabase
@@ -208,14 +216,44 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       .single();
 
     if (modeSetting) {
-      const modeConfig = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
+      const modeConfig = modeSetting.setting_value as { 
+        mode?: string; 
+        centralized_group_id?: string | null;
+        track_submitter_branch?: boolean;
+      };
       
       if (modeConfig.mode === 'centralized') {
-        // Centralized mode = no branch tagging
+        // Check if we should track submitter's branch
+        if (modeConfig.track_submitter_branch && lineUserId) {
+          console.log("[getBranchFromGroup] Centralized mode with submitter tracking");
+          
+          // Lookup employee by line_user_id
+          const { data: employee } = await supabase
+            .from("employees")
+            .select("branch_id, primary_branch_id")
+            .eq("line_user_id", lineUserId)
+            .eq("is_active", true)
+            .single();
+          
+          if (employee) {
+            const branchId = employee.primary_branch_id || employee.branch_id || null;
+            if (branchId) {
+              console.log(`[getBranchFromGroup] Found submitter branch: ${branchId}`);
+              return { branchId, branchSource: 'submitter' };
+            }
+          }
+          
+          console.log("[getBranchFromGroup] Submitter not found or has no branch");
+        }
+        
+        // Centralized mode without tracking or submitter not found = no branch tagging
         console.log("[getBranchFromGroup] Centralized mode - no branch tagging");
-        return null;
+        return { branchId: null, branchSource: null };
       }
     }
+
+    // For DMs (no group) and not centralized mode, no branch can be assigned
+    if (!lineGroupId) return { branchId: null, branchSource: null };
 
     // Check if auto-assign is enabled
     const { data: setting } = await supabase
@@ -225,7 +263,7 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       .single();
 
     if (!setting || !(setting.setting_value as { enabled?: boolean }).enabled) {
-      return null;
+      return { branchId: null, branchSource: null };
     }
 
     // Get internal group ID
@@ -235,7 +273,7 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       .eq("line_group_id", lineGroupId)
       .single();
 
-    if (!group) return null;
+    if (!group) return { branchId: null, branchSource: null };
 
     // Get branch mapping from receipt_group_mappings
     const { data: mapping } = await supabase
@@ -249,7 +287,7 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       .maybeSingle();
 
     if (mapping?.branch_id) {
-      return mapping.branch_id;
+      return { branchId: mapping.branch_id, branchSource: 'group_mapping' };
     }
 
     // Fallback: Check branches.line_group_id for backwards compatibility
@@ -259,10 +297,14 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       .eq("line_group_id", lineGroupId)
       .maybeSingle();
 
-    return branch?.id || null;
+    if (branch?.id) {
+      return { branchId: branch.id, branchSource: 'group_mapping' };
+    }
+
+    return { branchId: null, branchSource: null };
   } catch (error) {
     console.error("[getBranchFromGroup] Error:", error);
-    return null;
+    return { branchId: null, branchSource: null };
   }
 }
 
@@ -605,7 +647,9 @@ export async function getReceiptSummary(
 export async function submitReceiptImage(
   lineUserId: string,
   lineMessageId: string,
-  businessId?: string
+  businessId?: string,
+  branchId?: string | null,
+  branchSource?: 'group_mapping' | 'submitter' | null
 ): Promise<ReceiptResult> {
   try {
     // Call receipt-submit edge function
@@ -619,6 +663,8 @@ export async function submitReceiptImage(
         lineUserId,
         lineMessageId,
         businessId,
+        branchId: branchId || null,
+        branchSource: branchSource || null,
         source: "line",
       }),
     });
