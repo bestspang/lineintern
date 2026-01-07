@@ -7,13 +7,88 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { useState } from 'react';
-import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save, AlertTriangle } from 'lucide-react';
+import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save, AlertTriangle, Loader2, Zap, X, Check } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// API Test functions for each key type
+const apiTestFunctions: Record<string, (token: string) => Promise<{ success: boolean; message: string }>> = {
+  'MAPBOX_PUBLIC_TOKEN': async (token: string) => {
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/Bangkok.json?access_token=${token}&limit=1`
+      );
+      if (response.ok) {
+        return { success: true, message: 'Mapbox API connected successfully' };
+      }
+      const data = await response.json();
+      return { success: false, message: data.message || 'Invalid token' };
+    } catch (e) {
+      return { success: false, message: 'Connection failed' };
+    }
+  },
+  'LINE_CHANNEL_ACCESS_TOKEN': async (token: string) => {
+    try {
+      const response = await fetch('https://api.line.me/v2/bot/info', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, message: `Connected: ${data.displayName || 'LINE Bot'}` };
+      }
+      return { success: false, message: 'Invalid token or unauthorized' };
+    } catch (e) {
+      return { success: false, message: 'Connection failed' };
+    }
+  },
+  'GOOGLE_MAPS_API_KEY': async (key: string) => {
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=Bangkok&key=${key}`
+      );
+      const data = await response.json();
+      if (data.status === 'OK') {
+        return { success: true, message: 'Google Maps API connected' };
+      } else if (data.status === 'REQUEST_DENIED') {
+        return { success: false, message: data.error_message || 'Request denied' };
+      }
+      return { success: false, message: data.status };
+    } catch (e) {
+      return { success: false, message: 'Connection failed' };
+    }
+  },
+  'OPENAI_API_KEY': async (key: string) => {
+    try {
+      const response = await fetch('https://api.openai.com/v1/models', {
+        headers: { Authorization: `Bearer ${key}` }
+      });
+      if (response.ok) {
+        return { success: true, message: 'OpenAI API connected' };
+      }
+      return { success: false, message: 'Invalid API key' };
+    } catch (e) {
+      return { success: false, message: 'Connection failed' };
+    }
+  },
+  'GOOGLE_CLIENT_ID': async (clientId: string) => {
+    // Just verify format - actual OAuth test requires redirect
+    if (clientId.endsWith('.apps.googleusercontent.com')) {
+      return { success: true, message: 'Valid Google Client ID format' };
+    }
+    return { success: false, message: 'Invalid Client ID format' };
+  },
+  'LIFF_ID': async (liffId: string) => {
+    // Verify LIFF ID format (typically numeric)
+    if (/^\d+-\w+$/.test(liffId) || /^\d{10,}$/.test(liffId)) {
+      return { success: true, message: 'Valid LIFF ID format' };
+    }
+    return { success: false, message: 'Invalid LIFF ID format' };
+  },
+};
 
 interface APIConfig {
   id: string;
