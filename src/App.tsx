@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { PortalProvider } from "./contexts/PortalContext";
+import { LocaleProvider } from "./contexts/LocaleContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { PortalLayout } from "./components/portal/PortalLayout";
@@ -115,12 +116,13 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <ErrorBoundary>
-          <AuthProvider>
+    <LocaleProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <ErrorBoundary>
+            <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
@@ -260,10 +262,11 @@ const App = () => (
                 </ProtectedRoute>
               } />
             </Routes>
-          </AuthProvider>
-        </ErrorBoundary>
-      </BrowserRouter>
-    </TooltipProvider>
+            </AuthProvider>
+          </ErrorBoundary>
+        </BrowserRouter>
+      </TooltipProvider>
+    </LocaleProvider>
   </QueryClientProvider>
 );
 

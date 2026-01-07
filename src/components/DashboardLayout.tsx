@@ -78,144 +78,159 @@ import {
 } from '@/components/ui/collapsible';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
 import { useUserRole } from '@/hooks/useUserRole';
 import { usePageAccess } from '@/hooks/usePageAccess';
+import { Globe } from 'lucide-react';
 
 const navigationGroups = [
   {
     title: 'Dashboard',
+    titleTh: 'แดชบอร์ด',
     icon: Gauge,
     items: [
-      { title: 'Overview', url: '/', icon: LayoutDashboard },
-      { title: 'Health Monitoring', url: '/health-monitoring', icon: Activity },
-      { title: 'Config Validator', url: '/config-validator', icon: Settings },
+      { title: 'Overview', titleTh: 'ภาพรวม', url: '/', icon: LayoutDashboard },
+      { title: 'Health Monitoring', titleTh: 'ตรวจสอบสุขภาพ', url: '/health-monitoring', icon: Activity },
+      { title: 'Config Validator', titleTh: 'ตรวจสอบการตั้งค่า', url: '/config-validator', icon: Settings },
     ],
   },
   {
     title: 'Content & Knowledge',
+    titleTh: 'เนื้อหาและความรู้',
     icon: BookOpen,
     items: [
-      { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
-      { title: 'FAQ Logs', url: '/faq-logs', icon: MessageSquare },
-      { title: 'Training Queue', url: '/training', icon: GraduationCap },
-      { title: 'Chat Summaries', url: '/summaries', icon: FileText },
+      { title: 'Knowledge Base', titleTh: 'ฐานความรู้', url: '/knowledge', icon: BookOpen },
+      { title: 'FAQ Logs', titleTh: 'บันทึก FAQ', url: '/faq-logs', icon: MessageSquare },
+      { title: 'Training Queue', titleTh: 'คิวการฝึก', url: '/training', icon: GraduationCap },
+      { title: 'Chat Summaries', titleTh: 'สรุปแชท', url: '/summaries', icon: FileText },
     ],
   },
   {
     title: 'Management',
+    titleTh: 'การจัดการ',
     icon: Layers,
     items: [
-      { title: 'Groups', url: '/groups', icon: MessageSquare },
-      { title: 'Users', url: '/users', icon: Users },
-      { title: 'Direct Messages', url: '/direct-messages', icon: Mail },
-      { title: 'Tasks & Reminders', url: '/tasks', icon: CheckSquare },
-      { title: 'Broadcast', url: '/broadcast', icon: Radio },
-      { title: 'Cron Jobs', url: '/cron-jobs', icon: Clock },
+      { title: 'Groups', titleTh: 'กลุ่ม', url: '/groups', icon: MessageSquare },
+      { title: 'Users', titleTh: 'ผู้ใช้', url: '/users', icon: Users },
+      { title: 'Direct Messages', titleTh: 'ข้อความโดยตรง', url: '/direct-messages', icon: Mail },
+      { title: 'Tasks & Reminders', titleTh: 'งานและการแจ้งเตือน', url: '/tasks', icon: CheckSquare },
+      { title: 'Broadcast', titleTh: 'ประกาศ', url: '/broadcast', icon: Radio },
+      { title: 'Cron Jobs', titleTh: 'งานตั้งเวลา', url: '/cron-jobs', icon: Clock },
     ],
   },
   {
     title: 'AI Features',
+    titleTh: 'ฟีเจอร์ AI',
     icon: Bot,
     items: [
-      { title: 'Memory Bot', url: '/memory', icon: Brain },
-      { title: 'Personality AI', url: '/personality', icon: Sparkles },
-      { title: 'Commands', url: '/commands', icon: Terminal },
+      { title: 'Memory Bot', titleTh: 'บอทความจำ', url: '/memory', icon: Brain },
+      { title: 'Personality AI', titleTh: 'บุคลิกภาพ AI', url: '/personality', icon: Sparkles },
+      { title: 'Commands', titleTh: 'คำสั่ง', url: '/commands', icon: Terminal },
     ],
   },
   {
     title: 'Attendance',
+    titleTh: 'การลงเวลา',
     icon: ClipboardCheck,
     items: [
-      { title: 'Dashboard', url: '/attendance/dashboard', icon: Gauge },
-      { title: 'Analytics', url: '/attendance/analytics', icon: BarChart3 },
-      { title: 'Live Tracking', url: '/attendance/live-tracking', icon: Activity },
-      { title: 'Attendance Logs', url: '/attendance/logs', icon: FileText },
-      { title: 'Photos', url: '/attendance/photos', icon: Camera },
-      { title: 'Fraud Detection', url: '/attendance/fraud-detection', icon: Shield },
-      { title: 'Daily Summaries', url: '/attendance/summaries', icon: Calendar },
-      { title: 'Reminder Logs', url: '/attendance/reminder-logs', icon: Bell },
-      { title: 'Employees', url: '/attendance/employees', icon: Users },
-      { title: 'Employee Roles', url: '/attendance/roles', icon: UserCog },
-      { title: 'Branches', url: '/attendance/branches', icon: Building },
-      { title: 'Settings', url: '/attendance/settings', icon: Settings },
+      { title: 'Dashboard', titleTh: 'แดชบอร์ด', url: '/attendance/dashboard', icon: Gauge },
+      { title: 'Analytics', titleTh: 'วิเคราะห์', url: '/attendance/analytics', icon: BarChart3 },
+      { title: 'Live Tracking', titleTh: 'ติดตามสด', url: '/attendance/live-tracking', icon: Activity },
+      { title: 'Attendance Logs', titleTh: 'บันทึกลงเวลา', url: '/attendance/logs', icon: FileText },
+      { title: 'Photos', titleTh: 'รูปภาพ', url: '/attendance/photos', icon: Camera },
+      { title: 'Fraud Detection', titleTh: 'ตรวจจับทุจริต', url: '/attendance/fraud-detection', icon: Shield },
+      { title: 'Daily Summaries', titleTh: 'สรุปรายวัน', url: '/attendance/summaries', icon: Calendar },
+      { title: 'Reminder Logs', titleTh: 'บันทึกแจ้งเตือน', url: '/attendance/reminder-logs', icon: Bell },
+      { title: 'Employees', titleTh: 'พนักงาน', url: '/attendance/employees', icon: Users },
+      { title: 'Employee Roles', titleTh: 'บทบาทพนักงาน', url: '/attendance/roles', icon: UserCog },
+      { title: 'Branches', titleTh: 'สาขา', url: '/attendance/branches', icon: Building },
+      { title: 'Settings', titleTh: 'ตั้งค่า', url: '/attendance/settings', icon: Settings },
     ],
   },
   {
     title: 'Schedule & Leaves',
+    titleTh: 'กะงานและวันลา',
     icon: Calendar,
     items: [
-      { title: 'Shift Templates', url: '/attendance/shift-templates', icon: Clock },
-      { title: 'Weekly Schedules', url: '/attendance/schedules', icon: Calendar },
-      { title: 'Holidays', url: '/attendance/holidays', icon: PartyPopper },
-      { title: 'Leave Balance', url: '/attendance/leave-balance', icon: CalendarDays },
-      { title: 'Early Leave Requests', url: '/attendance/early-leave-requests', icon: AlertTriangle },
-      { title: 'Flexible Day-Off', url: '/attendance/flexible-day-off-requests', icon: CalendarDays },
+      { title: 'Shift Templates', titleTh: 'รูปแบบกะ', url: '/attendance/shift-templates', icon: Clock },
+      { title: 'Weekly Schedules', titleTh: 'ตารางรายสัปดาห์', url: '/attendance/schedules', icon: Calendar },
+      { title: 'Holidays', titleTh: 'วันหยุด', url: '/attendance/holidays', icon: PartyPopper },
+      { title: 'Leave Balance', titleTh: 'วันลาคงเหลือ', url: '/attendance/leave-balance', icon: CalendarDays },
+      { title: 'Early Leave Requests', titleTh: 'คำขอกลับก่อน', url: '/attendance/early-leave-requests', icon: AlertTriangle },
+      { title: 'Flexible Day-Off', titleTh: 'วันหยุดยืดหยุ่น', url: '/attendance/flexible-day-off-requests', icon: CalendarDays },
     ],
   },
   {
     title: 'Overtime',
+    titleTh: 'ทำงานล่วงเวลา',
     icon: Timer,
     items: [
-      { title: 'OT Requests', url: '/attendance/overtime-requests', icon: Clock },
-      { title: 'OT Summary Report', url: '/attendance/overtime-summary', icon: DollarSign },
-      { title: 'OT Monitoring', url: '/attendance/overtime-management', icon: Clock },
+      { title: 'OT Requests', titleTh: 'คำขอ OT', url: '/attendance/overtime-requests', icon: Clock },
+      { title: 'OT Summary Report', titleTh: 'รายงานสรุป OT', url: '/attendance/overtime-summary', icon: DollarSign },
+      { title: 'OT Monitoring', titleTh: 'ติดตาม OT', url: '/attendance/overtime-management', icon: Clock },
     ],
   },
   {
     title: 'Payroll',
+    titleTh: 'เงินเดือน',
     icon: Wallet,
     items: [
-      { title: 'Payroll', url: '/attendance/payroll', icon: Wallet },
-      { title: 'Payroll YTD', url: '/attendance/payroll-ytd', icon: TrendingUp },
-      { title: 'Work History', url: '/attendance/work-history', icon: FileText },
+      { title: 'Payroll', titleTh: 'เงินเดือน', url: '/attendance/payroll', icon: Wallet },
+      { title: 'Payroll YTD', titleTh: 'เงินเดือนสะสม', url: '/attendance/payroll-ytd', icon: TrendingUp },
+      { title: 'Work History', titleTh: 'ประวัติการทำงาน', url: '/attendance/work-history', icon: FileText },
     ],
   },
   {
     title: 'Points & Rewards',
+    titleTh: 'แต้มและรางวัล',
     icon: Trophy,
     items: [
-      { title: 'Happy Points', url: '/attendance/happy-points', icon: Trophy },
-      { title: 'Point Transactions', url: '/attendance/point-transactions', icon: Wallet },
-      { title: 'Rewards', url: '/attendance/rewards', icon: Gift },
-      { title: 'Redemption Approvals', url: '/attendance/redemption-approvals', icon: ShoppingBag },
+      { title: 'Happy Points', titleTh: 'แต้มความสุข', url: '/attendance/happy-points', icon: Trophy },
+      { title: 'Point Transactions', titleTh: 'ธุรกรรมแต้ม', url: '/attendance/point-transactions', icon: Wallet },
+      { title: 'Rewards', titleTh: 'รางวัล', url: '/attendance/rewards', icon: Gift },
+      { title: 'Redemption Approvals', titleTh: 'อนุมัติแลกรางวัล', url: '/attendance/redemption-approvals', icon: ShoppingBag },
     ],
   },
   {
     title: 'Deposits',
+    titleTh: 'เงินมัดจำ',
     icon: DollarSign,
     items: [
-      { title: 'Deposits', url: '/attendance/deposits', icon: DollarSign },
-      { title: 'Deposit Settings', url: '/attendance/deposit-settings', icon: Settings },
+      { title: 'Deposits', titleTh: 'เงินมัดจำ', url: '/attendance/deposits', icon: DollarSign },
+      { title: 'Deposit Settings', titleTh: 'ตั้งค่าเงินมัดจำ', url: '/attendance/deposit-settings', icon: Settings },
     ],
   },
   {
     title: 'Receipts',
+    titleTh: 'ใบเสร็จ',
     icon: Receipt,
     items: [
-      { title: 'All Receipts', url: '/receipts', icon: Receipt },
-      { title: 'Analytics', url: '/receipts/analytics', icon: PieChart },
-      { title: 'Businesses', url: '/receipts/businesses', icon: Building },
-      { title: 'Export', url: '/receipts/export', icon: FileText },
-      { title: 'Settings', url: '/receipts/settings', icon: Settings },
+      { title: 'All Receipts', titleTh: 'ใบเสร็จทั้งหมด', url: '/receipts', icon: Receipt },
+      { title: 'Analytics', titleTh: 'วิเคราะห์', url: '/receipts/analytics', icon: PieChart },
+      { title: 'Businesses', titleTh: 'ธุรกิจ', url: '/receipts/businesses', icon: Building },
+      { title: 'Export', titleTh: 'ส่งออก', url: '/receipts/export', icon: FileText },
+      { title: 'Settings', titleTh: 'ตั้งค่า', url: '/receipts/settings', icon: Settings },
     ],
   },
   {
     title: 'Monitoring & Tools',
+    titleTh: 'ตรวจสอบและเครื่องมือ',
     icon: BarChart3,
     items: [
-      { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-      { title: 'Bot Message Logs', url: '/bot-logs', icon: MessageSquare },
-      { title: 'Memory Analytics', url: '/memory-analytics', icon: Database },
-      { title: 'Test Bot', url: '/test-bot', icon: TestTube2 },
+      { title: 'Analytics', titleTh: 'วิเคราะห์', url: '/analytics', icon: BarChart3 },
+      { title: 'Bot Message Logs', titleTh: 'บันทึกข้อความบอท', url: '/bot-logs', icon: MessageSquare },
+      { title: 'Memory Analytics', titleTh: 'วิเคราะห์หน่วยความจำ', url: '/memory-analytics', icon: Database },
+      { title: 'Test Bot', titleTh: 'ทดสอบบอท', url: '/test-bot', icon: TestTube2 },
     ],
   },
   {
     title: 'Configuration',
+    titleTh: 'การตั้งค่า',
     icon: Settings,
     items: [
-      { title: 'Settings', url: '/settings', icon: Settings },
+      { title: 'Settings', titleTh: 'ตั้งค่า', url: '/settings', icon: Settings },
     ],
   },
 ];
@@ -223,8 +238,14 @@ const navigationGroups = [
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
   const location = useLocation();
+  const { locale, setLocale, t } = useLocale();
   const { canAccessMenuGroup, isLoading: isRoleLoading } = useUserRole();
   const { canAccessPage, loading: isPageAccessLoading } = usePageAccess();
+
+  // Helper to get localized title
+  const getTitle = (item: { title: string; titleTh?: string }) => {
+    return locale === 'th' && item.titleTh ? item.titleTh : item.title;
+  };
 
   // Filter navigation groups based on role permissions
   // Then filter items within each group based on page-level permissions
@@ -272,7 +293,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                     <SidebarGroupLabel asChild>
                       <CollapsibleTrigger className="flex w-full items-center gap-2 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
                         <group.icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1 text-left">{group.title}</span>
+                        <span className="flex-1 text-left">{getTitle(group)}</span>
                         <svg
                           className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-90"
                           xmlns="http://www.w3.org/2000/svg"
@@ -297,7 +318,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                                   activeClassName="bg-muted text-primary font-medium"
                                 >
                                   <item.icon className="h-4 w-4" />
-                                  <span>{item.title}</span>
+                                  <span>{getTitle(item)}</span>
                                 </NavLink>
                               </SidebarMenuButton>
                             </SidebarMenuItem>
@@ -319,7 +340,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                     <SidebarGroupLabel asChild>
                       <CollapsibleTrigger className="flex w-full items-center gap-1.5 hover:bg-muted/50 rounded-md px-2 py-0.5 transition-colors text-xs">
                         <group.icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1 text-left">{group.title}</span>
+                        <span className="flex-1 text-left">{getTitle(group)}</span>
                         <svg
                           className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-90"
                           xmlns="http://www.w3.org/2000/svg"
@@ -344,7 +365,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                                   activeClassName="bg-muted text-primary font-medium"
                                 >
                                   <item.icon className="h-4 w-4" />
-                                  <span>{item.title}</span>
+                                  <span>{getTitle(item)}</span>
                                 </NavLink>
                               </SidebarMenuButton>
                             </SidebarMenuItem>
@@ -365,7 +386,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               onClick={signOut}
             >
               <LogOut className="h-4 w-4 mr-2" />
-              <span>Sign Out</span>
+              <span>{t('ออกจากระบบ', 'Sign Out')}</span>
             </Button>
           </div>
         </Sidebar>
@@ -373,7 +394,16 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-12 sm:h-14 border-b flex items-center px-3 sm:px-4 gap-2 bg-background shrink-0">
             <SidebarTrigger />
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocale(locale === 'th' ? 'en' : 'th')}
+                className="h-7 px-2 text-xs"
+              >
+                <Globe className="h-3.5 w-3.5 mr-1" />
+                {locale === 'th' ? 'EN' : 'TH'}
+              </Button>
               <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
                 Sandbox
               </span>
