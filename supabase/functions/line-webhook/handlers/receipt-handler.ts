@@ -994,8 +994,8 @@ export function buildReceiptHelpFlex(locale: "th" | "en"): object {
               {
                 type: "text",
                 text: locale === "th"
-                  ? "/สรุปใบเสร็จ - ดูสรุปเดือนนี้\n/ธุรกิจ - จัดการธุรกิจ"
-                  : "/receiptsummary - View monthly summary\n/businesses - Manage businesses",
+                  ? "/สรุปใบเสร็จ - ดูสรุปเดือนนี้\n/เดือนนี้ - สรุปเดือนปัจจุบัน\n/ส่งออก [เดือน] - ส่งออก CSV\n/ตั้งค่าเริ่มต้น [ชื่อ] - ตั้งธุรกิจหลัก\n/ธุรกิจ - จัดการธุรกิจ"
+                  : "/receiptsummary - View monthly summary\n/thismonth - Current month stats\n/export [month] - Export CSV\n/setdefault [name] - Set default business\n/businesses - Manage businesses",
                 size: "xs",
                 color: "#666666",
                 wrap: true,

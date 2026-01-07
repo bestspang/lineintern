@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { useState } from 'react';
-import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save } from 'lucide-react';
+import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Tooltip,
   TooltipContent,
@@ -116,6 +117,10 @@ export default function APIKeys() {
     );
   }
 
+  // Check if MAPBOX is missing in database but might exist in secrets
+  const mapboxConfig = configs?.find(c => c.key_name === 'MAPBOX_PUBLIC_TOKEN');
+  const showMapboxWarning = mapboxConfig && !mapboxConfig.key_value;
+
   return (
     <div className="space-y-6">
       <div>
@@ -124,6 +129,17 @@ export default function APIKeys() {
           จัดการ API Keys และ Tokens สำหรับ External Services ที่ระบบใช้งาน
         </p>
       </div>
+
+      {showMapboxWarning && (
+        <Alert variant="default" className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-700 dark:text-amber-400">Mapbox Token ต้องการการตั้งค่า</AlertTitle>
+          <AlertDescription className="text-amber-600/90 dark:text-amber-400/80">
+            หากคุณได้ตั้งค่า Mapbox Token ไว้ใน Supabase Secrets แล้ว กรุณากรอกค่าอีกครั้งในช่อง MAPBOX_PUBLIC_TOKEN ด้านล่าง 
+            เพื่อให้ระบบ Map features ทำงานได้ถูกต้อง
+          </AlertDescription>
+        </Alert>
+      )}
 
       {Object.entries(groupedConfigs).map(([category, categoryConfigs]) => (
         <Card key={category}>
