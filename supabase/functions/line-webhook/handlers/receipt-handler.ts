@@ -804,12 +804,14 @@ export async function isSameGroupApproval(submissionGroupId: string | null): Pro
 
 /**
  * Send approval notifications to all approvers via DM
+ * @param imageUrl - URL of the receipt image to include in the Flex Message
  */
 export async function sendApprovalNotifications(
   result: ReceiptResult,
   submitterInfo: SubmitterInfo,
   locale: "th" | "en",
-  liffUrl?: string
+  liffUrl?: string,
+  imageUrl?: string
 ): Promise<void> {
   const approvers = await getReceiptApprovers();
   if (approvers.length === 0) {
@@ -817,7 +819,7 @@ export async function sendApprovalNotifications(
     return;
   }
 
-  const flexMessage = buildApproverFlexMessage(result, submitterInfo, locale, liffUrl);
+  const flexMessage = buildApproverFlexMessage(result, submitterInfo, locale, liffUrl, imageUrl);
   const notifiedTo: string[] = [];
 
   for (const approver of approvers) {
@@ -869,21 +871,28 @@ async function sendLineMessage(to: string, messages: object[]): Promise<void> {
 
 /**
  * Build Flex Message for approvers (with Edit button)
+ * Includes all receipt details: image, vendor, items, payment, warnings
  */
 export function buildApproverFlexMessage(
   result: ReceiptResult,
   submitterInfo: SubmitterInfo,
   locale: "th" | "en",
-  liffUrl?: string
+  liffUrl?: string,
+  imageUrl?: string
 ): object {
+  const hasWarnings = result.warnings && result.warnings.length > 0;
+
   const contents: any[] = [
     { type: "text", text: "🧾", size: "xxl", align: "center" },
     {
       type: "text",
       text: locale === "th" ? "ใบเสร็จรอตรวจสอบ" : "Receipt Pending Review",
       size: "lg", weight: "bold", align: "center", margin: "md",
+      color: hasWarnings ? "#FF9800" : "#333333",
     },
     { type: "separator", margin: "lg" },
+    
+    // Submitter info
     {
       type: "box", layout: "horizontal", margin: "lg",
       contents: [
@@ -903,23 +912,170 @@ export function buildApproverFlexMessage(
     });
   }
 
+  // Vendor section
   if (result.vendor) {
     contents.push({ type: "separator", margin: "lg" });
     contents.push({ type: "text", text: result.vendor, size: "md", weight: "bold", margin: "lg", wrap: true });
   }
 
-  if (result.total) {
+  // Vendor address
+  if (result.vendor_address) {
     contents.push({
-      type: "box", layout: "horizontal", margin: "md",
-      contents: [
-        { type: "text", text: locale === "th" ? "ยอดรวม:" : "Total:", size: "lg", weight: "bold" },
-        { type: "text", text: `฿${result.total.toLocaleString()}`, size: "lg", weight: "bold", align: "end" },
-      ],
+      type: "text",
+      text: result.vendor_address,
+      size: "xs",
+      color: "#666666",
+      wrap: true,
+      margin: "sm",
     });
   }
 
+  // Tax ID & Receipt Number
+  if (result.tax_id || result.receipt_number) {
+    const taxReceiptParts: string[] = [];
+    if (result.tax_id) taxReceiptParts.push(`TAX: ${result.tax_id}`);
+    if (result.receipt_number) taxReceiptParts.push(`#${result.receipt_number}`);
+    
+    contents.push({
+      type: "text",
+      text: taxReceiptParts.join(" | "),
+      size: "xs",
+      color: "#888888",
+      margin: "sm",
+    });
+  }
+
+  // Items list
+  if (result.items && result.items.length > 0) {
+    contents.push({ type: "separator", margin: "lg" });
+
+    // Items header
+    contents.push({
+      type: "box",
+      layout: "horizontal",
+      contents: [
+        { type: "text", text: locale === "th" ? "รายการ" : "Item", size: "xs", color: "#888888", flex: 4 },
+        { type: "text", text: locale === "th" ? "ราคา" : "Price", size: "xs", color: "#888888", flex: 1, align: "end" },
+      ],
+      margin: "md",
+    });
+
+    // Show up to 5 items
+    const itemsToShow = result.items.slice(0, 5);
+    itemsToShow.forEach(item => {
+      const qtyText = item.quantity && item.unit 
+        ? `${item.quantity} ${item.unit}` 
+        : item.quantity 
+          ? `x${item.quantity}` 
+          : "";
+      
+      contents.push({
+        type: "box",
+        layout: "horizontal",
+        contents: [
+          { 
+            type: "text", 
+            text: qtyText ? `${item.name} (${qtyText})` : item.name, 
+            size: "sm", 
+            flex: 4, 
+            wrap: true 
+          },
+          { 
+            type: "text", 
+            text: `฿${item.amount.toLocaleString()}`, 
+            size: "sm", 
+            flex: 1, 
+            align: "end" 
+          },
+        ],
+        margin: "sm",
+      });
+    });
+
+    // Show "and X more..." if there are more items
+    if (result.items.length > 5) {
+      contents.push({
+        type: "text",
+        text: locale === "th" 
+          ? `... และอีก ${result.items.length - 5} รายการ` 
+          : `... and ${result.items.length - 5} more`,
+        size: "xs",
+        color: "#888888",
+        margin: "sm",
+      });
+    }
+  }
+
+  // Total
+  contents.push({ type: "separator", margin: "lg" });
+  
+  if (result.total) {
+    contents.push({
+      type: "box",
+      layout: "horizontal",
+      contents: [
+        { type: "text", text: locale === "th" ? "รวม" : "Total", size: "lg", weight: "bold" },
+        { type: "text", text: `฿${result.total.toLocaleString()}`, size: "lg", weight: "bold", align: "end" },
+      ],
+      margin: "md",
+    });
+  }
+
+  // Date
   if (result.date) {
-    contents.push({ type: "text", text: `📅 ${result.date}`, size: "xs", color: "#888888", margin: "sm" });
+    contents.push({
+      type: "text",
+      text: `📅 ${result.date}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "sm",
+    });
+  }
+
+  // Payment info
+  if (result.payment_method || result.card_number_masked) {
+    const paymentParts: string[] = [];
+    if (result.payment_method) paymentParts.push(result.payment_method);
+    if (result.card_number_masked) paymentParts.push(result.card_number_masked);
+    
+    contents.push({
+      type: "text",
+      text: `💳 ${paymentParts.join(" ")}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "xs",
+    });
+  }
+
+  // Category
+  if (result.category) {
+    contents.push({
+      type: "text",
+      text: `📁 ${result.category}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "xs",
+    });
+  }
+
+  // Warnings
+  if (hasWarnings) {
+    contents.push({ type: "separator", margin: "lg" });
+    contents.push({
+      type: "box",
+      layout: "vertical",
+      contents: result.warnings!.map((w) => ({
+        type: "text",
+        text: `⚠️ ${w}`,
+        size: "xs",
+        color: "#FF9800",
+        wrap: true,
+      })),
+      margin: "lg",
+    });
   }
 
   // Actions
@@ -932,7 +1088,7 @@ export function buildApproverFlexMessage(
 
   if (liffUrl && result.receiptId) {
     actions.push({
-      type: "button", style: "secondary",
+      type: "button", style: hasWarnings ? "primary" : "secondary",
       action: { type: "uri", label: locale === "th" ? "✏️ แก้ไข" : "✏️ Edit", uri: `${liffUrl}/portal/receipts/${result.receiptId}` },
     });
   }
@@ -947,14 +1103,33 @@ export function buildApproverFlexMessage(
     action: { type: "postback", label: locale === "th" ? "🗑 ลบ" : "🗑 Delete", data: `action=delete_receipt&receipt_id=${result.receiptId}` },
   });
 
+  // Build bubble with optional hero image
+  const bubble: any = {
+    type: "bubble", 
+    size: "mega",
+    body: { type: "box", layout: "vertical", contents, paddingAll: "20px" },
+    footer: { type: "box", layout: "vertical", contents: actions, spacing: "sm" },
+  };
+
+  // Add hero image if available
+  if (imageUrl) {
+    bubble.hero = {
+      type: "image",
+      url: imageUrl,
+      size: "full",
+      aspectRatio: "4:3",
+      aspectMode: "cover",
+      action: {
+        type: "uri",
+        uri: imageUrl,
+      },
+    };
+  }
+
   return {
     type: "flex",
     altText: locale === "th" ? "ใบเสร็จรอตรวจสอบ" : "Receipt Pending Review",
-    contents: {
-      type: "bubble", size: "mega",
-      body: { type: "box", layout: "vertical", contents, paddingAll: "20px" },
-      footer: { type: "box", layout: "vertical", contents: actions, spacing: "sm" },
-    },
+    contents: bubble,
   };
 }
 
