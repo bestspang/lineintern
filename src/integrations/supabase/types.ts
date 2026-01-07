@@ -3421,6 +3421,105 @@ export type Database = {
         }
         Relationships: []
       }
+      receipt_approval_logs: {
+        Row: {
+          action: string
+          actioned_by_line_user_id: string
+          actioned_by_name: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          receipt_id: string
+        }
+        Insert: {
+          action: string
+          actioned_by_line_user_id: string
+          actioned_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          receipt_id: string
+        }
+        Update: {
+          action?: string
+          actioned_by_line_user_id?: string
+          actioned_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          receipt_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_approval_logs_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_approvers: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          display_name: string | null
+          group_id: string | null
+          id: string
+          is_active: boolean | null
+          line_user_id: string | null
+          priority: number | null
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          priority?: number | null
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          priority?: number | null
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_approvers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_approvers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_approvers_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receipt_businesses: {
         Row: {
           created_at: string | null
@@ -3807,6 +3906,9 @@ export type Database = {
       }
       receipts: {
         Row: {
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
           branch_id: string | null
           branch_source: string | null
           business_id: string | null
@@ -3817,19 +3919,25 @@ export type Database = {
           created_at: string | null
           currency: string | null
           description: string | null
+          duplicate_match_score: number | null
+          duplicate_of_receipt_id: string | null
           extraction_source: string | null
           google_file_id: string | null
           google_sheet_row: number | null
           id: string
+          is_potential_duplicate: boolean | null
           line_user_id: string
           notes: string | null
+          notification_sent_to: Json | null
           payer_name: string | null
           payment_method: string | null
           receipt_date: string | null
           receipt_number: string | null
+          rejection_reason: string | null
           sale_time: string | null
           source: string
           status: string | null
+          submitter_notified_at: string | null
           subtotal: number | null
           tags: string[] | null
           tax_id: string | null
@@ -3843,6 +3951,9 @@ export type Database = {
           warnings: string[] | null
         }
         Insert: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id?: string | null
           branch_source?: string | null
           business_id?: string | null
@@ -3853,19 +3964,25 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          duplicate_match_score?: number | null
+          duplicate_of_receipt_id?: string | null
           extraction_source?: string | null
           google_file_id?: string | null
           google_sheet_row?: number | null
           id?: string
+          is_potential_duplicate?: boolean | null
           line_user_id: string
           notes?: string | null
+          notification_sent_to?: Json | null
           payer_name?: string | null
           payment_method?: string | null
           receipt_date?: string | null
           receipt_number?: string | null
+          rejection_reason?: string | null
           sale_time?: string | null
           source?: string
           status?: string | null
+          submitter_notified_at?: string | null
           subtotal?: number | null
           tags?: string[] | null
           tax_id?: string | null
@@ -3879,6 +3996,9 @@ export type Database = {
           warnings?: string[] | null
         }
         Update: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id?: string | null
           branch_source?: string | null
           business_id?: string | null
@@ -3889,19 +4009,25 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          duplicate_match_score?: number | null
+          duplicate_of_receipt_id?: string | null
           extraction_source?: string | null
           google_file_id?: string | null
           google_sheet_row?: number | null
           id?: string
+          is_potential_duplicate?: boolean | null
           line_user_id?: string
           notes?: string | null
+          notification_sent_to?: Json | null
           payer_name?: string | null
           payment_method?: string | null
           receipt_date?: string | null
           receipt_number?: string | null
+          rejection_reason?: string | null
           sale_time?: string | null
           source?: string
           status?: string | null
+          submitter_notified_at?: string | null
           subtotal?: number | null
           tags?: string[] | null
           tax_id?: string | null
@@ -3934,6 +4060,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "receipt_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_duplicate_of_receipt_id_fkey"
+            columns: ["duplicate_of_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
             referencedColumns: ["id"]
           },
         ]
