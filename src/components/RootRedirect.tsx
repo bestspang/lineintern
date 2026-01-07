@@ -1,63 +1,58 @@
 import { useEffect, useState, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLiffOptional, LiffContextType } from '@/contexts/LiffContext';
+import { useLiffOptional } from '@/contexts/LiffContext';
 import { Loader2 } from 'lucide-react';
 
-// Helper function to check for LIFF URL parameters (most reliable method)
-function hasLiffUrlParams(): boolean {
+// Comprehensive LIFF indicators check - returns detection result with reason
+function hasLiffIndicators(): { detected: boolean; reason: string } {
   const urlParams = new URLSearchParams(window.location.search);
-  const hasLiffState = urlParams.has('liff.state');
-  const hasLiffReferrer = urlParams.has('liff.referrer');
-  const hasAnyLiffParam = Array.from(urlParams.keys()).some(k => k.startsWith('liff.'));
-  
-  const result = hasLiffState || hasLiffReferrer || hasAnyLiffParam;
-  
-  if (result) {
-    console.log('[RootRedirect] LIFF URL params detected:', {
-      hasLiffState,
-      hasLiffReferrer,
-      params: Array.from(urlParams.entries()).filter(([k]) => k.startsWith('liff.')),
-    });
-  }
-  
-  return result;
-}
-
-// Helper function for comprehensive LINE environment check (fallback)
-function checkLineEnvironment(): boolean {
-  const ua = navigator.userAgent;
-  const uaLower = ua.toLowerCase();
-  
-  // 1. Check for LIFF URL parameters FIRST (most reliable!)
-  if (hasLiffUrlParams()) {
-    return true;
-  }
-  
-  // 2. Check for LINE pattern in User-Agent
-  const hasLineInUA = /line\/[\d.]+/i.test(ua) || 
-                      /liff\/[\d.]+/i.test(ua) ||
-                      uaLower.includes('liff') ||
-                      uaLower.includes('lineboot') ||
-                      uaLower.includes('linecorp');
-  
-  // 3. Check URL and referrer for LINE indicators
   const url = window.location.href;
-  const hasLineIndicators = 
-    url.includes('liff.line.me') ||
-    document.referrer.includes('line.me') ||
-    document.referrer.includes('liff.line.me');
+  const ua = navigator.userAgent;
   
-  const result = hasLineInUA || hasLineIndicators;
+  // 1. Check for LIFF URL parameters (most reliable)
+  const liffParams = Array.from(urlParams.keys()).filter(k => 
+    k.startsWith('liff.') || k === 'access_token' || k === 'code'
+  );
+  if (liffParams.length > 0) {
+    return { detected: true, reason: `LIFF params: ${liffParams.join(', ')}` };
+  }
   
-  console.log('[RootRedirect] checkLineEnvironment (UA fallback):', {
-    ua: ua.substring(0, 100),
-    hasLineInUA,
-    hasLineIndicators,
-    result,
-  });
+  // 2. Check referrer from LINE
+  const ref = document.referrer;
+  if (ref.includes('line.me') || ref.includes('liff.line.me')) {
+    return { detected: true, reason: `Referrer: ${ref}` };
+  }
   
-  return result;
+  // 3. Check User-Agent for LINE patterns
+  const lineUAPatterns = [
+    /line\/[\d.]+/i,
+    /liff\/[\d.]+/i,
+    /lineboot/i,
+    /linecorp/i,
+    /\bline\b/i
+  ];
+  for (const pattern of lineUAPatterns) {
+    if (pattern.test(ua)) {
+      return { detected: true, reason: `UA pattern: ${pattern.toString()}` };
+    }
+  }
+  
+  // 4. Check if URL contains liff.line.me
+  if (url.includes('liff.line.me')) {
+    return { detected: true, reason: 'URL contains liff.line.me' };
+  }
+  
+  // 5. Check sessionStorage for LIFF markers (set by LIFF SDK)
+  try {
+    const keys = Object.keys(sessionStorage);
+    const liffKey = keys.find(k => k.toLowerCase().includes('liff'));
+    if (liffKey) {
+      return { detected: true, reason: `sessionStorage: ${liffKey}` };
+    }
+  } catch { /* ignore */ }
+  
+  return { detected: false, reason: 'No LIFF indicators found' };
 }
 
 export function RootRedirect() {
@@ -75,11 +70,13 @@ export function RootRedirect() {
 
   // Log initial state
   useEffect(() => {
+    const indicators = hasLiffIndicators();
     console.log('[RootRedirect] Mount - Initial state:', {
       liffIsReady: liffContext?.isReady,
       liffIsInClient: liffContext?.isInClient,
       liffIsLoggedIn: liffContext?.isLoggedIn,
       liffError: liffContext?.error,
+      indicators,
       userAgent: navigator.userAgent,
       url: window.location.href,
       referrer: document.referrer,
@@ -87,8 +84,8 @@ export function RootRedirect() {
   }, []);
 
   useEffect(() => {
-    const maxWait = 3000; // 3 seconds max wait
-    const checkInterval = 100; // Check every 100ms
+    const maxWait = 5000; // 5 seconds max wait
+    const checkInterval = 100;
     let elapsed = 0;
     let finalized = false;
 
@@ -109,14 +106,14 @@ export function RootRedirect() {
       setChecking(false);
     };
 
-    // *** EARLY DETECTION: Check LIFF URL params IMMEDIATELY ***
-    // This is the most reliable method - works before LIFF SDK loads
-    if (hasLiffUrlParams()) {
-      finalize(true, 'LIFF URL params detected (early detection)');
+    // *** EARLY DETECTION: Check LIFF indicators IMMEDIATELY ***
+    const indicators = hasLiffIndicators();
+    if (indicators.detected) {
+      finalize(true, `Early detection: ${indicators.reason}`);
       return;
     }
 
-    // Get current context from ref (always fresh)
+    // Get current context from ref
     const ctx = liffContextRef.current;
 
     // Case 1: LIFF SDK ready and running inside LINE App
@@ -125,27 +122,23 @@ export function RootRedirect() {
       return;
     }
 
-    // Case 2: LIFF SDK ready but NOT in LINE client (external browser)
+    // Case 2: LIFF SDK ready but NOT in LINE client
     if (ctx?.isReady && !ctx?.isInClient && !ctx?.error) {
-      const isLineEnv = checkLineEnvironment();
-      finalize(isLineEnv, 'LIFF ready but external browser, env check');
+      finalize(false, 'LIFF ready but not in LINE client');
       return;
     }
 
-    // Case 3: LIFF has error - fallback to environment check
+    // Case 3: LIFF has error - not in LIFF context
     if (ctx?.error) {
-      const isLineEnv = checkLineEnvironment();
-      finalize(isLineEnv, 'LIFF error, fallback to env check');
+      finalize(false, 'LIFF error, not in LINE');
       return;
     }
 
-    // Case 4: LIFF not ready yet - poll with interval using ref
+    // Case 4: LIFF not ready yet - poll with interval
     console.log('[RootRedirect] Waiting for LIFF SDK...');
     
     intervalRef.current = setInterval(() => {
       elapsed += checkInterval;
-      
-      // Read latest context from ref (not stale closure!)
       const currentCtx = liffContextRef.current;
 
       // LIFF became ready and is in client
@@ -156,23 +149,21 @@ export function RootRedirect() {
 
       // LIFF became ready but not in client
       if (currentCtx?.isReady && !currentCtx?.isInClient) {
-        const isLineEnv = checkLineEnvironment();
-        finalize(isLineEnv, 'LIFF became ready (external browser), env check');
+        finalize(false, 'LIFF became ready (not in LINE client)');
         return;
       }
 
       // LIFF error occurred
       if (currentCtx?.error) {
-        const isLineEnv = checkLineEnvironment();
-        finalize(isLineEnv, 'LIFF error during polling, fallback to env check');
+        finalize(false, 'LIFF error during polling');
         return;
       }
 
-      // Max wait reached - fallback to environment check
+      // Max wait reached - final check
       if (elapsed >= maxWait) {
-        console.log('[RootRedirect] Max wait reached, checking environment');
-        const isLineEnv = checkLineEnvironment();
-        finalize(isLineEnv, 'Max wait reached, fallback to env check');
+        console.log('[RootRedirect] Max wait reached');
+        const finalCheck = hasLiffIndicators();
+        finalize(finalCheck.detected, `Timeout: ${finalCheck.reason}`);
       }
     }, checkInterval);
 
@@ -182,7 +173,7 @@ export function RootRedirect() {
         intervalRef.current = null;
       }
     };
-  }, []); // No dependencies - we use ref for fresh values
+  }, []);
 
   if (authLoading || checking) {
     return (
