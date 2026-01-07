@@ -167,6 +167,7 @@ const navigationGroups = [
       { title: 'Analytics', url: '/receipts/analytics', icon: PieChart },
       { title: 'Businesses', url: '/receipts/businesses', icon: Building },
       { title: 'Export', url: '/receipts/export', icon: FileText },
+      { title: 'Settings', url: '/receipts/settings', icon: Settings },
     ],
   },
   {
