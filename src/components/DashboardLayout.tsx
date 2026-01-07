@@ -56,7 +56,8 @@ import {
   Gift,
   Mail,
   ShoppingBag,
-  Receipt
+  Receipt,
+  PieChart
 } from 'lucide-react';
 import {
   Sidebar,
@@ -163,6 +164,7 @@ const navigationGroups = [
     icon: Receipt,
     items: [
       { title: 'All Receipts', url: '/receipts', icon: Receipt },
+      { title: 'Analytics', url: '/receipts/analytics', icon: PieChart },
       { title: 'Businesses', url: '/receipts/businesses', icon: Building },
       { title: 'Export', url: '/receipts/export', icon: FileText },
     ],
