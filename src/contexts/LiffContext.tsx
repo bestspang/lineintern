@@ -95,6 +95,14 @@ export function LiffProvider({ children }: LiffProviderProps) {
 
   const initLiff = useCallback(async (isRetry = false) => {
     try {
+      // Debug logging for URL state
+      console.log('[LIFF] Window location:', {
+        href: window.location.href,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+      });
+      
       if (isRetry) {
         setIsRetrying(true);
         console.log('[LIFF] Retrying initialization...');

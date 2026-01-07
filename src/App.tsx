@@ -76,6 +76,7 @@ import AttendanceHolidays from "./pages/attendance/Holidays";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
+import { RootRedirect } from "./components/RootRedirect";
 
 // Portal pages
 import { 
@@ -148,6 +149,9 @@ const App = () => (
                   </LiffLayout>
                 </LiffProvider>
               } />
+              
+              {/* Root redirect - detects LINE context */}
+              <Route path="/" element={<RootRedirect />} />
               
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={
