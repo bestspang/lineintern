@@ -191,7 +191,7 @@ export default function Payroll() {
           ot_rate_multiplier,
           max_work_hours_per_day,
           break_hours,
-          branches (name),
+          branches:branches!branch_id(name),
           employee_payroll_settings (*)
         `)
         .eq("is_active", true)
