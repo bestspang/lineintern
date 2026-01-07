@@ -87,6 +87,45 @@ export type Database = {
           },
         ]
       }
+      api_configurations: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          description_th: string | null
+          id: string
+          is_required: boolean | null
+          key_name: string
+          key_value: string | null
+          source_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          id?: string
+          is_required?: boolean | null
+          key_name: string
+          key_value?: string | null
+          source_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          id?: string
+          is_required?: boolean | null
+          key_name?: string
+          key_value?: string | null
+          source_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           created_at: string
