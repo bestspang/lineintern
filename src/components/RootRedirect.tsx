@@ -48,14 +48,8 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     return { detected: true, reason: 'URL contains liff.line.me' };
   }
   
-  // 6. Check sessionStorage for LIFF markers (set by LIFF SDK)
-  try {
-    const keys = Object.keys(sessionStorage);
-    const liffKey = keys.find(k => k.toLowerCase().includes('liff'));
-    if (liffKey) {
-      return { detected: true, reason: `sessionStorage: ${liffKey}` };
-    }
-  } catch { /* ignore */ }
+  // 6. sessionStorage check REMOVED - unreliable as it persists across sessions
+  // LIFF SDK isInClient() is the source of truth, checked via polling in useEffect
   
   return { detected: false, reason: 'No LIFF indicators found' };
 }

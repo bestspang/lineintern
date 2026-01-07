@@ -48,7 +48,7 @@ export default function Auth() {
   }
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/overview" replace />;
   }
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
