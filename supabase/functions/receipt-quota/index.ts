@@ -30,62 +30,48 @@ serve(async (req) => {
 
     switch (action) {
       case 'check': {
-        // Get or create usage record for current period
+        // Get usage record for current period
         let { data: usage, error: usageError } = await supabase
           .from('receipt_usage')
-          .select('*, receipt_subscriptions(receipt_plans(*))')
+          .select('ai_receipts_used')
           .eq('line_user_id', line_user_id)
           .eq('period_yyyymm', periodYYYYMM)
           .maybeSingle();
 
         if (usageError) throw usageError;
 
-        // If no usage record, get subscription and create one
-        if (!usage) {
-          const { data: subscription } = await supabase
-            .from('receipt_subscriptions')
-            .select('*, receipt_plans(*)')
-            .eq('line_user_id', line_user_id)
-            .eq('status', 'active')
-            .maybeSingle();
-
-          // Default to free plan if no subscription
-          let planId = subscription?.plan_id;
-          if (!planId) {
-            const { data: freePlan } = await supabase
-              .from('receipt_plans')
-              .select('id')
-              .eq('name', 'Free')
-              .single();
-            planId = freePlan?.id;
-          }
-
-          // Create usage record
-          const { data: newUsage, error: createError } = await supabase
-            .from('receipt_usage')
-            .insert({
-              line_user_id,
-              period_yyyymm: periodYYYYMM,
-              ai_receipts_used: 0,
-            })
-            .select('*, receipt_subscriptions(receipt_plans(*))')
-            .single();
-
-          if (createError) throw createError;
-          usage = newUsage;
-        }
-
-        // Get subscription with plan
+        // Get subscription and plan (check if subscription is within current period)
         const { data: subscription } = await supabase
           .from('receipt_subscriptions')
-          .select('*, receipt_plans(*)')
+          .select('plan_id, current_period_start, current_period_end')
           .eq('line_user_id', line_user_id)
-          .eq('status', 'active')
+          .lte('current_period_start', now.toISOString().split('T')[0])
+          .gte('current_period_end', now.toISOString().split('T')[0])
           .maybeSingle();
 
-        const plan = subscription?.receipt_plans as any || { ai_receipts_limit: 10, name: 'Free' };
+        // Get plan details
+        let plan = null;
+        if (subscription?.plan_id) {
+          const { data: planData } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', subscription.plan_id)
+            .single();
+          plan = planData;
+        }
+
+        // Default to free plan if no active subscription
+        if (!plan) {
+          const { data: freePlan } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', 'free')
+            .maybeSingle();
+          plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
+        }
+
         const used = usage?.ai_receipts_used || 0;
-        const limit = plan.ai_receipts_limit || 10;
+        const limit = plan.ai_receipts_limit || 5;
 
         return new Response(
           JSON.stringify({

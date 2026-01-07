@@ -208,7 +208,7 @@ Rules:
   const userPrompt = "Extract all receipt data from this image. Return only the JSON object.";
 
   try {
-    const response = await fetch("https://ai.lovable.dev/api/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
