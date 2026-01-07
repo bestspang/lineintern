@@ -154,30 +154,40 @@ export function LiffProvider({ children }: LiffProviderProps) {
       console.log('[LIFF] OS:', liffInstance.getOS?.() || 'unknown');
       console.log('[LIFF] Language:', liffInstance.getLanguage?.() || 'unknown');
 
-      setIsReady(true);
-      setIsRetrying(false);
-      setRetryCount(0);
+      // CRITICAL: Check login and get profile BEFORE setting isReady
+      // This prevents race condition where PortalContext sees isReady=true but isLoggedIn=false
+      const loggedIn = liffInstance.isLoggedIn();
+      let userProfile = null;
 
-      if (liffInstance.isLoggedIn()) {
-        setIsLoggedIn(true);
-        
-        // Get user profile
+      if (loggedIn) {
         console.log('[LIFF] Fetching user profile...');
-        const userProfile = await liffInstance.getProfile();
-        console.log('[LIFF] Got profile:', { userId: userProfile.userId, displayName: userProfile.displayName });
+        try {
+          userProfile = await liffInstance.getProfile();
+          console.log('[LIFF] Got profile:', { userId: userProfile.userId, displayName: userProfile.displayName });
+        } catch (profileErr) {
+          console.error('[LIFF] Error fetching profile:', profileErr);
+        }
+      } else {
+        console.log('[LIFF] User not logged in - isInClient:', liffInstance.isInClient());
+        if (liffInstance.isInClient()) {
+          console.warn('[LIFF] In LINE client but not logged in - this should not happen');
+        }
+      }
+
+      // Set all states TOGETHER to prevent race condition
+      // Profile first, then isLoggedIn, then isReady (so PortalContext sees complete state)
+      if (userProfile) {
         setProfile({
           userId: userProfile.userId,
           displayName: userProfile.displayName,
           pictureUrl: userProfile.pictureUrl,
           statusMessage: userProfile.statusMessage,
         });
-      } else {
-        console.log('[LIFF] User not logged in - isInClient:', liffInstance.isInClient());
-        // If in LINE client but not logged in, this is unusual
-        if (liffInstance.isInClient()) {
-          console.warn('[LIFF] In LINE client but not logged in - this should not happen');
-        }
       }
+      setIsLoggedIn(loggedIn);
+      setIsReady(true); // Set this LAST so other contexts see complete state
+      setIsRetrying(false);
+      setRetryCount(0);
     } catch (err: any) {
       console.error('[LIFF] Initialization error:', err);
       console.error('[LIFF] Error details:', JSON.stringify(err, null, 2));
