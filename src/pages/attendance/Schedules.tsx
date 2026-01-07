@@ -125,6 +125,7 @@ export default function Schedules() {
   const [borrowSelectedDays, setBorrowSelectedDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri by default
   const [showRemoveConfirm, setShowRemoveConfirm] = useState<{ id: string; name: string } | null>(null);
   const [showDeleteTempConfirm, setShowDeleteTempConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [showAttendance, setShowAttendance] = useState(false);
 
   // Fetch branches
   const { data: branches = [] } = useQuery({
@@ -282,6 +283,24 @@ export default function Schedules() {
     }
     return combined;
   }, [employees, borrowedEmployees]);
+
+  // Fetch attendance data for the week
+  const {
+    attendanceMap,
+    getAttendanceStatus,
+    calculateStats,
+    isLoading: attendanceLoading,
+  } = useScheduleAttendance(
+    allEmployees.map(e => e.id),
+    currentWeekStart,
+    showAttendance && allEmployees.length > 0
+  );
+
+  // Calculate attendance stats
+  const attendanceStats = useMemo(() => {
+    if (!showAttendance || assignments.length === 0) return null;
+    return calculateStats(assignments);
+  }, [showAttendance, assignments, calculateStats]);
 
   // Fetch borrowed out assignments (employees FROM this branch borrowed to OTHER schedules)
   const { data: borrowedOutAssignments = [] } = useQuery({
@@ -1035,14 +1054,52 @@ export default function Schedules() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <Button
-                variant="outline"
-                onClick={() => calendarRef.current?.exportToImage()}
-                disabled={allEmployees.length === 0}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showAttendance ? 'default' : 'outline'}
+                      onClick={() => setShowAttendance(!showAttendance)}
+                    >
+                      <Clock className="w-4 h-4 mr-2" />
+                      {showAttendance ? 'ซ่อนเวลาจริง' : 'แสดงเวลาจริง'}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    แสดงเวลา Check-in/Check-out จริงในตาราง
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => calendarRef.current?.exportToImage()}
+                      disabled={allEmployees.length === 0}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      PNG
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>ดาวน์โหลดตารางเป็นรูปภาพ</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => calendarRef.current?.exportToCSV()}
+                      disabled={allEmployees.length === 0}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      CSV
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>ดาวน์โหลดตารางเป็น CSV {showAttendance ? '(รวมเวลาจริง)' : ''}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               {weeklySchedule && (
                 <Button
                   variant="ghost"
@@ -1120,60 +1177,123 @@ export default function Schedules() {
             const emp = allEmployees.find(e => e.id === employeeId);
             setShowDeleteTempConfirm({ id: employeeId, name: emp?.full_name || 'พนักงาน' });
           }}
+          // Attendance props
+          attendanceMap={attendanceMap}
+          getAttendanceStatus={getAttendanceStatus}
+          showAttendance={showAttendance}
         />
       )}
 
       {/* Stats */}
       {allEmployees.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Users className="w-8 h-8 text-primary" />
-                <div>
-                  <p className="text-2xl font-bold">{allEmployees.length}</p>
-                  <p className="text-sm text-muted-foreground">พนักงานทั้งหมด</p>
+        <div className="space-y-4">
+          {/* Schedule Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <Users className="w-8 h-8 text-primary" />
+                  <div>
+                    <p className="text-2xl font-bold">{allEmployees.length}</p>
+                    <p className="text-sm text-muted-foreground">พนักงานทั้งหมด</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <CalendarIcon className="w-8 h-8 text-green-500" />
-                <div>
-                  <p className="text-2xl font-bold">
-                    {assignments.filter(a => !a.is_day_off).length}
-                  </p>
-                  <p className="text-sm text-muted-foreground">กะทำงาน</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <CalendarIcon className="w-8 h-8 text-green-500" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {assignments.filter(a => !a.is_day_off).length}
+                    </p>
+                    <p className="text-sm text-muted-foreground">กะทำงาน</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <CalendarIcon className="w-8 h-8 text-orange-500" />
-                <div>
-                  <p className="text-2xl font-bold">
-                    {assignments.filter(a => a.is_day_off).length}
-                  </p>
-                  <p className="text-sm text-muted-foreground">วันหยุด</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <CalendarIcon className="w-8 h-8 text-orange-500" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {assignments.filter(a => a.is_day_off).length}
+                    </p>
+                    <p className="text-sm text-muted-foreground">วันหยุด</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <CalendarIcon className="w-8 h-8 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold">{shiftTemplates.length}</p>
-                  <p className="text-sm text-muted-foreground">รูปแบบกะ</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <CalendarIcon className="w-8 h-8 text-blue-500" />
+                  <div>
+                    <p className="text-2xl font-bold">{shiftTemplates.length}</p>
+                    <p className="text-sm text-muted-foreground">รูปแบบกะ</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* Attendance Stats (only show when showAttendance is true) */}
+          {showAttendance && attendanceStats && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle2 className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">สถิติการลงเวลา (สัปดาห์นี้)</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500" />
+                    <div>
+                      <p className="text-lg font-bold text-green-600">{attendanceStats.onTime}</p>
+                      <p className="text-xs text-muted-foreground">ตรงเวลา</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-amber-500" />
+                    <div>
+                      <p className="text-lg font-bold text-amber-600">{attendanceStats.late}</p>
+                      <p className="text-xs text-muted-foreground">มาสาย</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-500" />
+                    <div>
+                      <p className="text-lg font-bold text-orange-600">{attendanceStats.earlyLeave}</p>
+                      <p className="text-xs text-muted-foreground">กลับก่อน</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500" />
+                    <div>
+                      <p className="text-lg font-bold text-red-600">{attendanceStats.absent}</p>
+                      <p className="text-xs text-muted-foreground">ขาดงาน</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    <div>
+                      <p className="text-lg font-bold text-blue-600">{attendanceStats.ot}</p>
+                      <p className="text-xs text-muted-foreground">ล่วงเวลา</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gray-400" />
+                    <div>
+                      <p className="text-lg font-bold text-gray-600">{attendanceStats.pending}</p>
+                      <p className="text-xs text-muted-foreground">รอลงเวลา</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
