@@ -102,6 +102,7 @@ import ReceiptsAdmin from "./pages/receipts/Receipts";
 import ReceiptBusinessesAdmin from "./pages/receipts/ReceiptBusinessesAdmin";
 import ReceiptExport from "./pages/receipts/ReceiptExport";
 import ReceiptAnalytics from "./pages/receipts/ReceiptAnalytics";
+import ReceiptSettings from "./pages/receipts/ReceiptSettings";
 
 const queryClient = new QueryClient();
 
@@ -218,6 +219,7 @@ const App = () => (
                       <Route path="/receipts/businesses" element={<ReceiptBusinessesAdmin />} />
                       <Route path="/receipts/export" element={<ReceiptExport />} />
                       <Route path="/receipts/analytics" element={<ReceiptAnalytics />} />
+                      <Route path="/receipts/settings" element={<ReceiptSettings />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
                       <Route path="/config-validator" element={<ConfigurationValidator />} />
                       <Route path="/settings" element={<SettingsLayout />}>
