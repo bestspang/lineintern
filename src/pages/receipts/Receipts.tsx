@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/select';
 import { 
   Receipt, Search, Download, Calendar, 
-  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle
+  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle, Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -150,6 +150,10 @@ export default function Receipts() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/receipts/settings')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
           <Button variant="outline" onClick={() => navigate('/receipts/analytics')}>
             <BarChart3 className="h-4 w-4 mr-2" />
             Analytics

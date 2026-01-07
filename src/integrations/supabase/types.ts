@@ -3564,6 +3564,33 @@ export type Database = {
         }
         Relationships: []
       }
+      receipt_settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       receipt_subscriptions: {
         Row: {
           created_at: string | null
@@ -3631,6 +3658,7 @@ export type Database = {
       }
       receipts: {
         Row: {
+          branch_id: string | null
           business_id: string | null
           category: string | null
           confidence: Json | null
@@ -3652,6 +3680,7 @@ export type Database = {
           warnings: string[] | null
         }
         Insert: {
+          branch_id?: string | null
           business_id?: string | null
           category?: string | null
           confidence?: Json | null
@@ -3673,6 +3702,7 @@ export type Database = {
           warnings?: string[] | null
         }
         Update: {
+          branch_id?: string | null
           business_id?: string | null
           category?: string | null
           confidence?: Json | null
@@ -3694,6 +3724,20 @@ export type Database = {
           warnings?: string[] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "receipts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "receipts_business_id_fkey"
             columns: ["business_id"]

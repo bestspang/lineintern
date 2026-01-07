@@ -72,6 +72,109 @@ async function downloadLineImage(messageId: string): Promise<string | null> {
 }
 
 // =============================
+// Group Permission Check
+// =============================
+
+interface EnabledGroupsConfig {
+  mode: 'all' | 'selected' | 'branch_linked';
+  group_ids?: string[];
+}
+
+/**
+ * Check if a LINE group is allowed to submit receipts
+ */
+export async function canGroupSubmitReceipts(lineGroupId: string | null): Promise<boolean> {
+  // DMs (no group) are always allowed
+  if (!lineGroupId) return true;
+
+  try {
+    // Check if system is enabled
+    const { data: systemSetting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "system_enabled")
+      .single();
+
+    if (systemSetting && !(systemSetting.setting_value as { enabled?: boolean }).enabled) {
+      console.log("[canGroupSubmitReceipts] System is disabled");
+      return false;
+    }
+
+    // Get enabled_groups setting
+    const { data: setting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "enabled_groups")
+      .single();
+
+    if (!setting) return true; // Default: allow all
+
+    const config = setting.setting_value as EnabledGroupsConfig;
+    
+    if (config.mode === "all") return true;
+    
+    if (config.mode === "selected") {
+      // Check if this group's internal ID is in selected list
+      const { data: group } = await supabase
+        .from("groups")
+        .select("id")
+        .eq("line_group_id", lineGroupId)
+        .single();
+      
+      if (!group) return false;
+      return config.group_ids?.includes(group.id) || false;
+    }
+    
+    if (config.mode === "branch_linked") {
+      // Check if group has a linked branch
+      const { data: branch } = await supabase
+        .from("branches")
+        .select("id")
+        .eq("line_group_id", lineGroupId)
+        .single();
+      return !!branch;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[canGroupSubmitReceipts] Error:", error);
+    return true; // Default to allow on error
+  }
+}
+
+/**
+ * Get branch ID from LINE group ID for auto-assignment
+ */
+export async function getBranchFromGroup(lineGroupId: string | null): Promise<string | null> {
+  if (!lineGroupId) return null;
+
+  try {
+    // Check if auto-assign is enabled
+    const { data: setting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "auto_assign_branch")
+      .single();
+
+    if (!setting || !(setting.setting_value as { enabled?: boolean }).enabled) {
+      return null;
+    }
+
+    // Find branch by LINE group ID
+    const { data: branch } = await supabase
+      .from("branches")
+      .select("id")
+      .eq("line_group_id", lineGroupId)
+      .single();
+
+    return branch?.id || null;
+  } catch (error) {
+    console.error("[getBranchFromGroup] Error:", error);
+    return null;
+  }
+}
+
+// =============================
 // Quota Management
 // =============================
 
