@@ -5549,6 +5549,10 @@ export type Database = {
         Args: { p_employee_id: string }
         Returns: boolean
       }
+      can_view_employee_by_priority: {
+        Args: { target_employee_id: string; viewer_user_id: string }
+        Returns: boolean
+      }
       claim_attendance_token: {
         Args: { p_token_id: string }
         Returns: {
