@@ -8867,6 +8867,36 @@ async function handleMessageEvent(event: LineEvent) {
           return; // Silent ignore
         }
 
+        // Check portal access mode setting
+        const { data: portalSetting } = await supabase
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', 'portal_access_mode')
+          .maybeSingle();
+
+        const accessMode = portalSetting?.setting_value?.mode || 'liff';
+        console.log('[Menu] Portal access mode:', accessMode);
+
+        // Get LIFF_ID for LIFF mode
+        const { data: liffConfig } = await supabase
+          .from('api_configurations')
+          .select('key_value')
+          .eq('key_name', 'LIFF_ID')
+          .maybeSingle();
+
+        // Use LIFF mode if configured and LIFF_ID exists
+        if (accessMode === 'liff' && liffConfig?.key_value) {
+          const liffUrl = `https://liff.line.me/${liffConfig.key_value}`;
+          const menuMessage = menuLocale === 'th'
+            ? `📋 เมนูพนักงาน\n\nคลิกเพื่อเปิด Portal:\n${liffUrl}\n\n✅ เข้าสู่ระบบอัตโนมัติผ่าน LINE`
+            : `📋 Employee Portal\n\nClick to open Portal:\n${liffUrl}\n\n✅ Auto-login via LINE`;
+
+          await replyToLine(event.replyToken, menuMessage, getSimpleQuickReply(menuLocale));
+          console.log('[Menu] Sent LIFF URL:', liffUrl);
+          return;
+        }
+
+        // Fallback to token-based mode
         // Generate secure token (valid for 30 minutes)
         const token = `emp_${employeeData.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
