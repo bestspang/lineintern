@@ -55,7 +55,8 @@ import {
   Trophy,
   Gift,
   Mail,
-  ShoppingBag
+  ShoppingBag,
+  Receipt
 } from 'lucide-react';
 import {
   Sidebar,
@@ -155,6 +156,15 @@ const navigationGroups = [
       { title: 'Settings', url: '/attendance/settings', icon: Settings },
       { title: 'Deposits', url: '/attendance/deposits', icon: DollarSign },
       { title: 'Deposit Settings', url: '/attendance/deposit-settings', icon: Settings },
+    ],
+  },
+  {
+    title: 'Receipts',
+    icon: Receipt,
+    items: [
+      { title: 'All Receipts', url: '/receipts', icon: Receipt },
+      { title: 'Businesses', url: '/receipts/businesses', icon: Building },
+      { title: 'Export', url: '/receipts/export', icon: FileText },
     ],
   },
   {
