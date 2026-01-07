@@ -152,6 +152,117 @@ async function incrementQuotaUsage(lineUserId: string): Promise<void> {
 }
 
 // =============================================
+// Google Integration
+// =============================================
+
+async function triggerGoogleIntegration(
+  lineUserId: string, 
+  receiptId: string, 
+  storagePath: string, 
+  contentType: string,
+  receipt: any
+): Promise<void> {
+  try {
+    // Check if user has Google connected
+    const { data: googleToken } = await supabase
+      .from("google_tokens")
+      .select("id, drive_folder_id")
+      .eq("line_user_id", lineUserId)
+      .single();
+
+    if (!googleToken) {
+      console.log(`[receipt-submit] User ${lineUserId} has no Google connection, skipping`);
+      return;
+    }
+
+    // Get public URL for the file
+    const { data: publicUrl } = supabase.storage
+      .from("receipt-files")
+      .getPublicUrl(storagePath);
+
+    if (!publicUrl?.publicUrl) {
+      console.error("[receipt-submit] Failed to get public URL for file");
+      return;
+    }
+
+    // Get business name if exists
+    let businessName = "";
+    if (receipt.business_id) {
+      const { data: business } = await supabase
+        .from("receipt_businesses")
+        .select("name")
+        .eq("id", receipt.business_id)
+        .single();
+      businessName = business?.name || "";
+    }
+
+    // Parse date for folder structure
+    const receiptDate = receipt.receipt_date ? new Date(receipt.receipt_date) : new Date();
+    const year = receiptDate.getFullYear().toString();
+    const month = String(receiptDate.getMonth() + 1).padStart(2, "0");
+
+    // Trigger Google Drive upload (fire and forget)
+    const ext = contentType.includes("pdf") ? "pdf" : contentType.includes("png") ? "png" : "jpg";
+    const fileName = `${receipt.vendor || "receipt"}_${receipt.receipt_date || "unknown"}_${receiptId.slice(0, 8)}.${ext}`;
+
+    fetch(`${SUPABASE_URL}/functions/v1/google-drive-upload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        lineUserId,
+        receiptId,
+        fileName,
+        fileUrl: publicUrl.publicUrl,
+        mimeType: contentType,
+        year,
+        month,
+      }),
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`[receipt-submit] Google Drive upload triggered: ${data.fileId}`);
+        
+        // Trigger Sheets append after Drive upload
+        await fetch(`${SUPABASE_URL}/functions/v1/google-sheets-append`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            lineUserId,
+            receiptId,
+            receiptData: {
+              date: receipt.receipt_date,
+              vendor: receipt.vendor,
+              category: receipt.category,
+              amount: receipt.subtotal,
+              tax: receipt.vat,
+              total: receipt.total,
+              description: receipt.description,
+              fileLink: data.webViewLink,
+              businessName,
+            },
+            year,
+            month,
+          }),
+        });
+      }
+    }).catch((err) => {
+      console.error("[receipt-submit] Google Drive upload failed:", err);
+    });
+
+    console.log(`[receipt-submit] Google integration triggered for receipt ${receiptId}`);
+  } catch (error) {
+    console.error("[receipt-submit] Google integration error:", error);
+    // Don't throw - Google integration is optional
+  }
+}
+
+// =============================================
 // LINE API
 // =============================================
 
@@ -533,6 +644,9 @@ Deno.serve(async (req) => {
           mime_type: contentType,
           file_hash: fileHash,
         });
+
+        // Trigger Google Drive upload if connected
+        await triggerGoogleIntegration(lineUserId, receipt.id, storagePath, contentType, receipt);
       }
     }
 
