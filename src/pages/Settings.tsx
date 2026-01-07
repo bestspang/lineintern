@@ -6,12 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
-
+import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image } from 'lucide-react';
+import { cn } from '@/lib/utils';
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
   const { toast } = useToast();
@@ -370,20 +370,164 @@ export default function Settings() {
   );
 }
 
-// Rich Menu Setup Component
+// Rich Menu Setup Component with Image Upload
 function RichMenuSetup() {
   const { toast } = useToast();
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<{ success: boolean; message: string; richMenuId?: string } | null>(null);
+  
+  // Image upload states
+  const [imageSource, setImageSource] = useState<'default' | 'upload'>('default');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageValidation, setImageValidation] = useState<{
+    valid: boolean;
+    errors: string[];
+    dimensions?: { width: number; height: number };
+    fileSize?: number;
+    fileType?: string;
+  } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Validate image dimensions and type
+  const validateImage = useCallback(async (file: File): Promise<typeof imageValidation> => {
+    const errors: string[] = [];
+    
+    // Check file type
+    const validTypes = ['image/jpeg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+      errors.push(`ไฟล์ต้องเป็น JPEG หรือ PNG (ได้รับ: ${file.type})`);
+    }
+    
+    // Check file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      errors.push(`ไฟล์ใหญ่เกิน 10MB (ขนาด: ${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+    }
+    
+    // Check dimensions
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        resolve({ width: img.width, height: img.height });
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = () => {
+        resolve({ width: 0, height: 0 });
+      };
+      img.src = URL.createObjectURL(file);
+    });
+    
+    if (dimensions.width !== 2500 || dimensions.height !== 1686) {
+      errors.push(`Resolution ต้องเป็น 2500x1686 (ได้รับ: ${dimensions.width}x${dimensions.height})`);
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+      dimensions,
+      fileSize: file.size,
+      fileType: file.type,
+    };
+  }, []);
+
+  // Handle file selection
+  const handleFileSelect = useCallback(async (file: File) => {
+    setSelectedFile(file);
+    
+    // Create preview
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+    
+    // Validate
+    const validation = await validateImage(file);
+    setImageValidation(validation);
+  }, [validateImage]);
+
+  // Handle file input change
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  // Handle drag events
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleFileSelect(file);
+    }
+  };
+
+  // Clear selected file
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setImagePreview(null);
+    setImageValidation(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Upload to Supabase Storage
+  const uploadToStorage = async (file: File): Promise<string> => {
+    const ext = file.type === 'image/png' ? 'png' : 'jpg';
+    const fileName = `richmenu-${Date.now()}.${ext}`;
+    
+    const { error } = await supabase.storage
+      .from('richmenu-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        contentType: file.type,
+        upsert: true
+      });
+      
+    if (error) throw new Error(`Upload failed: ${error.message}`);
+    
+    const { data } = supabase.storage
+      .from('richmenu-images')
+      .getPublicUrl(fileName);
+      
+    return data.publicUrl;
+  };
 
   const deployRichMenu = async () => {
     setIsDeploying(true);
     setDeployResult(null);
     
     try {
-      // Get the app URL for the image
-      const appUrl = window.location.origin;
-      const imageUrl = `${appUrl}/images/rich-menu.jpg`;
+      let imageUrl: string;
+      
+      if (imageSource === 'upload' && selectedFile) {
+        // Validate before uploading
+        if (!imageValidation?.valid) {
+          throw new Error('กรุณาแก้ไขปัญหาของรูปภาพก่อน deploy');
+        }
+        
+        setIsUploading(true);
+        imageUrl = await uploadToStorage(selectedFile);
+        setIsUploading(false);
+      } else {
+        // Use default image
+        const appUrl = window.location.origin;
+        imageUrl = `${appUrl}/images/rich-menu.jpg`;
+      }
       
       console.log('[RichMenuSetup] Deploying Rich Menu with image:', imageUrl);
       
@@ -419,8 +563,20 @@ function RichMenuSetup() {
       });
     } finally {
       setIsDeploying(false);
+      setIsUploading(false);
     }
   };
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
+  const canDeploy = imageSource === 'default' || (imageSource === 'upload' && selectedFile && imageValidation?.valid);
 
   return (
     <Card>
@@ -434,6 +590,7 @@ function RichMenuSetup() {
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 sm:p-6 space-y-4">
+        {/* Layout Preview */}
         <div className="bg-muted/50 p-4 rounded-lg">
           <p className="text-sm font-medium mb-2">Rich Menu Layout (6 ปุ่ม)</p>
           <div className="grid grid-cols-3 gap-1 text-xs text-center">
@@ -446,12 +603,133 @@ function RichMenuSetup() {
           </div>
         </div>
 
+        {/* Image Source Selection */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">เลือกรูปภาพ Rich Menu</Label>
+          <RadioGroup 
+            value={imageSource} 
+            onValueChange={(v) => setImageSource(v as 'default' | 'upload')}
+            className="space-y-2"
+          >
+            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+              <RadioGroupItem value="default" id="img-default" />
+              <Label htmlFor="img-default" className="flex-1 cursor-pointer">
+                <span className="font-medium">ใช้รูป Default</span>
+                <span className="block text-xs text-muted-foreground">/images/rich-menu.jpg</span>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+              <RadioGroupItem value="upload" id="img-upload" />
+              <Label htmlFor="img-upload" className="flex-1 cursor-pointer">
+                <span className="font-medium">Upload รูปใหม่</span>
+                <span className="block text-xs text-muted-foreground">JPEG หรือ PNG, 2500x1686px, ไม่เกิน 10MB</span>
+              </Label>
+            </div>
+          </RadioGroup>
+        </div>
+
+        {/* Upload Area - Only show when upload is selected */}
+        {imageSource === 'upload' && (
+          <div className="space-y-3">
+            {/* Drag & Drop Zone */}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors",
+                isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50",
+                selectedFile && "border-solid"
+              )}
+            >
+              {selectedFile && imagePreview ? (
+                <div className="space-y-3">
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview" 
+                    className="max-h-48 mx-auto rounded-lg shadow-sm"
+                  />
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <span className="font-medium">{selectedFile.name}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearSelectedFile();
+                      }}
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือก
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    JPEG หรือ PNG • 2500x1686px • ไม่เกิน 10MB
+                  </p>
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              onChange={handleFileInputChange}
+              className="hidden"
+            />
+
+            {/* Validation Result */}
+            {imageValidation && (
+              <div className={cn(
+                "p-3 rounded-lg text-sm",
+                imageValidation.valid 
+                  ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+                  : "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+              )}>
+                <div className="flex items-start gap-2">
+                  {imageValidation.valid ? (
+                    <CheckCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    {imageValidation.valid ? (
+                      <div>
+                        <span className="font-medium">✓ พร้อม Deploy</span>
+                        <span className="block text-xs opacity-75">
+                          {imageValidation.fileType?.replace('image/', '').toUpperCase()} • 
+                          {imageValidation.dimensions?.width}x{imageValidation.dimensions?.height} • 
+                          {imageValidation.fileSize ? `${(imageValidation.fileSize / 1024).toFixed(0)} KB` : ''}
+                        </span>
+                      </div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {imageValidation.errors.map((err, i) => (
+                          <li key={i}>✗ {err}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Deploy Result */}
         {deployResult && (
-          <div className={`p-3 rounded-lg flex items-start gap-2 ${
+          <div className={cn(
+            "p-3 rounded-lg flex items-start gap-2",
             deployResult.success 
               ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400' 
               : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
-          }`}>
+          )}>
             {deployResult.success ? (
               <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
             ) : (
@@ -466,15 +744,16 @@ function RichMenuSetup() {
           </div>
         )}
 
+        {/* Deploy Button */}
         <Button 
           onClick={deployRichMenu} 
-          disabled={isDeploying}
+          disabled={isDeploying || !canDeploy}
           className="w-full sm:w-auto"
         >
           {isDeploying ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Deploying...
+              {isUploading ? 'Uploading...' : 'Deploying...'}
             </>
           ) : (
             <>
@@ -484,9 +763,11 @@ function RichMenuSetup() {
           )}
         </Button>
 
-        <p className="text-xs text-muted-foreground">
-          หมายเหตุ: ต้องมีภาพ <code className="bg-muted px-1 rounded">/images/rich-menu.jpg</code> (2500x1686px) ใน public folder
-        </p>
+        {imageSource === 'default' && (
+          <p className="text-xs text-muted-foreground">
+            ใช้รูปจาก <code className="bg-muted px-1 rounded">/images/rich-menu.jpg</code> (2500x1686px)
+          </p>
+        )}
       </CardContent>
     </Card>
   );
