@@ -19,6 +19,7 @@ import {
   buildBusinessSelectQuickReply,
   setDefaultBusiness,
   exportReceiptsForMonth,
+  handleReceiptPostback,
 } from "./handlers/receipt-handler.ts";
 
 // =============================
@@ -2596,6 +2597,10 @@ interface LineEvent {
     type: string;
     id: string;
     text?: string;
+  };
+  postback?: {
+    data: string;
+    params?: Record<string, string>;
   };
   joined?: {
     members: Array<{ type: string; userId: string }>;
@@ -9308,6 +9313,53 @@ async function handleMessageEvent(event: LineEvent) {
   }
 }
 
+// =============================
+// POSTBACK EVENT HANDLER
+// =============================
+
+async function handlePostbackEvent(event: LineEvent) {
+  const postbackData = event.postback?.data;
+  const lineUserId = event.source.userId;
+  
+  if (!postbackData || !lineUserId) {
+    console.log('[handlePostbackEvent] Missing postback data or userId');
+    return;
+  }
+
+  console.log(`[handlePostbackEvent] Processing postback: ${postbackData}`);
+
+  // Determine locale from user's primary group
+  const { data: employee } = await supabase
+    .from('employees')
+    .select('primary_group_id')
+    .eq('line_user_id', lineUserId)
+    .maybeSingle();
+
+  let locale: 'th' | 'en' = 'th';
+  if (employee?.primary_group_id) {
+    const { data: group } = await supabase
+      .from('groups')
+      .select('language')
+      .eq('id', employee.primary_group_id)
+      .maybeSingle();
+    locale = group?.language === 'en' ? 'en' : 'th';
+  }
+
+  // Handle receipt postbacks
+  const receiptResult = await handleReceiptPostback(postbackData, lineUserId, locale);
+  if (receiptResult.handled) {
+    try {
+      await replyToLine(event.replyToken, receiptResult.message);
+      console.log(`[handlePostbackEvent] Sent reply: ${receiptResult.message}`);
+    } catch (error) {
+      console.error('[handlePostbackEvent] Error sending reply:', error);
+    }
+    return;
+  }
+
+  console.log(`[handlePostbackEvent] Unhandled postback: ${postbackData}`);
+}
+
 async function handleEvent(event: LineEvent) {
   console.log(`\n--- [handleEvent] START ---`);
   console.log(`[handleEvent] Event type: ${event.type}`);
@@ -9341,6 +9393,11 @@ async function handleEvent(event: LineEvent) {
         console.log(`[handleEvent] → Routing to handleMemberLeftEvent`);
         await handleMemberLeftEvent(event);
         console.log(`[handleEvent] ✓ handleMemberLeftEvent completed`);
+        break;
+      case "postback":
+        console.log(`[handleEvent] → Routing to handlePostbackEvent`);
+        await handlePostbackEvent(event);
+        console.log(`[handleEvent] ✓ handlePostbackEvent completed`);
         break;
       default:
         console.log(`[handleEvent] ⚠ Unhandled event type: ${event.type}`);

@@ -17,6 +17,10 @@ export interface LineEvent {
     type: string;
     text: string;
   };
+  postback?: {
+    data: string;
+    params?: Record<string, string>;
+  };
   joined?: {
     members: Array<{ type: string; userId: string }>;
   };
