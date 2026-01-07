@@ -152,10 +152,17 @@ async function uploadRichMenuImage(lineAccessToken: string, richMenuId: string, 
     return { success: false, error: `Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}` };
   }
 
-  const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+  const originalContentType = imageResponse.headers.get('content-type') || 'image/jpeg';
   const imageBuffer = await imageResponse.arrayBuffer();
   
-  console.log(`[line-richmenu-setup] Uploading image (${imageBuffer.byteLength} bytes, ${contentType}) to Rich Menu: ${richMenuId}`);
+  // LINE API only accepts 'image/jpeg' or 'image/png' - normalize the content type
+  // Some servers return 'image/jpg' which LINE rejects
+  let lineContentType: 'image/jpeg' | 'image/png' = 'image/jpeg';
+  if (originalContentType.includes('png')) {
+    lineContentType = 'image/png';
+  }
+  
+  console.log(`[line-richmenu-setup] Uploading image (${imageBuffer.byteLength} bytes, original: ${originalContentType}, sending: ${lineContentType}) to Rich Menu: ${richMenuId}`);
 
   const uploadResponse = await fetch(
     `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
@@ -163,7 +170,7 @@ async function uploadRichMenuImage(lineAccessToken: string, richMenuId: string, 
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lineAccessToken}`,
-        'Content-Type': contentType.includes('png') ? 'image/png' : 'image/jpeg',
+        'Content-Type': lineContentType,
       },
       body: imageBuffer,
     }
