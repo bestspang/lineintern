@@ -8,6 +8,129 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Smartphone } from 'lucide-react';
+
+// Separate component for Portal Access Mode to manage its own state
+function PortalAccessModeSettings() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [portalMode, setPortalMode] = useState<'liff' | 'token'>('liff');
+
+  // Fetch portal access mode setting
+  const { data: portalSetting, isLoading } = useQuery({
+    queryKey: ['portal-access-mode'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'portal_access_mode')
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data?.setting_value as { mode: string; available_modes: string[] } | null;
+    },
+  });
+
+  useEffect(() => {
+    if (portalSetting?.mode) {
+      setPortalMode(portalSetting.mode as 'liff' | 'token');
+    }
+  }, [portalSetting]);
+
+  const savePortalModeMutation = useMutation({
+    mutationFn: async (mode: 'liff' | 'token') => {
+      const newValue = { mode, available_modes: ['liff', 'token'] };
+      
+      const { error } = await supabase
+        .from('system_settings')
+        .update({ 
+          setting_value: newValue,
+          updated_at: new Date().toISOString()
+        })
+        .eq('setting_key', 'portal_access_mode');
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portal-access-mode'] });
+      toast({
+        title: 'Success',
+        description: 'Portal access mode updated successfully',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  const handleModeChange = (mode: 'liff' | 'token') => {
+    setPortalMode(mode);
+    savePortalModeMutation.mutate(mode);
+  };
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <RadioGroup value={portalMode} onValueChange={handleModeChange as (value: string) => void} className="space-y-3">
+        <div className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+          <RadioGroupItem value="liff" id="liff" className="mt-1" />
+          <div className="flex-1">
+            <Label htmlFor="liff" className="flex items-center gap-2 cursor-pointer">
+              <span className="font-medium">LIFF Mode</span>
+              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">แนะนำ</Badge>
+            </Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              เข้าสู่ระบบอัตโนมัติผ่าน LINE App ไม่ต้องใช้ token
+            </p>
+            <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+              <li>Login อัตโนมัติ ไม่ต้อง copy link</li>
+              <li>ปลอดภัยกว่า - ไม่มี token ใน URL</li>
+              <li>ไม่หมดอายุ (ตราบใดที่ login LINE อยู่)</li>
+              <li>แสดงรูปโปรไฟล์ LINE</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+          <RadioGroupItem value="token" id="token" className="mt-1" />
+          <div className="flex-1">
+            <Label htmlFor="token" className="font-medium cursor-pointer">Token Link Mode</Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              ส่งลิงก์พร้อม token ที่มีอายุ 30 นาที
+            </p>
+            <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+              <li>เปิดใน browser ภายนอกได้</li>
+              <li>Token หมดอายุใน 30 นาที</li>
+              <li>รองรับอุปกรณ์ที่ไม่มี LINE App</li>
+            </ul>
+          </div>
+        </div>
+      </RadioGroup>
+
+      <div className={`p-3 rounded-lg ${portalMode === 'liff' ? 'bg-green-50 dark:bg-green-950/30' : 'bg-blue-50 dark:bg-blue-950/30'}`}>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={portalMode === 'liff' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
+            {portalMode === 'liff' ? 'LIFF Active' : 'Token Active'}
+          </Badge>
+          <span className={`text-sm ${portalMode === 'liff' ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'}`}>
+            {portalMode === 'liff' 
+              ? 'พนักงานจะได้รับ LIFF URL เมื่อพิมพ์ /menu' 
+              : 'พนักงานจะได้รับ Token Link เมื่อพิมพ์ /menu'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Settings() {
   const { toast: showToast } = useToast();
@@ -173,6 +296,22 @@ export default function Settings() {
           <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="w-full sm:w-auto">
             {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Portal Access Mode Configuration */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Smartphone className="h-4 w-4 sm:h-5 sm:w-5" />
+            Portal Access Mode
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            วิธีเข้าใช้งาน Portal ของพนักงานเมื่อพิมพ์ /menu
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          <PortalAccessModeSettings />
         </CardContent>
       </Card>
 
