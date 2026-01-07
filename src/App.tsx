@@ -188,8 +188,12 @@ const App = () => (
                 </LiffProvider>
               } />
 
-              {/* Root redirect - detects LINE context, must be before catch-all */}
-              <Route path="/" element={<RootRedirect />} />
+              {/* Root redirect - detects LINE context, wrapped in LiffProvider */}
+              <Route path="/" element={
+                <LiffProvider>
+                  <RootRedirect />
+                </LiffProvider>
+              } />
 
               {/* Admin Dashboard - Protected Routes */}
               <Route path="/overview" element={

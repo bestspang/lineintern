@@ -1,41 +1,60 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLiffOptional } from '@/contexts/LiffContext';
 import { Loader2 } from 'lucide-react';
 
 export function RootRedirect() {
   const { user, loading: authLoading } = useAuth();
+  const liffContext = useLiffOptional();
   const [isLiffContext, setIsLiffContext] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     const checkContext = () => {
-      try {
-        // Check if in LINE browser
-        const userAgent = navigator.userAgent.toLowerCase();
-        const isInLine = userAgent.includes('line');
-        
-        // Check if came from LIFF redirect
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasLiffState = urlParams.has('liff.state');
-        
-        console.log('[RootRedirect] Checking context:', {
-          userAgent: navigator.userAgent,
-          isInLine,
-          hasLiffState,
-          href: window.location.href,
-        });
-        
-        setIsLiffContext(isInLine || hasLiffState);
-      } catch (e) {
-        console.error('[RootRedirect] Error checking context:', e);
-        setIsLiffContext(false);
+      // Method 1: Check LIFF SDK status (most reliable)
+      if (liffContext?.isReady) {
+        console.log('[RootRedirect] LIFF SDK is ready, detected as LIFF context');
+        setIsLiffContext(true);
+        setChecking(false);
+        return;
       }
+
+      // Method 2: Comprehensive User-Agent check
+      const ua = navigator.userAgent.toLowerCase();
+      const isLineApp = ua.includes('line/') || 
+                        ua.includes('liff/') || 
+                        ua.includes('lineboot') ||
+                        ua.includes('line ') ||
+                        (ua.includes('line') && (ua.includes('android') || ua.includes('iphone')));
+
+      // Method 3: Check URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasLiffParams = urlParams.has('liff.state') || 
+                           urlParams.has('liff.referrer') ||
+                           window.location.href.includes('liff.line.me');
+
+      console.log('[RootRedirect] Checking context:', {
+        userAgent: navigator.userAgent,
+        liffReady: liffContext?.isReady,
+        isLineApp,
+        hasLiffParams,
+        href: window.location.href,
+      });
+
+      setIsLiffContext(isLineApp || hasLiffParams);
       setChecking(false);
     };
-    
-    checkContext();
-  }, []);
+
+    // Wait for LIFF to potentially initialize
+    if (liffContext?.isReady) {
+      checkContext();
+    } else {
+      // Give LIFF time to init, then fallback to User-Agent check
+      const timeout = setTimeout(checkContext, 800);
+      return () => clearTimeout(timeout);
+    }
+  }, [liffContext?.isReady]);
 
   if (authLoading || checking) {
     return (
