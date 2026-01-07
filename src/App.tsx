@@ -163,6 +163,7 @@ const App = () => (
                       <Route path="/request-ot" element={<RequestOT />} />
                       <Route path="/my-profile" element={<MyProfile />} />
                       <Route path="/status" element={<Status />} />
+                      <Route path="/help" element={<Help />} />
                       <Route path="/approvals" element={<Approvals />} />
                       <Route path="/approvals/ot" element={<ApproveOT />} />
                       <Route path="/approvals/leave" element={<ApproveLeave />} />
