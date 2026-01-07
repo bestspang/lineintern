@@ -1043,3 +1043,111 @@ export function buildBusinessSelectQuickReply(
     items,
   };
 }
+
+// =============================
+// Postback Handlers
+// =============================
+
+export async function handleReceiptPostback(
+  postbackData: string,
+  lineUserId: string,
+  locale: "th" | "en"
+): Promise<{ handled: boolean; message: string }> {
+  const params = new URLSearchParams(postbackData);
+  const action = params.get("action");
+  const receiptId = params.get("receipt_id");
+  const businessId = params.get("business_id");
+
+  console.log(`[handleReceiptPostback] action=${action}, receiptId=${receiptId}, businessId=${businessId}`);
+
+  // Handle confirm receipt
+  if (action === "confirm_receipt" && receiptId) {
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "saved",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId)
+      .eq("line_user_id", lineUserId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error confirming receipt:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "✅ ยืนยันใบเสร็จเรียบร้อยแล้ว"
+        : "✅ Receipt confirmed successfully",
+    };
+  }
+
+  // Handle delete receipt
+  if (action === "delete_receipt" && receiptId) {
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "deleted",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId)
+      .eq("line_user_id", lineUserId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error deleting receipt:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "🗑 ลบใบเสร็จเรียบร้อยแล้ว"
+        : "🗑 Receipt deleted successfully",
+    };
+  }
+
+  // Handle select business
+  if (action === "select_business" && businessId) {
+    // Store selected business for pending receipt (if any)
+    const { data: pendingReceipt } = await supabase
+      .from("receipts")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .is("business_id", null)
+      .eq("status", "processed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pendingReceipt) {
+      await supabase
+        .from("receipts")
+        .update({ business_id: businessId })
+        .eq("id", pendingReceipt.id);
+    }
+
+    // Get business name
+    const { data: business } = await supabase
+      .from("receipt_businesses")
+      .select("name")
+      .eq("id", businessId)
+      .single();
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? `✅ เลือกธุรกิจ "${business?.name || ""}" แล้ว`
+        : `✅ Selected business "${business?.name || ""}"`,
+    };
+  }
+
+  return { handled: false, message: "" };
+}
