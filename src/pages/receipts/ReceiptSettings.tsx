@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -17,7 +19,7 @@ import {
 import { 
   Settings, Save, Building2, MessageSquare, 
   CheckCircle2, AlertCircle, ArrowLeft, RefreshCcw,
-  Plus, X, Search, Link2
+  Plus, X, Search, Link2, Users
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -56,6 +58,8 @@ export default function ReceiptSettings() {
   const [systemEnabled, setSystemEnabled] = useState(true);
   const [requireBusiness, setRequireBusiness] = useState(false);
   const [autoAssignBranch, setAutoAssignBranch] = useState(true);
+  const [collectionMode, setCollectionMode] = useState<'mapped' | 'centralized'>('mapped');
+  const [centralizedGroupId, setCentralizedGroupId] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -120,6 +124,7 @@ export default function ReceiptSettings() {
       const enabledSetting = settings.find(s => s.setting_key === 'system_enabled');
       const requireSetting = settings.find(s => s.setting_key === 'require_business');
       const autoAssignSetting = settings.find(s => s.setting_key === 'auto_assign_branch');
+      const modeSetting = settings.find(s => s.setting_key === 'collection_mode');
 
       if (enabledSetting) {
         setSystemEnabled((enabledSetting.setting_value as { enabled?: boolean }).enabled ?? true);
@@ -129,6 +134,11 @@ export default function ReceiptSettings() {
       }
       if (autoAssignSetting) {
         setAutoAssignBranch((autoAssignSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+      if (modeSetting) {
+        const modeValue = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
+        setCollectionMode((modeValue.mode as 'mapped' | 'centralized') ?? 'mapped');
+        setCentralizedGroupId(modeValue.centralized_group_id ?? null);
       }
     }
   }, [settings]);
@@ -148,6 +158,7 @@ export default function ReceiptSettings() {
         { key: 'system_enabled', value: { enabled: systemEnabled } },
         { key: 'require_business', value: { enabled: requireBusiness } },
         { key: 'auto_assign_branch', value: { enabled: autoAssignBranch } },
+        { key: 'collection_mode', value: { mode: collectionMode, centralized_group_id: centralizedGroupId } },
       ];
 
       for (const { key, value } of updates) {
@@ -373,12 +384,98 @@ export default function ReceiptSettings() {
                 setAutoAssignBranch(checked);
                 setHasChanges(true);
               }}
+              disabled={collectionMode === 'centralized'}
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Group to Branch Mapping */}
+      {/* Collection Mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Collection Mode
+          </CardTitle>
+          <CardDescription>
+            Choose how receipts are collected from LINE groups
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RadioGroup
+            value={collectionMode}
+            onValueChange={(value: 'mapped' | 'centralized') => {
+              setCollectionMode(value);
+              setHasChanges(true);
+            }}
+          >
+            <div className="flex items-start space-x-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+              <RadioGroupItem value="mapped" id="mode-mapped" className="mt-0.5" />
+              <div className="space-y-1 flex-1">
+                <Label htmlFor="mode-mapped" className="font-medium cursor-pointer">
+                  Mapped Mode (Per-Group Branch)
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Each LINE group maps to a specific branch. Receipts are automatically tagged with the branch.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+              <RadioGroupItem value="centralized" id="mode-centralized" className="mt-0.5" />
+              <div className="space-y-1 flex-1">
+                <Label htmlFor="mode-centralized" className="font-medium cursor-pointer">
+                  Centralized Mode (Single Group)
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Use one LINE group for all receipts. No automatic branch tagging.
+                </p>
+              </div>
+            </div>
+          </RadioGroup>
+
+          {collectionMode === 'centralized' && (
+            <div className="space-y-3 pt-2">
+              <Label>Select Centralized Group</Label>
+              <Select
+                value={centralizedGroupId || 'none'}
+                onValueChange={(val) => {
+                  setCentralizedGroupId(val === 'none' ? null : val);
+                  setHasChanges(true);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a group for receipts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    <span className="text-muted-foreground">Select a group...</span>
+                  </SelectItem>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-3 w-3" />
+                        {g.display_name || 'Unnamed Group'}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Note:</strong> In centralized mode, receipts will NOT have branch information. 
+                  All receipts will be collected without automatic branch assignment.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Group to Branch Mapping - only show in mapped mode */}
+      {collectionMode === 'mapped' && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -517,6 +614,7 @@ export default function ReceiptSettings() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Status Summary */}
       <Card>
