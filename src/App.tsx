@@ -104,6 +104,13 @@ import ReceiptExport from "./pages/receipts/ReceiptExport";
 import ReceiptAnalytics from "./pages/receipts/ReceiptAnalytics";
 import ReceiptSettings from "./pages/receipts/ReceiptSettings";
 
+// LIFF pages
+import { LiffProvider } from "./contexts/LiffContext";
+import LiffLayout from "./pages/liff/LiffLayout";
+import LiffReceiptEdit from "./pages/liff/LiffReceiptEdit";
+import LiffReceiptList from "./pages/liff/LiffReceiptList";
+import LiffBusinesses from "./pages/liff/LiffBusinesses";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -124,6 +131,20 @@ const App = () => (
               <Route path="/error/network" element={<NetworkError />} />
               <Route path="/error/server" element={<ServerError />} />
               <Route path="/error/session-expired" element={<SessionExpired />} />
+              
+              {/* LIFF Routes - LINE In-App Mini App */}
+              <Route path="/liff/*" element={
+                <LiffProvider>
+                  <LiffLayout>
+                    <Routes>
+                      <Route path="/receipts" element={<LiffReceiptList />} />
+                      <Route path="/receipts/:id" element={<LiffReceiptEdit />} />
+                      <Route path="/businesses" element={<LiffBusinesses />} />
+                      <Route path="*" element={<LiffReceiptList />} />
+                    </Routes>
+                  </LiffLayout>
+                </LiffProvider>
+              } />
               
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={

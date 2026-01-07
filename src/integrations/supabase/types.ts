@@ -2207,6 +2207,56 @@ export type Database = {
           },
         ]
       }
+      google_tokens: {
+        Row: {
+          access_token: string
+          created_at: string | null
+          drive_folder_id: string | null
+          employee_id: string | null
+          id: string
+          line_user_id: string
+          refresh_token: string
+          scopes: string[] | null
+          spreadsheet_id: string | null
+          token_expiry: string
+          updated_at: string | null
+        }
+        Insert: {
+          access_token: string
+          created_at?: string | null
+          drive_folder_id?: string | null
+          employee_id?: string | null
+          id?: string
+          line_user_id: string
+          refresh_token: string
+          scopes?: string[] | null
+          spreadsheet_id?: string | null
+          token_expiry: string
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string
+          created_at?: string | null
+          drive_folder_id?: string | null
+          employee_id?: string | null
+          id?: string
+          line_user_id?: string
+          refresh_token?: string
+          scopes?: string[] | null
+          spreadsheet_id?: string | null
+          token_expiry?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_tokens_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           group_id: string
@@ -3721,6 +3771,8 @@ export type Database = {
           created_at: string | null
           currency: string | null
           description: string | null
+          google_file_id: string | null
+          google_sheet_row: number | null
           id: string
           line_user_id: string
           payment_method: string | null
@@ -3744,6 +3796,8 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          google_file_id?: string | null
+          google_sheet_row?: number | null
           id?: string
           line_user_id: string
           payment_method?: string | null
@@ -3767,6 +3821,8 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          google_file_id?: string | null
+          google_sheet_row?: number | null
           id?: string
           line_user_id?: string
           payment_method?: string | null
