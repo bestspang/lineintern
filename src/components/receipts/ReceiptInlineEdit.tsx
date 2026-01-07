@@ -84,6 +84,34 @@ const CARD_TYPES = [
   { value: 'debit', label: 'Debit Card' },
 ];
 
+// Normalize category value to match Select options
+const normalizeCategory = (cat: string | null): string => {
+  if (!cat) return 'other';
+  
+  const lowerCat = cat.toLowerCase();
+  
+  // Match by exact value
+  const exactMatch = CATEGORIES.find(c => c.value === lowerCat);
+  if (exactMatch) return exactMatch.value;
+  
+  // Match by label (case-insensitive)
+  const labelMatch = CATEGORIES.find(
+    c => c.label.toLowerCase() === lowerCat ||
+         c.labelTh === cat
+  );
+  if (labelMatch) return labelMatch.value;
+  
+  // Partial matching
+  if (lowerCat.includes('food') || lowerCat.includes('dining') || lowerCat.includes('อาหาร')) return 'food';
+  if (lowerCat.includes('transport') || lowerCat.includes('ขนส่ง')) return 'transport';
+  if (lowerCat.includes('utilit') || lowerCat.includes('สาธารณูปโภค')) return 'utilities';
+  if (lowerCat.includes('office') || lowerCat.includes('สำนักงาน')) return 'office';
+  if (lowerCat.includes('software') || lowerCat.includes('ซอฟต์แวร์')) return 'software';
+  if (lowerCat.includes('market') || lowerCat.includes('การตลาด')) return 'marketing';
+  
+  return 'other';
+};
+
 export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
@@ -96,7 +124,7 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
     subtotal: receipt.subtotal?.toString() || '',
     vat: receipt.vat?.toString() || '',
     total: receipt.total?.toString() || '',
-    category: receipt.category || 'other',
+    category: normalizeCategory(receipt.category),
     payment_method: receipt.payment_method || '',
     payer_name: receipt.payer_name || '',
     card_number_masked: receipt.card_number_masked || '',
