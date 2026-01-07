@@ -55,13 +55,21 @@ const roleDefinitions: Record<AppRole, {
     icon: ShieldCheck,
     priority: 2,
   },
+  hr: { 
+    label: 'HR', 
+    labelTh: 'ฝ่ายทรัพยากรบุคคล',
+    description: 'จัดการข้อมูลพนักงาน เงินเดือน วันลา',
+    color: 'bg-pink-500', 
+    icon: Users,
+    priority: 3,
+  },
   executive: { 
     label: 'Executive', 
     labelTh: 'ผู้บริหาร',
     description: 'ดูรายงาน วิเคราะห์ข้อมูล',
     color: 'bg-purple-500', 
     icon: Briefcase,
-    priority: 3,
+    priority: 4,
   },
   manager: { 
     label: 'Manager', 
@@ -69,7 +77,7 @@ const roleDefinitions: Record<AppRole, {
     description: 'จัดการทีม อนุมัติคำขอ',
     color: 'bg-blue-500', 
     icon: Users,
-    priority: 4,
+    priority: 5,
   },
   moderator: { 
     label: 'Moderator', 
@@ -77,7 +85,7 @@ const roleDefinitions: Record<AppRole, {
     description: 'จัดการเนื้อหา ตอบคำถาม',
     color: 'bg-orange-500', 
     icon: Eye,
-    priority: 5,
+    priority: 6,
   },
   field: { 
     label: 'Field', 
@@ -85,7 +93,7 @@ const roleDefinitions: Record<AppRole, {
     description: 'เข้าถึงข้อมูลพื้นฐาน',
     color: 'bg-green-500', 
     icon: User,
-    priority: 6,
+    priority: 7,
   },
   user: { 
     label: 'User', 
@@ -93,7 +101,7 @@ const roleDefinitions: Record<AppRole, {
     description: 'สิทธิ์พื้นฐานสำหรับผู้ใช้ใหม่',
     color: 'bg-gray-500', 
     icon: User,
-    priority: 7,
+    priority: 8,
   },
 };
 

@@ -22,7 +22,9 @@ import {
   AlertTriangle,
   UserPlus,
   Pencil,
-  Trash2
+  Trash2,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -38,6 +40,7 @@ import { toast } from 'sonner';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, getDay } from 'date-fns';
 import { th } from 'date-fns/locale';
 import ScheduleCalendar, { ScheduleCalendarHandle } from '@/components/attendance/ScheduleCalendar';
+import { useScheduleAttendance } from '@/hooks/useScheduleAttendance';
 
 type Branch = {
   id: string;
