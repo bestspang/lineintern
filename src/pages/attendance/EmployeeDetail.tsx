@@ -261,8 +261,16 @@ export default function EmployeeDetail() {
         <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-3">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <User className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+              <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
+                {lineUser?.avatar_url ? (
+                  <img 
+                    src={lineUser.avatar_url} 
+                    alt={lineUser.display_name || 'Profile'} 
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+                )}
               </div>
               <div>
                 <CardTitle className="text-lg sm:text-2xl">{employee.full_name}</CardTitle>
