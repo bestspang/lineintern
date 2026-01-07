@@ -1,7 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NavLink } from '@/components/NavLink';
-import { Shield, Webhook, AlertTriangle, FileText, Settings as SettingsIcon, Users, ShieldCheck } from 'lucide-react';
+import { Shield, Webhook, AlertTriangle, FileText, Settings as SettingsIcon, Users, ShieldCheck, Key } from 'lucide-react';
 import { usePageAccess } from '@/hooks/usePageAccess';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -11,6 +11,7 @@ export default function SettingsLayout() {
   
   const allTabs = [
     { label: 'General', path: '/settings', icon: SettingsIcon },
+    { label: 'API Keys', path: '/settings/api-keys', icon: Key },
     { label: 'Users', path: '/settings/users', icon: Users },
     { label: 'Roles', path: '/settings/roles', icon: ShieldCheck },
     { label: 'Safety Rules', path: '/settings/safety', icon: Shield },

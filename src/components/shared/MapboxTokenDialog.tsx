@@ -3,8 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Settings, ExternalLink } from "lucide-react";
 import { setMapboxToken } from "@/lib/api-config";
+import { Link } from 'react-router-dom';
 
 interface MapboxTokenDialogProps {
   open: boolean;
@@ -13,10 +14,13 @@ interface MapboxTokenDialogProps {
 
 export function MapboxTokenDialog({ open, onTokenSet }: MapboxTokenDialogProps) {
   const [tokenInput, setTokenInput] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (tokenInput.trim()) {
-      setMapboxToken(tokenInput.trim());
+      setSaving(true);
+      await setMapboxToken(tokenInput.trim());
+      setSaving(false);
       onTokenSet(tokenInput.trim());
     }
   };
@@ -34,9 +38,6 @@ export function MapboxTokenDialog({ open, onTokenSet }: MapboxTokenDialogProps) 
               <p className="font-medium mb-1">Mapbox Public Token</p>
               <p className="text-muted-foreground">
                 กรุณากรอก Mapbox Public Token เพื่อใช้งานแผนที่
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                (กรอกครั้งเดียว ใช้ได้ทุก feature)
               </p>
             </div>
           </div>
@@ -57,16 +58,27 @@ export function MapboxTokenDialog({ open, onTokenSet }: MapboxTokenDialogProps) 
                 href="https://account.mapbox.com/access-tokens/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-primary hover:underline inline-flex items-center gap-1"
               >
                 account.mapbox.com/access-tokens
+                <ExternalLink className="h-3 w-3" />
               </a>
             </p>
           </div>
 
-          <Button onClick={handleSubmit} disabled={!tokenInput.trim()} className="w-full">
-            Save Token
+          <Button onClick={handleSubmit} disabled={!tokenInput.trim() || saving} className="w-full">
+            {saving ? 'Saving...' : 'Save Token'}
           </Button>
+
+          <div className="text-center">
+            <Link 
+              to="/settings/api-keys" 
+              className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+            >
+              <Settings className="h-3 w-3" />
+              หรือจัดการ API Keys ทั้งหมดที่ Settings
+            </Link>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -8,8 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getMapboxToken, setMapboxToken as saveMapboxToken, clearMapboxToken } from '@/lib/api-config';
-import { toast } from 'sonner';
 
 export default function Settings() {
   const { toast: showToast } = useToast();
@@ -19,7 +17,6 @@ export default function Settings() {
   const [defaultLanguage, setDefaultLanguage] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
   const [maxSummaryMessages, setMaxSummaryMessages] = useState('');
-  const [mapboxToken, setMapboxToken] = useState('');
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['app-settings'],
@@ -63,13 +60,6 @@ export default function Settings() {
     }
   }, [settings]);
 
-  // Load Mapbox token
-  useEffect(() => {
-    getMapboxToken().then(token => {
-      if (token) setMapboxToken(token);
-    });
-  }, []);
-
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!settings?.id) return;
@@ -97,19 +87,6 @@ export default function Settings() {
       });
     },
   });
-
-  const handleSaveMapboxToken = () => {
-    if (mapboxToken.trim()) {
-      saveMapboxToken(mapboxToken.trim());
-      toast.success('Mapbox token updated successfully');
-    }
-  };
-
-  const handleClearMapboxToken = () => {
-    clearMapboxToken();
-    setMapboxToken('');
-    toast.info('Mapbox token cleared');
-  };
 
   if (isLoading) {
     return (
@@ -196,44 +173,6 @@ export default function Settings() {
           <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="w-full sm:w-auto">
             {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-base sm:text-lg">API Configuration</CardTitle>
-          <CardDescription className="text-xs sm:text-sm">Manage external API keys and tokens</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 p-4 sm:p-6">
-          <div className="space-y-2">
-            <Label htmlFor="mapbox-token" className="text-sm">Mapbox Public Token</Label>
-            <div className="flex gap-2">
-              <Input
-                id="mapbox-token"
-                value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
-                placeholder="pk.eyJ1..."
-                className="font-mono text-xs flex-1"
-              />
-              <Button onClick={handleSaveMapboxToken} disabled={!mapboxToken.trim()}>
-                Save
-              </Button>
-              <Button variant="outline" onClick={handleClearMapboxToken}>
-                Clear
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Used for: Map Picker, Location Heatmap. Get your token from{' '}
-              <a
-                href="https://account.mapbox.com/access-tokens/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                Mapbox
-              </a>
-            </p>
-          </div>
         </CardContent>
       </Card>
 
