@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         line_user_id,
         role_id,
         branch_id,
-        branches!inner (
+        branches:branches!employees_branch_id_fkey (
           id,
           name
         ),
@@ -53,7 +53,6 @@ Deno.serve(async (req) => {
         )
       `)
       .eq('line_user_id', lineUserId)
-      .eq('branches.is_deleted', false)
       .maybeSingle();
 
     if (empError) {
