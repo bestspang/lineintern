@@ -3486,6 +3486,57 @@ export type Database = {
           },
         ]
       }
+      receipt_ocr_corrections: {
+        Row: {
+          corrected_at: string | null
+          corrected_by_employee_id: string | null
+          corrected_value: string | null
+          created_at: string | null
+          field_name: string
+          id: string
+          original_confidence: number | null
+          original_value: string | null
+          receipt_id: string | null
+        }
+        Insert: {
+          corrected_at?: string | null
+          corrected_by_employee_id?: string | null
+          corrected_value?: string | null
+          created_at?: string | null
+          field_name: string
+          id?: string
+          original_confidence?: number | null
+          original_value?: string | null
+          receipt_id?: string | null
+        }
+        Update: {
+          corrected_at?: string | null
+          corrected_by_employee_id?: string | null
+          corrected_value?: string | null
+          created_at?: string | null
+          field_name?: string
+          id?: string
+          original_confidence?: number | null
+          original_value?: string | null
+          receipt_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_ocr_corrections_corrected_by_employee_id_fkey"
+            columns: ["corrected_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_ocr_corrections_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receipt_plans: {
         Row: {
           ai_receipts_limit: number
