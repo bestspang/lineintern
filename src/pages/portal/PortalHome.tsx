@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -111,7 +111,6 @@ const adminActions: QuickAction[] = [
 
 export default function PortalHome() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { employee, locale, isManager, isAdmin } = usePortal();
   
   // Check-in status state
@@ -121,33 +120,6 @@ export default function PortalHome() {
   const [minutesWorked, setMinutesWorked] = useState<number | null>(null);
 
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
-
-  // Handle LIFF deep linking via liff.state parameter
-  // When user clicks Rich Menu button, LIFF sends: /portal?liff.state=/portal/checkin
-  useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const liffState = urlParams.get('liff.state');
-    
-    if (liffState) {
-      console.log('[PortalHome] Detected liff.state:', liffState);
-      
-      // Extract the target path from liff.state
-      // liff.state contains full path like "/portal/checkin" or "/portal/request-leave"
-      if (liffState.startsWith('/portal/')) {
-        const targetPath = liffState.replace('/portal', '');
-        if (targetPath && targetPath !== '/') {
-          console.log('[PortalHome] Navigating to:', targetPath);
-          navigate(targetPath, { replace: true });
-          return;
-        }
-      } else if (liffState.startsWith('/')) {
-        // Handle direct paths like "/checkin"
-        console.log('[PortalHome] Navigating to:', liffState);
-        navigate(liffState, { replace: true });
-        return;
-      }
-    }
-  }, [location.search, navigate]);
 
   // Realtime clock
   useEffect(() => {

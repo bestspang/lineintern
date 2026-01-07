@@ -18,18 +18,13 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     return { detected: true, reason: `LIFF params: ${liffParams.join(', ')}` };
   }
   
-  // 2. Check for debug=liff parameter (intentional debug mode from LIFF link)
-  if (urlParams.get('debug') === 'liff') {
-    return { detected: true, reason: 'debug=liff parameter present' };
-  }
-  
-  // 3. Check referrer from LINE
+  // 2. Check referrer from LINE
   const ref = document.referrer;
   if (ref.includes('line.me') || ref.includes('liff.line.me')) {
     return { detected: true, reason: `Referrer: ${ref}` };
   }
   
-  // 4. Check User-Agent for LINE patterns
+  // 3. Check User-Agent for LINE patterns
   const lineUAPatterns = [
     /line\/[\d.]+/i,
     /liff\/[\d.]+/i,
@@ -43,13 +38,19 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     }
   }
   
-  // 5. Check if URL contains liff.line.me
+  // 4. Check if URL contains liff.line.me
   if (url.includes('liff.line.me')) {
     return { detected: true, reason: 'URL contains liff.line.me' };
   }
   
-  // 6. sessionStorage check REMOVED - unreliable as it persists across sessions
-  // LIFF SDK isInClient() is the source of truth, checked via polling in useEffect
+  // 5. Check sessionStorage for LIFF markers (set by LIFF SDK)
+  try {
+    const keys = Object.keys(sessionStorage);
+    const liffKey = keys.find(k => k.toLowerCase().includes('liff'));
+    if (liffKey) {
+      return { detected: true, reason: `sessionStorage: ${liffKey}` };
+    }
+  } catch { /* ignore */ }
   
   return { detected: false, reason: 'No LIFF indicators found' };
 }

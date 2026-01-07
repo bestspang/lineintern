@@ -73,14 +73,12 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
 
   const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
 
-  // IMPORTANT: LIFF does NOT support path appending after LIFF ID
-  // Use liff.state parameter for deep linking: https://liff.line.me/{LIFF_ID}?liff.state=/portal/checkin
   const richMenuAreas: RichMenuArea[] = [
     // Row 1: เช็คอิน/เอาท์, สถานะ, เมนู
     {
       bounds: { x: 0, y: 0, width: colWidth, height: rowHeight },
       action: liffBaseUrl 
-        ? { type: 'uri', uri: `${liffBaseUrl}?liff.state=/portal/checkin`, label: 'เช็คอิน/เอาท์' }
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/checkin`, label: 'เช็คอิน/เอาท์' }
         : { type: 'message', text: '/checkin', label: 'เช็คอิน/เอาท์' }
     },
     {
@@ -90,20 +88,20 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
     {
       bounds: { x: colWidth * 2, y: 0, width: richMenuWidth - (colWidth * 2), height: rowHeight },
       action: liffBaseUrl
-        ? { type: 'uri', uri: `${liffBaseUrl}?liff.state=/portal`, label: 'เมนู' }
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal`, label: 'เมนู' }
         : { type: 'message', text: '/menu', label: 'เมนู' }
     },
     // Row 2: ลางาน, ขอ OT, ช่วยเหลือ
     {
       bounds: { x: 0, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
       action: liffBaseUrl
-        ? { type: 'uri', uri: `${liffBaseUrl}?liff.state=/portal/request-leave`, label: 'ลางาน' }
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-leave`, label: 'ลางาน' }
         : { type: 'message', text: '/dayoff พรุ่งนี้', label: 'ลางาน' }
     },
     {
       bounds: { x: colWidth, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
       action: liffBaseUrl
-        ? { type: 'uri', uri: `${liffBaseUrl}?liff.state=/portal/request-ot`, label: 'ขอ OT' }
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-ot`, label: 'ขอ OT' }
         : { type: 'message', text: '/ot', label: 'ขอ OT' }
     },
     {
