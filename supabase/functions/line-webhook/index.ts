@@ -4504,6 +4504,7 @@ async function handleHelpCommand(
       conversation: { icon: '📝', name_en: 'Conversations', name_th: 'สรุปการสนทนา' },
       work: { icon: '✅', name_en: 'Tasks & Work', name_th: 'งานและการจัดการงาน' },
       attendance: { icon: '🕐', name_en: 'Attendance (DM Only)', name_th: 'ลงเวลาทำงาน (DM เท่านั้น)' },
+      receipt: { icon: '🧾', name_en: 'Receipts (DM Only)', name_th: 'ใบเสร็จ (DM เท่านั้น)' },
       knowledge: { icon: '📚', name_en: 'Knowledge', name_th: 'ความรู้' },
       analytics: { icon: '📊', name_en: 'Analytics', name_th: 'รายงาน' },
       creative: { icon: '🎨', name_en: 'Creative', name_th: 'สร้างสรรค์' },
@@ -4527,7 +4528,7 @@ async function handleHelpCommand(
 
     // Iterate through categories in order
     // ⚠️ SYNC: Order must include all categories from categoryInfo above
-    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'knowledge', 'analytics', 'creative', 'settings', 'memory'];
+    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'receipt', 'knowledge', 'analytics', 'creative', 'settings', 'memory'];
     
     for (const category of categoryOrder) {
       const cmds = grouped[category];
