@@ -203,3 +203,6 @@ verify_jwt = false
 
 [functions.google-sheets-append]
 verify_jwt = false
+
+[functions.employee-liff-validate]
+verify_jwt = false
