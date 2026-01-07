@@ -437,6 +437,9 @@ function RichMenuSetup() {
   const handleFileSelect = useCallback(async (file: File) => {
     setSelectedFile(file);
     
+    // Auto-switch to upload mode when file is selected
+    setImageSource('upload');
+    
     // Create preview
     const previewUrl = URL.createObjectURL(file);
     setImagePreview(previewUrl);
@@ -621,8 +624,24 @@ function RichMenuSetup() {
             <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
               <RadioGroupItem value="upload" id="img-upload" />
               <Label htmlFor="img-upload" className="flex-1 cursor-pointer">
-                <span className="font-medium">Upload รูปใหม่</span>
-                <span className="block text-xs text-muted-foreground">JPEG หรือ PNG, 2500x1686px, ไม่เกิน 10MB</span>
+                <div className="flex items-center gap-3">
+                  {imagePreview && (
+                    <img 
+                      src={imagePreview} 
+                      alt="Selected" 
+                      className="h-10 w-16 object-cover rounded border"
+                    />
+                  )}
+                  <div>
+                    <span className="font-medium">Upload รูปใหม่</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {selectedFile 
+                        ? `${selectedFile.name} • ${imageValidation?.valid ? '✓ Valid' : '⚠ Invalid'}`
+                        : 'JPEG หรือ PNG, 2500x1686px, ไม่เกิน 10MB'
+                      }
+                    </span>
+                  </div>
+                </div>
               </Label>
             </div>
           </RadioGroup>
@@ -763,11 +782,27 @@ function RichMenuSetup() {
           )}
         </Button>
 
-        {imageSource === 'default' && (
-          <p className="text-xs text-muted-foreground">
-            ใช้รูปจาก <code className="bg-muted px-1 rounded">/images/rich-menu.jpg</code> (2500x1686px)
-          </p>
-        )}
+        <div className="text-xs text-muted-foreground">
+          {imageSource === 'default' ? (
+            <p>
+              ใช้รูปจาก <code className="bg-muted px-1 rounded">/images/rich-menu.jpg</code> (2500x1686px)
+            </p>
+          ) : selectedFile && imageValidation?.valid ? (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span>
+                ใช้รูปที่ upload: <span className="font-medium">{selectedFile.name}</span> ({imageValidation.dimensions?.width}x{imageValidation.dimensions?.height})
+              </span>
+            </div>
+          ) : selectedFile ? (
+            <div className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-4 w-4" />
+              <span>กรุณาแก้ไขปัญหารูปภาพก่อน deploy</span>
+            </div>
+          ) : (
+            <p className="text-amber-600">กรุณาเลือกรูปภาพเพื่อ upload</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
