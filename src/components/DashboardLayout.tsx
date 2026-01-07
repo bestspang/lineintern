@@ -282,11 +282,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 <Collapsible
                   key={group.title}
                   defaultOpen={isGroupActive(group.items)}
-                  className="group/collapsible [&:not(:first-child)]:mt-1"
+                  className="group/collapsible"
                 >
-                  <SidebarGroup className="py-0.5">
+                  <SidebarGroup className="py-0 space-y-0">
                     <SidebarGroupLabel asChild>
-                      <CollapsibleTrigger className="flex w-full items-center gap-2 hover:bg-muted/50 rounded-md px-2 py-1 transition-colors text-xs">
+                      <CollapsibleTrigger className="flex w-full items-center gap-1.5 hover:bg-muted/50 rounded-md px-2 py-0.5 transition-colors text-xs">
                         <group.icon className="h-4 w-4 text-muted-foreground" />
                         <span className="flex-1 text-left">{group.title}</span>
                         <svg
