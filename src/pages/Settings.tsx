@@ -373,6 +373,7 @@ export default function Settings() {
 // Rich Menu Setup Component with Image Upload
 function RichMenuSetup() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<{ success: boolean; message: string; richMenuId?: string } | null>(null);
   
@@ -390,6 +391,24 @@ function RichMenuSetup() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch current deployed Rich Menu info
+  const { data: currentRichMenu, isLoading: isLoadingRichMenu } = useQuery({
+    queryKey: ['current-richmenu'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'current_richmenu')
+        .maybeSingle();
+      return data?.setting_value as {
+        richmenu_id: string;
+        image_url: string;
+        image_source: 'default' | 'upload';
+        deployed_at: string;
+      } | null;
+    },
+  });
 
   // Validate image dimensions and type
   const validateImage = useCallback(async (file: File): Promise<typeof imageValidation> => {
@@ -546,6 +565,8 @@ function RichMenuSetup() {
           message: 'Rich Menu deployed successfully! พนักงานจะเห็น menu ใหม่เมื่อเปิด LINE ใหม่',
           richMenuId: data.richmenu_id
         });
+        // Invalidate to refetch current Rich Menu data
+        queryClient.invalidateQueries({ queryKey: ['current-richmenu'] });
         toast({
           title: 'Success',
           description: 'Rich Menu 6 ปุ่ม deployed to LINE successfully!',
@@ -593,6 +614,53 @@ function RichMenuSetup() {
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 sm:p-6 space-y-4">
+        {/* Current Deployed Rich Menu */}
+        {isLoadingRichMenu ? (
+          <Skeleton className="h-20 w-full" />
+        ) : currentRichMenu ? (
+          <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg">
+            <p className="text-sm font-medium mb-2 text-green-700 dark:text-green-400 flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" />
+              📍 Rich Menu ปัจจุบัน
+            </p>
+            <div className="flex items-start gap-3">
+              <img 
+                src={currentRichMenu.image_url} 
+                alt="Current Rich Menu" 
+                className="h-16 w-24 object-cover rounded border shadow-sm"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  (e.target as HTMLImageElement).src = '/images/rich-menu.jpg';
+                }}
+              />
+              <div className="text-xs space-y-1">
+                <p className="font-medium">
+                  {currentRichMenu.image_source === 'upload' ? '📤 รูปที่ Upload' : '📁 รูป Default'}
+                </p>
+                <p className="text-muted-foreground">
+                  Deploy: {new Date(currentRichMenu.deployed_at).toLocaleString('th-TH', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+                <p className="text-muted-foreground truncate max-w-[200px]" title={currentRichMenu.richmenu_id}>
+                  ID: {currentRichMenu.richmenu_id.substring(0, 20)}...
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-lg">
+            <p className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              ยังไม่มี Rich Menu - กรุณา deploy
+            </p>
+          </div>
+        )}
+
         {/* Layout Preview */}
         <div className="bg-muted/50 p-4 rounded-lg">
           <p className="text-sm font-medium mb-2">Rich Menu Layout (6 ปุ่ม)</p>
