@@ -9093,6 +9093,47 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
+  // Handle /receipt command - show receipt help
+  if (parsed.commandType === 'receipt') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const helpFlex = buildReceiptHelpFlex(locale);
+    await sendFlexMessage(event.replyToken, helpFlex);
+    return;
+  }
+
+  // Handle /receiptsummary command - show receipt summary
+  if (parsed.commandType === 'receipt_summary') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const defaultBusiness = await getDefaultBusiness(lineUserId);
+    const summary = await getReceiptSummary(lineUserId, defaultBusiness?.id);
+    const summaryFlex = buildReceiptSummaryFlex(summary, locale);
+    await sendFlexMessage(event.replyToken, summaryFlex);
+    return;
+  }
+
+  // Handle /businesses command - show/manage businesses
+  if (parsed.commandType === 'businesses') {
+    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+    const businesses = await getUserBusinesses(lineUserId);
+    
+    if (businesses.length === 0) {
+      const msg = locale === 'th'
+        ? '📋 คุณยังไม่มีธุรกิจ\n\nส่งรูปใบเสร็จมาเลย ระบบจะสร้างธุรกิจเริ่มต้นให้อัตโนมัติ\n\nหรือจัดการผ่าน Menu → ใบเสร็จ → ธุรกิจของฉัน'
+        : '📋 You have no businesses yet.\n\nSend a receipt image and the system will create a default business automatically.\n\nOr manage via Menu → Receipts → My Businesses';
+      await replyToLine(event.replyToken, msg);
+    } else {
+      const businessList = businesses.map((b: any, i: number) => 
+        `${i + 1}. ${b.name}${b.is_default ? ' ⭐' : ''}`
+      ).join('\n');
+      
+      const msg = locale === 'th'
+        ? `📋 ธุรกิจของคุณ (${businesses.length}):\n\n${businessList}\n\n⭐ = ธุรกิจเริ่มต้น`
+        : `📋 Your Businesses (${businesses.length}):\n\n${businessList}\n\n⭐ = Default business`;
+      await replyToLine(event.replyToken, msg);
+    }
+    return;
+  }
+
   // PHASE 2: Handle explicit /progress command (progress_report)
   if (parsed.commandType === 'progress_report') {
     const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
