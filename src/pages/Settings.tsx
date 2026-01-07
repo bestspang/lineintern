@@ -16,7 +16,7 @@ import { Smartphone } from 'lucide-react';
 function PortalAccessModeSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [portalMode, setPortalMode] = useState<'liff' | 'token'>('liff');
+  const [portalMode, setPortalMode] = useState<'liff' | 'token' | 'both'>('liff');
 
   // Fetch portal access mode setting
   const { data: portalSetting, isLoading } = useQuery({
@@ -35,13 +35,13 @@ function PortalAccessModeSettings() {
 
   useEffect(() => {
     if (portalSetting?.mode) {
-      setPortalMode(portalSetting.mode as 'liff' | 'token');
+      setPortalMode(portalSetting.mode as 'liff' | 'token' | 'both');
     }
   }, [portalSetting]);
 
   const savePortalModeMutation = useMutation({
-    mutationFn: async (mode: 'liff' | 'token') => {
-      const newValue = { mode, available_modes: ['liff', 'token'] };
+    mutationFn: async (mode: 'liff' | 'token' | 'both') => {
+      const newValue = { mode, available_modes: ['liff', 'token', 'both'] };
       
       const { error } = await supabase
         .from('system_settings')
@@ -69,7 +69,7 @@ function PortalAccessModeSettings() {
     }
   });
 
-  const handleModeChange = (mode: 'liff' | 'token') => {
+  const handleModeChange = (mode: 'liff' | 'token' | 'both') => {
     setPortalMode(mode);
     savePortalModeMutation.mutate(mode);
   };
@@ -114,16 +114,48 @@ function PortalAccessModeSettings() {
             </ul>
           </div>
         </div>
+
+        <div className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+          <RadioGroupItem value="both" id="both" className="mt-1" />
+          <div className="flex-1">
+            <Label htmlFor="both" className="flex items-center gap-2 cursor-pointer">
+              <span className="font-medium">Both Mode (Hybrid)</span>
+              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">ใหม่</Badge>
+            </Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              ใช้ทั้ง LIFF และ Token Link ตามความเหมาะสม
+            </p>
+            <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+              <li>/menu → LIFF URL (auto-login)</li>
+              <li>checkin/checkout → Token Link (แบบเดิม)</li>
+              <li>เหมาะสำหรับใช้งานทั่วไป</li>
+            </ul>
+          </div>
+        </div>
       </RadioGroup>
 
-      <div className={`p-3 rounded-lg ${portalMode === 'liff' ? 'bg-green-50 dark:bg-green-950/30' : 'bg-blue-50 dark:bg-blue-950/30'}`}>
+      <div className={`p-3 rounded-lg ${
+        portalMode === 'liff' ? 'bg-green-50 dark:bg-green-950/30' : 
+        portalMode === 'both' ? 'bg-purple-50 dark:bg-purple-950/30' :
+        'bg-blue-50 dark:bg-blue-950/30'
+      }`}>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className={portalMode === 'liff' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
-            {portalMode === 'liff' ? 'LIFF Active' : 'Token Active'}
+          <Badge variant="outline" className={
+            portalMode === 'liff' ? 'bg-green-100 text-green-700 border-green-300' : 
+            portalMode === 'both' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+            'bg-blue-100 text-blue-700 border-blue-300'
+          }>
+            {portalMode === 'liff' ? 'LIFF Active' : portalMode === 'both' ? 'Both Active' : 'Token Active'}
           </Badge>
-          <span className={`text-sm ${portalMode === 'liff' ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'}`}>
+          <span className={`text-sm ${
+            portalMode === 'liff' ? 'text-green-700 dark:text-green-400' : 
+            portalMode === 'both' ? 'text-purple-700 dark:text-purple-400' :
+            'text-blue-700 dark:text-blue-400'
+          }`}>
             {portalMode === 'liff' 
               ? 'พนักงานจะได้รับ LIFF URL เมื่อพิมพ์ /menu' 
+              : portalMode === 'both'
+              ? '/menu ใช้ LIFF, checkin/checkout ใช้ Token Link'
               : 'พนักงานจะได้รับ Token Link เมื่อพิมพ์ /menu'}
           </span>
         </div>
