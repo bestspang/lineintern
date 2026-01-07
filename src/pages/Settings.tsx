@@ -43,15 +43,20 @@ function PortalAccessModeSettings() {
     mutationFn: async (mode: 'liff' | 'token' | 'both') => {
       const newValue = { mode, available_modes: ['liff', 'token', 'both'] };
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('system_settings')
         .update({ 
           setting_value: newValue,
           updated_at: new Date().toISOString()
         })
-        .eq('setting_key', 'portal_access_mode');
+        .eq('setting_key', 'portal_access_mode')
+        .select()
+        .single();
       
       if (error) throw error;
+      if (!data) throw new Error('ไม่สามารถบันทึกได้ กรุณาลองใหม่');
+      
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portal-access-mode'] });
