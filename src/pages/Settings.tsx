@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image } from 'lucide-react';
+import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
@@ -371,6 +371,7 @@ export default function Settings() {
 }
 
 // Rich Menu Setup Component with Image Upload
+// Shows Rich Menu UI for LIFF/Both modes, Quick Reply info for Token mode
 function RichMenuSetup() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -392,6 +393,21 @@ function RichMenuSetup() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch portal access mode to determine which UI to show
+  const { data: portalSetting } = useQuery({
+    queryKey: ['portal-access-mode'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'portal_access_mode')
+        .maybeSingle();
+      return data?.setting_value as { mode: string } | null;
+    },
+  });
+
+  const currentMode = (portalSetting?.mode || 'liff') as 'liff' | 'token' | 'both';
+
   // Fetch current deployed Rich Menu info
   const { data: currentRichMenu, isLoading: isLoadingRichMenu } = useQuery({
     queryKey: ['current-richmenu'],
@@ -409,6 +425,44 @@ function RichMenuSetup() {
       } | null;
     },
   });
+
+  // Token Mode: Show Quick Reply info instead of Rich Menu setup
+  if (currentMode === 'token') {
+    return (
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+            Quick Reply (Token Mode)
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            Token Mode ใช้ Quick Reply อัตโนมัติ (ไม่ใช้ Rich Menu)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg">
+            <p className="text-sm font-medium mb-2 text-blue-700 dark:text-blue-400 flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" />
+              ✅ Quick Reply ทำงานอัตโนมัติ
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              ปุ่มทางลัดจะแสดงหลังจาก Bot ตอบข้อความ เพื่อให้พนักงานกดได้สะดวก
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-3 py-1.5 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 rounded-full text-xs">🟢 เข้างาน</span>
+              <span className="px-3 py-1.5 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded-full text-xs">🔴 ออกงาน</span>
+              <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-full text-xs">📋 ประวัติ</span>
+              <span className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400 rounded-full text-xs">❓ ช่วยเหลือ</span>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
+            <p className="font-medium mb-1">💡 เปลี่ยนไปใช้ Rich Menu ได้</p>
+            <p>เปลี่ยน Portal Access Mode เป็น "LIFF" หรือ "Both" เพื่อใช้ Rich Menu แบบถาวรที่ด้านล่างหน้าจอแทน Quick Reply</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Validate image dimensions and type
   const validateImage = useCallback(async (file: File): Promise<typeof imageValidation> => {
