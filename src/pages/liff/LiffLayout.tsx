@@ -4,7 +4,7 @@
 
 import { ReactNode } from 'react';
 import { useLiff } from '@/contexts/LiffContext';
-import { Loader2, AlertTriangle, User } from 'lucide-react';
+import { Loader2, AlertTriangle, User, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface LiffLayoutProps {
@@ -14,7 +14,7 @@ interface LiffLayoutProps {
 }
 
 export default function LiffLayout({ children, title, showHeader = true }: LiffLayoutProps) {
-  const { isReady, isLoggedIn, profile, error, closeLiff } = useLiff();
+  const { isReady, isLoggedIn, profile, error, errorDetails, closeLiff, retry, isRetrying } = useLiff();
 
   // Loading state
   if (!isReady) {
@@ -30,15 +30,35 @@ export default function LiffLayout({ children, title, showHeader = true }: LiffL
 
   // Error state
   if (error) {
+    const canRetry = errorDetails?.type === 'network' || errorDetails?.type === 'unknown';
+    
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-sm">
           <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto" />
           <h2 className="text-lg font-semibold">เกิดข้อผิดพลาด</h2>
           <p className="text-sm text-muted-foreground">{error}</p>
-          <Button onClick={closeLiff} variant="outline">
-            ปิด
-          </Button>
+          
+          {errorDetails?.type === 'config' && (
+            <p className="text-xs text-muted-foreground">
+              กรุณาติดต่อผู้ดูแลระบบ
+            </p>
+          )}
+          
+          <div className="flex gap-2 justify-center">
+            {canRetry && (
+              <Button onClick={retry} variant="default" disabled={isRetrying}>
+                {isRetrying ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> กำลังลอง...</>
+                ) : (
+                  <><RefreshCw className="h-4 w-4 mr-2" /> ลองใหม่</>
+                )}
+              </Button>
+            )}
+            <Button onClick={closeLiff} variant="outline">
+              ปิด
+            </Button>
+          </div>
         </div>
       </div>
     );
