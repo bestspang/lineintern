@@ -150,9 +150,6 @@ const App = () => (
                 </LiffProvider>
               } />
               
-              {/* Root redirect - detects LINE context */}
-              <Route path="/" element={<RootRedirect />} />
-              
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={
                 <LiffProvider>
@@ -191,11 +188,22 @@ const App = () => (
                 </LiffProvider>
               } />
 
+              {/* Root redirect - detects LINE context, must be before catch-all */}
+              <Route path="/" element={<RootRedirect />} />
+
+              {/* Admin Dashboard - Protected Routes */}
+              <Route path="/overview" element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Overview />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              } />
+              
               <Route path="/*" element={
                 <ProtectedRoute>
                   <DashboardLayout>
                     <Routes>
-                      <Route path="/" element={<Overview />} />
                       <Route path="/groups" element={<Groups />} />
                       <Route path="/groups/:id" element={<GroupDetail />} />
                       <Route path="/users" element={<Users />} />
