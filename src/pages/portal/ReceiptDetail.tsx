@@ -105,7 +105,7 @@ export default function ReceiptDetail() {
   const imageUrl = useMemo(() => {
     const receiptFile = receipt?.receipt_files?.[0];
     if (!receiptFile?.storage_path) return null;
-    const { data } = supabase.storage.from('receipts').getPublicUrl(receiptFile.storage_path);
+    const { data } = supabase.storage.from('receipt-files').getPublicUrl(receiptFile.storage_path);
     return data?.publicUrl;
   }, [receipt]);
 
