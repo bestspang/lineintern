@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import { Clock, Plus, MoreVertical, X, Trash2 } from 'lucide-react';
+import { AttendanceMap, AttendanceByDay } from '@/hooks/useScheduleAttendance';
+import { AttendanceStatusBadge, AttendanceTimeDisplay } from '@/components/attendance/AttendanceStatusBadge';
 
 type ShiftTemplate = {
   id: string;
@@ -49,6 +51,7 @@ type ShiftAssignment = {
 
 export interface ScheduleCalendarHandle {
   exportToImage: () => Promise<void>;
+  exportToCSV: () => void;
 }
 
 interface ScheduleCalendarProps {
@@ -66,10 +69,20 @@ interface ScheduleCalendarProps {
   borrowedOutAssignments?: { employee_id: string; work_date: string }[];
   onRemoveEmployeeFromSchedule?: (employeeId: string) => void;
   onDeleteTemporaryEmployee?: (employeeId: string) => void;
+  // New props for attendance sync
+  attendanceMap?: AttendanceMap;
+  getAttendanceStatus?: (
+    employeeId: string,
+    dateStr: string,
+    scheduledStart: string | null,
+    scheduledEnd: string | null,
+    isDayOff: boolean
+  ) => AttendanceByDay | null;
+  showAttendance?: boolean;
 }
 
 const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProps>(
-  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel, currentBranchId, onAddTemporaryEmployee, borrowedOutAssignments = [], onRemoveEmployeeFromSchedule, onDeleteTemporaryEmployee }, ref) => {
+  ({ weekDays, employees, assignments, shiftTemplates, onAssignmentChange, onAssignmentDelete, isEditable, branchName, weekLabel, currentBranchId, onAddTemporaryEmployee, borrowedOutAssignments = [], onRemoveEmployeeFromSchedule, onDeleteTemporaryEmployee, attendanceMap = {}, getAttendanceStatus, showAttendance = false }, ref) => {
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
     const [customStartTime, setCustomStartTime] = useState('09:00');
     const [customEndTime, setCustomEndTime] = useState('18:00');
@@ -105,8 +118,76 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
       }
     };
 
+    const exportToCSV = () => {
+      try {
+        const headers = ['พนักงาน', ...weekDays.map(d => format(d, 'yyyy-MM-dd'))];
+        if (showAttendance) {
+          // Add actual time headers
+          headers.push(...weekDays.map(d => `${format(d, 'yyyy-MM-dd')} (เข้าจริง)`));
+          headers.push(...weekDays.map(d => `${format(d, 'yyyy-MM-dd')} (ออกจริง)`));
+        }
+        
+        const rows = employees.map(emp => {
+          const row: string[] = [emp.full_name];
+          
+          // Scheduled times
+          weekDays.forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd');
+            const assignment = assignments.find(a => a.employee_id === emp.id && a.work_date === dateStr);
+            
+            if (!assignment) {
+              row.push('-');
+            } else if (assignment.is_day_off) {
+              row.push('OFF');
+            } else {
+              const start = assignment.custom_start_time || assignment.shift_templates?.start_time;
+              const end = assignment.custom_end_time || assignment.shift_templates?.end_time;
+              row.push(`${start?.slice(0, 5) || ''}-${end?.slice(0, 5) || ''}`);
+            }
+          });
+          
+          // Actual check-in times
+          if (showAttendance) {
+            weekDays.forEach(day => {
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const attendance = attendanceMap[emp.id]?.[dateStr];
+              row.push(attendance?.checkIn || '-');
+            });
+            
+            // Actual check-out times
+            weekDays.forEach(day => {
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const attendance = attendanceMap[emp.id]?.[dateStr];
+              row.push(attendance?.checkOut || '-');
+            });
+          }
+          
+          return row;
+        });
+        
+        const csvContent = [headers, ...rows]
+          .map(row => row.map(cell => `"${cell}"`).join(','))
+          .join('\n');
+        
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const filename = `schedule-${branchName || 'branch'}-${weekLabel || 'week'}.csv`
+          .replace(/\s+/g, '-')
+          .replace(/[^\w\-\.]/g, '');
+        link.download = filename;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        
+        toast.success('ดาวน์โหลด CSV เรียบร้อย');
+      } catch (error) {
+        toast.error('ไม่สามารถสร้าง CSV ได้');
+        console.error('Export CSV error:', error);
+      }
+    };
+
     useImperativeHandle(ref, () => ({
       exportToImage,
+      exportToCSV,
     }));
 
     const getAssignment = (employeeId: string, date: Date): ShiftAssignment | undefined => {
@@ -334,13 +415,24 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
       const endTime = assignment.custom_end_time || template?.end_time;
       const isCustomTime = assignment.custom_start_time && !assignment.shift_template_id;
 
+      // Get attendance status if enabled
+      const attendanceStatus = showAttendance && getAttendanceStatus
+        ? getAttendanceStatus(
+            employee.id,
+            dateStr,
+            startTime?.slice(0, 5) || null,
+            endTime?.slice(0, 5) || null,
+            assignment.is_day_off
+          )
+        : null;
+
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <div
                 className={cn(
-                  'w-full h-full flex flex-col items-center justify-center cursor-pointer transition-colors',
+                  'w-full h-full flex flex-col items-center justify-center cursor-pointer transition-colors relative',
                   !isEditable && 'cursor-default',
                   isCustomTime && 'bg-violet-100 dark:bg-violet-900/30'
                 )}
@@ -360,13 +452,45 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                 ) : (
                   <span className="font-medium">?</span>
                 )}
+                
+                {/* Show attendance status badge */}
+                {showAttendance && attendanceStatus?.status && (
+                  <div className="absolute top-0.5 right-0.5">
+                    <AttendanceStatusBadge
+                      status={attendanceStatus.status}
+                      checkIn={attendanceStatus.checkIn}
+                      checkOut={attendanceStatus.checkOut}
+                      compact
+                    />
+                  </div>
+                )}
+                
+                {/* Show actual time below */}
+                {showAttendance && (attendanceStatus?.checkIn || attendanceStatus?.checkOut) && (
+                  <AttendanceTimeDisplay
+                    checkIn={attendanceStatus.checkIn}
+                    checkOut={attendanceStatus.checkOut}
+                    status={attendanceStatus.status}
+                    className="mt-0.5"
+                  />
+                )}
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-medium">{template?.name || 'กะพิเศษ'}</p>
               <p className="text-xs">
-                {startTime?.slice(0, 5)} - {endTime?.slice(0, 5)}
+                กำหนด: {startTime?.slice(0, 5)} - {endTime?.slice(0, 5)}
               </p>
+              {showAttendance && attendanceStatus && (
+                <div className="mt-1 pt-1 border-t">
+                  <p className="text-xs">
+                    เข้าจริง: {attendanceStatus.checkIn || '-'}
+                  </p>
+                  <p className="text-xs">
+                    ออกจริง: {attendanceStatus.checkOut || '-'}
+                  </p>
+                </div>
+              )}
               {assignment.note && <p className="text-xs mt-1">{assignment.note}</p>}
             </TooltipContent>
           </Tooltip>

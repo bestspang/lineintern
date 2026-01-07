@@ -10,7 +10,7 @@ interface AttendanceLog {
   event_type: string;
 }
 
-interface AttendanceByDay {
+export interface AttendanceByDay {
   checkIn: string | null;
   checkOut: string | null;
   status: 'on_time' | 'late' | 'early_leave' | 'absent' | 'ot' | 'pending' | null;
