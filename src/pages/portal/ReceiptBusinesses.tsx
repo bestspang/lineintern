@@ -79,9 +79,10 @@ export default function ReceiptBusinesses() {
     queryFn: async () => {
       if (!employee?.line_user_id) return null;
       
-      // Get current period
+      // Get current period (format: YYYY-MM)
       const now = new Date();
-      const period = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const today = now.toISOString().split('T')[0];
       
       // Get usage
       const { data: usage } = await supabase
@@ -91,29 +92,34 @@ export default function ReceiptBusinesses() {
         .eq('period_yyyymm', period)
         .maybeSingle();
       
-      // Get subscription and plan
+      // Get active subscription (within current period dates)
       const { data: subscription } = await supabase
         .from('receipt_subscriptions')
         .select('plan_id')
         .eq('line_user_id', employee.line_user_id)
+        .lte('current_period_start', today)
+        .gte('current_period_end', today)
         .maybeSingle();
       
+      // Get plan details
       let plan = null;
       if (subscription?.plan_id) {
         const { data: planData } = await supabase
           .from('receipt_plans')
-          .select('*')
+          .select('id, name, ai_receipts_limit')
           .eq('id', subscription.plan_id)
           .single();
         plan = planData;
-      } else {
-        // Default to free plan
+      }
+      
+      // Default to free plan if no active subscription
+      if (!plan) {
         const { data: freePlan } = await supabase
           .from('receipt_plans')
-          .select('*')
+          .select('id, name, ai_receipts_limit')
           .eq('id', 'free')
-          .single();
-        plan = freePlan;
+          .maybeSingle();
+        plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
       }
       
       return {

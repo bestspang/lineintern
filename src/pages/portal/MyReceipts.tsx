@@ -242,7 +242,7 @@ export default function MyReceipts() {
             <Card
               key={receipt.id}
               className="cursor-pointer hover:shadow-md transition-all"
-              onClick={() => navigate(`/portal/receipt/${receipt.id}`)}
+              onClick={() => navigate(`/portal/receipts/${receipt.id}`)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">

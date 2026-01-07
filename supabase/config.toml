@@ -188,3 +188,6 @@ verify_jwt = false
 
 [functions.receipt-submit]
 verify_jwt = false
+
+[functions.receipt-quota]
+verify_jwt = false
