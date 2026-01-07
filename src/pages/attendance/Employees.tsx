@@ -141,10 +141,10 @@ export default function AttendanceEmployees() {
     }
   });
 
-  // Get LINE users that can be imported (have display_name and avatar but not linked to employee)
+  // Get LINE users that can be imported (have display_name but not linked to employee)
   const unlinkedLineUsers = lineUsers?.filter(user => {
-    // Must have display name and avatar
-    if (!user.display_name || !user.avatar_url) return false;
+    // Must have display name (avatar is optional)
+    if (!user.display_name) return false;
     // Must not be already linked to an employee
     const isLinked = employees?.some(emp => emp.line_user_id === user.line_user_id);
     return !isLinked;
@@ -520,7 +520,19 @@ export default function AttendanceEmployees() {
                                   key={user.id}
                                   value={user.line_user_id}
                                   onSelect={() => {
-                                    setFormData({ ...formData, line_user_id: user.line_user_id });
+                                    const updates: Partial<typeof formData> = { line_user_id: user.line_user_id };
+                                    
+                                    // Auto-fill name if empty
+                                    if (!formData.full_name && user.display_name) {
+                                      updates.full_name = user.display_name;
+                                    }
+                                    
+                                    // Auto-fill code if empty
+                                    if (!formData.code) {
+                                      updates.code = getNextEmployeeCode();
+                                    }
+                                    
+                                    setFormData({ ...formData, ...updates });
                                     setUserSearchOpen(false);
                                     setUserSearchTerm('');
                                   }}
@@ -531,6 +543,10 @@ export default function AttendanceEmployees() {
                                       formData.line_user_id === user.line_user_id ? "opacity-100" : "opacity-0"
                                     )}
                                   />
+                                  <Avatar className="h-6 w-6 mr-2">
+                                    <AvatarImage src={user.avatar_url || undefined} />
+                                    <AvatarFallback>{user.display_name?.[0] || '?'}</AvatarFallback>
+                                  </Avatar>
                                   {user.display_name || 'Unknown'}
                                 </CommandItem>
                               ))}
