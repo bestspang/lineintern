@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { useState } from 'react';
-import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save, AlertTriangle, Loader2, Zap, X, Check } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Key, Map, MessageSquare, ExternalLink, Eye, EyeOff, Info, CheckCircle2, AlertCircle, Save, AlertTriangle, Loader2, Zap, X, Check, Play } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Tooltip,
@@ -117,6 +117,42 @@ export default function APIKeys() {
   const queryClient = useQueryClient();
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, { status: 'idle' | 'loading' | 'success' | 'error'; message?: string }>>({});
+
+  const handleTestConnection = useCallback(async (config: APIConfig) => {
+    const value = editValues[config.id] ?? config.key_value ?? '';
+    if (!value) {
+      toast.error('No value to test', { description: 'Enter an API key first' });
+      return;
+    }
+
+    const testFn = apiTestFunctions[config.key_name];
+    if (!testFn) {
+      toast.info('Test not available for this key');
+      return;
+    }
+
+    setTestResults(prev => ({ ...prev, [config.id]: { status: 'loading' } }));
+    
+    try {
+      const result = await testFn(value);
+      setTestResults(prev => ({ 
+        ...prev, 
+        [config.id]: { status: result.success ? 'success' : 'error', message: result.message } 
+      }));
+      if (result.success) {
+        toast.success('Connection successful', { description: result.message });
+      } else {
+        toast.error('Connection failed', { description: result.message });
+      }
+    } catch (e: any) {
+      setTestResults(prev => ({ 
+        ...prev, 
+        [config.id]: { status: 'error', message: e.message || 'Test failed' } 
+      }));
+      toast.error('Test failed', { description: e.message });
+    }
+  }, [editValues]);
 
   const { data: configs, isLoading } = useQuery({
     queryKey: ['api-configurations'],
@@ -288,6 +324,26 @@ export default function APIKeys() {
                       )}
                     </Button>
                   </div>
+                  {apiTestFunctions[config.key_name] && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTestConnection(config)}
+                      disabled={!isConfigured(config) || testResults[config.id]?.status === 'loading'}
+                      className="shrink-0"
+                    >
+                      {testResults[config.id]?.status === 'loading' ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : testResults[config.id]?.status === 'success' ? (
+                        <Check className="h-4 w-4 mr-1 text-green-600" />
+                      ) : testResults[config.id]?.status === 'error' ? (
+                        <X className="h-4 w-4 mr-1 text-red-600" />
+                      ) : (
+                        <Play className="h-4 w-4 mr-1" />
+                      )}
+                      Test
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"

@@ -194,3 +194,12 @@ verify_jwt = false
 
 [functions.receipt-monthly-report]
 verify_jwt = false
+
+[functions.google-oauth]
+verify_jwt = false
+
+[functions.google-drive-upload]
+verify_jwt = false
+
+[functions.google-sheets-append]
+verify_jwt = false
