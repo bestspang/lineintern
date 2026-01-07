@@ -169,21 +169,25 @@ export default function AttendanceEmployees() {
     mutationFn: async (data: typeof formData) => {
       // Auto-determine status based on required fields
       const isComplete = data.full_name && data.role_id && data.branch_id;
-      const dataWithStatus = {
+      
+      // Convert empty strings to null for UUID fields to prevent Postgres errors
+      const cleanedData = {
         ...data,
+        branch_id: data.branch_id || null,
+        role_id: data.role_id || null,
         status: isComplete ? 'active' : 'new'
       };
       
       if (editingEmployee) {
         const { error } = await supabase
           .from('employees')
-          .update(dataWithStatus)
+          .update(cleanedData)
           .eq('id', editingEmployee.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('employees')
-          .insert(dataWithStatus);
+          .insert(cleanedData);
         if (error) throw error;
       }
     },
