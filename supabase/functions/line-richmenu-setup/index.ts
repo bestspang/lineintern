@@ -9,17 +9,159 @@ const corsHeaders = {
 /**
  * LINE Rich Menu Setup Edge Function
  * 
- * Creates a Rich Menu with 6 buttons layout:
- * Row 1: [⏰ Check-in/out (大)] [📊 สถานะ] [🏠 Portal]
- * Row 2: [📅 ลางาน] [💼 OT] [❓ Help]
+ * Creates a Rich Menu with 6 equal-sized buttons layout (3x2 grid):
+ * Row 1: [✓ เช็คอิน/เอาท์] [🕐 สถานะ] [≡ เมนู]
+ * Row 2: [📅 ลางาน] [+ ขอ OT] [? ช่วยเหลือ]
  * 
- * Note: This requires a Rich Menu image to be uploaded separately.
+ * Actions:
+ * - create: Create Rich Menu structure
+ * - upload-image: Upload image to Rich Menu
+ * - set-default: Set as default Rich Menu
+ * - create-full: Do all above in one call
+ * - list: List all Rich Menus
+ * - delete: Delete a Rich Menu
+ * 
  * Image size must be 2500x1686 pixels.
  */
 
 interface RichMenuArea {
   bounds: { x: number; y: number; width: number; height: number };
   action: { type: string; text?: string; label?: string; uri?: string };
+}
+
+// Helper function to create Rich Menu structure
+async function createRichMenuStructure(lineAccessToken: string, liffId: string): Promise<{ success: boolean; richMenuId?: string; error?: string }> {
+  // 6 equal-sized buttons: 3 columns x 2 rows
+  const richMenuWidth = 2500;
+  const richMenuHeight = 1686;
+  const colWidth = Math.floor(richMenuWidth / 3); // 833px per column
+  const rowHeight = Math.floor(richMenuHeight / 2); // 843px per row
+
+  const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
+
+  const richMenuAreas: RichMenuArea[] = [
+    // Row 1: เช็คอิน/เอาท์, สถานะ, เมนู
+    {
+      bounds: { x: 0, y: 0, width: colWidth, height: rowHeight },
+      action: liffBaseUrl 
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/checkin`, label: 'เช็คอิน/เอาท์' }
+        : { type: 'message', text: '/checkin', label: 'เช็คอิน/เอาท์' }
+    },
+    {
+      bounds: { x: colWidth, y: 0, width: colWidth, height: rowHeight },
+      action: { type: 'message', text: '/status', label: 'สถานะ' }
+    },
+    {
+      bounds: { x: colWidth * 2, y: 0, width: richMenuWidth - (colWidth * 2), height: rowHeight },
+      action: liffBaseUrl
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal`, label: 'เมนู' }
+        : { type: 'message', text: '/menu', label: 'เมนู' }
+    },
+    // Row 2: ลางาน, ขอ OT, ช่วยเหลือ
+    {
+      bounds: { x: 0, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
+      action: liffBaseUrl
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-leave`, label: 'ลางาน' }
+        : { type: 'message', text: '/dayoff พรุ่งนี้', label: 'ลางาน' }
+    },
+    {
+      bounds: { x: colWidth, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
+      action: liffBaseUrl
+        ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-ot`, label: 'ขอ OT' }
+        : { type: 'message', text: '/ot', label: 'ขอ OT' }
+    },
+    {
+      bounds: { x: colWidth * 2, y: rowHeight, width: richMenuWidth - (colWidth * 2), height: richMenuHeight - rowHeight },
+      action: { type: 'message', text: '/help', label: 'ช่วยเหลือ' }
+    },
+  ];
+
+  const richMenuObject = {
+    size: {
+      width: richMenuWidth,
+      height: richMenuHeight
+    },
+    selected: true,
+    name: 'LINE Intern - Employee Menu v3',
+    chatBarText: 'เมนู / Menu',
+    areas: richMenuAreas
+  };
+
+  console.log('[line-richmenu-setup] Creating Rich Menu:', JSON.stringify(richMenuObject, null, 2));
+
+  const createResponse = await fetch('https://api.line.me/v2/bot/richmenu', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${lineAccessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(richMenuObject),
+  });
+
+  if (!createResponse.ok) {
+    const error = await createResponse.text();
+    console.error('[line-richmenu-setup] Error creating Rich Menu:', error);
+    return { success: false, error };
+  }
+
+  const createData = await createResponse.json();
+  console.log('[line-richmenu-setup] Rich Menu created:', createData.richMenuId);
+  return { success: true, richMenuId: createData.richMenuId };
+}
+
+// Helper function to upload image to Rich Menu
+async function uploadRichMenuImage(lineAccessToken: string, richMenuId: string, imageUrl: string): Promise<{ success: boolean; error?: string }> {
+  console.log(`[line-richmenu-setup] Fetching image from: ${imageUrl}`);
+  
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    return { success: false, error: `Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}` };
+  }
+
+  const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+  const imageBuffer = await imageResponse.arrayBuffer();
+  
+  console.log(`[line-richmenu-setup] Uploading image (${imageBuffer.byteLength} bytes, ${contentType}) to Rich Menu: ${richMenuId}`);
+
+  const uploadResponse = await fetch(
+    `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lineAccessToken}`,
+        'Content-Type': contentType.includes('png') ? 'image/png' : 'image/jpeg',
+      },
+      body: imageBuffer,
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const error = await uploadResponse.text();
+    console.error('[line-richmenu-setup] Error uploading image:', error);
+    return { success: false, error };
+  }
+
+  console.log('[line-richmenu-setup] Image uploaded successfully');
+  return { success: true };
+}
+
+// Helper function to set default Rich Menu
+async function setDefaultRichMenu(lineAccessToken: string, richMenuId: string): Promise<{ success: boolean; error?: string }> {
+  const response = await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${lineAccessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('[line-richmenu-setup] Error setting default:', error);
+    return { success: false, error };
+  }
+
+  console.log('[line-richmenu-setup] Set default Rich Menu:', richMenuId);
+  return { success: true };
 }
 
 serve(async (req) => {
@@ -38,7 +180,7 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const action = body.action || 'create'; // 'create', 'list', 'delete', 'set-default'
+    const action = body.action || 'create';
 
     console.log(`[line-richmenu-setup] Action: ${action}`);
 
@@ -86,148 +228,181 @@ serve(async (req) => {
 
     // Set default Rich Menu
     if (action === 'set-default' && body.richmenu_id) {
-      const response = await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${body.richmenu_id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
+      const result = await setDefaultRichMenu(LINE_ACCESS_TOKEN, body.richmenu_id);
+      
+      if (!result.success) {
         return new Response(
-          JSON.stringify({ success: false, error }),
-          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: result.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.log('[line-richmenu-setup] Set default Rich Menu:', body.richmenu_id);
       return new Response(
         JSON.stringify({ success: true, default_richmenu_id: body.richmenu_id }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Create Rich Menu (6-button layout)
-    // Image size: 2500x1686 (full height for 2 rows)
-    // Layout:
-    // Row 1: [Check-in/out 50%] [Status 25%] [Portal 25%]
-    // Row 2: [Leave 33%] [OT 33%] [Help 34%]
-    const richMenuWidth = 2500;
-    const richMenuHeight = 1686;
-    const row1Height = 843;  // Half height for row 1
-    const row2Height = 843;  // Half height for row 2
+    // Upload Rich Menu image
+    if (action === 'upload-image') {
+      if (!body.richmenu_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'richmenu_id is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    // Get LIFF ID from environment or database
-    const liffId = Deno.env.get('LIFF_ID') || '';
-    const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
+      if (!body.image_url) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'image_url is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    const richMenuAreas: RichMenuArea[] = [
-      // Row 1: Check-in/out (large button), Status, Portal
-      {
-        // Check-in/out button - takes 50% width (largest button)
-        bounds: { x: 0, y: 0, width: 1250, height: row1Height },
-        action: liffBaseUrl 
-          ? { type: 'uri', uri: `${liffBaseUrl}/portal/checkin`, label: 'เช็คอิน/เอาท์' }
-          : { type: 'message', text: '/checkin', label: 'Check-in' }
-      },
-      {
-        // Status button - 25% width
-        bounds: { x: 1250, y: 0, width: 625, height: row1Height },
-        action: { type: 'message', text: '/status', label: 'สถานะ' }
-      },
-      {
-        // Portal button - 25% width
-        bounds: { x: 1875, y: 0, width: 625, height: row1Height },
-        action: liffBaseUrl
-          ? { type: 'uri', uri: `${liffBaseUrl}/portal`, label: 'Portal' }
-          : { type: 'message', text: '/menu', label: 'Menu' }
-      },
-      // Row 2: Leave, OT, Help (equal widths)
-      {
-        // Leave button - 33% width
-        bounds: { x: 0, y: row1Height, width: 833, height: row2Height },
-        action: liffBaseUrl
-          ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-leave`, label: 'ลางาน' }
-          : { type: 'message', text: '/dayoff พรุ่งนี้', label: 'Day-off' }
-      },
-      {
-        // OT button - 33% width
-        bounds: { x: 833, y: row1Height, width: 833, height: row2Height },
-        action: liffBaseUrl
-          ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-ot`, label: 'OT' }
-          : { type: 'message', text: '/ot', label: 'OT' }
-      },
-      {
-        // Help button - 34% width
-        bounds: { x: 1666, y: row1Height, width: 834, height: row2Height },
-        action: { type: 'message', text: '/help', label: 'Help' }
-      },
-    ];
+      const result = await uploadRichMenuImage(LINE_ACCESS_TOKEN, body.richmenu_id, body.image_url);
+      
+      if (!result.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: result.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    const richMenuObject = {
-      size: {
-        width: richMenuWidth,
-        height: richMenuHeight
-      },
-      selected: true,  // Show menu by default
-      name: 'LINE Intern - Employee Menu v2',
-      chatBarText: 'เมนู / Menu',
-      areas: richMenuAreas
-    };
-
-    console.log('[line-richmenu-setup] Creating Rich Menu:', richMenuObject);
-
-    // Create the Rich Menu
-    const createResponse = await fetch('https://api.line.me/v2/bot/richmenu', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(richMenuObject),
-    });
-
-    if (!createResponse.ok) {
-      const error = await createResponse.text();
-      console.error('[line-richmenu-setup] Error creating Rich Menu:', error);
       return new Response(
-        JSON.stringify({ success: false, error }),
-        { status: createResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: true, 
+          richmenu_id: body.richmenu_id,
+          message: 'Rich Menu image uploaded successfully'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const createData = await createResponse.json();
-    const richMenuId = createData.richMenuId;
+    // Create Full: Create + Upload Image + Set Default
+    if (action === 'create-full') {
+      if (!body.image_url) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'image_url is required for create-full action' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    console.log('[line-richmenu-setup] Rich Menu created:', richMenuId);
+      const liffId = Deno.env.get('LIFF_ID') || '';
+      
+      // Step 1: Create Rich Menu
+      console.log('[line-richmenu-setup] Step 1: Creating Rich Menu structure...');
+      const createResult = await createRichMenuStructure(LINE_ACCESS_TOKEN, liffId);
+      if (!createResult.success || !createResult.richMenuId) {
+        return new Response(
+          JSON.stringify({ success: false, error: createResult.error, step: 'create' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    // Save to database for reference
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+      // Step 2: Upload Image
+      console.log('[line-richmenu-setup] Step 2: Uploading image...');
+      const uploadResult = await uploadRichMenuImage(LINE_ACCESS_TOKEN, createResult.richMenuId, body.image_url);
+      if (!uploadResult.success) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: uploadResult.error, 
+            step: 'upload-image',
+            richmenu_id: createResult.richMenuId,
+            message: 'Rich Menu created but image upload failed. You can retry with action: "upload-image"'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    await supabase
-      .from('app_settings')
-      .upsert({
-        id: 'line_richmenu',
-        environment_name: richMenuId,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
+      // Step 3: Set as Default
+      console.log('[line-richmenu-setup] Step 3: Setting as default...');
+      const setDefaultResult = await setDefaultRichMenu(LINE_ACCESS_TOKEN, createResult.richMenuId);
+      if (!setDefaultResult.success) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: setDefaultResult.error, 
+            step: 'set-default',
+            richmenu_id: createResult.richMenuId,
+            message: 'Rich Menu created and image uploaded but failed to set as default. You can retry with action: "set-default"'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Save to database for reference
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      await supabase
+        .from('app_settings')
+        .upsert({
+          id: 'line_richmenu',
+          environment_name: createResult.richMenuId,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          richmenu_id: createResult.richMenuId,
+          message: 'Rich Menu created, image uploaded, and set as default successfully!'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create Rich Menu (structure only)
+    if (action === 'create') {
+      const liffId = Deno.env.get('LIFF_ID') || '';
+      const createResult = await createRichMenuStructure(LINE_ACCESS_TOKEN, liffId);
+      
+      if (!createResult.success || !createResult.richMenuId) {
+        return new Response(
+          JSON.stringify({ success: false, error: createResult.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Save to database for reference
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      await supabase
+        .from('app_settings')
+        .upsert({
+          id: 'line_richmenu',
+          environment_name: createResult.richMenuId,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          richmenu_id: createResult.richMenuId,
+          message: 'Rich Menu created. Now upload an image (2500x1686px) and set as default.',
+          next_steps: [
+            `1. Upload image: {"action": "upload-image", "richmenu_id": "${createResult.richMenuId}", "image_url": "YOUR_IMAGE_URL"}`,
+            `2. Set default: {"action": "set-default", "richmenu_id": "${createResult.richMenuId}"}`,
+            'Or use {"action": "create-full", "image_url": "YOUR_IMAGE_URL"} to do everything at once'
+          ]
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        richmenu_id: richMenuId,
-        message: 'Rich Menu created. Now upload an image (2500x1686px) using the LINE Official Account Manager or API, then set as default.',
-        next_steps: [
-          '1. Upload Rich Menu image via LINE Official Account Manager',
-          '2. Or call this function with action: "upload-image" and richmenu_id',
-          '3. Then call with action: "set-default" and richmenu_id to activate'
-        ]
+        success: false, 
+        error: 'Invalid action',
+        available_actions: ['create', 'upload-image', 'set-default', 'create-full', 'list', 'delete']
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
