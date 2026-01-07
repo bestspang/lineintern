@@ -8867,6 +8867,14 @@ async function handleMessageEvent(event: LineEvent) {
           return; // Silent ignore
         }
 
+        /**
+         * Portal Access Mode Logic:
+         * - 'liff': /menu และ checkin/checkout ใช้ LIFF URL
+         * - 'token': ทุก command ใช้ Token Link
+         * - 'both': /menu ใช้ LIFF, checkin/checkout ใช้ Token Link
+         * 
+         * ⚠️ SYNC: ต้อง match กับ Settings.tsx และ system_settings.portal_access_mode
+         */
         // Check portal access mode setting
         const { data: portalSetting } = await supabase
           .from('system_settings')
@@ -8877,15 +8885,16 @@ async function handleMessageEvent(event: LineEvent) {
         const accessMode = portalSetting?.setting_value?.mode || 'liff';
         console.log('[Menu] Portal access mode:', accessMode);
 
-        // Get LIFF_ID for LIFF mode
+        // Get LIFF_ID for LIFF mode or Both mode
         const { data: liffConfig } = await supabase
           .from('api_configurations')
           .select('key_value')
           .eq('key_name', 'LIFF_ID')
           .maybeSingle();
 
-        // Use LIFF mode if configured and LIFF_ID exists
-        if (accessMode === 'liff' && liffConfig?.key_value) {
+        // Use LIFF mode if configured and LIFF_ID exists (for 'liff' or 'both' mode)
+        // In 'both' mode: /menu uses LIFF, but checkin/checkout uses Token Link
+        if ((accessMode === 'liff' || accessMode === 'both') && liffConfig?.key_value) {
           const liffUrl = `https://liff.line.me/${liffConfig.key_value}`;
           const menuMessage = menuLocale === 'th'
             ? `📋 เมนูพนักงาน\n\nคลิกเพื่อเปิด Portal:\n${liffUrl}\n\n✅ เข้าสู่ระบบอัตโนมัติผ่าน LINE`
