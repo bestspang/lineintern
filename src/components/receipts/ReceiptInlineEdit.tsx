@@ -92,9 +92,73 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
     fetchImage();
   });
 
+  // Log OCR corrections for AI improvement
+  const logCorrections = async (newData: typeof formData) => {
+    const corrections: Array<{
+      receipt_id: string;
+      field_name: string;
+      original_value: string | null;
+      corrected_value: string | null;
+      original_confidence: number | null;
+    }> = [];
+
+    // Check vendor change
+    if (newData.vendor !== (receipt.vendor || '')) {
+      corrections.push({
+        receipt_id: receipt.id,
+        field_name: 'vendor',
+        original_value: receipt.vendor,
+        corrected_value: newData.vendor || null,
+        original_confidence: receipt.confidence?.vendor || null,
+      });
+    }
+
+    // Check total change
+    const originalTotal = receipt.total?.toString() || '';
+    if (newData.total !== originalTotal) {
+      corrections.push({
+        receipt_id: receipt.id,
+        field_name: 'total',
+        original_value: originalTotal || null,
+        corrected_value: newData.total || null,
+        original_confidence: receipt.confidence?.total || null,
+      });
+    }
+
+    // Check date change
+    if (newData.receipt_date !== (receipt.receipt_date || '')) {
+      corrections.push({
+        receipt_id: receipt.id,
+        field_name: 'receipt_date',
+        original_value: receipt.receipt_date,
+        corrected_value: newData.receipt_date || null,
+        original_confidence: receipt.confidence?.date || null,
+      });
+    }
+
+    // Check category change
+    if (newData.category !== (receipt.category || 'other')) {
+      corrections.push({
+        receipt_id: receipt.id,
+        field_name: 'category',
+        original_value: receipt.category,
+        corrected_value: newData.category,
+        original_confidence: receipt.confidence?.category || null,
+      });
+    }
+
+    // Insert corrections if any
+    if (corrections.length > 0) {
+      await supabase.from('receipt_ocr_corrections').insert(corrections);
+    }
+  };
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Log corrections before updating
+      await logCorrections(data);
+
       const { error } = await supabase
         .from('receipts')
         .update({
