@@ -100,7 +100,42 @@ export async function canGroupSubmitReceipts(lineGroupId: string | null): Promis
       return false;
     }
 
-    // Get internal group ID
+    // Check collection mode
+    const { data: modeSetting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "collection_mode")
+      .single();
+
+    if (modeSetting) {
+      const modeConfig = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
+      
+      if (modeConfig.mode === 'centralized') {
+        // In centralized mode, only the designated group can submit
+        if (!modeConfig.centralized_group_id) {
+          console.log("[canGroupSubmitReceipts] Centralized mode but no group configured");
+          return false;
+        }
+        
+        // Get internal group ID
+        const { data: group } = await supabase
+          .from("groups")
+          .select("id")
+          .eq("line_group_id", lineGroupId)
+          .single();
+
+        if (!group) {
+          console.log("[canGroupSubmitReceipts] Group not found in DB");
+          return false;
+        }
+
+        const isAllowed = group.id === modeConfig.centralized_group_id;
+        console.log(`[canGroupSubmitReceipts] Centralized mode check: ${isAllowed}`);
+        return isAllowed;
+      }
+    }
+
+    // Mapped mode: Check receipt_group_mappings table
     const { data: group } = await supabase
       .from("groups")
       .select("id")
@@ -165,6 +200,23 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
   if (!lineGroupId) return null;
 
   try {
+    // Check collection mode first
+    const { data: modeSetting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "collection_mode")
+      .single();
+
+    if (modeSetting) {
+      const modeConfig = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
+      
+      if (modeConfig.mode === 'centralized') {
+        // Centralized mode = no branch tagging
+        console.log("[getBranchFromGroup] Centralized mode - no branch tagging");
+        return null;
+      }
+    }
+
     // Check if auto-assign is enabled
     const { data: setting } = await supabase
       .from("receipt_settings")
