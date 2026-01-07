@@ -32,6 +32,8 @@ interface ReceiptSubmitRequest {
   lineUserId: string;
   lineMessageId: string;
   businessId?: string;
+  branchId?: string | null;
+  branchSource?: 'group_mapping' | 'submitter' | 'manual' | null;
   source?: "line" | "manual" | "web";
   // For direct image upload
   imageBase64?: string;
@@ -375,7 +377,7 @@ Deno.serve(async (req) => {
 
   try {
     const body: ReceiptSubmitRequest = await req.json();
-    const { lineUserId, lineMessageId, businessId, source = "line", imageBase64, imageMimeType, manualData } = body;
+    const { lineUserId, lineMessageId, businessId, branchId, branchSource, source = "line", imageBase64, imageMimeType, manualData } = body;
 
     if (!lineUserId) {
       return new Response(JSON.stringify({ error: "lineUserId is required" }), {
@@ -486,6 +488,8 @@ Deno.serve(async (req) => {
       .insert({
         line_user_id: lineUserId,
         business_id: businessId || null,
+        branch_id: branchId || null,
+        branch_source: branchSource || null,
         source,
         status,
         receipt_date: extraction.date?.value || null,
