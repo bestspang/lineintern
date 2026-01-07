@@ -19,12 +19,29 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 interface ExtractionResult {
   vendor: { value: string | null; confidence: number };
+  vendor_address: { value: string | null; confidence: number };
+  vendor_branch: { value: string | null; confidence: number };
+  tax_id: { value: string | null; confidence: number };
+  receipt_number: { value: string | null; confidence: number };
   date: { value: string | null; confidence: number };
+  transaction_time: { value: string | null; confidence: number };
+  sale_time: { value: string | null; confidence: number };
   currency: { value: string | null; confidence: number };
   subtotal: { value: number | null; confidence: number };
   vat: { value: number | null; confidence: number };
   total: { value: number | null; confidence: number };
   category: { value: string | null; confidence: number };
+  payment_method: { value: string | null; confidence: number };
+  card_type: { value: string | null; confidence: number };
+  card_number_masked: { value: string | null; confidence: number };
+  payer_name: { value: string | null; confidence: number };
+  items: Array<{
+    name: string;
+    quantity: number | null;
+    unit: string | null;
+    unit_price: number | null;
+    amount: number;
+  }>;
   warnings: string[];
 }
 
@@ -310,25 +327,48 @@ async function extractReceiptData(imageBase64: string, mimeType: string): Promis
     return getEmptyExtraction(["AI not configured"]);
   }
 
-  const systemPrompt = `You are a receipt data extraction assistant. Analyze the receipt image and extract the following information.
-Return ONLY valid JSON matching this exact schema:
+  const systemPrompt = `You are a Thai receipt data extraction assistant. Extract ALL information from the receipt image COMPLETELY - do not abbreviate or shorten any text.
+
+Return ONLY valid JSON matching this schema:
 {
-  "vendor": {"value": "store/company name" or null, "confidence": 0.0-1.0},
-  "date": {"value": "YYYY-MM-DD" or null, "confidence": 0.0-1.0},
-  "currency": {"value": "THB" or "USD" etc or null, "confidence": 0.0-1.0},
-  "subtotal": {"value": number or null, "confidence": 0.0-1.0},
-  "vat": {"value": number or null, "confidence": 0.0-1.0},
-  "total": {"value": number (the final amount paid) or null, "confidence": 0.0-1.0},
-  "category": {"value": "Food & Dining" | "Transportation" | "Office Supplies" | "Utilities" | "Software" | "Marketing" | "Professional Services" | "Other" or null, "confidence": 0.0-1.0},
-  "warnings": ["list of issues like 'Vendor unclear', 'Date missing', etc."]
+  "vendor": {"value": "FULL company name with legal form (e.g. ห้างหุ้นส่วนจำกัด xxx, บริษัท xxx จำกัด)", "confidence": 0.0-1.0},
+  "vendor_address": {"value": "COMPLETE address with street number, soi, road, district, province, postal code", "confidence": 0.0-1.0},
+  "vendor_branch": {"value": "branch name if shown (e.g. สาขา สำนักงานใหญ่, สาขา 001)", "confidence": 0.0-1.0},
+  "tax_id": {"value": "13-digit tax ID number", "confidence": 0.0-1.0},
+  "receipt_number": {"value": "receipt/invoice number exactly as shown", "confidence": 0.0-1.0},
+  "date": {"value": "YYYY-MM-DD (convert Buddhist Era to CE: 2568 = 2025)", "confidence": 0.0-1.0},
+  "transaction_time": {"value": "ISO timestamp of payment/transaction time (เวลาวางมือจ่าย)", "confidence": 0.0-1.0},
+  "sale_time": {"value": "ISO timestamp of sale time (วันที่ขาย)", "confidence": 0.0-1.0},
+  "currency": {"value": "THB", "confidence": 1.0},
+  "subtotal": {"value": number, "confidence": 0.0-1.0},
+  "vat": {"value": number, "confidence": 0.0-1.0},
+  "total": {"value": number (final amount paid), "confidence": 0.0-1.0},
+  "category": {"value": "Food & Dining|Transportation|Office Supplies|Utilities|Software|Marketing|Professional Services|Other", "confidence": 0.0-1.0},
+  "payment_method": {"value": "VISA|MasterCard|JCB|UnionPay|Cash|QR|PromptPay|TrueMoney|etc", "confidence": 0.0-1.0},
+  "card_type": {"value": "credit|debit|prepaid|etc", "confidence": 0.0-1.0},
+  "card_number_masked": {"value": "masked card number exactly as shown (e.g. XXXX XXXX XXXX 0567)", "confidence": 0.0-1.0},
+  "payer_name": {"value": "customer/cardholder name if shown", "confidence": 0.0-1.0},
+  "items": [
+    {
+      "name": "FULL product/service name - DO NOT abbreviate or shorten",
+      "quantity": 1.5,
+      "unit": "ลิตร|ชิ้น|กก.|etc",
+      "unit_price": 32.34,
+      "amount": 500.00
+    }
+  ],
+  "warnings": []
 }
 
-Rules:
-- For Thai receipts, look for ภาษีมูลค่าเพิ่ม for VAT and ยอดรวม/รวมทั้งสิ้น for total
-- Convert Thai dates to YYYY-MM-DD format (Buddhist Era 2567 = 2024 CE)
-- Default currency to THB if Thai text detected
-- If VAT exists but subtotal missing, calculate subtotal = total - vat
-- Always include appropriate warnings for missing or unclear data`;
+CRITICAL RULES:
+- Extract FULL company name including ห้างหุ้นส่วนจำกัด/บริษัท prefix - never abbreviate
+- Extract COMPLETE address - do not skip any part
+- Extract ALL items with FULL names - no abbreviations (e.g. "น้ำมันเบนซิน 95" not "เบนซิน 95")
+- Thai Buddhist Era (พ.ศ./2568) = CE year - 543 (e.g. 2568 = 2025)
+- เวลาวางมือจ่าย = transaction_time, วันที่ขาย/เวลาขาย = sale_time
+- Do NOT include point/reward information in items
+- If "VAT INCLUDED" shown, set vat to null but note in warnings
+- For gas stations: extract fuel type, quantity (liters), unit price per liter`;
 
   const userPrompt = "Extract all receipt data from this image. Return only the JSON object.";
 
@@ -397,12 +437,23 @@ Rules:
 function getEmptyExtraction(warnings: string[]): ExtractionResult {
   return {
     vendor: { value: null, confidence: 0 },
+    vendor_address: { value: null, confidence: 0 },
+    vendor_branch: { value: null, confidence: 0 },
+    tax_id: { value: null, confidence: 0 },
+    receipt_number: { value: null, confidence: 0 },
     date: { value: null, confidence: 0 },
+    transaction_time: { value: null, confidence: 0 },
+    sale_time: { value: null, confidence: 0 },
     currency: { value: "THB", confidence: 0.5 },
     subtotal: { value: null, confidence: 0 },
     vat: { value: null, confidence: 0 },
     total: { value: null, confidence: 0 },
     category: { value: null, confidence: 0 },
+    payment_method: { value: null, confidence: 0 },
+    card_type: { value: null, confidence: 0 },
+    card_number_masked: { value: null, confidence: 0 },
+    payer_name: { value: null, confidence: 0 },
+    items: [],
     warnings,
   };
 }
@@ -542,12 +593,23 @@ Deno.serve(async (req) => {
       // Manual entry - no AI extraction
       extraction = {
         vendor: { value: manualData.vendor || null, confidence: 1 },
+        vendor_address: { value: null, confidence: 0 },
+        vendor_branch: { value: null, confidence: 0 },
+        tax_id: { value: null, confidence: 0 },
+        receipt_number: { value: null, confidence: 0 },
         date: { value: manualData.date || null, confidence: 1 },
+        transaction_time: { value: null, confidence: 0 },
+        sale_time: { value: null, confidence: 0 },
         currency: { value: "THB", confidence: 1 },
         subtotal: { value: null, confidence: 0 },
         vat: { value: null, confidence: 0 },
         total: { value: manualData.total || null, confidence: 1 },
         category: { value: manualData.category || null, confidence: 1 },
+        payment_method: { value: null, confidence: 0 },
+        card_type: { value: null, confidence: 0 },
+        card_number_masked: { value: null, confidence: 0 },
+        payer_name: { value: null, confidence: 0 },
+        items: [],
         warnings: [],
       };
     } else if (imageBase64) {
@@ -605,7 +667,7 @@ Deno.serve(async (req) => {
     const hasRequiredFields = extraction.total?.value && extraction.date?.value && extraction.vendor?.value;
     const status = hasRequiredFields ? "processed" : "needs_review";
 
-    // Create receipt record
+    // Create receipt record with all extracted fields
     const { data: receipt, error: receiptError } = await supabase
       .from("receipts")
       .insert({
@@ -617,12 +679,22 @@ Deno.serve(async (req) => {
         status,
         receipt_date: extraction.date?.value || null,
         vendor: extraction.vendor?.value || null,
+        vendor_address: extraction.vendor_address?.value || null,
+        vendor_branch: extraction.vendor_branch?.value || null,
+        tax_id: extraction.tax_id?.value || null,
+        receipt_number: extraction.receipt_number?.value || null,
+        transaction_time: extraction.transaction_time?.value || null,
+        sale_time: extraction.sale_time?.value || null,
         description: manualData?.description || null,
         category: extraction.category?.value || null,
         currency: extraction.currency?.value || "THB",
         subtotal: extraction.subtotal?.value || null,
         vat: extraction.vat?.value || null,
         total: extraction.total?.value || null,
+        payment_method: extraction.payment_method?.value || null,
+        card_type: extraction.card_type?.value || null,
+        card_number_masked: extraction.card_number_masked?.value || null,
+        payer_name: extraction.payer_name?.value || null,
         confidence: {
           vendor: extraction.vendor?.confidence || 0,
           date: extraction.date?.confidence || 0,
@@ -633,6 +705,36 @@ Deno.serve(async (req) => {
       })
       .select()
       .single();
+
+    if (receiptError || !receipt) {
+      console.error("Failed to create receipt:", receiptError);
+      return new Response(JSON.stringify({ error: "Failed to save receipt" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Insert receipt items if any
+    if (extraction.items && extraction.items.length > 0) {
+      const itemsToInsert = extraction.items.map((item, index) => ({
+        receipt_id: receipt.id,
+        item_name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        amount: item.amount,
+        sort_order: index,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("receipt_items")
+        .insert(itemsToInsert);
+
+      if (itemsError) {
+        console.error("Failed to insert receipt items:", itemsError);
+        // Don't fail the whole request, just log the error
+      }
+    }
 
     if (receiptError || !receipt) {
       console.error("Failed to create receipt:", receiptError);
@@ -676,10 +778,16 @@ Deno.serve(async (req) => {
           id: receipt.id,
           status,
           vendor: extraction.vendor?.value,
+          vendor_address: extraction.vendor_address?.value,
+          tax_id: extraction.tax_id?.value,
+          receipt_number: extraction.receipt_number?.value,
           date: extraction.date?.value,
           total: extraction.total?.value,
           currency: extraction.currency?.value,
           category: extraction.category?.value,
+          payment_method: extraction.payment_method?.value,
+          card_number_masked: extraction.card_number_masked?.value,
+          items: extraction.items || [],
           warnings: extraction.warnings,
         },
       }),

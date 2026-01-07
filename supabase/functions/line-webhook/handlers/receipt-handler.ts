@@ -21,10 +21,22 @@ interface ReceiptResult {
   receiptId?: string;
   status?: string;
   vendor?: string;
+  vendor_address?: string;
+  tax_id?: string;
+  receipt_number?: string;
   date?: string;
   total?: number;
   currency?: string;
   category?: string;
+  payment_method?: string;
+  card_number_masked?: string;
+  items?: Array<{
+    name: string;
+    quantity: number | null;
+    unit: string | null;
+    unit_price: number | null;
+    amount: number;
+  }>;
   warnings?: string[];
   error?: string;
   message: string;
@@ -698,10 +710,16 @@ export async function submitReceiptImage(
       receiptId: result.receipt?.id,
       status: result.receipt?.status,
       vendor: result.receipt?.vendor,
+      vendor_address: result.receipt?.vendor_address,
+      tax_id: result.receipt?.tax_id,
+      receipt_number: result.receipt?.receipt_number,
       date: result.receipt?.date,
       total: result.receipt?.total,
       currency: result.receipt?.currency,
       category: result.receipt?.category,
+      payment_method: result.receipt?.payment_method,
+      card_number_masked: result.receipt?.card_number_masked,
+      items: result.receipt?.items,
       warnings: result.receipt?.warnings,
       message: "Receipt processed successfully",
     };
@@ -790,62 +808,167 @@ export function buildReceiptSavedFlex(
     },
   ];
 
-  // Amount
-  if (result.total) {
+  // Vendor (full name)
+  if (result.vendor) {
     contents.push({
       type: "text",
-      text: `฿${result.total.toLocaleString()}`,
-      size: "xxl",
+      text: result.vendor,
+      size: "md",
       weight: "bold",
       align: "center",
       margin: "lg",
+      wrap: true,
     });
   }
 
-  // Details
-  const details: any[] = [];
-  if (result.vendor) {
-    details.push({
-      type: "box",
-      layout: "horizontal",
-      contents: [
-        { type: "text", text: locale === "th" ? "ร้านค้า" : "Vendor", size: "sm", color: "#888888", flex: 2 },
-        { type: "text", text: result.vendor, size: "sm", flex: 4, wrap: true },
-      ],
-    });
-  }
-  if (result.date) {
-    details.push({
-      type: "box",
-      layout: "horizontal",
-      contents: [
-        { type: "text", text: locale === "th" ? "วันที่" : "Date", size: "sm", color: "#888888", flex: 2 },
-        { type: "text", text: result.date, size: "sm", flex: 4 },
-      ],
-    });
-  }
-  if (result.category) {
-    details.push({
-      type: "box",
-      layout: "horizontal",
-      contents: [
-        { type: "text", text: locale === "th" ? "หมวดหมู่" : "Category", size: "sm", color: "#888888", flex: 2 },
-        { type: "text", text: result.category, size: "sm", flex: 4 },
-      ],
+  // Address
+  if (result.vendor_address) {
+    contents.push({
+      type: "text",
+      text: result.vendor_address,
+      size: "xs",
+      color: "#666666",
+      align: "center",
+      wrap: true,
+      margin: "sm",
     });
   }
 
-  if (details.length > 0) {
+  // Tax ID & Receipt Number
+  if (result.tax_id || result.receipt_number) {
+    const taxReceiptParts: string[] = [];
+    if (result.tax_id) taxReceiptParts.push(`TAX: ${result.tax_id}`);
+    if (result.receipt_number) taxReceiptParts.push(`#${result.receipt_number}`);
+    
+    contents.push({
+      type: "text",
+      text: taxReceiptParts.join(" | "),
+      size: "xs",
+      color: "#888888",
+      align: "center",
+      margin: "sm",
+    });
+  }
+
+  // Items list
+  if (result.items && result.items.length > 0) {
     contents.push({
       type: "separator",
       margin: "lg",
     });
+
+    // Items header
     contents.push({
       type: "box",
-      layout: "vertical",
-      contents: details,
-      margin: "lg",
-      spacing: "sm",
+      layout: "horizontal",
+      contents: [
+        { type: "text", text: locale === "th" ? "รายการ" : "Item", size: "xs", color: "#888888", flex: 4 },
+        { type: "text", text: locale === "th" ? "ราคา" : "Price", size: "xs", color: "#888888", flex: 1, align: "end" },
+      ],
+      margin: "md",
+    });
+
+    // Show up to 5 items
+    const itemsToShow = result.items.slice(0, 5);
+    itemsToShow.forEach(item => {
+      const qtyText = item.quantity && item.unit 
+        ? `${item.quantity} ${item.unit}` 
+        : item.quantity 
+          ? `x${item.quantity}` 
+          : "";
+      
+      contents.push({
+        type: "box",
+        layout: "horizontal",
+        contents: [
+          { 
+            type: "text", 
+            text: qtyText ? `${item.name} (${qtyText})` : item.name, 
+            size: "sm", 
+            flex: 4, 
+            wrap: true 
+          },
+          { 
+            type: "text", 
+            text: `฿${item.amount.toLocaleString()}`, 
+            size: "sm", 
+            flex: 1, 
+            align: "end" 
+          },
+        ],
+        margin: "sm",
+      });
+    });
+
+    // Show "and X more..." if there are more items
+    if (result.items.length > 5) {
+      contents.push({
+        type: "text",
+        text: locale === "th" 
+          ? `... และอีก ${result.items.length - 5} รายการ` 
+          : `... and ${result.items.length - 5} more`,
+        size: "xs",
+        color: "#888888",
+        margin: "sm",
+      });
+    }
+  }
+
+  // Total
+  contents.push({
+    type: "separator",
+    margin: "lg",
+  });
+  
+  if (result.total) {
+    contents.push({
+      type: "box",
+      layout: "horizontal",
+      contents: [
+        { type: "text", text: locale === "th" ? "รวม" : "Total", size: "lg", weight: "bold" },
+        { type: "text", text: `฿${result.total.toLocaleString()}`, size: "lg", weight: "bold", align: "end" },
+      ],
+      margin: "md",
+    });
+  }
+
+  // Date
+  if (result.date) {
+    contents.push({
+      type: "text",
+      text: `📅 ${result.date}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "sm",
+    });
+  }
+
+  // Payment info
+  if (result.payment_method || result.card_number_masked) {
+    const paymentParts: string[] = [];
+    if (result.payment_method) paymentParts.push(result.payment_method);
+    if (result.card_number_masked) paymentParts.push(result.card_number_masked);
+    
+    contents.push({
+      type: "text",
+      text: `💳 ${paymentParts.join(" ")}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "xs",
+    });
+  }
+
+  // Category
+  if (result.category) {
+    contents.push({
+      type: "text",
+      text: `📁 ${result.category}`,
+      size: "xs",
+      color: "#888888",
+      align: "end",
+      margin: "xs",
     });
   }
 
@@ -891,7 +1014,7 @@ export function buildReceiptSavedFlex(
       style: hasWarnings ? "primary" : "secondary",
       action: {
         type: "uri",
-        label: locale === "th" ? "แก้ไข" : "Edit",
+        label: locale === "th" ? "✏️ แก้ไข" : "✏️ Edit",
         uri: `${liffUrl}/portal/receipts/${result.receiptId}`,
       },
     });
