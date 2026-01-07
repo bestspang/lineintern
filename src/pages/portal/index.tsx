@@ -9,6 +9,8 @@ export { default as MyWorkHistory } from './MyWorkHistory';
 export { default as RequestOT } from './RequestOT';
 export { default as RequestLeave } from './RequestLeave';
 export { default as MyProfile } from './MyProfile';
+export { default as Status } from './Status';
+export { default as Help } from './Help';
 
 // Receipt pages
 export { default as MyReceipts } from './MyReceipts';
