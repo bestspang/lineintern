@@ -29,6 +29,40 @@ interface RichMenuArea {
   action: { type: string; text?: string; label?: string; uri?: string };
 }
 
+// Helper function to get LIFF ID from env or database
+async function getLiffId(): Promise<string> {
+  // Try env first
+  const envLiffId = Deno.env.get('LIFF_ID');
+  if (envLiffId) {
+    console.log('[line-richmenu-setup] Using LIFF_ID from environment');
+    return envLiffId;
+  }
+
+  // Fallback to database
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data } = await supabase
+      .from('api_configurations')
+      .select('key_value')
+      .eq('key_name', 'LIFF_ID')
+      .maybeSingle();
+
+    if (data?.key_value) {
+      console.log('[line-richmenu-setup] Using LIFF_ID from database');
+      return data.key_value;
+    }
+  } catch (error) {
+    console.error('[line-richmenu-setup] Error fetching LIFF_ID from database:', error);
+  }
+
+  console.log('[line-richmenu-setup] No LIFF_ID found, buttons will use message actions');
+  return '';
+}
+
 // Helper function to create Rich Menu structure
 async function createRichMenuStructure(lineAccessToken: string, liffId: string): Promise<{ success: boolean; richMenuId?: string; error?: string }> {
   // 6 equal-sized buttons: 3 columns x 2 rows
@@ -287,7 +321,8 @@ serve(async (req) => {
         );
       }
 
-      const liffId = Deno.env.get('LIFF_ID') || '';
+      const liffId = await getLiffId();
+      console.log('[line-richmenu-setup] Using LIFF_ID:', liffId ? liffId.substring(0, 10) + '...' : 'none');
       
       // Step 1: Create Rich Menu
       console.log('[line-richmenu-setup] Step 1: Creating Rich Menu structure...');
@@ -357,7 +392,8 @@ serve(async (req) => {
 
     // Create Rich Menu (structure only)
     if (action === 'create') {
-      const liffId = Deno.env.get('LIFF_ID') || '';
+      const liffId = await getLiffId();
+      console.log('[line-richmenu-setup] Using LIFF_ID:', liffId ? liffId.substring(0, 10) + '...' : 'none');
       const createResult = await createRichMenuStructure(LINE_ACCESS_TOKEN, liffId);
       
       if (!createResult.success || !createResult.richMenuId) {

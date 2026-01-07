@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Smartphone } from 'lucide-react';
+import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
@@ -352,6 +352,9 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Rich Menu Setup */}
+      <RichMenuSetup />
+
       <Card>
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="text-base sm:text-lg">Admin Accounts</CardTitle>
@@ -364,5 +367,127 @@ export default function Settings() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// Rich Menu Setup Component
+function RichMenuSetup() {
+  const { toast } = useToast();
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState<{ success: boolean; message: string; richMenuId?: string } | null>(null);
+
+  const deployRichMenu = async () => {
+    setIsDeploying(true);
+    setDeployResult(null);
+    
+    try {
+      // Get the app URL for the image
+      const appUrl = window.location.origin;
+      const imageUrl = `${appUrl}/images/rich-menu.jpg`;
+      
+      console.log('[RichMenuSetup] Deploying Rich Menu with image:', imageUrl);
+      
+      const { data, error } = await supabase.functions.invoke('line-richmenu-setup', {
+        body: { action: 'create-full', image_url: imageUrl }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        setDeployResult({
+          success: true,
+          message: 'Rich Menu deployed successfully! พนักงานจะเห็น menu ใหม่เมื่อเปิด LINE ใหม่',
+          richMenuId: data.richmenu_id
+        });
+        toast({
+          title: 'Success',
+          description: 'Rich Menu 6 ปุ่ม deployed to LINE successfully!',
+        });
+      } else {
+        throw new Error(data?.error || 'Unknown error');
+      }
+    } catch (error: any) {
+      console.error('[RichMenuSetup] Deploy failed:', error);
+      setDeployResult({
+        success: false,
+        message: error.message || 'Failed to deploy Rich Menu'
+      });
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to deploy Rich Menu',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+          <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
+          LINE Rich Menu
+        </CardTitle>
+        <CardDescription className="text-xs sm:text-sm">
+          Deploy Rich Menu 6 ปุ่มไปที่ LINE Bot
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 sm:p-6 space-y-4">
+        <div className="bg-muted/50 p-4 rounded-lg">
+          <p className="text-sm font-medium mb-2">Rich Menu Layout (6 ปุ่ม)</p>
+          <div className="grid grid-cols-3 gap-1 text-xs text-center">
+            <div className="bg-primary/10 p-2 rounded">✓ เช็คอิน/เอาท์</div>
+            <div className="bg-primary/10 p-2 rounded">🕐 สถานะ</div>
+            <div className="bg-primary/10 p-2 rounded">≡ เมนู</div>
+            <div className="bg-primary/10 p-2 rounded">📅 ลางาน</div>
+            <div className="bg-primary/10 p-2 rounded">+ ขอ OT</div>
+            <div className="bg-primary/10 p-2 rounded">? ช่วยเหลือ</div>
+          </div>
+        </div>
+
+        {deployResult && (
+          <div className={`p-3 rounded-lg flex items-start gap-2 ${
+            deployResult.success 
+              ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400' 
+              : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
+          }`}>
+            {deployResult.success ? (
+              <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            )}
+            <div>
+              <p className="text-sm">{deployResult.message}</p>
+              {deployResult.richMenuId && (
+                <p className="text-xs mt-1 opacity-75">ID: {deployResult.richMenuId}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Button 
+          onClick={deployRichMenu} 
+          disabled={isDeploying}
+          className="w-full sm:w-auto"
+        >
+          {isDeploying ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Deploying...
+            </>
+          ) : (
+            <>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Deploy Rich Menu to LINE
+            </>
+          )}
+        </Button>
+
+        <p className="text-xs text-muted-foreground">
+          หมายเหตุ: ต้องมีภาพ <code className="bg-muted px-1 rounded">/images/rich-menu.jpg</code> (2500x1686px) ใน public folder
+        </p>
+      </CardContent>
+    </Card>
   );
 }
