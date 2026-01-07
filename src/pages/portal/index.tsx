@@ -13,6 +13,7 @@ export { default as MyProfile } from './MyProfile';
 export { default as MyReceipts } from './MyReceipts';
 export { default as ReceiptDetail } from './ReceiptDetail';
 export { default as ReceiptBusinesses } from './ReceiptBusinesses';
+export { default as ReceiptNew } from './ReceiptNew';
 
 // Manager pages
 export { default as Approvals } from './Approvals';

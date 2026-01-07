@@ -81,7 +81,7 @@ import {
   MyLeaveBalance, MyWorkHistory, RequestOT, RequestLeave, MyProfile,
   Approvals, ApproveOT, ApproveLeave, ApproveEarlyLeave, TeamSummary,
   TodayPhotos, DailySummary,
-  MyReceipts, ReceiptDetail, ReceiptBusinesses
+  MyReceipts, ReceiptDetail, ReceiptBusinesses, ReceiptNew
 } from "./pages/portal";
 import DepositUpload from "./pages/portal/DepositUpload";
 import DepositReview from "./pages/portal/DepositReview";
@@ -148,6 +148,7 @@ const App = () => (
                       <Route path="/my-receipts" element={<MyReceipts />} />
                       <Route path="/receipts/:id" element={<ReceiptDetail />} />
                       <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
+                      <Route path="/receipt-new" element={<ReceiptNew />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </PortalLayout>
