@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ReceiptDuplicateAlert } from '@/components/receipts/ReceiptDuplicateAlert';
 
 interface Business {
   id: string;
@@ -246,6 +247,16 @@ export default function ReceiptNew() {
                 rows={3}
               />
             </div>
+
+            {/* Duplicate Detection Alert */}
+            {employee?.line_user_id && (vendor || total || receiptDate) && (
+              <ReceiptDuplicateAlert
+                vendor={vendor || null}
+                total={total ? parseFloat(total) : null}
+                receiptDate={receiptDate || null}
+                lineUserId={employee.line_user_id}
+              />
+            )}
           </CardContent>
         </Card>
 

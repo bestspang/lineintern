@@ -191,3 +191,6 @@ verify_jwt = false
 
 [functions.receipt-quota]
 verify_jwt = false
+
+[functions.receipt-monthly-report]
+verify_jwt = false

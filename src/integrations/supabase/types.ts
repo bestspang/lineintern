@@ -4739,6 +4739,39 @@ export type Database = {
           },
         ]
       }
+      vendor_category_hints: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          id: string
+          source: string | null
+          suggested_category: string
+          updated_at: string | null
+          usage_count: number | null
+          vendor_pattern: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          suggested_category: string
+          updated_at?: string | null
+          usage_count?: number | null
+          vendor_pattern: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          suggested_category?: string
+          updated_at?: string | null
+          usage_count?: number | null
+          vendor_pattern?: string
+        }
+        Relationships: []
+      }
       webapp_menu_config: {
         Row: {
           can_access: boolean | null
