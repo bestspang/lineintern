@@ -3771,16 +3771,19 @@ export type Database = {
           created_at: string | null
           currency: string | null
           description: string | null
+          extraction_source: string | null
           google_file_id: string | null
           google_sheet_row: number | null
           id: string
           line_user_id: string
+          notes: string | null
           payment_method: string | null
           receipt_date: string | null
           source: string
           status: string | null
           subtotal: number | null
           tags: string[] | null
+          tax_id: string | null
           total: number | null
           updated_at: string | null
           vat: number | null
@@ -3796,16 +3799,19 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          extraction_source?: string | null
           google_file_id?: string | null
           google_sheet_row?: number | null
           id?: string
           line_user_id: string
+          notes?: string | null
           payment_method?: string | null
           receipt_date?: string | null
           source?: string
           status?: string | null
           subtotal?: number | null
           tags?: string[] | null
+          tax_id?: string | null
           total?: number | null
           updated_at?: string | null
           vat?: number | null
@@ -3821,16 +3827,19 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           description?: string | null
+          extraction_source?: string | null
           google_file_id?: string | null
           google_sheet_row?: number | null
           id?: string
           line_user_id?: string
+          notes?: string | null
           payment_method?: string | null
           receipt_date?: string | null
           source?: string
           status?: string | null
           subtotal?: number | null
           tags?: string[] | null
+          tax_id?: string | null
           total?: number | null
           updated_at?: string | null
           vat?: number | null
