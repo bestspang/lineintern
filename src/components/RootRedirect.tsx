@@ -8,39 +8,46 @@ import { Loader2 } from 'lucide-react';
 function checkLineEnvironment(): boolean {
   const ua = navigator.userAgent.toLowerCase();
   
-  // All known LINE browser patterns
+  // Extended LINE browser patterns
   const linePatterns = [
-    'line/',
-    'liff/',
-    'lineboot',
-    'line ',
-    ' line',
+    'line/',           // LINE/x.x.x
+    'liff/',           // LIFF browser
+    'lineboot',        // LINE internal
+    'line ',           // space after LINE
+    ' line',           // space before LINE
+    'linecorp',        // LINE Corporation
   ];
   
   // Check if any pattern matches
   const matchesLine = linePatterns.some(pattern => ua.includes(pattern));
   
-  // Also check for in-app browser indicators combined with LINE hints
-  const isInAppBrowser = ua.includes('wv') || // WebView
-                         ua.includes('iab'); // In-App Browser
+  // Check Mobile LINE App specifically
+  const isMobileLineApp = 
+    ua.includes('line') && 
+    (ua.includes('android') || ua.includes('iphone') || ua.includes('ipad'));
   
   // Check URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   const hasLiffParams = urlParams.has('liff.state') || 
                        urlParams.has('liff.referrer');
   
-  // Check if URL contains liff.line.me (redirect case)
-  const isFromLiffDomain = window.location.href.includes('liff.line.me');
+  // Check URL and referrer indicators
+  const currentUrl = window.location.href.toLowerCase();
+  const referrer = document.referrer.toLowerCase();
+  const hasLineIndicators = 
+    currentUrl.includes('liff.line.me') ||
+    referrer.includes('line.me') ||
+    referrer.includes('liff.line.me');
   
   console.log('[RootRedirect] Environment check:', {
     ua: navigator.userAgent,
     matchesLine,
-    isInAppBrowser,
+    isMobileLineApp,
     hasLiffParams,
-    isFromLiffDomain,
+    hasLineIndicators,
   });
   
-  return matchesLine || hasLiffParams || isFromLiffDomain;
+  return matchesLine || isMobileLineApp || hasLiffParams || hasLineIndicators;
 }
 
 export function RootRedirect() {
@@ -65,13 +72,21 @@ export function RootRedirect() {
       setChecking(false);
     };
 
-    // Case 1: LIFF is already ready
-    if (liffContext?.isReady && !liffContext?.error) {
-      finalize(true, 'LIFF SDK ready');
+    // Case 1: LIFF SDK ready and running inside LINE App
+    if (liffContext?.isReady && liffContext?.isInClient) {
+      finalize(true, 'LIFF SDK ready and isInClient=true');
       return;
     }
 
-    // Case 2: LIFF has error - fallback to User-Agent check
+    // Case 2: LIFF SDK ready but NOT in LINE client (external browser)
+    // Still might be LIFF context if opened from liff.line.me
+    if (liffContext?.isReady && !liffContext?.isInClient && !liffContext?.error) {
+      const isLineEnv = checkLineEnvironment();
+      finalize(isLineEnv, 'LIFF ready but external browser, UA check');
+      return;
+    }
+
+    // Case 3: LIFF has error - fallback to User-Agent check
     if (liffContext?.error) {
       const isLineEnv = checkLineEnvironment();
       finalize(isLineEnv, 'LIFF error, fallback to UA');
@@ -104,7 +119,7 @@ export function RootRedirect() {
         intervalRef.current = null;
       }
     };
-  }, [liffContext?.isReady, liffContext?.error]);
+  }, [liffContext?.isReady, liffContext?.isInClient, liffContext?.error]);
 
   if (authLoading || checking) {
     return (
