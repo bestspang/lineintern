@@ -46,9 +46,21 @@ import { toast } from 'sonner';
 interface ReceiptRow {
   id: string;
   vendor: string | null;
+  vendor_address: string | null;
+  vendor_branch: string | null;
+  tax_id: string | null;
+  receipt_number: string | null;
   total: number | null;
+  subtotal: number | null;
+  vat: number | null;
   receipt_date: string | null;
   category: string | null;
+  payment_method: string | null;
+  payer_name: string | null;
+  card_number_masked: string | null;
+  card_type: string | null;
+  description: string | null;
+  notes: string | null;
   status: string | null;
   created_at: string | null;
   line_user_id: string;
@@ -104,7 +116,10 @@ export default function Receipts() {
       let query = supabase
         .from('receipts')
         .select(`
-          id, vendor, total, receipt_date, category, 
+          id, vendor, vendor_address, vendor_branch, tax_id, receipt_number,
+          total, subtotal, vat, receipt_date, category, 
+          payment_method, payer_name, card_number_masked, card_type,
+          description, notes,
           status, created_at, line_user_id, warnings, confidence,
           business:receipt_businesses(name)
         `)
