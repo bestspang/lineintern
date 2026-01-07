@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useAdminRole } from '@/hooks/useAdminRole';
 
-type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'field' | 'moderator' | 'user';
+type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'hr' | 'field' | 'moderator' | 'user';
 
 interface UserWithRole {
   user_id: string;
@@ -30,6 +30,7 @@ interface UserWithRole {
 const roleConfig: Record<AppRole, { label: string; labelTh: string; color: string; bgColor: string; icon: typeof Shield }> = {
   owner: { label: 'Owner', labelTh: 'เจ้าของ', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', icon: Crown },
   admin: { label: 'Admin', labelTh: 'แอดมิน', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', icon: ShieldCheck },
+  hr: { label: 'HR', labelTh: 'ฝ่ายบุคคล', color: 'text-pink-600', bgColor: 'bg-pink-100 dark:bg-pink-900/30', icon: Users },
   executive: { label: 'Executive', labelTh: 'ผู้บริหาร', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: Briefcase },
   manager: { label: 'Manager', labelTh: 'หัวหน้า', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Users },
   moderator: { label: 'Moderator', labelTh: 'ผู้ดูแล', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', icon: Eye },

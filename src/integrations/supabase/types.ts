@@ -5706,6 +5706,7 @@ export type Database = {
       }
       has_admin_access: { Args: { _user_id: string }; Returns: boolean }
       has_field_access: { Args: { check_user_id: string }; Returns: boolean }
+      has_hr_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -5765,6 +5766,7 @@ export type Database = {
         | "user"
         | "executive"
         | "manager"
+        | "hr"
         | "field"
         | "owner"
       group_mode: "helper" | "faq" | "report" | "fun" | "safety" | "magic"
@@ -5916,6 +5918,7 @@ export const Constants = {
         "user",
         "executive",
         "manager",
+        "hr",
         "field",
         "owner",
       ],
