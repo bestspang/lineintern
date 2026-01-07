@@ -206,3 +206,6 @@ verify_jwt = false
 
 [functions.employee-liff-validate]
 verify_jwt = false
+
+[functions.liff-settings]
+verify_jwt = false

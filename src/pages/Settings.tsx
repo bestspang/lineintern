@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import LiffSettingsCard from '@/components/settings/LiffSettingsCard';
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
   const { toast } = useToast();
@@ -167,6 +168,30 @@ function PortalAccessModeSettings() {
       </div>
     </div>
   );
+}
+
+// LIFF Settings wrapper that checks portal mode
+function LiffSettingsCardWrapper() {
+  const { data: portalSetting } = useQuery({
+    queryKey: ['portal-access-mode'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'portal_access_mode')
+        .maybeSingle();
+      return data?.setting_value as { mode: string } | null;
+    },
+  });
+
+  const currentMode = (portalSetting?.mode || 'liff') as 'liff' | 'token' | 'both';
+
+  // Only show for LIFF/Both modes (not token mode)
+  if (currentMode === 'token') {
+    return null;
+  }
+
+  return <LiffSettingsCard />;
 }
 
 export default function Settings() {
@@ -351,6 +376,9 @@ export default function Settings() {
           <PortalAccessModeSettings />
         </CardContent>
       </Card>
+
+      {/* LIFF Settings - Only show for LIFF/Both modes */}
+      <LiffSettingsCardWrapper />
 
       {/* Rich Menu Setup */}
       <RichMenuSetup />
