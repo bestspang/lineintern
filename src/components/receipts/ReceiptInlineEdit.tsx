@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,7 +67,7 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
   const [imageLoading, setImageLoading] = useState(true);
 
   // Fetch receipt image
-  useState(() => {
+  useEffect(() => {
     async function fetchImage() {
       try {
         const { data: files } = await supabase
@@ -78,10 +78,16 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
           .maybeSingle();
 
         if (files?.storage_path) {
-          const { data } = supabase.storage
+          // Use signed URL for private bucket
+          const { data, error } = await supabase.storage
             .from('receipt-files')
-            .getPublicUrl(files.storage_path);
-          setImageUrl(data.publicUrl);
+            .createSignedUrl(files.storage_path, 3600); // 1 hour expiry
+          
+          if (data?.signedUrl) {
+            setImageUrl(data.signedUrl);
+          } else if (error) {
+            console.error('Error creating signed URL:', error);
+          }
         }
       } catch (error) {
         console.error('Error fetching receipt image:', error);
@@ -90,7 +96,7 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
       }
     }
     fetchImage();
-  });
+  }, [receipt.id]);
 
   // Log OCR corrections for AI improvement
   const logCorrections = async (newData: typeof formData) => {
