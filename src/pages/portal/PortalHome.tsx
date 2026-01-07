@@ -1,12 +1,17 @@
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { 
-  Clock, Calendar, History, FileText, Users, Camera,
-  ChevronRight, CalendarPlus, ClipboardList, TrendingUp
+  Clock, Calendar, History, Users, Camera,
+  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 
 interface QuickAction {
   icon: typeof Clock;
@@ -107,8 +112,65 @@ const adminActions: QuickAction[] = [
 export default function PortalHome() {
   const navigate = useNavigate();
   const { employee, locale, isManager, isAdmin } = usePortal();
+  
+  // Check-in status state
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [canCheckIn, setCanCheckIn] = useState(true);
+  const [isWorking, setIsWorking] = useState(false);
+  const [minutesWorked, setMinutesWorked] = useState<number | null>(null);
 
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
+
+  // Realtime clock
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Fetch attendance status
+  const fetchAttendanceStatus = useCallback(async () => {
+    if (!employee?.id) return;
+    
+    try {
+      const [checkInResult, checkOutResult] = await Promise.all([
+        supabase.rpc('can_employee_check_in', { p_employee_id: employee.id }),
+        supabase.rpc('can_employee_check_out', { p_employee_id: employee.id }),
+      ]);
+      
+      setCanCheckIn(checkInResult.data === true);
+      const working = checkOutResult.data === true;
+      setIsWorking(working);
+      
+      // Get minutes worked if working
+      if (working) {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const { data: logs } = await supabase
+          .from('attendance_logs')
+          .select('server_time')
+          .eq('employee_id', employee.id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', `${today}T00:00:00`)
+          .order('server_time', { ascending: false })
+          .limit(1);
+        
+        if (logs && logs.length > 0) {
+          const checkInTime = new Date(logs[0].server_time);
+          const diff = Math.floor((Date.now() - checkInTime.getTime()) / 60000);
+          setMinutesWorked(diff);
+        }
+      } else {
+        setMinutesWorked(null);
+      }
+    } catch (error) {
+      console.error('Error fetching attendance status:', error);
+    }
+  }, [employee?.id]);
+
+  useEffect(() => {
+    fetchAttendanceStatus();
+    const interval = setInterval(fetchAttendanceStatus, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchAttendanceStatus]);
 
   // Filter actions based on role
   const visibleManagerActions = managerActions.filter(
@@ -118,14 +180,75 @@ export default function PortalHome() {
     (action) => !action.roles || action.roles.includes(roleKey)
   );
 
+  const formatDuration = (mins: number) => {
+    const hours = Math.floor(mins / 60);
+    const minutes = mins % 60;
+    if (locale === 'th') {
+      return `${hours} ชม. ${minutes} นาที`;
+    }
+    return `${hours}h ${minutes}m`;
+  };
+
   return (
     <div className="space-y-6">
+      {/* Check-in/out Status Card */}
+      <Card 
+        className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground cursor-pointer hover:opacity-95 transition-opacity overflow-hidden"
+        onClick={() => navigate('/portal/checkin')}
+      >
+        <CardContent className="p-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-3xl font-bold font-mono">
+                {format(currentTime, 'HH:mm:ss')}
+              </p>
+              <p className="text-sm opacity-90 mt-1">
+                {format(currentTime, locale === 'th' ? 'EEEE d MMM yyyy' : 'EEEE, MMM d, yyyy', 
+                  { locale: locale === 'th' ? th : undefined }
+                )}
+              </p>
+              <p className="text-sm opacity-80 mt-2">
+                {isWorking && minutesWorked !== null
+                  ? `⏱️ ${locale === 'th' ? 'ทำงานแล้ว' : 'Working'} ${formatDuration(minutesWorked)}`
+                  : `📍 ${locale === 'th' ? 'ยังไม่ได้เช็คอิน' : 'Not checked in yet'}`}
+              </p>
+            </div>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              className={cn(
+                'shadow-lg font-semibold',
+                canCheckIn 
+                  ? 'bg-green-500 hover:bg-green-600 text-white' 
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/portal/checkin');
+              }}
+            >
+              {canCheckIn ? (
+                <>
+                  <LogIn className="h-4 w-4" />
+                  Check-in
+                </>
+              ) : (
+                <>
+                  <LogOut className="h-4 w-4" />
+                  Check-out
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Welcome Section */}
-      <div className="text-center py-4">
-        <h2 className="text-2xl font-bold">
+      <div className="text-center py-2">
+        <h2 className="text-xl font-bold">
           {locale === 'th' ? 'สวัสดี' : 'Hello'}, {employee?.full_name?.split(' ')[0] || 'User'}! 👋
         </h2>
-        <p className="text-muted-foreground mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           {locale === 'th' ? 'เลือกเมนูที่ต้องการ' : 'Choose what you need'}
         </p>
       </div>
