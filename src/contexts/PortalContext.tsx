@@ -230,7 +230,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       storedToken: !!sessionStorage.getItem('portal_token'),
       liffIsReady, 
       liffIsLoggedIn, 
-      liffUserId 
+      liffUserId,
+      liffError: liffContext?.error
     });
 
     const tokenFromUrl = searchParams.get('token');
@@ -254,17 +255,33 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // LIFF is ready - check various states
+    if (liffContext?.error) {
+      console.log('[Portal] LIFF has error:', liffContext.error);
+      setError('ไม่สามารถเชื่อมต่อ LINE ได้ กรุณาลองใหม่อีกครั้ง');
+      setLoading(false);
+      return;
+    }
+
     if (liffIsLoggedIn && liffUserId) {
       console.log('[Portal] Authenticating via LIFF, userId:', liffUserId);
       validateLiffUser(liffUserId);
       return;
     }
 
+    // LIFF ready but not logged in
+    if (!liffIsLoggedIn) {
+      console.log('[Portal] LIFF ready but user not logged in');
+      setError('กรุณาเปิดผ่าน LINE App เพื่อเข้าใช้งาน');
+      setLoading(false);
+      return;
+    }
+
     // No authentication method available
     console.log('[Portal] No authentication method available');
-    setError('กรุณาเข้าใช้งานผ่าน LINE หรือลิงก์ที่ได้รับ');
+    setError('กรุณาพิมพ์ /menu ใน LINE เพื่อรับลิงก์เข้าใช้งาน');
     setLoading(false);
-  }, [searchParams, validateToken, validateLiffUser, liffIsReady, liffIsLoggedIn, liffUserId]);
+  }, [searchParams, validateToken, validateLiffUser, liffIsReady, liffIsLoggedIn, liffUserId, liffContext?.error]);
 
   // Determine role permissions
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
