@@ -62,12 +62,24 @@ function getCurrentPeriod(): string {
 }
 
 async function hashFile(data: Uint8Array): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataString = Array.from(data).map(b => String.fromCharCode(b)).join('');
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(dataString));
+  // Create a new ArrayBuffer copy to satisfy type requirements
+  const buffer = new ArrayBuffer(data.length);
+  new Uint8Array(buffer).set(data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// Convert Uint8Array to base64 in chunks to avoid stack overflow
+function uint8ArrayToBase64(data: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.subarray(i, Math.min(i + chunkSize, data.length));
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binary);
 }
 
 // =============================================
@@ -556,8 +568,8 @@ Deno.serve(async (req) => {
       contentType = content.contentType;
       fileHash = await hashFile(imageData);
 
-      // Convert to base64 for AI
-      const base64 = btoa(String.fromCharCode(...imageData));
+      // Convert to base64 for AI (using chunked conversion to avoid stack overflow)
+      const base64 = uint8ArrayToBase64(imageData);
       extraction = await extractReceiptData(base64, contentType);
     } else {
       return new Response(JSON.stringify({ error: "No image or manual data provided" }), {
