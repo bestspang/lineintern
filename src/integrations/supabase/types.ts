@@ -3486,6 +3486,61 @@ export type Database = {
           },
         ]
       }
+      receipt_group_mappings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          group_id: string
+          id: string
+          is_enabled: boolean
+          notes: string | null
+          priority: number | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          group_id: string
+          id?: string
+          is_enabled?: boolean
+          notes?: string | null
+          priority?: number | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          group_id?: string
+          id?: string
+          is_enabled?: boolean
+          notes?: string | null
+          priority?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_group_mappings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_group_mappings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_group_mappings_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receipt_ocr_corrections: {
         Row: {
           corrected_at: string | null

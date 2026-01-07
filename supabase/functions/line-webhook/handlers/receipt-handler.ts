@@ -100,50 +100,66 @@ export async function canGroupSubmitReceipts(lineGroupId: string | null): Promis
       return false;
     }
 
-    // Get enabled_groups setting
+    // Get internal group ID
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id")
+      .eq("line_group_id", lineGroupId)
+      .single();
+
+    if (!group) {
+      console.log("[canGroupSubmitReceipts] Group not found in DB");
+      return false;
+    }
+
+    // Check receipt_group_mappings table
+    const { data: mapping } = await supabase
+      .from("receipt_group_mappings")
+      .select("is_enabled")
+      .eq("group_id", group.id)
+      .eq("is_enabled", true)
+      .maybeSingle();
+
+    if (mapping) {
+      console.log("[canGroupSubmitReceipts] Group enabled via mapping");
+      return true;
+    }
+
+    // Fallback: Check old enabled_groups setting for backwards compatibility
     const { data: setting } = await supabase
       .from("receipt_settings")
       .select("setting_value")
       .eq("setting_key", "enabled_groups")
       .single();
 
-    if (!setting) return true; // Default: allow all
+    if (!setting) return false; // No mapping = not allowed
 
     const config = setting.setting_value as EnabledGroupsConfig;
     
     if (config.mode === "all") return true;
     
     if (config.mode === "selected") {
-      // Check if this group's internal ID is in selected list
-      const { data: group } = await supabase
-        .from("groups")
-        .select("id")
-        .eq("line_group_id", lineGroupId)
-        .single();
-      
-      if (!group) return false;
       return config.group_ids?.includes(group.id) || false;
     }
     
     if (config.mode === "branch_linked") {
-      // Check if group has a linked branch
       const { data: branch } = await supabase
         .from("branches")
         .select("id")
         .eq("line_group_id", lineGroupId)
-        .single();
+        .maybeSingle();
       return !!branch;
     }
 
-    return true;
+    return false;
   } catch (error) {
     console.error("[canGroupSubmitReceipts] Error:", error);
-    return true; // Default to allow on error
+    return false; // Default to deny on error for security
   }
 }
 
 /**
- * Get branch ID from LINE group ID for auto-assignment
+ * Get branch ID(s) from LINE group ID using receipt_group_mappings
  */
 export async function getBranchFromGroup(lineGroupId: string | null): Promise<string | null> {
   if (!lineGroupId) return null;
@@ -160,12 +176,36 @@ export async function getBranchFromGroup(lineGroupId: string | null): Promise<st
       return null;
     }
 
-    // Find branch by LINE group ID
+    // Get internal group ID
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id")
+      .eq("line_group_id", lineGroupId)
+      .single();
+
+    if (!group) return null;
+
+    // Get branch mapping from receipt_group_mappings
+    const { data: mapping } = await supabase
+      .from("receipt_group_mappings")
+      .select("branch_id")
+      .eq("group_id", group.id)
+      .eq("is_enabled", true)
+      .not("branch_id", "is", null)
+      .order("priority", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (mapping?.branch_id) {
+      return mapping.branch_id;
+    }
+
+    // Fallback: Check branches.line_group_id for backwards compatibility
     const { data: branch } = await supabase
       .from("branches")
       .select("id")
       .eq("line_group_id", lineGroupId)
-      .single();
+      .maybeSingle();
 
     return branch?.id || null;
   } catch (error) {
