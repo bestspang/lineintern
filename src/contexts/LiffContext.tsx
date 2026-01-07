@@ -29,6 +29,7 @@ interface LiffError {
 interface LiffContextType {
   isReady: boolean;
   isLoggedIn: boolean;
+  isInClient: boolean;
   profile: LiffProfile | null;
   error: string | null;
   errorDetails: LiffError | null;
@@ -61,6 +62,7 @@ interface LiffProviderProps {
 export function LiffProvider({ children }: LiffProviderProps) {
   const [isReady, setIsReady] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isInClient, setIsInClient] = useState(false);
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<LiffError | null>(null);
@@ -192,6 +194,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
           statusMessage: userProfile.statusMessage,
         });
       }
+      setIsInClient(liffInstance.isInClient());
       setIsLoggedIn(loggedIn);
       setIsReady(true); // Set this LAST so other contexts see complete state
       setIsRetrying(false);
@@ -249,6 +252,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
     <LiffContext.Provider value={{
       isReady,
       isLoggedIn,
+      isInClient,
       profile,
       error,
       errorDetails,
