@@ -18,12 +18,13 @@ interface DebugInfo {
   detectionResult: { detected: boolean; reason: string };
 }
 
-// Same detection logic as RootRedirect
+// Same detection logic as RootRedirect - with debug=liff support
 function hasLiffIndicators(): { detected: boolean; reason: string } {
   const urlParams = new URLSearchParams(window.location.search);
   const url = window.location.href;
   const ua = navigator.userAgent;
   
+  // 1. Check for LIFF URL parameters (most reliable)
   const liffParams = Array.from(urlParams.keys()).filter(k => 
     k.startsWith('liff.') || k === 'access_token' || k === 'code'
   );
@@ -31,11 +32,18 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     return { detected: true, reason: `LIFF params: ${liffParams.join(', ')}` };
   }
   
+  // 2. Check for debug=liff parameter (intentional debug mode from LIFF link)
+  if (urlParams.get('debug') === 'liff') {
+    return { detected: true, reason: 'debug=liff parameter present' };
+  }
+  
+  // 3. Check referrer from LINE
   const ref = document.referrer;
   if (ref.includes('line.me') || ref.includes('liff.line.me')) {
     return { detected: true, reason: `Referrer: ${ref}` };
   }
   
+  // 4. Check User-Agent for LINE patterns
   const lineUAPatterns = [/line\/[\d.]+/i, /liff\/[\d.]+/i, /lineboot/i, /linecorp/i, /\bline\b/i];
   for (const pattern of lineUAPatterns) {
     if (pattern.test(ua)) {
@@ -43,10 +51,12 @@ function hasLiffIndicators(): { detected: boolean; reason: string } {
     }
   }
   
+  // 5. Check if URL is liff.line.me
   if (url.includes('liff.line.me')) {
     return { detected: true, reason: 'URL contains liff.line.me' };
   }
   
+  // 6. Check sessionStorage for LIFF markers
   try {
     const keys = Object.keys(sessionStorage);
     const liffKey = keys.find(k => k.toLowerCase().includes('liff'));
