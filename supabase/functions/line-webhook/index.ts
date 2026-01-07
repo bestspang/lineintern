@@ -12,6 +12,7 @@ import {
   getReceiptSummary,
   submitReceiptImage,
   getBranchFromGroup,
+  canGroupSubmitReceipts,
   buildReceiptProcessingFlex,
   buildReceiptSavedFlex,
   buildQuotaExceededFlex,
@@ -7697,6 +7698,80 @@ async function sendFlexMessage(replyToken: string, flexMessage: object) {
 }
 
 // =============================
+// HANDLE RECEIPT IMAGE IN GROUP
+// =============================
+
+async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, lineGroupId: string) {
+  console.log(`[handleReceiptImageInGroup] Processing receipt image from ${lineUserId} in group ${lineGroupId}`);
+  const locale: "th" | "en" = "th";
+  
+  try {
+    // Check quota first
+    const quota = await checkReceiptQuota(lineUserId);
+    if (!quota.allowed) {
+      console.log(`[handleReceiptImageInGroup] Quota exceeded for ${lineUserId}`);
+      const flexMessage = buildQuotaExceededFlex(quota, locale);
+      await sendFlexMessage(event.replyToken, flexMessage);
+      return;
+    }
+    
+    // Get default business or first business
+    const businesses = await getUserBusinesses(lineUserId);
+    let businessId: string | undefined;
+    
+    if (businesses.length === 1) {
+      businessId = businesses[0].id;
+    } else if (businesses.length > 1) {
+      const defaultBiz = await getDefaultBusiness(lineUserId);
+      businessId = defaultBiz?.id;
+    }
+    // If no businesses, receipt-submit will create one automatically
+    
+    // Get branch info from group mapping
+    const branchInfo = await getBranchFromGroup(lineGroupId, lineUserId);
+    console.log(`[handleReceiptImageInGroup] Branch info: ${JSON.stringify(branchInfo)}`);
+    
+    // Submit the receipt
+    const result = await submitReceiptImage(
+      lineUserId, 
+      event.message!.id, 
+      businessId,
+      branchInfo.branchId,
+      branchInfo.branchSource
+    );
+    
+    if (!result.success) {
+      if (result.error === "quota_exceeded") {
+        const quotaStatus = await checkReceiptQuota(lineUserId);
+        const flexMessage = buildQuotaExceededFlex(quotaStatus, locale);
+        await sendFlexMessage(event.replyToken, flexMessage);
+      } else if (result.error === "duplicate") {
+        await replyToLine(event.replyToken, locale === "th" 
+          ? "⚠️ พบใบเสร็จนี้แล้วในระบบ" 
+          : "⚠️ This receipt has already been submitted");
+      } else {
+        await replyToLine(event.replyToken, locale === "th"
+          ? `❌ เกิดข้อผิดพลาด: ${result.message}`
+          : `❌ Error: ${result.message}`);
+      }
+      return;
+    }
+    
+    // Send success message
+    const LIFF_URL = Deno.env.get("LIFF_URL") || "";
+    const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
+    await sendFlexMessage(event.replyToken, savedFlex);
+    
+    console.log(`[handleReceiptImageInGroup] Receipt saved: ${result.receiptId}`);
+  } catch (error) {
+    console.error(`[handleReceiptImageInGroup] Error:`, error);
+    await replyToLine(event.replyToken, locale === "th"
+      ? "❌ เกิดข้อผิดพลาดในการประมวลผลใบเสร็จ"
+      : "❌ Error processing receipt");
+  }
+}
+
+// =============================
 // HANDLE IMAGE MESSAGE (DEPOSIT SLIPS VIA LINE GROUP)
 // =============================
 
@@ -7714,6 +7789,16 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
+  // NEW: Check if this group is enabled for RECEIPT submission
+  const canSubmitReceipts = await canGroupSubmitReceipts(rawLineGroupId);
+  
+  if (canSubmitReceipts) {
+    console.log(`[handleImageMessage] Group ${rawLineGroupId} is enabled for receipts - handling as receipt`);
+    await handleReceiptImageInGroup(event, rawLineUserId, rawLineGroupId);
+    return;
+  }
+  
+  // Otherwise, check if this group is enabled for DEPOSIT detection
   // Check if this group is enabled for deposit detection in settings
   const { data: depositSettings } = await supabase
     .from('deposit_settings')
