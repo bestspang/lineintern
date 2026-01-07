@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,14 +20,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { 
   Receipt, Search, Download, Calendar, 
-  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle, Settings
+  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle, Settings, Trash2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { ReceiptInlineEdit } from '@/components/receipts/ReceiptInlineEdit';
+import { useUserRole } from '@/hooks/useUserRole';
+import { toast } from 'sonner';
 
 interface ReceiptRow {
   id: string;
@@ -50,10 +63,37 @@ interface ReceiptRow {
 
 export default function Receipts() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { isAdmin, isOwner } = useUserRole();
+  const canDelete = isAdmin || isOwner;
+  
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptRow | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      // Delete receipt items first
+      await supabase.from('receipt_items').delete().eq('receipt_id', receiptId);
+      // Delete receipt files
+      await supabase.from('receipt_files').delete().eq('receipt_id', receiptId);
+      // Delete the receipt
+      const { error } = await supabase.from('receipts').delete().eq('id', receiptId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('ลบใบเสร็จสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['admin-receipts'] });
+      setDeletingId(null);
+    },
+    onError: (error: Error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + error.message);
+      setDeletingId(null);
+    },
+  });
 
   // Fetch all receipts (admin view)
   const { data: receipts = [], isLoading } = useQuery({
@@ -334,13 +374,51 @@ export default function Receipts() {
                       {getStatusBadge(receipt.status, (receipt.warnings?.length || 0) > 0)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setSelectedReceipt(receipt)}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => setSelectedReceipt(receipt)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        
+                        {canDelete && (
+                          <AlertDialog open={deletingId === receipt.id} onOpenChange={(open) => !open && setDeletingId(null)}>
+                            <AlertDialogTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setDeletingId(receipt.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>ยืนยันการลบใบเสร็จ</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  คุณต้องการลบใบเสร็จจาก "{receipt.vendor || 'ไม่ระบุ'}" 
+                                  จำนวน {receipt.total ? formatCurrency(receipt.total) : '-'} หรือไม่?
+                                  <br />
+                                  <span className="text-destructive font-medium">การดำเนินการนี้ไม่สามารถย้อนกลับได้</span>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive hover:bg-destructive/90"
+                                  onClick={() => deleteMutation.mutate(receipt.id)}
+                                  disabled={deleteMutation.isPending}
+                                >
+                                  {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบ'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
