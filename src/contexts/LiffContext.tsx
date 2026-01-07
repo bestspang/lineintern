@@ -33,6 +33,11 @@ export function useLiff() {
   return context;
 }
 
+// Optional hook that returns null if not in LiffProvider context
+export function useLiffOptional(): LiffContextType | null {
+  return useContext(LiffContext) ?? null;
+}
+
 interface LiffProviderProps {
   children: ReactNode;
 }

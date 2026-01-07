@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useLiff } from './LiffContext';
+import { useLiffOptional } from './LiffContext';
 
 interface EmployeeRole {
   display_name_th: string;
@@ -73,13 +73,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasShownWarning = useRef(false);
 
-  // Get LIFF context - may be undefined if not wrapped in LiffProvider
-  let liffContext: { isReady: boolean; isLoggedIn: boolean; profile: { userId: string } | null } | null = null;
-  try {
-    liffContext = useLiff();
-  } catch {
-    // Not in LiffProvider context, that's okay
-  }
+  // Get LIFF context safely - returns null if not in LiffProvider
+  const liffContext = useLiffOptional();
+  
+  // Create derived state for proper dependency tracking
+  const liffIsReady = liffContext?.isReady ?? false;
+  const liffIsLoggedIn = liffContext?.isLoggedIn ?? false;
+  const liffUserId = liffContext?.profile?.userId ?? null;
+  
+  console.log('[Portal] LIFF state:', { liffIsReady, liffIsLoggedIn, liffUserId });
 
   const validateToken = useCallback(async (tokenValue: string, isRefresh = false) => {
     try {
@@ -170,10 +172,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const refreshData = useCallback(async () => {
     if (authMethod === 'token' && token) {
       await validateToken(token, true);
-    } else if (authMethod === 'liff' && liffContext?.profile?.userId) {
-      await validateLiffUser(liffContext.profile.userId);
+    } else if (authMethod === 'liff' && liffUserId) {
+      await validateLiffUser(liffUserId);
     }
-  }, [authMethod, token, liffContext?.profile?.userId, validateToken, validateLiffUser]);
+  }, [authMethod, token, liffUserId, validateToken, validateLiffUser]);
 
   // Setup auto-refresh and warning timers
   useEffect(() => {
@@ -223,6 +225,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   // Initial authentication
   useEffect(() => {
+    console.log('[Portal] Auth check:', { 
+      tokenFromUrl: !!searchParams.get('token'), 
+      storedToken: !!sessionStorage.getItem('portal_token'),
+      liffIsReady, 
+      liffIsLoggedIn, 
+      liffUserId 
+    });
+
     const tokenFromUrl = searchParams.get('token');
     const storedToken = sessionStorage.getItem('portal_token');
     const tokenToUse = tokenFromUrl || storedToken;
@@ -238,28 +248,23 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
 
     // Priority 2: Use LIFF authentication if available
-    if (liffContext) {
-      if (!liffContext.isReady) {
-        // Wait for LIFF to be ready
-        console.log('[Portal] Waiting for LIFF to be ready...');
-        return;
-      }
+    if (!liffIsReady) {
+      // Wait for LIFF to be ready
+      console.log('[Portal] Waiting for LIFF to be ready...');
+      return;
+    }
 
-      if (liffContext.isLoggedIn && liffContext.profile?.userId) {
-        console.log('[Portal] Authenticating via LIFF');
-        validateLiffUser(liffContext.profile.userId);
-        return;
-      }
+    if (liffIsLoggedIn && liffUserId) {
+      console.log('[Portal] Authenticating via LIFF, userId:', liffUserId);
+      validateLiffUser(liffUserId);
+      return;
     }
 
     // No authentication method available
-    // Only show error if LIFF is ready (or not available)
-    if (!liffContext || liffContext.isReady) {
-      console.log('[Portal] No authentication method available');
-      setError('กรุณาเข้าใช้งานผ่าน LINE หรือลิงก์ที่ได้รับ');
-      setLoading(false);
-    }
-  }, [searchParams, validateToken, validateLiffUser, liffContext?.isReady, liffContext?.isLoggedIn, liffContext?.profile?.userId]);
+    console.log('[Portal] No authentication method available');
+    setError('กรุณาเข้าใช้งานผ่าน LINE หรือลิงก์ที่ได้รับ');
+    setLoading(false);
+  }, [searchParams, validateToken, validateLiffUser, liffIsReady, liffIsLoggedIn, liffUserId]);
 
   // Determine role permissions
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
