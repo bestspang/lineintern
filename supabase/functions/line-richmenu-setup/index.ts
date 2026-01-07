@@ -387,10 +387,34 @@ serve(async (req) => {
           updated_at: new Date().toISOString()
         }, { onConflict: 'id' });
 
+      // Save deployed Rich Menu details to system_settings for persistent display
+      const imageSource = body.image_url.includes('richmenu-images') ? 'upload' : 'default';
+      await supabase
+        .from('system_settings')
+        .upsert({
+          setting_key: 'current_richmenu',
+          setting_value: {
+            richmenu_id: createResult.richMenuId,
+            image_url: body.image_url,
+            image_source: imageSource,
+            deployed_at: new Date().toISOString()
+          },
+          description: 'Currently deployed LINE Rich Menu configuration',
+          category: 'bot',
+          is_editable: false
+        }, { onConflict: 'setting_key' });
+
+      console.log('[line-richmenu-setup] Saved Rich Menu info to system_settings:', {
+        richmenu_id: createResult.richMenuId,
+        image_source: imageSource
+      });
+
       return new Response(
         JSON.stringify({ 
           success: true, 
           richmenu_id: createResult.richMenuId,
+          image_url: body.image_url,
+          image_source: imageSource,
           message: 'Rich Menu created, image uploaded, and set as default successfully!'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
