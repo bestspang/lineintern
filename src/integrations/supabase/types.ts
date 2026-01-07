@@ -3591,6 +3591,50 @@ export type Database = {
           },
         ]
       }
+      receipt_items: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          item_name: string
+          quantity: number | null
+          receipt_id: string
+          sort_order: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          item_name: string
+          quantity?: number | null
+          receipt_id: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          item_name?: string
+          quantity?: number | null
+          receipt_id?: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_items_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receipt_ocr_corrections: {
         Row: {
           corrected_at: string | null
@@ -3766,6 +3810,8 @@ export type Database = {
           branch_id: string | null
           branch_source: string | null
           business_id: string | null
+          card_number_masked: string | null
+          card_type: string | null
           category: string | null
           confidence: Json | null
           created_at: string | null
@@ -3777,23 +3823,31 @@ export type Database = {
           id: string
           line_user_id: string
           notes: string | null
+          payer_name: string | null
           payment_method: string | null
           receipt_date: string | null
+          receipt_number: string | null
+          sale_time: string | null
           source: string
           status: string | null
           subtotal: number | null
           tags: string[] | null
           tax_id: string | null
           total: number | null
+          transaction_time: string | null
           updated_at: string | null
           vat: number | null
           vendor: string | null
+          vendor_address: string | null
+          vendor_branch: string | null
           warnings: string[] | null
         }
         Insert: {
           branch_id?: string | null
           branch_source?: string | null
           business_id?: string | null
+          card_number_masked?: string | null
+          card_type?: string | null
           category?: string | null
           confidence?: Json | null
           created_at?: string | null
@@ -3805,23 +3859,31 @@ export type Database = {
           id?: string
           line_user_id: string
           notes?: string | null
+          payer_name?: string | null
           payment_method?: string | null
           receipt_date?: string | null
+          receipt_number?: string | null
+          sale_time?: string | null
           source?: string
           status?: string | null
           subtotal?: number | null
           tags?: string[] | null
           tax_id?: string | null
           total?: number | null
+          transaction_time?: string | null
           updated_at?: string | null
           vat?: number | null
           vendor?: string | null
+          vendor_address?: string | null
+          vendor_branch?: string | null
           warnings?: string[] | null
         }
         Update: {
           branch_id?: string | null
           branch_source?: string | null
           business_id?: string | null
+          card_number_masked?: string | null
+          card_type?: string | null
           category?: string | null
           confidence?: Json | null
           created_at?: string | null
@@ -3833,17 +3895,23 @@ export type Database = {
           id?: string
           line_user_id?: string
           notes?: string | null
+          payer_name?: string | null
           payment_method?: string | null
           receipt_date?: string | null
+          receipt_number?: string | null
+          sale_time?: string | null
           source?: string
           status?: string | null
           subtotal?: number | null
           tags?: string[] | null
           tax_id?: string | null
           total?: number | null
+          transaction_time?: string | null
           updated_at?: string | null
           vat?: number | null
           vendor?: string | null
+          vendor_address?: string | null
+          vendor_branch?: string | null
           warnings?: string[] | null
         }
         Relationships: [
