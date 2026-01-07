@@ -73,6 +73,27 @@ function getBangkokNow(): Date {
   return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
 }
 
+function getBangkokTodayDate(): string {
+  const now = new Date();
+  return now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+}
+
+// Convert time-only string (HH:MM:SS) to full ISO timestamp
+function buildFullTimestamp(date: string | null, time: string | null): string | null {
+  if (!time) return null;
+  
+  // If time is already a full ISO timestamp, return as is
+  if (time.includes('T') || time.includes(' ') || time.length > 10) {
+    return time;
+  }
+  
+  // Use extracted date or today's date (Bangkok timezone)
+  const dateStr = date || getBangkokTodayDate();
+  
+  // Combine date + time with Bangkok timezone offset
+  return `${dateStr}T${time}+07:00`;
+}
+
 function getCurrentPeriod(): string {
   const now = getBangkokNow();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -337,8 +358,8 @@ Return ONLY valid JSON matching this schema:
   "tax_id": {"value": "13-digit tax ID number", "confidence": 0.0-1.0},
   "receipt_number": {"value": "receipt/invoice number exactly as shown", "confidence": 0.0-1.0},
   "date": {"value": "YYYY-MM-DD (convert Buddhist Era to CE: 2568 = 2025)", "confidence": 0.0-1.0},
-  "transaction_time": {"value": "ISO timestamp of payment/transaction time (เวลาวางมือจ่าย)", "confidence": 0.0-1.0},
-  "sale_time": {"value": "ISO timestamp of sale time (วันที่ขาย)", "confidence": 0.0-1.0},
+  "transaction_time": {"value": "HH:MM:SS (time only, e.g. 19:27:54) - extract time portion from เวลาวางมือจ่าย", "confidence": 0.0-1.0},
+  "sale_time": {"value": "HH:MM:SS (time only, e.g. 14:30:00) - extract time portion from วันที่ขาย/เวลาขาย", "confidence": 0.0-1.0},
   "currency": {"value": "THB", "confidence": 1.0},
   "subtotal": {"value": number, "confidence": 0.0-1.0},
   "vat": {"value": number, "confidence": 0.0-1.0},
@@ -683,8 +704,8 @@ Deno.serve(async (req) => {
         vendor_branch: extraction.vendor_branch?.value || null,
         tax_id: extraction.tax_id?.value || null,
         receipt_number: extraction.receipt_number?.value || null,
-        transaction_time: extraction.transaction_time?.value || null,
-        sale_time: extraction.sale_time?.value || null,
+        transaction_time: buildFullTimestamp(extraction.date?.value, extraction.transaction_time?.value),
+        sale_time: buildFullTimestamp(extraction.date?.value, extraction.sale_time?.value),
         description: manualData?.description || null,
         category: extraction.category?.value || null,
         currency: extraction.currency?.value || "THB",
