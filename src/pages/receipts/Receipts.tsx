@@ -33,12 +33,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { 
   Receipt, Search, Download, Calendar, 
-  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle, Settings, Trash2
+  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle, Settings, Trash2, Eye
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { ReceiptInlineEdit } from '@/components/receipts/ReceiptInlineEdit';
+import { ReceiptDetailView } from '@/components/receipts/ReceiptDetailView';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 
@@ -71,6 +72,7 @@ export default function Receipts() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptRow | null>(null);
+  const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Delete mutation
@@ -378,7 +380,16 @@ export default function Receipts() {
                         <Button 
                           variant="ghost" 
                           size="sm"
+                          onClick={() => setViewingReceiptId(receipt.id)}
+                          title="ดูรายละเอียด"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
                           onClick={() => setSelectedReceipt(receipt)}
+                          title="แก้ไข"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -433,6 +444,21 @@ export default function Receipts() {
         <ReceiptInlineEdit
           receipt={selectedReceipt}
           onClose={() => setSelectedReceipt(null)}
+        />
+      )}
+
+      {/* Detail View Sheet */}
+      {viewingReceiptId && (
+        <ReceiptDetailView
+          receiptId={viewingReceiptId}
+          open={!!viewingReceiptId}
+          onClose={() => setViewingReceiptId(null)}
+          onEdit={() => {
+            const receipt = receipts.find(r => r.id === viewingReceiptId);
+            if (receipt) {
+              setSelectedReceipt(receipt);
+            }
+          }}
         />
       )}
     </div>
