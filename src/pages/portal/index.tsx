@@ -1,6 +1,7 @@
 // Portal pages barrel export
 export { default as PortalHome } from './PortalHome';
 export { default as PortalPlaceholder } from './PortalPlaceholder';
+export { default as CheckInOut } from './CheckInOut';
 
 // Employee pages
 export { default as MyLeaveBalance } from './MyLeaveBalance';

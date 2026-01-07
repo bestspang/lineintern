@@ -9,17 +9,17 @@ const corsHeaders = {
 /**
  * LINE Rich Menu Setup Edge Function
  * 
- * Creates a Rich Menu with 6 buttons (3x2 layout):
- * [Check-in] [Check-out] [Day-off]
- * [  Menu  ] [  Help   ] [Status ]
+ * Creates a Rich Menu with 6 buttons layout:
+ * Row 1: [⏰ Check-in/out (大)] [📊 สถานะ] [🏠 Portal]
+ * Row 2: [📅 ลางาน] [💼 OT] [❓ Help]
  * 
  * Note: This requires a Rich Menu image to be uploaded separately.
- * Image size must be 2500x1686 or 2500x843 pixels.
+ * Image size must be 2500x1686 pixels.
  */
 
 interface RichMenuArea {
   bounds: { x: number; y: number; width: number; height: number };
-  action: { type: string; text?: string; label?: string };
+  action: { type: string; text?: string; label?: string; uri?: string };
 }
 
 serve(async (req) => {
@@ -108,40 +108,60 @@ serve(async (req) => {
       );
     }
 
-    // Create Rich Menu (6-button layout: 3x2)
-    // Image size: 2500x1686 (full) or 2500x843 (half)
-    // Using full size for 2 rows
+    // Create Rich Menu (6-button layout)
+    // Image size: 2500x1686 (full height for 2 rows)
+    // Layout:
+    // Row 1: [Check-in/out 50%] [Status 25%] [Portal 25%]
+    // Row 2: [Leave 33%] [OT 33%] [Help 34%]
     const richMenuWidth = 2500;
     const richMenuHeight = 1686;
-    const cellWidth = Math.floor(richMenuWidth / 3);  // 833
-    const cellHeight = Math.floor(richMenuHeight / 2); // 843
+    const row1Height = 843;  // Half height for row 1
+    const row2Height = 843;  // Half height for row 2
+
+    // Get LIFF ID from environment or database
+    const liffId = Deno.env.get('LIFF_ID') || '';
+    const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
 
     const richMenuAreas: RichMenuArea[] = [
-      // Row 1: Check-in, Check-out, Day-off
+      // Row 1: Check-in/out (large button), Status, Portal
       {
-        bounds: { x: 0, y: 0, width: cellWidth, height: cellHeight },
-        action: { type: 'message', text: '/checkin', label: 'Check-in' }
+        // Check-in/out button - takes 50% width (largest button)
+        bounds: { x: 0, y: 0, width: 1250, height: row1Height },
+        action: liffBaseUrl 
+          ? { type: 'uri', uri: `${liffBaseUrl}/portal/checkin`, label: 'เช็คอิน/เอาท์' }
+          : { type: 'message', text: '/checkin', label: 'Check-in' }
       },
       {
-        bounds: { x: cellWidth, y: 0, width: cellWidth, height: cellHeight },
-        action: { type: 'message', text: '/checkout', label: 'Check-out' }
+        // Status button - 25% width
+        bounds: { x: 1250, y: 0, width: 625, height: row1Height },
+        action: { type: 'message', text: '/status', label: 'สถานะ' }
       },
       {
-        bounds: { x: cellWidth * 2, y: 0, width: richMenuWidth - cellWidth * 2, height: cellHeight },
-        action: { type: 'message', text: '/dayoff พรุ่งนี้', label: 'Day-off' }
+        // Portal button - 25% width
+        bounds: { x: 1875, y: 0, width: 625, height: row1Height },
+        action: liffBaseUrl
+          ? { type: 'uri', uri: `${liffBaseUrl}/portal`, label: 'Portal' }
+          : { type: 'message', text: '/menu', label: 'Menu' }
       },
-      // Row 2: Menu, Help, Status
+      // Row 2: Leave, OT, Help (equal widths)
       {
-        bounds: { x: 0, y: cellHeight, width: cellWidth, height: richMenuHeight - cellHeight },
-        action: { type: 'message', text: '/menu', label: 'Menu' }
+        // Leave button - 33% width
+        bounds: { x: 0, y: row1Height, width: 833, height: row2Height },
+        action: liffBaseUrl
+          ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-leave`, label: 'ลางาน' }
+          : { type: 'message', text: '/dayoff พรุ่งนี้', label: 'Day-off' }
       },
       {
-        bounds: { x: cellWidth, y: cellHeight, width: cellWidth, height: richMenuHeight - cellHeight },
+        // OT button - 33% width
+        bounds: { x: 833, y: row1Height, width: 833, height: row2Height },
+        action: liffBaseUrl
+          ? { type: 'uri', uri: `${liffBaseUrl}/portal/request-ot`, label: 'OT' }
+          : { type: 'message', text: '/ot', label: 'OT' }
+      },
+      {
+        // Help button - 34% width
+        bounds: { x: 1666, y: row1Height, width: 834, height: row2Height },
         action: { type: 'message', text: '/help', label: 'Help' }
-      },
-      {
-        bounds: { x: cellWidth * 2, y: cellHeight, width: richMenuWidth - cellWidth * 2, height: richMenuHeight - cellHeight },
-        action: { type: 'message', text: '/status', label: 'Status' }
       },
     ];
 
@@ -151,7 +171,7 @@ serve(async (req) => {
         height: richMenuHeight
       },
       selected: true,  // Show menu by default
-      name: 'LINE Intern - Employee Menu',
+      name: 'LINE Intern - Employee Menu v2',
       chatBarText: 'เมนู / Menu',
       areas: richMenuAreas
     };

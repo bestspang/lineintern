@@ -109,6 +109,37 @@ Deno.serve(async (req) => {
       menuItems = basicMenus || [];
     }
 
+    // Get today's attendance status
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Check if employee can check in/out
+    const [checkInResult, checkOutResult, todayLogsResult] = await Promise.all([
+      supabase.rpc('can_employee_check_in', { p_employee_id: employee.id }),
+      supabase.rpc('can_employee_check_out', { p_employee_id: employee.id }),
+      supabase
+        .from('attendance_logs')
+        .select('event_type, server_time')
+        .eq('employee_id', employee.id)
+        .gte('server_time', `${today}T00:00:00`)
+        .lt('server_time', `${today}T23:59:59`)
+        .order('server_time', { ascending: true })
+    ]);
+
+    const todayLogs = todayLogsResult.data || [];
+    const checkInLog = todayLogs.find(l => l.event_type === 'check-in');
+    const checkOutLog = todayLogs.find(l => l.event_type === 'check-out');
+
+    // Calculate minutes worked
+    let minutesWorked: number | null = null;
+    if (checkInLog && !checkOutLog) {
+      const checkInTime = new Date(checkInLog.server_time);
+      minutesWorked = Math.floor((new Date().getTime() - checkInTime.getTime()) / 60000);
+    } else if (checkInLog && checkOutLog) {
+      const checkInTime = new Date(checkInLog.server_time);
+      const checkOutTime = new Date(checkOutLog.server_time);
+      minutesWorked = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
+    }
+
     console.log('[employee-liff-validate] Validated successfully for employee:', employee.full_name);
 
     return new Response(
@@ -122,7 +153,15 @@ Deno.serve(async (req) => {
           role: employee.employee_roles || null,
           branch: employee.branches || null
         },
-        menuItems
+        menuItems,
+        attendance: {
+          canCheckIn: checkInResult.data === true,
+          canCheckOut: checkOutResult.data === true,
+          todayCheckIn: checkInLog?.server_time || null,
+          todayCheckOut: checkOutLog?.server_time || null,
+          isWorking: !!checkInLog && !checkOutLog,
+          minutesWorked
+        }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
