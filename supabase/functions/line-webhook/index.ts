@@ -6742,11 +6742,19 @@ interface ReplyContext {
 }
 
 async function replyToLine(replyToken: string, text: string, quickReply?: any, skipQuickReply: boolean = false, context?: ReplyContext) {
-  // Use default Quick Reply if not provided and not skipped
-  const finalQuickReply = skipQuickReply ? undefined : (quickReply || getSimpleQuickReply('th'));
+  // Use Smart Quick Reply (mode-aware) if not provided and not skipped
+  let finalQuickReply = undefined;
+  if (!skipQuickReply) {
+    if (quickReply) {
+      finalQuickReply = quickReply;
+    } else {
+      // Get mode-aware Quick Reply
+      finalQuickReply = await getSmartQuickReply('th');
+    }
+  }
   
   console.log(`[replyToLine] Sending reply (${text.length} chars)${finalQuickReply ? ' with Quick Reply' : ' (Quick Reply skipped)'}`);
-  
+
   // LINE has a 5000 character limit per message
   const chunks: string[] = [];
   for (let i = 0; i < text.length; i += 5000) {
@@ -6825,9 +6833,42 @@ async function replyToLine(replyToken: string, text: string, quickReply?: any, s
     throw error;
   }
 }
+// =============================
+// PORTAL ACCESS MODE CACHE
+// =============================
+let cachedPortalMode: string | null = null;
+let portalModeCacheExpiry: number = 0;
 
-// Generate Quick Reply for attendance actions (basic)
-function getAttendanceQuickReply(locale: 'th' | 'en' = 'th') {
+async function getPortalAccessMode(): Promise<'liff' | 'token' | 'both'> {
+  const now = Date.now();
+  
+  // Return cached value if still valid (5 minutes cache)
+  if (cachedPortalMode && now < portalModeCacheExpiry) {
+    return cachedPortalMode as 'liff' | 'token' | 'both';
+  }
+  
+  try {
+    const { data } = await supabase
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'portal_access_mode')
+      .maybeSingle();
+    
+    // Extract mode from setting_value JSON
+    const settingValue = data?.setting_value as { mode?: string } | null;
+    cachedPortalMode = settingValue?.mode || 'liff';
+    portalModeCacheExpiry = now + 5 * 60 * 1000; // Cache for 5 minutes
+    
+    console.log(`[getPortalAccessMode] Mode: ${cachedPortalMode}`);
+    return cachedPortalMode as 'liff' | 'token' | 'both';
+  } catch (error) {
+    console.error('[getPortalAccessMode] Error:', error);
+    return 'liff'; // Default to LIFF mode on error
+  }
+}
+
+// Quick Reply for Token Link Mode (full attendance buttons)
+function getTokenModeQuickReply(locale: 'th' | 'en' = 'th') {
   return {
     items: [
       {
@@ -6866,26 +6907,10 @@ function getAttendanceQuickReply(locale: 'th' | 'en' = 'th') {
   };
 }
 
-// Generate Simple Quick Reply (4 buttons only)
-function getSimpleQuickReply(locale: 'th' | 'en' = 'th') {
+// Quick Reply for LIFF/Both Mode (minimal - Menu and Help only)
+function getLiffModeQuickReply(locale: 'th' | 'en' = 'th') {
   return {
     items: [
-      {
-        type: 'action',
-        action: {
-          type: 'message',
-          label: locale === 'th' ? '✅ เช็คอิน' : '✅ Check In',
-          text: 'checkin'
-        }
-      },
-      {
-        type: 'action',
-        action: {
-          type: 'message',
-          label: locale === 'th' ? '🚪 เช็คเอาต์' : '🚪 Check Out',
-          text: 'checkout'
-        }
-      },
       {
         type: 'action',
         action: {
@@ -6899,11 +6924,39 @@ function getSimpleQuickReply(locale: 'th' | 'en' = 'th') {
         action: {
           type: 'message',
           label: locale === 'th' ? '❓ ช่วยเหลือ' : '❓ Help',
-          text: 'help'
+          text: '/help'
         }
       }
     ]
   };
+}
+
+// Smart Quick Reply - returns appropriate buttons based on portal access mode
+async function getSmartQuickReply(locale: 'th' | 'en' = 'th') {
+  const mode = await getPortalAccessMode();
+  
+  if (mode === 'token') {
+    // Token mode: show full attendance buttons (checkin/checkout/history/help)
+    return getTokenModeQuickReply(locale);
+  } else {
+    // LIFF or Both mode: show minimal buttons (menu/help only)
+    // User should use LIFF Portal for checkin/checkout
+    return getLiffModeQuickReply(locale);
+  }
+}
+
+// Generate Quick Reply for attendance actions (basic) - LEGACY, kept for compatibility
+function getAttendanceQuickReply(locale: 'th' | 'en' = 'th') {
+  // This function is kept for backward compatibility
+  // Use getSmartQuickReply() for mode-aware Quick Reply
+  return getTokenModeQuickReply(locale);
+}
+
+// Generate Simple Quick Reply (4 buttons only) - LEGACY, kept for compatibility
+function getSimpleQuickReply(locale: 'th' | 'en' = 'th') {
+  // This function is kept for backward compatibility
+  // Use getSmartQuickReply() for mode-aware Quick Reply
+  return getTokenModeQuickReply(locale);
 }
 
 async function pushToLine(to: string, text: string, context?: Partial<ReplyContext> & { messageType?: BotLogEntry['messageType'] }) {
@@ -7269,7 +7322,8 @@ async function handleAttendanceCommand(
         ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียนหรือเชื่อมโยงบัญชี LINE ของคุณกับระบบ\n\n---\n\nSorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.'
         : 'Sorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.';
       
-      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+      const smartQuickReply = await getSmartQuickReply(locale);
+      return { detected: true, type, message, quickReply: smartQuickReply };
     }
     
     // Get effective settings
@@ -7284,7 +7338,8 @@ async function handleAttendanceCommand(
         ? 'ระบบเช็คชื่อยังไม่เปิดใช้งานสำหรับคุณ กรุณาติดต่อ HR\n\nAttendance system is not enabled for you. Please contact HR.'
         : 'Attendance system is not enabled for you. Please contact HR.';
       
-      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+      const smartQuickReply = await getSmartQuickReply(locale);
+      return { detected: true, type, message, quickReply: smartQuickReply };
     }
     
     // TIME VALIDATION: Check if current time is within allowed work hours (skip for history)
@@ -7336,7 +7391,8 @@ async function handleAttendanceCommand(
           }
         }
         
-        return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+        const smartQuickReply = await getSmartQuickReply(locale);
+        return { detected: true, type, message, quickReply: smartQuickReply };
       }
       
       console.log(`[handleAttendanceCommand] Time validation passed: within work hours`);
@@ -7363,7 +7419,8 @@ async function handleAttendanceCommand(
         ? 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง\n\nError occurred. Please try again.'
         : 'Error occurred. Please try again.';
       
-      return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+      const smartQuickReply = await getSmartQuickReply(locale);
+      return { detected: true, type, message, quickReply: smartQuickReply };
     }
     
     // Generate URL based on command type
@@ -7389,7 +7446,8 @@ async function handleAttendanceCommand(
     }
     
     console.log('[handleAttendanceCommand] Attendance link sent successfully');
-    return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+    const smartQuickReply = await getSmartQuickReply(locale);
+    return { detected: true, type, message, quickReply: smartQuickReply };
     
   } catch (error) {
     console.error('[handleAttendanceCommand] Error:', error);
@@ -7397,7 +7455,8 @@ async function handleAttendanceCommand(
       ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่\n\nSystem error. Please try again.'
       : 'System error. Please try again.';
     
-    return { detected: true, type, message, quickReply: getAttendanceQuickReply(locale) };
+    const smartQuickReply = await getSmartQuickReply(locale);
+    return { detected: true, type, message, quickReply: smartQuickReply };
   }
 }
 
@@ -8900,7 +8959,7 @@ async function handleMessageEvent(event: LineEvent) {
             ? `📋 เมนูพนักงาน\n\nคลิกเพื่อเปิด Portal:\n${liffUrl}\n\n✅ เข้าสู่ระบบอัตโนมัติผ่าน LINE`
             : `📋 Employee Portal\n\nClick to open Portal:\n${liffUrl}\n\n✅ Auto-login via LINE`;
 
-          await replyToLine(event.replyToken, menuMessage, getSimpleQuickReply(menuLocale));
+          await replyToLine(event.replyToken, menuMessage, await getSmartQuickReply(menuLocale));
           console.log('[Menu] Sent LIFF URL:', liffUrl);
           return;
         }
@@ -8923,7 +8982,7 @@ async function handleMessageEvent(event: LineEvent) {
           const errorMsg = menuLocale === 'th'
             ? '❌ เกิดข้อผิดพลาดในการสร้างเมนู\nกรุณาลองใหม่อีกครั้ง'
             : '❌ Error creating menu\nPlease try again';
-          await replyToLine(event.replyToken, errorMsg, getSimpleQuickReply(menuLocale));
+          await replyToLine(event.replyToken, errorMsg, await getSmartQuickReply(menuLocale));
           return;
         }
 
@@ -8935,7 +8994,7 @@ async function handleMessageEvent(event: LineEvent) {
           ? `📋 เมนูพนักงาน\n\nคลิกลิงก์ด้านล่างเพื่อเปิด Portal:\n${menuUrl}\n\n⏰ ลิงก์นี้ใช้ได้ 30 นาที`
           : `📋 Employee Portal\n\nClick the link below to open Portal:\n${menuUrl}\n\n⏰ This link is valid for 30 minutes`;
 
-        await replyToLine(event.replyToken, menuMessage, getSimpleQuickReply(menuLocale));
+        await replyToLine(event.replyToken, menuMessage, await getSmartQuickReply(menuLocale));
         console.log('[Menu] Sent menu link with token');
         return;
       } catch (error) {
@@ -9332,8 +9391,8 @@ async function handleMessageEvent(event: LineEvent) {
 
   // Send reply to LINE
   try {
-    // Add simple Quick Reply to AI responses
-    const quickReply = getSimpleQuickReply(locale);
+    // Add Smart Quick Reply to AI responses (mode-aware)
+    const quickReply = await getSmartQuickReply(locale);
     await replyToLine(event.replyToken, aiReply, quickReply);
     
     // Insert bot message
