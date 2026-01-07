@@ -22,11 +22,12 @@ import {
 } from '@/components/ui/select';
 import { 
   Receipt, Search, Download, Calendar, 
-  TrendingUp, Building2, Eye, FileText
+  TrendingUp, Building2, Edit2, FileText, BarChart3, AlertTriangle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { ReceiptInlineEdit } from '@/components/receipts/ReceiptInlineEdit';
 
 interface ReceiptRow {
   id: string;
@@ -37,6 +38,13 @@ interface ReceiptRow {
   status: string | null;
   created_at: string | null;
   line_user_id: string;
+  warnings: string[] | null;
+  confidence: {
+    vendor?: number;
+    date?: number;
+    total?: number;
+    category?: number;
+  } | null;
   business: { name: string } | null;
 }
 
@@ -45,6 +53,7 @@ export default function Receipts() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [selectedReceipt, setSelectedReceipt] = useState<ReceiptRow | null>(null);
 
   // Fetch all receipts (admin view)
   const { data: receipts = [], isLoading } = useQuery({
@@ -54,7 +63,7 @@ export default function Receipts() {
         .from('receipts')
         .select(`
           id, vendor, total, receipt_date, category, 
-          status, created_at, line_user_id,
+          status, created_at, line_user_id, warnings, confidence,
           business:receipt_businesses(name)
         `)
         .order('created_at', { ascending: false })
@@ -81,7 +90,7 @@ export default function Receipts() {
     total: receipts.length,
     totalAmount: receipts.reduce((sum, r) => sum + (r.total || 0), 0),
     saved: receipts.filter(r => r.status === 'saved').length,
-    pending: receipts.filter(r => r.status === 'pending').length,
+    needsReview: receipts.filter(r => r.status === 'needs_review').length,
   };
 
   const formatCurrency = (amount: number) => {
@@ -103,17 +112,31 @@ export default function Receipts() {
     return colors[category || 'other'] || colors.other;
   };
 
-  const getStatusBadge = (status: string | null) => {
+  const getStatusBadge = (status: string | null, hasWarnings: boolean) => {
     switch (status) {
       case 'saved':
         return <Badge className="bg-emerald-100 text-emerald-700">Saved</Badge>;
-      case 'pending':
-        return <Badge variant="secondary">Pending</Badge>;
+      case 'needs_review':
+        return (
+          <Badge className="bg-yellow-100 text-yellow-700 flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            Needs Review
+          </Badge>
+        );
+      case 'processed':
+        return hasWarnings 
+          ? <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">Processed ⚠️</Badge>
+          : <Badge variant="secondary">Processed</Badge>;
       case 'error':
         return <Badge variant="destructive">Error</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
+  };
+
+  const hasLowConfidence = (confidence: ReceiptRow['confidence']) => {
+    if (!confidence) return false;
+    return Object.values(confidence).some(v => v !== undefined && v < 0.5);
   };
 
   return (
@@ -123,10 +146,14 @@ export default function Receipts() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Receipt Management</h1>
           <p className="text-muted-foreground">
-            View and manage all receipts across businesses
+            View, edit, and manage all receipts across businesses
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/receipts/analytics')}>
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Analytics
+          </Button>
           <Button variant="outline" onClick={() => navigate('/receipts/export')}>
             <Download className="h-4 w-4 mr-2" />
             Export
@@ -183,11 +210,11 @@ export default function Receipts() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
               <div className="h-12 w-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-amber-600" />
+                <AlertTriangle className="h-6 w-6 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold">{stats.pending}</p>
+                <p className="text-sm text-muted-foreground">Needs Review</p>
+                <p className="text-2xl font-bold">{stats.needsReview}</p>
               </div>
             </div>
           </CardContent>
@@ -214,7 +241,8 @@ export default function Receipts() {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="saved">Saved</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="needs_review">Needs Review</SelectItem>
+                <SelectItem value="processed">Processed</SelectItem>
                 <SelectItem value="error">Error</SelectItem>
               </SelectContent>
             </Select>
@@ -264,9 +292,17 @@ export default function Receipts() {
               </TableHeader>
               <TableBody>
                 {receipts.map((receipt) => (
-                  <TableRow key={receipt.id}>
+                  <TableRow 
+                    key={receipt.id}
+                    className={hasLowConfidence(receipt.confidence) ? 'bg-yellow-50/50' : ''}
+                  >
                     <TableCell className="font-medium">
-                      {receipt.vendor || '-'}
+                      <div className="flex items-center gap-2">
+                        {receipt.vendor || '-'}
+                        {hasLowConfidence(receipt.confidence) && (
+                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {receipt.business?.name || '-'}
@@ -290,14 +326,16 @@ export default function Receipts() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>{getStatusBadge(receipt.status)}</TableCell>
+                    <TableCell>
+                      {getStatusBadge(receipt.status, (receipt.warnings?.length || 0) > 0)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button 
                         variant="ghost" 
                         size="sm"
-                        onClick={() => navigate(`/receipts/${receipt.id}`)}
+                        onClick={() => setSelectedReceipt(receipt)}
                       >
-                        <Eye className="h-4 w-4" />
+                        <Edit2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -307,6 +345,14 @@ export default function Receipts() {
           )}
         </CardContent>
       </Card>
+
+      {/* Inline Edit Dialog */}
+      {selectedReceipt && (
+        <ReceiptInlineEdit
+          receipt={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+        />
+      )}
     </div>
   );
 }
