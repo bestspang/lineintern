@@ -6932,16 +6932,19 @@ function getLiffModeQuickReply(locale: 'th' | 'en' = 'th') {
 }
 
 // Smart Quick Reply - returns appropriate buttons based on portal access mode
+// Token mode: show Quick Reply buttons (for quick actions)
+// LIFF/Both mode: NO Quick Reply (use Rich Menu instead)
 async function getSmartQuickReply(locale: 'th' | 'en' = 'th') {
   const mode = await getPortalAccessMode();
   
   if (mode === 'token') {
     // Token mode: show full attendance buttons (checkin/checkout/history/help)
+    console.log('[getSmartQuickReply] Token mode - returning Quick Reply buttons');
     return getTokenModeQuickReply(locale);
   } else {
-    // LIFF or Both mode: show minimal buttons (menu/help only)
-    // User should use LIFF Portal for checkin/checkout
-    return getLiffModeQuickReply(locale);
+    // LIFF or Both mode: NO Quick Reply (use Rich Menu instead)
+    console.log(`[getSmartQuickReply] ${mode} mode - skipping Quick Reply (use Rich Menu)`);
+    return null;
   }
 }
 
