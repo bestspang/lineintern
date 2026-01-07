@@ -168,6 +168,180 @@ export async function createBusiness(
   return data;
 }
 
+export async function setDefaultBusiness(
+  lineUserId: string,
+  businessName: string,
+  locale: "th" | "en"
+): Promise<{ success: boolean; message: string }> {
+  // Find business by name (case insensitive partial match)
+  const { data: businesses } = await supabase
+    .from("receipt_businesses")
+    .select("*")
+    .eq("line_user_id", lineUserId);
+
+  if (!businesses || businesses.length === 0) {
+    return {
+      success: false,
+      message: locale === "th"
+        ? "❌ คุณยังไม่มีธุรกิจ กรุณาส่งใบเสร็จก่อนเพื่อสร้างธุรกิจ"
+        : "❌ You have no businesses yet. Please submit a receipt first.",
+    };
+  }
+
+  // Find matching business
+  const matchedBusiness = businesses.find((b: any) =>
+    b.name.toLowerCase().includes(businessName.toLowerCase())
+  );
+
+  if (!matchedBusiness) {
+    const businessList = businesses.map((b: any) => b.name).join(", ");
+    return {
+      success: false,
+      message: locale === "th"
+        ? `❌ ไม่พบธุรกิจชื่อ "${businessName}"\n\nธุรกิจของคุณ: ${businessList}`
+        : `❌ Business "${businessName}" not found.\n\nYour businesses: ${businessList}`,
+    };
+  }
+
+  // Clear current default
+  await supabase
+    .from("receipt_businesses")
+    .update({ is_default: false })
+    .eq("line_user_id", lineUserId);
+
+  // Set new default
+  await supabase
+    .from("receipt_businesses")
+    .update({ is_default: true })
+    .eq("id", matchedBusiness.id);
+
+  return {
+    success: true,
+    message: locale === "th"
+      ? `✅ ตั้งค่า "${matchedBusiness.name}" เป็นธุรกิจเริ่มต้นแล้ว`
+      : `✅ Set "${matchedBusiness.name}" as default business`,
+  };
+}
+
+export async function exportReceiptsForMonth(
+  lineUserId: string,
+  monthArg: string,
+  locale: "th" | "en"
+): Promise<{ success: boolean; message: string }> {
+  // Parse month argument - support formats: "2026-01", "01", "มกราคม", "january"
+  let year: number;
+  let month: number;
+  const now = getBangkokNow();
+
+  const thaiMonths: Record<string, number> = {
+    "มกราคม": 1, "กุมภาพันธ์": 2, "มีนาคม": 3, "เมษายน": 4,
+    "พฤษภาคม": 5, "มิถุนายน": 6, "กรกฎาคม": 7, "สิงหาคม": 8,
+    "กันยายน": 9, "ตุลาคม": 10, "พฤศจิกายน": 11, "ธันวาคม": 12,
+  };
+  const enMonths: Record<string, number> = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7,
+    "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+  };
+
+  if (!monthArg) {
+    // Default to current month
+    year = now.getFullYear();
+    month = now.getMonth() + 1;
+  } else if (/^\d{4}-\d{2}$/.test(monthArg)) {
+    // Format: 2026-01
+    [year, month] = monthArg.split("-").map(Number);
+  } else if (/^\d{2}$/.test(monthArg)) {
+    // Format: 01 (month only, assume current year)
+    year = now.getFullYear();
+    month = parseInt(monthArg, 10);
+  } else if (thaiMonths[monthArg]) {
+    year = now.getFullYear();
+    month = thaiMonths[monthArg];
+  } else if (enMonths[monthArg.toLowerCase()]) {
+    year = now.getFullYear();
+    month = enMonths[monthArg.toLowerCase()];
+  } else {
+    return {
+      success: false,
+      message: locale === "th"
+        ? `❌ รูปแบบเดือนไม่ถูกต้อง\n\nตัวอย่าง:\n• /export 2026-01\n• /export มกราคม\n• /export january`
+        : `❌ Invalid month format\n\nExamples:\n• /export 2026-01\n• /export january\n• /export jan`,
+    };
+  }
+
+  // Fetch receipts for the month
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+
+  const { data: receipts, error } = await supabase
+    .from("receipts")
+    .select("*")
+    .eq("line_user_id", lineUserId)
+    .neq("status", "deleted")
+    .gte("receipt_date", startDate)
+    .lte("receipt_date", endDate)
+    .order("receipt_date", { ascending: true });
+
+  if (error) {
+    console.error("[exportReceiptsForMonth] Error:", error);
+    return {
+      success: false,
+      message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ An error occurred",
+    };
+  }
+
+  if (!receipts || receipts.length === 0) {
+    const monthName = locale === "th"
+      ? Object.keys(thaiMonths).find((k) => thaiMonths[k] === month) || `${month}`
+      : Object.keys(enMonths).find((k) => enMonths[k] === month && k.length > 3) || `${month}`;
+
+    return {
+      success: true,
+      message: locale === "th"
+        ? `📋 ไม่พบใบเสร็จในเดือน${monthName} ${year}`
+        : `📋 No receipts found for ${monthName} ${year}`,
+    };
+  }
+
+  // Calculate summary
+  const totalAmount = receipts.reduce((sum: number, r: any) => sum + (r.total || 0), 0);
+  const categories: Record<string, { count: number; total: number }> = {};
+
+  receipts.forEach((r: any) => {
+    const cat = r.category || (locale === "th" ? "อื่นๆ" : "Other");
+    if (!categories[cat]) categories[cat] = { count: 0, total: 0 };
+    categories[cat].count++;
+    categories[cat].total += r.total || 0;
+  });
+
+  // Build summary message
+  const monthName = locale === "th"
+    ? Object.keys(thaiMonths).find((k) => thaiMonths[k] === month) || `${month}`
+    : Object.keys(enMonths).find((k) => enMonths[k] === month && k.length > 3) || `${month}`;
+
+  let categoryBreakdown = Object.entries(categories)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([cat, data]) => `• ${cat}: ฿${data.total.toLocaleString()} (${data.count})`)
+    .join("\n");
+
+  const message = locale === "th"
+    ? `📊 สรุปใบเสร็จ ${monthName} ${year}\n\n` +
+      `📄 จำนวน: ${receipts.length} ใบ\n` +
+      `💰 รวม: ฿${totalAmount.toLocaleString()}\n\n` +
+      `📁 แยกตามหมวดหมู่:\n${categoryBreakdown}\n\n` +
+      `💡 ดูรายละเอียดเพิ่มเติมที่ Menu → ใบเสร็จ`
+    : `📊 Receipt Summary - ${monthName} ${year}\n\n` +
+      `📄 Count: ${receipts.length} receipts\n` +
+      `💰 Total: ฿${totalAmount.toLocaleString()}\n\n` +
+      `📁 By Category:\n${categoryBreakdown}\n\n` +
+      `💡 View details in Menu → Receipts`;
+
+  return { success: true, message };
+}
+
 // =============================
 // Receipt Summary
 // =============================
@@ -456,6 +630,20 @@ export function buildReceiptSavedFlex(
 
   // Actions
   const actions: any[] = [];
+  
+  // Confirm button (postback)
+  actions.push({
+    type: "button",
+    style: hasWarnings ? "secondary" : "primary",
+    action: {
+      type: "postback",
+      label: locale === "th" ? "✓ ยืนยัน" : "✓ Confirm",
+      data: `action=confirm_receipt&receipt_id=${result.receiptId}`,
+      displayText: locale === "th" ? "ยืนยันใบเสร็จ" : "Confirm receipt",
+    },
+  });
+  
+  // Edit button - opens portal
   if (liffUrl && result.receiptId) {
     actions.push({
       type: "button",
@@ -463,17 +651,20 @@ export function buildReceiptSavedFlex(
       action: {
         type: "uri",
         label: locale === "th" ? "แก้ไข" : "Edit",
-        uri: `${liffUrl}/receipts/edit/${result.receiptId}`,
+        uri: `${liffUrl}/portal/receipts/${result.receiptId}`,
       },
     });
   }
+  
+  // Delete button (postback)
   actions.push({
     type: "button",
     style: "secondary",
     action: {
-      type: "message",
-      label: locale === "th" ? "สรุปเดือนนี้" : "This Month",
-      text: "/receiptsummary",
+      type: "postback",
+      label: locale === "th" ? "🗑 ลบ" : "🗑 Delete",
+      data: `action=delete_receipt&receipt_id=${result.receiptId}`,
+      displayText: locale === "th" ? "ลบใบเสร็จ" : "Delete receipt",
     },
   });
 
