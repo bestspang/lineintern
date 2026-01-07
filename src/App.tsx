@@ -150,9 +150,10 @@ const App = () => (
               
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={
-                <PortalProvider>
-                  <PortalLayout>
-                    <Routes>
+                <LiffProvider>
+                  <PortalProvider>
+                    <PortalLayout>
+                      <Routes>
                       <Route path="/" element={<PortalHome />} />
                       <Route path="/my-history" element={<MyWorkHistory />} />
                       <Route path="/my-leave" element={<MyLeaveBalance />} />
@@ -175,10 +176,11 @@ const App = () => (
                       <Route path="/receipts/:id" element={<ReceiptDetail />} />
                       <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
                       <Route path="/receipt-new" element={<ReceiptNew />} />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </PortalLayout>
-                </PortalProvider>
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </PortalLayout>
+                  </PortalProvider>
+                </LiffProvider>
               } />
 
               <Route path="/*" element={

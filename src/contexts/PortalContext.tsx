@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useLiff } from './LiffContext';
 
 interface EmployeeRole {
   display_name_th: string;
@@ -66,10 +67,19 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<'th' | 'en'>('th');
   const [token, setToken] = useState<string | null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null);
+  const [authMethod, setAuthMethod] = useState<'token' | 'liff' | null>(null);
   
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasShownWarning = useRef(false);
+
+  // Get LIFF context - may be undefined if not wrapped in LiffProvider
+  let liffContext: { isReady: boolean; isLoggedIn: boolean; profile: { userId: string } | null } | null = null;
+  try {
+    liffContext = useLiff();
+  } catch {
+    // Not in LiffProvider context, that's okay
+  }
 
   const validateToken = useCallback(async (tokenValue: string, isRefresh = false) => {
     try {
@@ -94,6 +104,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setEmployee(data.employee);
       setMenuItems(data.menuItems || []);
       setToken(tokenValue);
+      setAuthMethod('token');
       
       // Set session expiry time
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -110,15 +121,63 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const refreshData = useCallback(async () => {
-    if (token) {
-      await validateToken(token, true);
+  const validateLiffUser = useCallback(async (lineUserId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('[Portal] Validating via LIFF User ID');
+
+      const { data, error: validateError } = await supabase.functions.invoke(
+        'employee-liff-validate',
+        {
+          body: { line_user_id: lineUserId }
+        }
+      );
+
+      if (validateError) {
+        console.error('[Portal] LIFF validation error:', validateError);
+        setError('ไม่สามารถเข้าสู่ระบบได้');
+        setLoading(false);
+        return false;
+      }
+
+      if (!data?.success) {
+        setError(data?.message || data?.error || 'ไม่พบข้อมูลพนักงาน');
+        setLoading(false);
+        return false;
+      }
+
+      setEmployee(data.employee);
+      setMenuItems(data.menuItems || []);
+      setAuthMethod('liff');
+      
+      // LIFF sessions don't expire the same way, but set a long session
+      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+      setSessionExpiresAt(expiresAt);
+      hasShownWarning.current = false;
+      
+      setLoading(false);
+      return true;
+    } catch (err) {
+      console.error('[Portal] Error validating LIFF user:', err);
+      setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
+      setLoading(false);
+      return false;
     }
-  }, [token, validateToken]);
+  }, []);
+
+  const refreshData = useCallback(async () => {
+    if (authMethod === 'token' && token) {
+      await validateToken(token, true);
+    } else if (authMethod === 'liff' && liffContext?.profile?.userId) {
+      await validateLiffUser(liffContext.profile.userId);
+    }
+  }, [authMethod, token, liffContext?.profile?.userId, validateToken, validateLiffUser]);
 
   // Setup auto-refresh and warning timers
   useEffect(() => {
-    if (!token || !sessionExpiresAt) return;
+    if (!employee || !sessionExpiresAt) return;
 
     // Clear existing timers
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -135,51 +194,72 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       refreshData();
     }, timeUntilRefresh);
 
-    // Set up warning timer (5 minutes before expiry)
-    warningTimerRef.current = setTimeout(() => {
-      if (!hasShownWarning.current) {
-        hasShownWarning.current = true;
-        toast.warning(
-          locale === 'th' 
-            ? 'Session ของคุณจะหมดอายุใน 5 นาที' 
-            : 'Your session will expire in 5 minutes',
-          {
-            duration: 10000,
-            action: {
-              label: locale === 'th' ? 'ต่ออายุ' : 'Refresh',
-              onClick: () => refreshData(),
-            },
-          }
-        );
-      }
-    }, timeUntilWarning);
+    // Set up warning timer (5 minutes before expiry) - only for token auth
+    if (authMethod === 'token') {
+      warningTimerRef.current = setTimeout(() => {
+        if (!hasShownWarning.current) {
+          hasShownWarning.current = true;
+          toast.warning(
+            locale === 'th' 
+              ? 'Session ของคุณจะหมดอายุใน 5 นาที' 
+              : 'Your session will expire in 5 minutes',
+            {
+              duration: 10000,
+              action: {
+                label: locale === 'th' ? 'ต่ออายุ' : 'Refresh',
+                onClick: () => refreshData(),
+              },
+            }
+          );
+        }
+      }, timeUntilWarning);
+    }
 
     return () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
     };
-  }, [token, sessionExpiresAt, locale, refreshData]);
+  }, [employee, sessionExpiresAt, authMethod, locale, refreshData]);
 
-  // Initial token validation
+  // Initial authentication
   useEffect(() => {
     const tokenFromUrl = searchParams.get('token');
     const storedToken = sessionStorage.getItem('portal_token');
-    
     const tokenToUse = tokenFromUrl || storedToken;
 
-    if (!tokenToUse) {
-      setError('Token is required');
-      setLoading(false);
+    // Priority 1: Use token from URL or session storage
+    if (tokenToUse) {
+      console.log('[Portal] Authenticating via token');
+      if (tokenFromUrl) {
+        sessionStorage.setItem('portal_token', tokenFromUrl);
+      }
+      validateToken(tokenToUse);
       return;
     }
 
-    // Store token in session storage for navigation within portal
-    if (tokenFromUrl) {
-      sessionStorage.setItem('portal_token', tokenFromUrl);
+    // Priority 2: Use LIFF authentication if available
+    if (liffContext) {
+      if (!liffContext.isReady) {
+        // Wait for LIFF to be ready
+        console.log('[Portal] Waiting for LIFF to be ready...');
+        return;
+      }
+
+      if (liffContext.isLoggedIn && liffContext.profile?.userId) {
+        console.log('[Portal] Authenticating via LIFF');
+        validateLiffUser(liffContext.profile.userId);
+        return;
+      }
     }
 
-    validateToken(tokenToUse);
-  }, [searchParams, validateToken]);
+    // No authentication method available
+    // Only show error if LIFF is ready (or not available)
+    if (!liffContext || liffContext.isReady) {
+      console.log('[Portal] No authentication method available');
+      setError('กรุณาเข้าใช้งานผ่าน LINE หรือลิงก์ที่ได้รับ');
+      setLoading(false);
+    }
+  }, [searchParams, validateToken, validateLiffUser, liffContext?.isReady, liffContext?.isLoggedIn, liffContext?.profile?.userId]);
 
   // Determine role permissions
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
