@@ -44,11 +44,6 @@ export default function LiffSettingsCard() {
   const { data: liffInfo, isLoading: isLoadingLiff, refetch: refetchLiff, isRefetching } = useQuery({
     queryKey: ['liff-settings'],
     queryFn: async (): Promise<LiffInfo> => {
-      const { data, error } = await supabase.functions.invoke('liff-settings', {
-        body: null,
-      });
-
-      // Add action as query param by using a direct fetch
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/liff-settings?action=get`,
         {
@@ -65,6 +60,7 @@ export default function LiffSettingsCard() {
     },
     enabled: !!liffIdConfig,
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: false, // Don't retry on error
   });
 
   // Update endpoint URL mutation
@@ -173,6 +169,48 @@ export default function LiffSettingsCard() {
     );
   }
 
+  // Show LIFF not found or ownership error
+  if (liffInfo?.error === 'liff_not_found' || liffInfo?.message?.includes('not yours')) {
+    return (
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Link2 className="h-4 w-4 sm:h-5 sm:w-5" />
+            LIFF Settings
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            ตั้งค่า LIFF Endpoint URL จากที่นี่
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm text-muted-foreground">LIFF ID:</span>
+            <code className="text-xs bg-muted px-2 py-1 rounded">{liffIdConfig}</code>
+          </div>
+          
+          <Alert variant="destructive" className="border-red-500/50">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-medium mb-2">⚠️ LIFF Channel ไม่ตรงกัน</p>
+              <p className="text-sm mb-3">
+                LINE Login credentials ที่กรอกไว้ ไม่ใช่ Channel ที่เป็นเจ้าของ LIFF App นี้
+              </p>
+              <div className="text-xs space-y-1 bg-background/50 p-2 rounded">
+                <p><strong>วิธีแก้:</strong></p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>ไปที่ <a href="https://developers.line.biz/console/" target="_blank" className="underline">LINE Developers Console</a></li>
+                  <li>หา Channel ที่มี LIFF ID: <code className="bg-muted px-1">{liffIdConfig}</code></li>
+                  <li>Copy Channel ID และ Channel Secret จาก Channel นั้น</li>
+                  <li>กรอกใน <a href="/settings/api-keys" className="underline">API Keys</a></li>
+                </ol>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Show missing credentials warning
   if (liffInfo?.error === 'missing_credentials') {
     return (
@@ -203,7 +241,7 @@ export default function LiffSettingsCard() {
                 </a>
               </p>
               <p className="text-xs text-muted-foreground">
-                ข้อมูลนี้อยู่ใน LINE Developers Console → LINE Login Channel (ไม่ใช่ Messaging API)
+                ข้อมูลนี้อยู่ใน LINE Developers Console → LINE Login Channel (ต้องเป็น Channel เดียวกับที่สร้าง LIFF)
               </p>
             </AlertDescription>
           </Alert>
