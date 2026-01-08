@@ -20,8 +20,11 @@ import {
   TrendingUp, TrendingDown, Calendar as CalendarIcon, Store, Target, Users, Package, 
   RefreshCw, ChevronRight, ChevronLeft, Award, Citrus, IceCream, AlertTriangle, 
   Trophy, Medal, ArrowUpRight, ArrowDownRight, Zap, BarChart3, PieChartIcon,
-  Lightbulb, Clock, Activity
+  Lightbulb, Clock, Activity, Upload, FileText, CheckCircle2, XCircle
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface BranchReport {
@@ -79,11 +82,25 @@ function linearRegression(data: { x: number; y: number }[]): { slope: number; in
   return { slope, intercept };
 }
 
+interface ImportPreview {
+  totalReports: number;
+  byBranch: Record<string, number>;
+  dateRange: { from: string; to: string };
+  sampleReports: any[];
+}
+
 export default function BranchReport() {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
+  
+  // Import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; inserted: number; total: number; errors: string[] } | null>(null);
 
   // Calculate date range based on selected time range (fetch all data, filter later)
   const { startDate, endDate } = useMemo(() => {
@@ -173,6 +190,73 @@ export default function BranchReport() {
       const nextDates = dates.filter(d => d > selectedDateStr);
       if (nextDates.length > 0) setSelectedDate(parseISO(nextDates[0]));
     }
+  };
+
+  // ============ IMPORT HANDLERS ============
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setImportFile(file);
+    setImportPreview(null);
+    setImportResult(null);
+    setIsImporting(true);
+    
+    try {
+      const content = await file.text();
+      const response = await supabase.functions.invoke('import-line-chat', {
+        body: { content, dryRun: true }
+      });
+      
+      if (response.error) throw new Error(response.error.message);
+      
+      if (response.data?.summary) {
+        setImportPreview(response.data.summary);
+      }
+    } catch (error) {
+      console.error('Preview error:', error);
+      toast.error('ไม่สามารถอ่านไฟล์ได้');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    
+    setIsImporting(true);
+    setImportResult(null);
+    
+    try {
+      const content = await importFile.text();
+      const response = await supabase.functions.invoke('import-line-chat', {
+        body: { content, dryRun: false }
+      });
+      
+      if (response.error) throw new Error(response.error.message);
+      
+      setImportResult({
+        success: true,
+        inserted: response.data?.inserted || 0,
+        total: response.data?.total || 0,
+        errors: response.data?.errors || [],
+      });
+      
+      toast.success(`นำเข้าสำเร็จ ${response.data?.inserted || 0} รายการ`);
+      refetch();
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error('นำเข้าข้อมูลไม่สำเร็จ');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const resetImportDialog = () => {
+    setImportFile(null);
+    setImportPreview(null);
+    setImportResult(null);
+    setIsImporting(false);
   };
 
   // ============ OVERVIEW STATS ============
@@ -623,6 +707,107 @@ export default function BranchReport() {
           <Button variant="outline" size="icon" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
+          
+          {/* Import Dialog */}
+          <Dialog open={importDialogOpen} onOpenChange={(open) => { setImportDialogOpen(open); if (!open) resetImportDialog(); }}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                นำเข้าข้อมูล
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>นำเข้าข้อมูลจาก LINE Chat Export</DialogTitle>
+                <DialogDescription>
+                  อัปโหลดไฟล์ .txt ที่ export จาก LINE เพื่อนำเข้ารายงานสาขา
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                {/* File Input */}
+                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                  <input
+                    type="file"
+                    accept=".txt"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="chat-file"
+                  />
+                  <label htmlFor="chat-file" className="cursor-pointer">
+                    <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {importFile ? importFile.name : 'คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวาง'}
+                    </p>
+                  </label>
+                </div>
+                
+                {/* Loading */}
+                {isImporting && !importResult && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    กำลังประมวลผล...
+                  </div>
+                )}
+                
+                {/* Preview */}
+                {importPreview && !importResult && (
+                  <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      พบ {importPreview.totalReports} รายงาน
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ช่วงเวลา: {importPreview.dateRange.from} ถึง {importPreview.dateRange.to}
+                    </div>
+                    <div className="text-xs space-y-1">
+                      {Object.entries(importPreview.byBranch).map(([branch, count]) => (
+                        <div key={branch} className="flex justify-between">
+                          <span>{branch}</span>
+                          <span>{count} รายการ</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Result */}
+                {importResult && (
+                  <div className={`p-4 rounded-lg ${importResult.success ? 'bg-green-50 dark:bg-green-950' : 'bg-red-50 dark:bg-red-950'}`}>
+                    <div className="flex items-center gap-2">
+                      {importResult.success ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-500" />
+                      )}
+                      <span className="font-medium">
+                        นำเข้าสำเร็จ {importResult.inserted}/{importResult.total} รายการ
+                      </span>
+                    </div>
+                    {importResult.errors.length > 0 && (
+                      <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                        {importResult.errors.slice(0, 3).map((e, i) => (
+                          <div key={i}>• {e}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Actions */}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                    ปิด
+                  </Button>
+                  {importPreview && !importResult && (
+                    <Button onClick={handleImport} disabled={isImporting}>
+                      {isImporting ? 'กำลังนำเข้า...' : `นำเข้า ${importPreview.totalReports} รายการ`}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
