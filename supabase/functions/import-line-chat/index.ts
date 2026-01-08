@@ -5,7 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Branch code to name mapping (normalized)
+// Branch detection by name patterns (more reliable than code)
+const BRANCH_PATTERNS = [
+  { pattern: /อีสต์วิลล์|อีสวิลล์|eastville|east\s*ville/i, code: 'CED', name: 'เซ็นทรัลอีสต์วิลล์' },
+  { pattern: /ภูเก็ต|phuket/i, code: 'CTP', name: 'เซ็นทรัลภูเก็ต' },
+  { pattern: /สยาม|siam|sqc/i, code: 'SQC', name: 'สยามเซ็นเตอร์' },
+  { pattern: /ควอเท|emq|เอ็ม/i, code: 'EMQ', name: 'เอ็มควอเทียร์' },
+  { pattern: /พาร์ค|ปาร์ค|ดุสิต|dusit|park|cdp/i, code: 'CDP', name: 'เซ็นทรัลปาร์ค ดุสิต' },
+];
+
+// Branch code mapping (fallback)
 const BRANCH_MAPPING: Record<string, { code: string; name: string }> = {
   'CDP': { code: 'CDP', name: 'เซ็นทรัลปาร์ค ดุสิต' },
   'SQC': { code: 'SQC', name: 'สยามเซ็นเตอร์' },
@@ -32,46 +41,32 @@ interface ParsedReport {
 
 // Parse Thai year format (68 -> 2025, 69 -> 2026)
 function parseThaiDate(dateStr: string): string | null {
-  // Format: DD/MM/YY (Thai year)
-  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})/);
+  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
   if (!match) return null;
   
   const day = parseInt(match[1], 10);
   const month = parseInt(match[2], 10);
-  const thaiYear = parseInt(match[3], 10);
+  let year = parseInt(match[3], 10);
   
-  // Convert Thai year to Western year
-  // 68 = 2568 = 2025, 69 = 2569 = 2026
-  let year: number;
-  if (thaiYear >= 60 && thaiYear <= 99) {
-    year = 1900 + thaiYear + 543; // Buddhist era calculation: 68 -> 2025
-    if (year > 2500) year -= 543; // Adjust if needed
-    // Actually: 68 -> 2025, 69 -> 2026
-    year = thaiYear <= 30 ? 2000 + thaiYear : 1900 + thaiYear + 57;
-  } else if (thaiYear <= 30) {
-    year = 2000 + thaiYear;
-  } else {
-    year = 2000 + thaiYear;
+  // Handle Thai Buddhist year (2568 = 2025) or short year (68 = 2025)
+  if (year >= 2500) {
+    year = year - 543; // Buddhist to Western
+  } else if (year >= 60 && year <= 99) {
+    year = 2000 + (year - 43); // 68 -> 2025
+  } else if (year <= 30) {
+    year = 2000 + year; // 25 -> 2025
   }
-  
-  // Fix: 68 = 2025, 69 = 2026
-  if (thaiYear === 68) year = 2025;
-  else if (thaiYear === 69) year = 2026;
-  else if (thaiYear >= 60) year = 2000 + (thaiYear - 43); // 68-43=25 -> 2025
-  else year = 2000 + thaiYear;
   
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   
-  const monthStr = month.toString().padStart(2, '0');
-  const dayStr = day.toString().padStart(2, '0');
-  
-  return `${year}-${monthStr}-${dayStr}`;
+  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
-// Parse number from text (handles commas)
+// Parse number from text (handles commas and trailing characters like -, .-)
 function parseNumber(text: string): number | null {
   if (!text) return null;
-  const cleaned = text.replace(/,/g, '').replace(/[^\d.-]/g, '');
+  // Remove commas, trailing dash, .-, and other non-numeric chars except . and -
+  const cleaned = text.replace(/,/g, '').replace(/\.?-$/, '').replace(/[^\d.-]/g, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
@@ -88,10 +83,29 @@ function cleanReportText(text: string): string {
   return cleaned;
 }
 
-// Extract branch code from text
-function extractBranchCode(text: string): string | null {
-  const match = text.match(/Code\s*สาขา\s*:\s*(\w+)/i);
-  return match ? match[1].toUpperCase() : null;
+// Detect branch from name patterns (more reliable than code)
+function detectBranchFromText(text: string): { code: string; name: string } | null {
+  // First try to extract branch name from the field "ชื่อสาขา : XXX"
+  const branchNameMatch = text.match(/ชื่อสาขา\s*:?\s*([^\n\r]+)/i);
+  const searchText = branchNameMatch ? branchNameMatch[1] : text;
+  
+  // Try each pattern
+  for (const { pattern, code, name } of BRANCH_PATTERNS) {
+    if (pattern.test(searchText)) {
+      return { code, name };
+    }
+  }
+  
+  // Fallback: try to extract code and use mapping
+  const codeMatch = text.match(/Code\s*สาขา\s*:?\s*(\w+)/i);
+  if (codeMatch) {
+    const code = codeMatch[1].toUpperCase();
+    if (BRANCH_MAPPING[code]) {
+      return BRANCH_MAPPING[code];
+    }
+  }
+  
+  return null;
 }
 
 // Parse a single report block
@@ -99,12 +113,13 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
   // Clean the text first
   const cleanedText = cleanReportText(text);
   
-  const branchCode = extractBranchCode(cleanedText);
-  if (!branchCode || !BRANCH_MAPPING[branchCode]) return null;
+  // Detect branch from name patterns (more reliable than code)
+  const branch = detectBranchFromText(cleanedText);
+  if (!branch) return null;
   
   // Extract date
-  const dateMatch = cleanedText.match(/(?:ว(?:ันที่)?\s*:?\s*)(\d{1,2}\/\d{1,2}\/\d{2})/i) ||
-                    cleanedText.match(/Date\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2})/i);
+  const dateMatch = cleanedText.match(/(?:ว(?:ันที่)?\s*:?\s*)(\d{1,2}\/\d{1,2}\/\d{2,4})/i) ||
+                    cleanedText.match(/Date\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   let reportDate = dateMatch ? parseThaiDate(dateMatch[1]) : null;
   
   // If date parsing failed, use header date
@@ -114,28 +129,28 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
   
   if (!reportDate) return null;
   
-  // Extract sales - handle newline after label: "Sales:\n1,234" or "Sales: 1,234"
-  const salesMatch = cleanedText.match(/Sales\s*:?\s*[\n\r]?\s*([\d,]+)/i);
+  // Extract sales - handle various formats: "Sales: 1,234", "Sales:\n1,234", "Sales 1234-"
+  const salesMatch = cleanedText.match(/Sales\s*:?\s*[\n\r]?\s*([\d,]+)(?:\s*\.?-)?/i);
   const sales = salesMatch ? parseNumber(salesMatch[1]) : null;
   
-  // Extract sales target - handle newline after label
-  const targetMatch = cleanedText.match(/Sales\s*Target\s*:?\s*[\n\r]?\s*([\d,]+)/i);
+  // Extract sales target - handle: "Sales Target: 8,000", "Sales Target:\n3,515-"
+  const targetMatch = cleanedText.match(/Sales\s*Target\s*:?\s*[\n\r]?\s*([\d,]+)(?:\s*\.?-)?/i);
   const salesTarget = targetMatch ? parseNumber(targetMatch[1]) : null;
   
-  // Extract diff target (number and percentage) - handle newline
-  const diffMatch = cleanedText.match(/Diff\s*[Tt]arget\s*:?\s*[\n\r]?\s*([+-]?[\d,]+)\s*\/?\s*([+-]?[\d.]+)\s*%?/i);
+  // Extract diff target (number and percentage)
+  const diffMatch = cleanedText.match(/Diff\s*[Tt]arget\s*:?\s*[\n\r]?\s*([+-]?[\d,]+)\s*[\/|]?\s*([+-]?[\d.]+)\s*%?/i);
   const diffTarget = diffMatch ? parseNumber(diffMatch[1]) : null;
   const diffTargetPercent = diffMatch ? parseNumber(diffMatch[2]) : null;
   
-  // Extract TC - handle newline
+  // Extract TC
   const tcMatch = cleanedText.match(/TC\s*:?\s*[\n\r]?\s*(\d+)/i);
   const tc = tcMatch ? parseInt(tcMatch[1], 10) : null;
   
   // Extract cup sizes
   const sizeSMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Ss]\s*[=:]\s*(\d+)/i) ||
-                     cleanedText.match(/Size\s*S\s*\|?\s*(\d+)/i);
+                     cleanedText.match(/Size\s*S\s*[|:]?\s*(\d+)/i);
   const sizeMMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Mm]\s*[=:]\s*(\d+)/i) ||
-                     cleanedText.match(/Size\s*M\s*\|?\s*(\d+)/i);
+                     cleanedText.match(/Size\s*M\s*[|:]?\s*(\d+)/i);
   const cupSizeS = sizeSMatch ? parseInt(sizeSMatch[1], 10) : null;
   const cupSizeM = sizeMMatch ? parseInt(sizeMMatch[1], 10) : null;
   
@@ -144,7 +159,7 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
   const topSlurpee: string[] = [];
   
   // Look for lemonade/slurpee items
-  const lemonadeMatches = cleanedText.matchAll(/\d\.\s*([A-Za-z\s]+Lemon(?:ade|nade)?)/gi);
+  const lemonadeMatches = cleanedText.matchAll(/\d\.\s*([A-Za-z\s]+(?:Lemon(?:ade|nade)?|Slurpee|Slush))/gi);
   for (const match of lemonadeMatches) {
     const product = match[1].trim();
     if (product.toLowerCase().includes('slurp') || product.toLowerCase().includes('slush')) {
@@ -155,8 +170,6 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
       topLemonade.push(product);
     }
   }
-  
-  const branch = BRANCH_MAPPING[branchCode];
   
   return {
     report_date: reportDate,
@@ -171,13 +184,12 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
     cup_size_m: cupSizeM,
     top_lemonade: topLemonade,
     top_slurpee: topSlurpee,
-    raw_message_text: text.substring(0, 2000), // Keep original text
+    raw_message_text: text.substring(0, 2000),
   };
 }
 
-// Parse chat header date (format: \"Sun, 01/04/2026\" or \"# Tue, 09/30/2025\")
+// Parse chat header date (format: "Sun, 01/04/2026" or "# Tue, 09/30/2025")
 function parseChatHeaderDate(line: string): string | null {
-  // Format: \"# Tue, 09/30/2025\" or \"Sun, 01/04/2026\"
   const match = line.match(/(?:#\s*)?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*(\d{2})\/(\d{2})\/(\d{4})/);
   if (!match) return null;
   
@@ -197,6 +209,13 @@ function parseLineChatExport(content: string): ParsedReport[] {
   let currentBlock = '';
   let inReportBlock = false;
   
+  // Pattern to detect start of a report block
+  const reportStartPatterns = [
+    /Code\s*สาขา/i,
+    /ชื่อสาขา\s*:/i,
+    /Sales\s*:?\s*[\n\r]?\s*[\d,]+/i,
+  ];
+  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
@@ -208,7 +227,9 @@ function parseLineChatExport(content: string): ParsedReport[] {
     }
     
     // Detect start of a report block
-    if (line.includes('Code') && line.toLowerCase().includes('สาขา')) {
+    const isReportStart = reportStartPatterns.some(p => p.test(line));
+    
+    if (isReportStart || (line.includes('Code') && line.toLowerCase().includes('สาขา'))) {
       // If we were already in a block, parse it first
       if (inReportBlock && currentBlock.trim()) {
         const report = parseReportBlock(currentBlock, currentHeaderDate || undefined);
@@ -262,10 +283,10 @@ function parseLineChatExport(content: string): ParsedReport[] {
     if (inReportBlock) {
       currentBlock += line + '\n';
       
-      // End block on certain patterns
+      // End block on certain patterns (but allow more lines for content)
       if (line.includes('[Photo]') || line.includes('[Sticker]') || 
-          line.includes('PM ') || line.includes('AM ') ||
-          (line.startsWith('#') && !line.includes('Merchandise'))) {
+          (line.match(/^\d{1,2}:\d{2}(?:AM|PM)\s/) && !line.includes('Sales')) ||
+          (line.startsWith('#') && !line.includes('Merchandise') && !line.includes('Top'))) {
         const report = parseReportBlock(currentBlock, currentHeaderDate || undefined);
         if (report) reports.push(report);
         currentBlock = '';
@@ -314,6 +335,11 @@ Deno.serve(async (req) => {
     const reports = parseLineChatExport(content);
     
     console.log(`Found ${reports.length} reports`);
+    
+    // Log sample for debugging
+    if (reports.length > 0) {
+      console.log('Sample report:', JSON.stringify(reports[0]));
+    }
 
     if (dryRun) {
       // Return preview without saving
@@ -382,7 +408,7 @@ Deno.serve(async (req) => {
       dryRun: false,
       inserted,
       total: reports.length,
-      errors: errors.slice(0, 10), // Limit error messages
+      errors: errors.slice(0, 10),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -398,4 +424,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
