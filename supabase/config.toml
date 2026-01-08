@@ -215,3 +215,6 @@ verify_jwt = false
 
 [functions.branch-report-backfill]
 verify_jwt = false
+
+[functions.import-line-chat]
+verify_jwt = false
