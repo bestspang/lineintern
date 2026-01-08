@@ -7821,6 +7821,19 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
   const locale: "th" | "en" = "th";
   
   try {
+    // Fetch reply settings
+    const { data: replySettings } = await supabase
+      .from('receipt_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['reply_on_success', 'reply_on_duplicate', 'reply_on_error']);
+
+    const replyConfig = {
+      onSuccess: (replySettings?.find(s => s.setting_key === 'reply_on_success')?.setting_value as { enabled?: boolean })?.enabled ?? true,
+      onDuplicate: (replySettings?.find(s => s.setting_key === 'reply_on_duplicate')?.setting_value as { enabled?: boolean })?.enabled ?? true,
+      onError: (replySettings?.find(s => s.setting_key === 'reply_on_error')?.setting_value as { enabled?: boolean })?.enabled ?? true,
+    };
+    console.log(`[handleReceiptImageInGroup] Reply config: ${JSON.stringify(replyConfig)}`);
+
     // Check quota first
     const quota = await checkReceiptQuota(lineUserId);
     if (!quota.allowed) {
@@ -7867,17 +7880,29 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
     
     if (!result.success) {
       if (result.error === "quota_exceeded") {
-        const quotaStatus = await checkReceiptQuota(lineUserId);
-        const flexMessage = buildQuotaExceededFlex(quotaStatus, locale);
-        await sendFlexMessage(event.replyToken, flexMessage);
+        if (replyConfig.onError) {
+          const quotaStatus = await checkReceiptQuota(lineUserId);
+          const flexMessage = buildQuotaExceededFlex(quotaStatus, locale);
+          await sendFlexMessage(event.replyToken, flexMessage);
+        } else {
+          console.log(`[handleReceiptImageInGroup] Reply on error disabled - not sending quota exceeded message`);
+        }
       } else if (result.error === "duplicate") {
-        await replyToLine(event.replyToken, locale === "th" 
-          ? "⚠️ พบใบเสร็จนี้แล้วในระบบ" 
-          : "⚠️ This receipt has already been submitted");
+        if (replyConfig.onDuplicate) {
+          await replyToLine(event.replyToken, locale === "th" 
+            ? "⚠️ พบใบเสร็จนี้แล้วในระบบ" 
+            : "⚠️ This receipt has already been submitted");
+        } else {
+          console.log(`[handleReceiptImageInGroup] Reply on duplicate disabled - not sending duplicate message`);
+        }
       } else {
-        await replyToLine(event.replyToken, locale === "th"
-          ? `❌ เกิดข้อผิดพลาด: ${result.message}`
-          : `❌ Error: ${result.message}`);
+        if (replyConfig.onError) {
+          await replyToLine(event.replyToken, locale === "th"
+            ? `❌ เกิดข้อผิดพลาด: ${result.message}`
+            : `❌ Error: ${result.message}`);
+        } else {
+          console.log(`[handleReceiptImageInGroup] Reply on error disabled - not sending error message`);
+        }
       }
       return;
     }
@@ -7901,14 +7926,19 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
     const sameGroupApproval = await isSameGroupApproval(lineGroupId);
     
     if (sameGroupApproval) {
-      // If same group is approver, send approval flex directly
+      // If same group is approver, send approval flex directly (always send for approvers)
       console.log(`[handleReceiptImageInGroup] Same-group approval - sending approver flex`);
       const approverFlex = buildApproverFlexMessage(result, submitterInfo, locale, LIFF_URL, imageUrl || undefined);
       await sendFlexMessage(event.replyToken, approverFlex);
     } else {
-      // Send success message to submitter
-      const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
-      await sendFlexMessage(event.replyToken, savedFlex);
+      // Check if reply on success is enabled
+      if (replyConfig.onSuccess) {
+        // Send success message to submitter
+        const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
+        await sendFlexMessage(event.replyToken, savedFlex);
+      } else {
+        console.log(`[handleReceiptImageInGroup] Reply on success disabled - not sending confirmation`);
+      }
       
       // Send approval notifications to approvers (async, don't block reply)
       if (result.receiptId) {
@@ -7921,6 +7951,7 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
     console.log(`[handleReceiptImageInGroup] Receipt saved: ${result.receiptId}`);
   } catch (error) {
     console.error(`[handleReceiptImageInGroup] Error:`, error);
+    // Always send error message for unexpected errors regardless of settings
     await replyToLine(event.replyToken, locale === "th"
       ? "❌ เกิดข้อผิดพลาดในการประมวลผลใบเสร็จ"
       : "❌ Error processing receipt");
