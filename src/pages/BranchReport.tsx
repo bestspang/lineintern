@@ -45,7 +45,7 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3
 
 export default function BranchReport() {
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'month'>('30d');
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all'); // Now uses branch_name instead of code
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
   // Calculate date range
@@ -89,8 +89,9 @@ export default function BranchReport() {
         .lte('report_date', endDate)
         .order('report_date', { ascending: false });
       
+      // Filter by branch_name (not branch_code) to handle same code different branches
       if (selectedBranch !== 'all') {
-        query = query.eq('branch_code', selectedBranch);
+        query = query.eq('branch_name', selectedBranch);
       }
       
       const { data, error } = await query;
@@ -99,12 +100,16 @@ export default function BranchReport() {
     },
   });
 
-  // Get unique branches
+  // Get unique branches by branch_name (handles same code, different branch names)
   const branches = useMemo(() => {
     if (!reports) return [];
-    const uniqueBranches = new Map<string, string>();
-    reports.forEach(r => uniqueBranches.set(r.branch_code, r.branch_name));
-    return Array.from(uniqueBranches.entries()).map(([code, name]) => ({ code, name }));
+    const uniqueBranches = new Map<string, { code: string; name: string }>();
+    reports.forEach(r => {
+      if (!uniqueBranches.has(r.branch_name)) {
+        uniqueBranches.set(r.branch_name, { code: r.branch_code, name: r.branch_name });
+      }
+    });
+    return Array.from(uniqueBranches.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'));
   }, [reports]);
 
   // Calculate summary stats
@@ -346,14 +351,14 @@ export default function BranchReport() {
           </Select>
           
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[220px]">
               <Store className="h-4 w-4 mr-2" />
               <SelectValue placeholder="ทุกสาขา" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">ทุกสาขา</SelectItem>
+              <SelectItem value="all">ทุกสาขา ({branches.length})</SelectItem>
               {branches.map(b => (
-                <SelectItem key={b.code} value={b.code}>
+                <SelectItem key={b.name} value={b.name}>
                   {b.code} - {b.name}
                 </SelectItem>
               ))}

@@ -275,7 +275,7 @@ serve(async (req) => {
           raw_message_text: msg.text,
           parsed_at: new Date().toISOString(),
         }, {
-          onConflict: 'report_date,branch_code',
+          onConflict: 'report_date,branch_code,branch_name',
           ignoreDuplicates: false,
         });
 
