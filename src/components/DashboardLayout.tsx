@@ -92,6 +92,7 @@ const navigationGroups = [
     icon: Gauge,
     items: [
       { title: 'Overview', titleTh: 'ภาพรวม', url: '/', icon: LayoutDashboard },
+      { title: 'Branch Report', titleTh: 'รายงานสาขา', url: '/branch-report', icon: TrendingUp },
       { title: 'Health Monitoring', titleTh: 'ตรวจสอบสุขภาพ', url: '/health-monitoring', icon: Activity },
       { title: 'Config Validator', titleTh: 'ตรวจสอบการตั้งค่า', url: '/config-validator', icon: Settings },
     ],
