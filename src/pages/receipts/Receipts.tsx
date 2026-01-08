@@ -346,6 +346,7 @@ export default function Receipts() {
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="retake_requested">Retake</SelectItem>
+                <SelectItem value="not_receipt">Not Receipt</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -426,6 +427,8 @@ export default function Receipts() {
                         <Badge variant="destructive">Rejected</Badge>
                       ) : receipt.approval_status === 'retake_requested' ? (
                         <Badge className="bg-amber-100 text-amber-700">Retake</Badge>
+                      ) : receipt.approval_status === 'not_receipt' ? (
+                        <Badge className="bg-gray-100 text-gray-700">📷 Not Receipt</Badge>
                       ) : (
                         <Badge variant="outline">Pending</Badge>
                       )}
