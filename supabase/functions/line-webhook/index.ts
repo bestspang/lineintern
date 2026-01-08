@@ -7825,12 +7825,13 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
     const { data: replySettings } = await supabase
       .from('receipt_settings')
       .select('setting_key, setting_value')
-      .in('setting_key', ['reply_on_success', 'reply_on_duplicate', 'reply_on_error']);
+      .in('setting_key', ['reply_on_success', 'reply_on_duplicate', 'reply_on_error', 'reply_on_selfie_rejected']);
 
     const replyConfig = {
       onSuccess: (replySettings?.find(s => s.setting_key === 'reply_on_success')?.setting_value as { enabled?: boolean })?.enabled ?? true,
       onDuplicate: (replySettings?.find(s => s.setting_key === 'reply_on_duplicate')?.setting_value as { enabled?: boolean })?.enabled ?? true,
       onError: (replySettings?.find(s => s.setting_key === 'reply_on_error')?.setting_value as { enabled?: boolean })?.enabled ?? true,
+      onSelfieRejected: (replySettings?.find(s => s.setting_key === 'reply_on_selfie_rejected')?.setting_value as { enabled?: boolean })?.enabled ?? true,
     };
     console.log(`[handleReceiptImageInGroup] Reply config: ${JSON.stringify(replyConfig)}`);
 
@@ -7894,6 +7895,14 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
             : "⚠️ This receipt has already been submitted");
         } else {
           console.log(`[handleReceiptImageInGroup] Reply on duplicate disabled - not sending duplicate message`);
+        }
+      } else if (result.error === "selfie_detected") {
+        if (replyConfig.onSelfieRejected) {
+          await replyToLine(event.replyToken, locale === "th"
+            ? `❌ ${result.message}`
+            : `❌ ${result.message}`);
+        } else {
+          console.log(`[handleReceiptImageInGroup] Reply on selfie rejected disabled - not sending selfie message`);
         }
       } else {
         if (replyConfig.onError) {
