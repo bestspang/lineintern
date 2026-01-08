@@ -119,6 +119,9 @@ export default function BranchReport() {
   const { data: allReports, isLoading, refetch } = useQuery({
     queryKey: ['branch-reports-all', startDate, endDate],
     queryFn: async () => {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized');
+      }
       const { data, error } = await supabase
         .from('branch_daily_reports')
         .select('*')
@@ -129,6 +132,7 @@ export default function BranchReport() {
       if (error) throw error;
       return data as BranchReport[];
     },
+    enabled: !!supabase,
   });
 
   // Filter reports based on time range and branch
