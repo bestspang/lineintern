@@ -8103,11 +8103,27 @@ async function handleImageMessage(event: LineEvent) {
   }
   
   if (classification.document_type !== 'deposit_slip') {
-    console.log(`[handleImageMessage] Non-deposit document: ${classification.document_type}`);
-    await replyToLine(
-      event.replyToken,
-      `📋 ตรวจพบเอกสาร: ${getDocumentTypeName(classification.document_type)}\n━━━━━━━━━━━━━━━━\n⚠️ ขณะนี้รองรับเฉพาะใบฝากเงินเท่านั้น\n\n🔧 ฟีเจอร์อื่นกำลังพัฒนา:\n• ใบเสร็จร้านค้า\n• ใบเบิกค่าใช้จ่าย\n• ใบแจ้งหนี้`
-    );
+    console.log(`[handleImageMessage] Non-deposit document: ${classification.document_type} - checking reply setting`);
+    
+    // Check if deposit-only reply is enabled (default: disabled = silent mode)
+    const { data: replySettingData } = await supabase
+      .from('receipt_settings')
+      .select('setting_value')
+      .eq('setting_key', 'deposit_only_reply_enabled')
+      .maybeSingle();
+    
+    const replyEnabled = (replySettingData?.setting_value as { enabled?: boolean })?.enabled ?? false;
+    
+    if (replyEnabled) {
+      // Only reply if setting is explicitly enabled
+      await replyToLine(
+        event.replyToken,
+        `📋 ตรวจพบเอกสาร: ${getDocumentTypeName(classification.document_type)}\n━━━━━━━━━━━━━━━━\n⚠️ ขณะนี้รองรับเฉพาะใบฝากเงินเท่านั้น\n\n🔧 ฟีเจอร์อื่นกำลังพัฒนา:\n• ใบเสร็จร้านค้า\n• ใบเบิกค่าใช้จ่าย\n• ใบแจ้งหนี้`
+      );
+    } else {
+      console.log(`[handleImageMessage] Silent mode - not replying for non-deposit document`);
+    }
+    
     return;
   }
   
