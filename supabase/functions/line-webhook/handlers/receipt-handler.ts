@@ -1133,12 +1133,7 @@ export function buildApproverFlexMessage(
     action: { type: "postback", label: locale === "th" ? "✗ ไม่อนุมัติ" : "✗ Reject", data: `action=reject_receipt&receipt_id=${result.receiptId}` },
   });
 
-  // "Not Receipt" button removed - redundant with "Reject" button
-
-  actions.push({
-    type: "button", style: "secondary",
-    action: { type: "postback", label: locale === "th" ? "🗑 ลบ" : "🗑 Delete", data: `action=delete_receipt&receipt_id=${result.receiptId}` },
-  });
+  // "Not Receipt" and "Delete" buttons removed - redundant with "Reject" button
 
   // Build bubble with optional hero image
   const bubble: any = {
