@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { rateLimiters } from "../_shared/rate-limiter.ts";
 import { logger } from "../_shared/logger.ts";
@@ -22,6 +22,13 @@ import {
   setDefaultBusiness,
   exportReceiptsForMonth,
   handleReceiptPostback,
+  // Approval system
+  isSameGroupApproval,
+  sendApprovalNotifications,
+  buildApproverFlexMessage,
+  getReceiptImageUrl,
+  getUserDisplayName,
+  getBranchName,
 } from "./handlers/receipt-handler.ts";
 
 // =============================
@@ -7620,10 +7627,6 @@ async function handleReceiptImageInDM(event: LineEvent, lineUserId: string) {
       return;
     }
     
-    // Send processing message
-    const processingFlex = buildReceiptProcessingFlex(locale);
-    // Note: We can't send processing message and then another reply, so we skip it
-    
     // Get default business or prompt selection
     const businesses = await getUserBusinesses(lineUserId);
     let businessId: string | undefined;
@@ -7667,10 +7670,31 @@ async function handleReceiptImageInDM(event: LineEvent, lineUserId: string) {
       return;
     }
     
-    // Send success message
+    // Get LIFF URL
     const LIFF_URL = Deno.env.get("LIFF_URL") || "";
+    
+    // Prepare submitter info for approval notifications
+    const submitterName = await getUserDisplayName(lineUserId) || "Unknown";
+    const branchName = await getBranchName(branchInfo.branchId);
+    const submitterInfo = {
+      name: submitterName,
+      branch: branchName,
+      lineUserId: lineUserId,
+    };
+    
+    // Get receipt image URL for approval flex
+    const imageUrl = result.receiptId ? await getReceiptImageUrl(result.receiptId) : null;
+    
+    // Send success message to submitter
     const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
     await sendFlexMessage(event.replyToken, savedFlex);
+    
+    // Send approval notifications to approvers (async, don't block reply)
+    if (result.receiptId) {
+      sendApprovalNotifications(result, submitterInfo, locale, LIFF_URL, imageUrl || undefined)
+        .then(() => console.log(`[handleReceiptImageInDM] Approval notifications sent`))
+        .catch((err) => console.error(`[handleReceiptImageInDM] Error sending approval notifications:`, err));
+    }
     
     console.log(`[handleReceiptImageInDM] Receipt saved: ${result.receiptId}`);
   } catch (error) {
@@ -7757,10 +7781,41 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
       return;
     }
     
-    // Send success message
+    // Get LIFF URL
     const LIFF_URL = Deno.env.get("LIFF_URL") || "";
-    const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
-    await sendFlexMessage(event.replyToken, savedFlex);
+    
+    // Prepare submitter info for approval
+    const submitterName = await getUserDisplayName(lineUserId) || "Unknown";
+    const branchName = await getBranchName(branchInfo.branchId);
+    const submitterInfo = {
+      name: submitterName,
+      branch: branchName,
+      lineUserId: lineUserId,
+    };
+    
+    // Get receipt image URL for approval flex
+    const imageUrl = result.receiptId ? await getReceiptImageUrl(result.receiptId) : null;
+    
+    // Check if this group is also an approver group (same-group approval)
+    const sameGroupApproval = await isSameGroupApproval(lineGroupId);
+    
+    if (sameGroupApproval) {
+      // If same group is approver, send approval flex directly
+      console.log(`[handleReceiptImageInGroup] Same-group approval - sending approver flex`);
+      const approverFlex = buildApproverFlexMessage(result, submitterInfo, locale, LIFF_URL, imageUrl || undefined);
+      await sendFlexMessage(event.replyToken, approverFlex);
+    } else {
+      // Send success message to submitter
+      const savedFlex = buildReceiptSavedFlex(result, locale, LIFF_URL);
+      await sendFlexMessage(event.replyToken, savedFlex);
+      
+      // Send approval notifications to approvers (async, don't block reply)
+      if (result.receiptId) {
+        sendApprovalNotifications(result, submitterInfo, locale, LIFF_URL, imageUrl || undefined)
+          .then(() => console.log(`[handleReceiptImageInGroup] Approval notifications sent`))
+          .catch((err) => console.error(`[handleReceiptImageInGroup] Error sending approval notifications:`, err));
+      }
+    }
     
     console.log(`[handleReceiptImageInGroup] Receipt saved: ${result.receiptId}`);
   } catch (error) {
