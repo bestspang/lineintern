@@ -29,6 +29,7 @@ interface Deposit {
   bank_name: string | null;
   reference_number: string | null;
   status: string;
+  document_type: string | null;
   slip_photo_url: string | null;
   face_photo_url: string | null;
   extraction_confidence: number | null;
@@ -48,6 +49,7 @@ export default function Deposits() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [docTypeFilter, setDocTypeFilter] = useState<string>("all");
   const [editForm, setEditForm] = useState({ amount: '', account_number: '', bank_name: '', reference_number: '' });
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: startOfMonth(new Date()),
@@ -56,7 +58,7 @@ export default function Deposits() {
 
   // Fetch deposits
   const { data: deposits, isLoading, refetch } = useQuery({
-    queryKey: ['deposits', dateRange, branchFilter, statusFilter],
+    queryKey: ['deposits', dateRange, branchFilter, statusFilter, docTypeFilter],
     queryFn: async () => {
       let query = supabase
         .from('daily_deposits')
@@ -74,6 +76,9 @@ export default function Deposits() {
       }
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
+      }
+      if (docTypeFilter !== 'all') {
+        query = query.eq('document_type', docTypeFilter);
       }
 
       const { data, error } = await query;
@@ -214,6 +219,14 @@ export default function Deposits() {
   const totalAmount = filteredDeposits?.reduce((sum, d) => sum + (d.amount || 0), 0) || 0;
   const verifiedCount = filteredDeposits?.filter(d => d.status === 'verified').length || 0;
   const pendingCount = filteredDeposits?.filter(d => d.status === 'pending').length || 0;
+  const depositCount = filteredDeposits?.filter(d => d.document_type !== 'reimbursement').length || 0;
+  const reimbursementCount = filteredDeposits?.filter(d => d.document_type === 'reimbursement').length || 0;
+
+  // Helper to get document type label
+  const getDocTypeLabel = (docType: string | null) => {
+    if (docType === 'reimbursement') return { label: 'จ่ายคืน', icon: '💸', variant: 'secondary' as const };
+    return { label: 'ฝากเงิน', icon: '📥', variant: 'outline' as const };
+  };
 
   return (
     <div className="space-y-6">
@@ -223,7 +236,7 @@ export default function Deposits() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="text-2xl font-bold">{filteredDeposits?.length || 0}</div>
@@ -234,6 +247,18 @@ export default function Deposits() {
             <CardContent className="pt-6">
               <div className="text-2xl font-bold text-green-600">{formatCurrency(totalAmount)}</div>
               <p className="text-sm text-muted-foreground">ยอดรวม</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-blue-600">{depositCount}</div>
+              <p className="text-sm text-muted-foreground">📥 ฝากเงิน</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-purple-600">{reimbursementCount}</div>
+              <p className="text-sm text-muted-foreground">💸 จ่ายคืน</p>
             </CardContent>
           </Card>
           <Card>
@@ -312,6 +337,17 @@ export default function Deposits() {
                   <SelectItem value="rejected">ถูกปฏิเสธ</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="ประเภท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกประเภท</SelectItem>
+                  <SelectItem value="deposit_slip">📥 ฝากเงิน</SelectItem>
+                  <SelectItem value="reimbursement">💸 จ่ายคืน</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -328,9 +364,10 @@ export default function Deposits() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>วันที่</TableHead>
+                    <TableHead>ประเภท</TableHead>
                     <TableHead>สาขา</TableHead>
                     <TableHead>พนักงาน</TableHead>
-                    <TableHead className="text-right">ยอดฝาก</TableHead>
+                    <TableHead className="text-right">ยอดเงิน</TableHead>
                     <TableHead>เลขบัญชี</TableHead>
                     <TableHead>Ref</TableHead>
                     <TableHead>AI</TableHead>
@@ -342,17 +379,23 @@ export default function Deposits() {
                 <TableBody>
                   {filteredDeposits?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                         ไม่พบข้อมูล
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredDeposits?.map(deposit => {
                       const confidence = formatConfidence(deposit.extraction_confidence);
+                      const docType = getDocTypeLabel(deposit.document_type);
                       return (
                         <TableRow key={deposit.id}>
                           <TableCell>
                             {format(new Date(deposit.deposit_date), 'd MMM yyyy', { locale: th })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={docType.variant} className="text-xs">
+                              {docType.icon} {docType.label}
+                            </Badge>
                           </TableCell>
                           <TableCell>{deposit.branches?.name || '-'}</TableCell>
                           <TableCell>

@@ -30,6 +30,7 @@ interface Deposit {
   bank_branch: string | null;
   reference_number: string | null;
   status: string;
+  document_type: string | null;
   slip_photo_url: string | null;
   face_photo_url: string | null;
   extraction_confidence: number | null;
@@ -313,6 +314,7 @@ export default function DepositReview() {
 
   const confidence = formatConfidence(deposit.extraction_confidence);
   const isLowConfidence = confidence !== null && confidence < 70;
+  const isReimbursement = deposit.document_type === 'reimbursement';
 
   return (
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
@@ -323,7 +325,14 @@ export default function DepositReview() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">ตรวจสอบใบฝากเงิน</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">
+                {isReimbursement ? 'ตรวจสอบใบจ่ายคืนเงิน' : 'ตรวจสอบใบฝากเงิน'}
+              </h1>
+              <Badge variant={isReimbursement ? 'secondary' : 'outline'} className="text-xs">
+                {isReimbursement ? '💸 จ่ายคืน' : '📥 ฝากเงิน'}
+              </Badge>
+            </div>
             <p className="text-sm text-muted-foreground">
               {deposit.branches?.name} • {format(new Date(deposit.deposit_date), 'd MMM yyyy', { locale: th })}
             </p>
@@ -342,7 +351,9 @@ export default function DepositReview() {
         {/* Slip Image */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">รูปใบฝากเงิน</CardTitle>
+            <CardTitle className="text-lg">
+              {isReimbursement ? 'รูปใบจ่ายคืนเงิน' : 'รูปใบฝากเงิน'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {deposit.slip_photo_url ? (

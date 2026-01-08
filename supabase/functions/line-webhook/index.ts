@@ -8577,6 +8577,7 @@ async function downloadLineImage(messageId: string): Promise<string | null> {
 function getDocumentTypeName(docType: string): string {
   const names: Record<string, string> = {
     'deposit_slip': 'ใบฝากเงิน/สลิปโอน',
+    'reimbursement': 'จ่ายคืนเงินสำรอง',
     'receipt': 'ใบเสร็จร้านค้า',
     'expense_claim': 'ใบเบิกค่าใช้จ่าย',
     'invoice': 'ใบแจ้งหนี้',
