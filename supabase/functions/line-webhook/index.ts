@@ -850,6 +850,230 @@ async function updatePersonalityOnWorkCompletion(
 }
 
 // =============================
+// PASSIVE BRANCH REPORT DETECTION
+// =============================
+
+// Pattern to detect if a message is a branch report
+const BRANCH_REPORT_PATTERN = /Code\s*สาขา\s*:/i;
+
+/**
+ * Passively detect and parse branch daily sales reports from messages.
+ * This runs silently without sending any reply to the group.
+ * The parsed data is stored in branch_daily_reports table.
+ */
+async function passiveBranchReportDetection(
+  messageText: string,
+  messageId: string | undefined,
+  userId: string,
+  groupId: string
+): Promise<void> {
+  // Quick pattern check to avoid unnecessary processing
+  if (!BRANCH_REPORT_PATTERN.test(messageText)) {
+    return;
+  }
+
+  console.log(`[passiveBranchReportDetection] Detected potential branch report from user ${userId} in group ${groupId}`);
+
+  try {
+    // Parse report data inline (avoid function invoke for speed)
+    const parsed = parseBranchReportMessage(messageText);
+    
+    if (!parsed) {
+      console.log(`[passiveBranchReportDetection] Failed to parse report, skipping`);
+      return;
+    }
+
+    console.log(`[passiveBranchReportDetection] Parsed: ${parsed.branchCode} - ${parsed.reportDate} - Sales: ${parsed.sales}`);
+
+    // Upsert to database
+    const { error } = await supabase
+      .from('branch_daily_reports')
+      .upsert({
+        report_date: parsed.reportDate,
+        branch_code: parsed.branchCode,
+        branch_name: parsed.branchName,
+        sales: parsed.sales,
+        sales_target: parsed.salesTarget,
+        diff_target: parsed.diffTarget,
+        diff_target_percent: parsed.diffTargetPercent,
+        tc: parsed.tc,
+        stock_lemon: parsed.stockLemon,
+        cup_size_s: parsed.cupSizeS,
+        cup_size_m: parsed.cupSizeM,
+        dried_lemon: parsed.driedLemon,
+        chili_salt: parsed.chiliSalt,
+        honey_bottle: parsed.honeyBottle,
+        snacks: parsed.snacks,
+        bottled_water: parsed.bottledWater,
+        lineman_orders: parsed.linemanOrders,
+        top_lemonade: parsed.topLemonade,
+        top_slurpee: parsed.topSlurpee,
+        merchandise_sold: parsed.merchandiseSold,
+        source_message_id: messageId || null,
+        source_group_id: groupId,
+        reported_by_user_id: userId,
+        raw_message_text: messageText,
+        parsed_at: new Date().toISOString(),
+      }, {
+        onConflict: 'report_date,branch_code',
+        ignoreDuplicates: false,
+      });
+
+    if (error) {
+      console.error(`[passiveBranchReportDetection] Database error:`, error);
+    } else {
+      console.log(`[passiveBranchReportDetection] Successfully saved report for ${parsed.branchCode} on ${parsed.reportDate}`);
+    }
+  } catch (error) {
+    console.error(`[passiveBranchReportDetection] Error:`, error);
+  }
+}
+
+interface ParsedBranchReport {
+  branchCode: string;
+  branchName: string;
+  reportDate: string;
+  sales: number;
+  salesTarget: number;
+  diffTarget: number;
+  diffTargetPercent: number;
+  tc: number;
+  stockLemon: number;
+  cupSizeS: number;
+  cupSizeM: number;
+  driedLemon: number;
+  chiliSalt: number;
+  honeyBottle: number;
+  snacks: number;
+  bottledWater: number;
+  linemanOrders: number;
+  topLemonade: string[];
+  topSlurpee: string[];
+  merchandiseSold: any[];
+}
+
+function parseReportNumber(str: string | undefined | null): number {
+  if (!str) return 0;
+  return parseInt(str.replace(/,/g, ''), 10) || 0;
+}
+
+function parseReportDecimal(str: string | undefined | null): number {
+  if (!str) return 0;
+  return parseFloat(str.replace(/,/g, '')) || 0;
+}
+
+function parseThaiReportDate(dateStr: string): string | null {
+  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!match) return null;
+  
+  let [, day, month, year] = match;
+  let numYear = parseInt(year, 10);
+  
+  // Convert Buddhist year to Gregorian
+  if (numYear > 2500) {
+    numYear -= 543; // Full Buddhist year (2568 -> 2025)
+  } else if (numYear > 25) {
+    numYear = 2000 + numYear - 43; // Short Buddhist year (68 -> 2025)
+  } else {
+    numYear = 2000 + numYear; // Short Gregorian year (25 -> 2025)
+  }
+  
+  return `${numYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function extractReportTopSellers(text: string, sectionName: 'lemonade' | 'slurpee'): string[] {
+  const results: string[] = [];
+  
+  const patterns: Record<string, RegExp> = {
+    'lemonade': /เมนูน้ำเลม่อนที่ขายดี[^\n]*\n([\s\S]*?)(?=น้ำสเลอปี้|แก้ว|$)/i,
+    'slurpee': /น้ำสเลอปี้ที่ขายดี[^\n]*\n([\s\S]*?)(?=แก้ว|เลม่อนแห้ง|$)/i,
+  };
+  
+  const pattern = patterns[sectionName];
+  const match = text.match(pattern);
+  if (!match) return results;
+  
+  const section = match[1];
+  const itemPattern = /\d+\.\s*([^\n\d]+)/g;
+  let itemMatch;
+  while ((itemMatch = itemPattern.exec(section)) !== null) {
+    const item = itemMatch[1].trim();
+    if (item && item.length > 0) {
+      results.push(item);
+    }
+  }
+  
+  return results.slice(0, 5);
+}
+
+function parseBranchReportMessage(text: string): ParsedBranchReport | null {
+  if (!BRANCH_REPORT_PATTERN.test(text)) {
+    return null;
+  }
+  
+  try {
+    const branchCode = text.match(/Code\s*สาขา\s*:\s*(\w+)/i)?.[1] || '';
+    const branchName = text.match(/ชื่อสาขา\s*:\s*([^\n]+)/i)?.[1]?.trim() || '';
+    const dateStr = text.match(/วันที่\s*:\s*([\d\/]+)/i)?.[1] || '';
+    
+    const reportDate = parseThaiReportDate(dateStr);
+    if (!reportDate || !branchCode) {
+      return null;
+    }
+    
+    const sales = parseReportDecimal(text.match(/Sales\s*:\s*([\d,]+)/i)?.[1]);
+    const salesTarget = parseReportDecimal(text.match(/Sales\s*Target\s*:\s*([\d,]+)/i)?.[1]);
+    const diffTarget = sales - salesTarget;
+    const diffTargetPercent = salesTarget > 0 ? ((sales - salesTarget) / salesTarget) * 100 : 0;
+    
+    const tc = parseReportNumber(text.match(/TC\s*:?\s*(\d+)/i)?.[1]);
+    const stockLemon = parseReportNumber(text.match(/Stock\s*[Ll]emon\s*:?\s*(\d+)/i)?.[1]);
+    
+    const cupSizeS = parseReportNumber(text.match(/แก้ว\s*size\s*s\s*[=:]*\s*(\d+)/i)?.[1] || 
+                                        text.match(/size\s*s\s*[=:]*\s*(\d+)/i)?.[1]);
+    const cupSizeM = parseReportNumber(text.match(/แก้ว\s*size\s*m\s*[=:]*\s*(\d+)/i)?.[1] ||
+                                        text.match(/size\s*m\s*[=:]*\s*(\d+)/i)?.[1]);
+    
+    const driedLemon = parseReportNumber(text.match(/เลม่อนแห้ง\s*[=:]*\s*(\d+)/i)?.[1]);
+    const chiliSalt = parseReportNumber(text.match(/เกลือพริก\s*[=:]*\s*(\d+)/i)?.[1]);
+    const honeyBottle = parseReportNumber(text.match(/น้ำผึ้ง\s*[=:]*\s*(\d+)/i)?.[1] ||
+                                           text.match(/honey\s*[=:]*\s*(\d+)/i)?.[1]);
+    const snacks = parseReportNumber(text.match(/ขนม\s*[=:]*\s*(\d+)/i)?.[1]);
+    const bottledWater = parseReportNumber(text.match(/น้ำเปล่า\s*[=:]*\s*(\d+)/i)?.[1]);
+    const linemanOrders = parseReportNumber(text.match(/[Ll]ine\s*[Mm]an\s*[=:]*\s*(\d+)/i)?.[1]);
+    
+    const topLemonade = extractReportTopSellers(text, 'lemonade');
+    const topSlurpee = extractReportTopSellers(text, 'slurpee');
+    
+    return {
+      branchCode,
+      branchName,
+      reportDate,
+      sales,
+      salesTarget,
+      diffTarget,
+      diffTargetPercent,
+      tc,
+      stockLemon,
+      cupSizeS,
+      cupSizeM,
+      driedLemon,
+      chiliSalt,
+      honeyBottle,
+      snacks,
+      bottledWater,
+      linemanOrders,
+      topLemonade,
+      topSlurpee,
+      merchandiseSold: [],
+    };
+  } catch (error) {
+    console.error('[parseBranchReportMessage] Error:', error);
+    return null;
+  }
+}
+
+// =============================
 // CUSTOM REMINDER PREFERENCE DETECTION
 // =============================
 
@@ -9575,6 +9799,10 @@ async function handleMessageEvent(event: LineEvent) {
   // PHASE 3: Passive Safety Monitoring (runs for EVERY message)
   const messageIdForAlert = (insertedMessage as any)?.id || event.message.id || '';
   await passiveSafetyMonitoring(group.id, user.id, event.message.text, messageIdForAlert);
+
+  // PASSIVE BRANCH REPORT DETECTION: Parse daily sales reports from messages
+  // This runs silently without sending any reply to the group
+  await passiveBranchReportDetection(event.message.text, (insertedMessage as any)?.id, user.id, group.id);
 
   // PASSIVE PERSONALITY TRACKING: Update personality for ALL messages
   if (group.id && user.id) {
