@@ -398,14 +398,19 @@ export default function BranchReport() {
     
     return Array.from(byBranch.entries())
       .map(([name, data]) => ({
-        name: data.code,
-        fullName: name,
+        name: name, // Use branch name as primary identifier
+        code: data.code,
         sales: data.sales,
         target: data.target,
         achievement: data.target > 0 ? Math.round((data.sales / data.target) * 100) : 0,
       }))
       .sort((a, b) => b.sales - a.sales);
   }, [filteredReports]);
+
+  // Branch Achievement Ranking (sorted by achievement %)
+  const branchAchievementRanking = useMemo(() => {
+    return [...branchComparisonData].sort((a, b) => b.achievement - a.achievement);
+  }, [branchComparisonData]);
 
   // ============ BRANCH SCORECARD ============
   const branchScorecard = useMemo(() => {
@@ -445,6 +450,17 @@ export default function BranchReport() {
       }))
       .sort((a, b) => b.totalSales - a.totalSales);
   }, [filteredReports]);
+
+  // Branch Target Hit Rate Data (must be after branchScorecard)
+  const branchTargetHitRateData = useMemo(() => {
+    return branchScorecard.map(b => ({
+      name: b.name,
+      code: b.code,
+      hitRate: b.targetHitRate,
+      hitCount: b.aboveTargetCount,
+      totalCount: b.reportCount,
+    })).sort((a, b) => b.hitRate - a.hitRate);
+  }, [branchScorecard]);
 
   // ============ CUP SIZE & TOP SELLERS ============
   const cupSizeData = useMemo(() => {
@@ -513,7 +529,7 @@ export default function BranchReport() {
       const topBranch = branchScorecard[0];
       items.push({
         icon: Trophy,
-        text: `${topBranch.code} (${topBranch.name}) ยอดขายสูงสุด`,
+        text: `${topBranch.name} ยอดขายสูงสุด`,
         type: 'success'
       });
     }
@@ -816,15 +832,20 @@ export default function BranchReport() {
               <CardDescription>เปรียบเทียบยอดขายจริงกับเป้าหมาย</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={Math.max(300, branchComparisonData.length * 40)}>
                 <BarChart data={branchComparisonData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={true} vertical={false} />
                   <XAxis type="number" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" width={60} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [
+                      `${formatCurrency(value)} (${props.payload.achievement}%)`,
+                      name === 'sales' ? 'ยอดขาย' : 'เป้าหมาย'
+                    ]}
+                  />
                   <Legend />
                   <Bar dataKey="sales" name="ยอดขาย" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="target" name="เป้าหมาย" fill="hsl(var(--muted))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="target" name="เป้าหมาย" fill="hsl(var(--muted-foreground))" radius={[0, 4, 4, 0]} opacity={0.5} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -955,8 +976,8 @@ export default function BranchReport() {
                       {reportsForSelectedDate.sort((a, b) => Number(b.sales) - Number(a.sales)).map((report) => (
                         <TableRow key={report.id}>
                           <TableCell>
-                            <div className="font-medium">{report.branch_code}</div>
-                            <div className="text-xs text-muted-foreground">{report.branch_name}</div>
+                            <div className="font-medium">{report.branch_name}</div>
+                            <div className="text-xs text-muted-foreground">{report.branch_code}</div>
                           </TableCell>
                           <TableCell className="text-right font-medium">{formatCurrency(Number(report.sales))}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{formatCurrency(Number(report.sales_target))}</TableCell>
@@ -1045,24 +1066,119 @@ export default function BranchReport() {
             </Card>
           </div>
 
-          {/* Branch Achievement Comparison */}
+          {/* Branch Achievement Ranking - Horizontal Bar Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>เปรียบเทียบ % บรรลุเป้าแต่ละสาขา</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                % บรรลุเป้าแต่ละสาขา (เรียงจากมากไปน้อย)
+              </CardTitle>
+              <CardDescription>เปรียบเทียบ % ทำได้ตามเป้าหมายของแต่ละสาขา</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={branchComparisonData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="name" />
-                  <YAxis domain={[0, 150]} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip formatter={(value: number) => `${value}%`} />
-                  <ReferenceLine y={100} stroke="hsl(var(--chart-2))" strokeDasharray="5 5" label={{ value: '100%', position: 'right' }} />
-                  <Bar dataKey="achievement" name="% บรรลุเป้า" radius={[4, 4, 0, 0]}>
-                    {branchComparisonData.map((entry, index) => (
-                      <Cell key={index} fill={entry.achievement >= 100 ? 'hsl(var(--primary))' : 'hsl(var(--chart-3))'} />
+              <ResponsiveContainer width="100%" height={Math.max(300, branchAchievementRanking.length * 45)}>
+                <BarChart data={branchAchievementRanking} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={true} vertical={false} />
+                  <XAxis type="number" domain={[0, 'dataMax + 20']} tickFormatter={(v) => `${v}%`} />
+                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [
+                      `${value}% (${formatCurrency(props.payload.sales)} / ${formatCurrency(props.payload.target)})`,
+                      'บรรลุเป้า'
+                    ]}
+                  />
+                  <ReferenceLine x={100} stroke="hsl(142, 76%, 36%)" strokeWidth={2} strokeDasharray="5 5" />
+                  <Bar dataKey="achievement" name="% บรรลุเป้า" radius={[0, 4, 4, 0]}>
+                    {branchAchievementRanking.map((entry, index) => (
+                      <Cell 
+                        key={index} 
+                        fill={entry.achievement >= 100 ? 'hsl(142, 76%, 36%)' : entry.achievement >= 80 ? 'hsl(45, 93%, 47%)' : 'hsl(0, 84%, 60%)'} 
+                      />
                     ))}
                   </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Legend */}
+              <div className="flex gap-6 text-sm mt-4 justify-center border-t pt-4">
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'hsl(142, 76%, 36%)' }} />
+                  ≥100% (บรรลุเป้า)
+                </span>
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'hsl(45, 93%, 47%)' }} />
+                  80-99% (ใกล้เป้า)
+                </span>
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'hsl(0, 84%, 60%)' }} />
+                  &lt;80% (ต่ำกว่าเป้า)
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Target Hit Rate Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-chart-2" />
+                อัตราทำได้ตามเป้า (Target Hit Rate)
+              </CardTitle>
+              <CardDescription>% ของวันที่แต่ละสาขาทำยอดขายได้ตามเป้า</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={Math.max(300, branchTargetHitRateData.length * 45)}>
+                <BarChart data={branchTargetHitRateData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={true} vertical={false} />
+                  <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [
+                      `${value}% (${props.payload.hitCount}/${props.payload.totalCount} วัน)`,
+                      'ทำได้ตามเป้า'
+                    ]}
+                  />
+                  <ReferenceLine x={80} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                  <Bar dataKey="hitRate" name="% ทำได้ตามเป้า" radius={[0, 4, 4, 0]}>
+                    {branchTargetHitRateData.map((entry, index) => (
+                      <Cell 
+                        key={index} 
+                        fill={entry.hitRate >= 80 ? 'hsl(var(--primary))' : entry.hitRate >= 50 ? 'hsl(var(--chart-2))' : 'hsl(var(--chart-3))'} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Branch Sales Comparison - Vertical Bar Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle>เปรียบเทียบยอดขายแต่ละสาขา</CardTitle>
+              <CardDescription>ยอดขายจริง vs เป้าหมาย</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={branchComparisonData.slice(0, 10)}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fontSize: 10 }} 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80}
+                    interval={0}
+                  />
+                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip 
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value),
+                      name === 'sales' ? 'ยอดขาย' : 'เป้าหมาย'
+                    ]}
+                  />
+                  <Legend />
+                  <Bar dataKey="sales" name="ยอดขาย" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="target" name="เป้าหมาย" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} opacity={0.5} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -1157,11 +1273,11 @@ export default function BranchReport() {
                       {idx === 0 && <Trophy className="h-5 w-5 text-yellow-500" />}
                       {idx === 1 && <Medal className="h-5 w-5 text-gray-400" />}
                       {idx === 2 && <Medal className="h-5 w-5 text-orange-600" />}
-                      <CardTitle className="text-lg">{branch.code}</CardTitle>
+                      <CardTitle className="text-lg">{branch.name}</CardTitle>
                     </div>
                     <Badge variant="outline">#{idx + 1}</Badge>
                   </div>
-                  <CardDescription>{branch.name}</CardDescription>
+                  <CardDescription>{branch.code}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex justify-between items-center">
@@ -1322,8 +1438,8 @@ export default function BranchReport() {
                     <TableRow key={report.id}>
                       <TableCell>{format(parseISO(report.report_date), 'd MMM yy', { locale: th })}</TableCell>
                       <TableCell>
-                        <div className="font-medium">{report.branch_code}</div>
-                        <div className="text-xs text-muted-foreground">{report.branch_name}</div>
+                        <div className="font-medium">{report.branch_name}</div>
+                        <div className="text-xs text-muted-foreground">{report.branch_code}</div>
                       </TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(Number(report.sales))}</TableCell>
                       <TableCell className="text-right text-muted-foreground">{formatCurrency(Number(report.sales_target))}</TableCell>
