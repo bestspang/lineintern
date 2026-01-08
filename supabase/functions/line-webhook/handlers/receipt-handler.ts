@@ -1098,6 +1098,12 @@ export function buildApproverFlexMessage(
     action: { type: "postback", label: locale === "th" ? "📷 ขอถ่ายใหม่" : "📷 Retake", data: `action=request_retake&receipt_id=${result.receiptId}` },
   });
 
+  // Reject button
+  actions.push({
+    type: "button", style: "secondary", color: "#DC2626",
+    action: { type: "postback", label: locale === "th" ? "✗ ไม่อนุมัติ" : "✗ Reject", data: `action=reject_receipt&receipt_id=${result.receiptId}` },
+  });
+
   actions.push({
     type: "button", style: "secondary",
     action: { type: "postback", label: locale === "th" ? "🗑 ลบ" : "🗑 Delete", data: `action=delete_receipt&receipt_id=${result.receiptId}` },
@@ -1955,11 +1961,12 @@ export async function handleReceiptPostback(
       };
     }
 
-    // Log approval
+    // Log approval with correct column names
     await supabase.from("receipt_approval_logs").insert({
       receipt_id: receiptId,
       action: "approved",
-      performed_by: lineUserId,
+      actioned_by_line_user_id: lineUserId,
+      actioned_by_name: approver?.display_name || null,
       notes: `Approved by ${approver?.display_name || lineUserId}`,
     });
 
@@ -2023,11 +2030,12 @@ export async function handleReceiptPostback(
       };
     }
 
-    // Log
+    // Log with correct column names
     await supabase.from("receipt_approval_logs").insert({
       receipt_id: receiptId,
       action: "retake_requested",
-      performed_by: lineUserId,
+      actioned_by_line_user_id: lineUserId,
+      actioned_by_name: approver?.display_name || null,
       notes: `Retake requested by ${approver?.display_name || lineUserId}`,
     });
 
@@ -2046,6 +2054,75 @@ export async function handleReceiptPostback(
       message: locale === "th"
         ? "📷 ส่งคำขอถ่ายใหม่เรียบร้อยแล้ว"
         : "📷 Retake request sent successfully",
+    };
+  }
+
+  // Handle reject receipt (by approver)
+  if (action === "reject_receipt" && receiptId) {
+    const { data: approver } = await supabase
+      .from("users")
+      .select("display_name")
+      .eq("line_user_id", lineUserId)
+      .maybeSingle();
+
+    const { data: receipt, error: receiptError } = await supabase
+      .from("receipts")
+      .select("line_user_id, vendor, total")
+      .eq("id", receiptId)
+      .single();
+
+    if (receiptError || !receipt) {
+      console.error("[handleReceiptPostback] Receipt not found:", receiptError);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ ไม่พบใบเสร็จ" : "❌ Receipt not found",
+      };
+    }
+
+    // Update receipt status
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "rejected",
+        approval_status: "rejected",
+        approved_by: lineUserId,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error rejecting receipt:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    // Log rejection with correct column names
+    await supabase.from("receipt_approval_logs").insert({
+      receipt_id: receiptId,
+      action: "rejected",
+      actioned_by_line_user_id: lineUserId,
+      actioned_by_name: approver?.display_name || null,
+      notes: `Rejected by ${approver?.display_name || lineUserId}`,
+    });
+
+    // Notify submitter
+    if (receipt.line_user_id && receipt.line_user_id !== lineUserId) {
+      await sendLineMessage(receipt.line_user_id, [{
+        type: "text",
+        text: locale === "th"
+          ? `❌ ไม่อนุมัติ: ใบเสร็จ ${receipt.vendor || ""} (฿${receipt.total?.toLocaleString() || 0})`
+          : `❌ Rejected: Receipt ${receipt.vendor || ""} (฿${receipt.total?.toLocaleString() || 0})`,
+      }]);
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "❌ ไม่อนุมัติใบเสร็จแล้ว"
+        : "❌ Receipt rejected",
     };
   }
 

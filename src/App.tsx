@@ -107,6 +107,7 @@ import ReceiptBusinessesAdmin from "./pages/receipts/ReceiptBusinessesAdmin";
 import ReceiptExport from "./pages/receipts/ReceiptExport";
 import ReceiptAnalytics from "./pages/receipts/ReceiptAnalytics";
 import ReceiptSettings from "./pages/receipts/ReceiptSettings";
+import ReceiptApprovalLogs from "./pages/receipts/ReceiptApprovalLogs";
 
 // LIFF pages
 import { LiffProvider } from "./contexts/LiffContext";
@@ -269,6 +270,7 @@ const App = () => (
                       <Route path="/receipts/export" element={<ReceiptExport />} />
                       <Route path="/receipts/analytics" element={<ReceiptAnalytics />} />
                       <Route path="/receipts/settings" element={<ReceiptSettings />} />
+                      <Route path="/receipts/approval-logs" element={<ReceiptApprovalLogs />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
                       <Route path="/config-validator" element={<ConfigurationValidator />} />
                       <Route path="/settings" element={<SettingsLayout />}>
