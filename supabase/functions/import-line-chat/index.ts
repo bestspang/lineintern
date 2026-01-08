@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
           raw_message_text: report.raw_message_text,
           parsed_at: new Date().toISOString(),
         }, {
-          onConflict: 'branch_code,report_date',
+          onConflict: 'report_date,branch_code,branch_name',
           ignoreDuplicates: false,
         });
       
