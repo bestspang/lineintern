@@ -82,6 +82,9 @@ export default function ReceiptSettings() {
   const [replyOnSuccess, setReplyOnSuccess] = useState(true);
   const [replyOnDuplicate, setReplyOnDuplicate] = useState(true);
   const [replyOnError, setReplyOnError] = useState(true);
+  const [replyOnSelfieRejected, setReplyOnSelfieRejected] = useState(true);
+  const [selfieDetectionEnabled, setSelfieDetectionEnabled] = useState(true);
+  const [selfieConfidenceThreshold, setSelfieConfidenceThreshold] = useState(0.95);
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [approverSearchQuery, setApproverSearchQuery] = useState('');
@@ -206,6 +209,7 @@ export default function ReceiptSettings() {
       const replySuccessSetting = settings.find(s => s.setting_key === 'reply_on_success');
       const replyDuplicateSetting = settings.find(s => s.setting_key === 'reply_on_duplicate');
       const replyErrorSetting = settings.find(s => s.setting_key === 'reply_on_error');
+      const replySelfieSetting = settings.find(s => s.setting_key === 'reply_on_selfie_rejected');
 
       if (replySuccessSetting) {
         setReplyOnSuccess((replySuccessSetting.setting_value as { enabled?: boolean }).enabled ?? true);
@@ -215,6 +219,20 @@ export default function ReceiptSettings() {
       }
       if (replyErrorSetting) {
         setReplyOnError((replyErrorSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+      if (replySelfieSetting) {
+        setReplyOnSelfieRejected((replySelfieSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+
+      // Selfie detection settings
+      const selfieEnabledSetting = settings.find(s => s.setting_key === 'selfie_detection_enabled');
+      const selfieThresholdSetting = settings.find(s => s.setting_key === 'selfie_confidence_threshold');
+
+      if (selfieEnabledSetting) {
+        setSelfieDetectionEnabled((selfieEnabledSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+      if (selfieThresholdSetting) {
+        setSelfieConfidenceThreshold((selfieThresholdSetting.setting_value as { value?: number }).value ?? 0.95);
       }
     }
   }, [settings]);
@@ -246,6 +264,9 @@ export default function ReceiptSettings() {
         { key: 'reply_on_success', value: { enabled: replyOnSuccess } },
         { key: 'reply_on_duplicate', value: { enabled: replyOnDuplicate } },
         { key: 'reply_on_error', value: { enabled: replyOnError } },
+        { key: 'reply_on_selfie_rejected', value: { enabled: replyOnSelfieRejected } },
+        { key: 'selfie_detection_enabled', value: { enabled: selfieDetectionEnabled } },
+        { key: 'selfie_confidence_threshold', value: { value: selfieConfidenceThreshold } },
       ];
 
       for (const { key, value } of updates) {
@@ -661,11 +682,92 @@ export default function ReceiptSettings() {
             />
           </div>
 
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="reply-selfie">ตอบกลับเมื่อตรวจพบรูปบุคคล</Label>
+              <p className="text-sm text-muted-foreground">
+                แจ้งผู้ส่งเมื่อรูปถูกปฏิเสธ (Selfie)
+              </p>
+            </div>
+            <Switch
+              id="reply-selfie"
+              checked={replyOnSelfieRejected}
+              onCheckedChange={(checked) => {
+                setReplyOnSelfieRejected(checked);
+                setHasChanges(true);
+              }}
+            />
+          </div>
+
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               <strong>หมายเหตุ:</strong> การปิดการตอบกลับจะทำให้บอทไม่ส่งข้อความใดๆ กลับไปในกลุ่ม 
               แต่ใบเสร็จจะยังถูกบันทึกในระบบตามปกติ
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
+      {/* Selfie Detection Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5" />
+            การตรวจจับรูปบุคคล (Selfie Detection)
+          </CardTitle>
+          <CardDescription>
+            ป้องกันการส่งรูป Selfie แทนใบเสร็จ
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="selfie-detection">เปิดใช้งานตรวจจับรูปบุคคล</Label>
+              <p className="text-sm text-muted-foreground">
+                หากปิด จะยอมรับทุกรูปภาพโดยไม่ตรวจสอบ
+              </p>
+            </div>
+            <Switch
+              id="selfie-detection"
+              checked={selfieDetectionEnabled}
+              onCheckedChange={(checked) => {
+                setSelfieDetectionEnabled(checked);
+                setHasChanges(true);
+              }}
+            />
+          </div>
+
+          {selfieDetectionEnabled && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>ระดับความเชื่อมั่นขั้นต่ำ</Label>
+                <Badge variant="outline">{Math.round(selfieConfidenceThreshold * 100)}%</Badge>
+              </div>
+              <input
+                type="range"
+                min="80"
+                max="99"
+                value={Math.round(selfieConfidenceThreshold * 100)}
+                onChange={(e) => {
+                  setSelfieConfidenceThreshold(parseInt(e.target.value) / 100);
+                  setHasChanges(true);
+                }}
+                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground">
+                ยิ่งสูง ยิ่งแม่นยำ (ลด False Positive) แต่อาจพลาดบาง Selfie จริง
+                <br />
+                <strong>ค่าแนะนำ: 95%</strong> • หาก False Positive บ่อย ให้เพิ่มเป็น 98%
+              </p>
+            </div>
+          )}
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>คำแนะนำ:</strong> หากพบว่าใบเสร็จถูกตรวจจับเป็น "รูปบุคคล" บ่อยๆ (False Positive) 
+              ให้เพิ่มระดับความเชื่อมั่นขึ้น หรือปิดการตรวจจับชั่วคราว
             </AlertDescription>
           </Alert>
         </CardContent>

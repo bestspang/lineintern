@@ -366,14 +366,24 @@ async function extractReceiptData(imageBase64: string, mimeType: string): Promis
     return getEmptyExtraction(["AI not configured"]);
   }
 
-  const systemPrompt = `You are a Thai receipt data extraction assistant.
+const systemPrompt = `You are a Thai receipt data extraction assistant.
 
-FIRST - SELFIE DETECTION:
-Before extracting any data, check if this image contains a human face or selfie (a photo of a person).
-If the image is clearly a selfie or photo of a person (confidence > 0.9), return immediately:
+FIRST - SELFIE DETECTION (STRICT):
+Check if this is a SELFIE or PORTRAIT photo where:
+- A human face is the PRIMARY subject (covers >50% of the image)
+- The image was clearly taken as a photo OF a person, not a document
+
+DO NOT mark as selfie if:
+- The image contains a small face/logo in corner
+- The image is clearly a receipt/invoice/document with a person's photo printed on it
+- The face is part of an ID card, business card, or promotional material
+- There are faces on product packaging or advertisements in the image
+- The image contains text/numbers typical of receipts
+
+Only if it's CLEARLY a selfie/portrait (confidence > 0.95), return immediately:
 {
   "is_selfie": true,
-  "selfie_confidence": 0.95,
+  "selfie_confidence": 0.97,
   "vendor": {"value": null, "confidence": 0},
   "vendor_address": {"value": null, "confidence": 0},
   ... (all other fields null/empty)
@@ -707,9 +717,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for selfie detection - reject immediately
-    if (extraction.is_selfie === true && (extraction.selfie_confidence || 0) > 0.9) {
-      console.log(`[receipt-submit] Selfie detected for user ${lineUserId}, rejecting`);
+    // Fetch selfie detection settings
+    const { data: selfieSettings } = await supabase
+      .from('receipt_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['selfie_detection_enabled', 'selfie_confidence_threshold']);
+
+    const selfieConfig = {
+      enabled: (selfieSettings?.find(s => s.setting_key === 'selfie_detection_enabled')
+        ?.setting_value as { enabled?: boolean })?.enabled ?? true,
+      threshold: (selfieSettings?.find(s => s.setting_key === 'selfie_confidence_threshold')
+        ?.setting_value as { value?: number })?.value ?? 0.95,
+    };
+
+    // Check for selfie detection - reject immediately (only if enabled)
+    if (selfieConfig.enabled && extraction.is_selfie === true && (extraction.selfie_confidence || 0) > selfieConfig.threshold) {
+      console.log(`[receipt-submit] Selfie detected for user ${lineUserId} (conf: ${extraction.selfie_confidence}, threshold: ${selfieConfig.threshold}), rejecting`);
       return new Response(
         JSON.stringify({
           error: "selfie_detected",
