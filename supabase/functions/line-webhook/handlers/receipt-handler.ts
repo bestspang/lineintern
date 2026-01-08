@@ -1424,46 +1424,7 @@ export function buildReceiptSavedFlex(
     });
   }
 
-  // Actions
-  const actions: any[] = [];
-  
-  // Confirm button (postback)
-  actions.push({
-    type: "button",
-    style: hasWarnings ? "secondary" : "primary",
-    action: {
-      type: "postback",
-      label: locale === "th" ? "✓ ยืนยัน" : "✓ Confirm",
-      data: `action=confirm_receipt&receipt_id=${result.receiptId}`,
-      displayText: locale === "th" ? "ยืนยันใบเสร็จ" : "Confirm receipt",
-    },
-  });
-  
-  // Edit button - opens portal
-  if (liffUrl && result.receiptId) {
-    actions.push({
-      type: "button",
-      style: hasWarnings ? "primary" : "secondary",
-      action: {
-        type: "uri",
-        label: locale === "th" ? "✏️ แก้ไข" : "✏️ Edit",
-        uri: `${liffUrl}/portal/receipts/${result.receiptId}`,
-      },
-    });
-  }
-  
-  // Delete button (postback)
-  actions.push({
-    type: "button",
-    style: "secondary",
-    action: {
-      type: "postback",
-      label: locale === "th" ? "🗑 ลบ" : "🗑 Delete",
-      data: `action=delete_receipt&receipt_id=${result.receiptId}`,
-      displayText: locale === "th" ? "ลบใบเสร็จ" : "Delete receipt",
-    },
-  });
-
+  // No action buttons - just confirmation display
   return {
     type: "flex",
     altText: locale === "th" ? "บันทึกใบเสร็จแล้ว" : "Receipt Saved",
@@ -1475,12 +1436,6 @@ export function buildReceiptSavedFlex(
         layout: "vertical",
         contents,
         paddingAll: "20px",
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        contents: actions,
-        spacing: "sm",
       },
     },
   };
