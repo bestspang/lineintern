@@ -90,6 +90,17 @@ interface ImportPreview {
 }
 
 export default function BranchReport() {
+  // Early return if supabase is not ready
+  if (!supabase) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -201,6 +212,11 @@ export default function BranchReport() {
     const file = e.target.files?.[0];
     if (!file) return;
     
+    if (!supabase) {
+      toast.error('กรุณารีเฟรชหน้า');
+      return;
+    }
+    
     setImportFile(file);
     setImportPreview(null);
     setImportResult(null);
@@ -227,6 +243,11 @@ export default function BranchReport() {
 
   const handleImport = async () => {
     if (!importFile) return;
+    
+    if (!supabase) {
+      toast.error('กรุณารีเฟรชหน้า');
+      return;
+    }
     
     setIsImporting(true);
     setImportResult(null);
