@@ -78,6 +78,7 @@ export default function ReceiptSettings() {
   const [collectionMode, setCollectionMode] = useState<'mapped' | 'centralized'>('mapped');
   const [centralizedGroupId, setCentralizedGroupId] = useState<string | null>(null);
   const [trackSubmitterBranch, setTrackSubmitterBranch] = useState(false);
+  const [approvalNotificationTarget, setApprovalNotificationTarget] = useState<'users_only' | 'users_and_groups'>('users_only');
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [approverSearchQuery, setApproverSearchQuery] = useState('');
@@ -171,6 +172,7 @@ export default function ReceiptSettings() {
       const requireSetting = settings.find(s => s.setting_key === 'require_business');
       const autoAssignSetting = settings.find(s => s.setting_key === 'auto_assign_branch');
       const modeSetting = settings.find(s => s.setting_key === 'collection_mode');
+      const notificationSetting = settings.find(s => s.setting_key === 'approval_notification_target');
 
       if (enabledSetting) {
         setSystemEnabled((enabledSetting.setting_value as { enabled?: boolean }).enabled ?? true);
@@ -190,6 +192,11 @@ export default function ReceiptSettings() {
         setCollectionMode((modeValue.mode as 'mapped' | 'centralized') ?? 'mapped');
         setCentralizedGroupId(modeValue.centralized_group_id ?? null);
         setTrackSubmitterBranch(modeValue.track_submitter_branch ?? false);
+      }
+      if (notificationSetting) {
+        setApprovalNotificationTarget(
+          (notificationSetting.setting_value as { target?: string }).target as 'users_only' | 'users_and_groups' || 'users_only'
+        );
       }
     }
   }, [settings]);
@@ -217,6 +224,7 @@ export default function ReceiptSettings() {
         { key: 'require_business', value: { enabled: requireBusiness } },
         { key: 'auto_assign_branch', value: { enabled: autoAssignBranch } },
         { key: 'collection_mode', value: { mode: collectionMode, centralized_group_id: centralizedGroupId, track_submitter_branch: trackSubmitterBranch } },
+        { key: 'approval_notification_target', value: { target: approvalNotificationTarget } },
       ];
 
       for (const { key, value } of updates) {
@@ -698,6 +706,35 @@ export default function ReceiptSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Notification Target Setting */}
+          <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+            <Label className="font-medium">Notification Target</Label>
+            <p className="text-sm text-muted-foreground">
+              Choose who receives approval notifications when a receipt is submitted
+            </p>
+            <RadioGroup
+              value={approvalNotificationTarget}
+              onValueChange={(val) => {
+                setApprovalNotificationTarget(val as 'users_only' | 'users_and_groups');
+                setHasChanges(true);
+              }}
+              className="space-y-2"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="users_only" id="notif-users" />
+                <Label htmlFor="notif-users" className="cursor-pointer">
+                  Users only (DM to individual approvers)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="users_and_groups" id="notif-groups" />
+                <Label htmlFor="notif-groups" className="cursor-pointer">
+                  Users + Groups (also post to group approvers)
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
           {/* Current Approvers */}
           <div className="border rounded-lg divide-y max-h-[400px] overflow-y-auto">
             {localApprovers.length === 0 ? (
