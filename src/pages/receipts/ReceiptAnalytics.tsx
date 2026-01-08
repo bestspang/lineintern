@@ -94,7 +94,7 @@ export default function ReceiptAnalytics() {
         .from('receipts')
         .select('id, vendor, total, receipt_date, category, created_at, branch_id')
         .gte('receipt_date', startDate)
-        .neq('status', 'rejected')
+        .eq('approval_status', 'approved')
         .order('receipt_date', { ascending: true });
 
       if (selectedBranch !== 'all') {

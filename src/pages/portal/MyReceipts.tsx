@@ -105,7 +105,7 @@ export default function MyReceipts() {
   const ytdStart = new Date(now.getFullYear(), 0, 1);
 
   receipts.forEach((r) => {
-    if (!r.receipt_date || r.status !== 'saved') return;
+    if (!r.receipt_date) return;
     const receiptDate = new Date(r.receipt_date);
     const amount = r.total || 0;
 
