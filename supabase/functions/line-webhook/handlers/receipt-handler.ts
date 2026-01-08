@@ -1926,7 +1926,6 @@ export async function handleReceiptPostback(
     const { error } = await supabase
       .from("receipts")
       .update({
-        status: "approved",
         approval_status: "approved",
         approved_by: lineUserId,
         approved_at: new Date().toISOString(),
