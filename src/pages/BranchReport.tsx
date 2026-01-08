@@ -90,17 +90,7 @@ interface ImportPreview {
 }
 
 export default function BranchReport() {
-  // Early return if supabase is not ready
-  if (!supabase) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">กำลังโหลด...</p>
-        </div>
-      </div>
-    );
-  }
+  // ✅ All hooks MUST be declared before any early returns (React Rules of Hooks)
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -126,11 +116,14 @@ export default function BranchReport() {
   // Get days for current time range
   const timeRangeDays = TIME_RANGE_OPTIONS.find(t => t.value === timeRange)?.days || 30;
 
+  // Check if supabase client is properly initialized
+  const isSupabaseReady = !!supabase?.from;
+
   // Fetch all branch reports
   const { data: allReports, isLoading, refetch } = useQuery({
     queryKey: ['branch-reports-all', startDate, endDate],
     queryFn: async () => {
-      if (!supabase) {
+      if (!supabase?.from) {
         throw new Error('Supabase client not initialized');
       }
       const { data, error } = await supabase
@@ -143,7 +136,7 @@ export default function BranchReport() {
       if (error) throw error;
       return data as BranchReport[];
     },
-    enabled: !!supabase,
+    enabled: isSupabaseReady,
   });
 
   // Filter reports based on time range and branch
@@ -212,8 +205,8 @@ export default function BranchReport() {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    if (!supabase) {
-      toast.error('กรุณารีเฟรชหน้า');
+    if (!supabase?.functions?.invoke) {
+      toast.error('ระบบยังไม่พร้อม กรุณารีเฟรชหน้า');
       return;
     }
     
@@ -244,8 +237,8 @@ export default function BranchReport() {
   const handleImport = async () => {
     if (!importFile) return;
     
-    if (!supabase) {
-      toast.error('กรุณารีเฟรชหน้า');
+    if (!supabase?.functions?.invoke) {
+      toast.error('ระบบยังไม่พร้อม กรุณารีเฟรชหน้า');
       return;
     }
     
@@ -672,6 +665,18 @@ export default function BranchReport() {
       style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 0,
     }).format(value);
   };
+
+  // Early return if supabase client is not ready (AFTER all hooks)
+  if (!isSupabaseReady) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
