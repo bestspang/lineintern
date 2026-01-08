@@ -323,11 +323,20 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     .single();
 
   if (!subscription) {
+    // Get default plan from settings
+    const { data: defaultPlanSetting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "default_plan")
+      .single();
+    
+    const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || "free";
+    
     await supabase.from("receipt_subscriptions").insert({
       line_user_id: lineUserId,
-      plan_id: "free",
+      plan_id: defaultPlanId,
     });
-    subscription = { plan_id: "free" };
+    subscription = { plan_id: defaultPlanId };
   }
 
   // Get plan limits
@@ -337,7 +346,7 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     .eq("id", subscription.plan_id)
     .single();
 
-  const limit = plan?.ai_receipts_limit || 8;
+  const limit = plan?.ai_receipts_limit ?? 8;
 
   // Get usage
   let { data: usage } = await supabase
@@ -348,6 +357,16 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     .single();
 
   const used = usage?.ai_receipts_used || 0;
+
+  // Handle unlimited plan (limit = -1)
+  if (limit === -1) {
+    return {
+      allowed: true,
+      used,
+      limit: -1,
+      remaining: Infinity,
+    };
+  }
 
   return {
     allowed: used < limit,
@@ -1104,11 +1123,7 @@ export function buildApproverFlexMessage(
     action: { type: "postback", label: locale === "th" ? "✗ ไม่อนุมัติ" : "✗ Reject", data: `action=reject_receipt&receipt_id=${result.receiptId}` },
   });
 
-  // Not Receipt button
-  actions.push({
-    type: "button", style: "secondary", color: "#6B7280",
-    action: { type: "postback", label: locale === "th" ? "📷 ไม่ใช่ใบเสร็จ" : "📷 Not Receipt", data: `action=mark_not_receipt&receipt_id=${result.receiptId}` },
-  });
+  // "Not Receipt" button removed - redundant with "Reject" button
 
   actions.push({
     type: "button", style: "secondary",

@@ -7206,13 +7206,15 @@ async function pushLineMessage(to: string, text: string): Promise<void> {
 /**
  * Notify owner/admin when a user exceeds their quota
  * Only sends to USER approvers (not group approvers) via DM
+ * @param skipSubmitter - If true, skip sending to approver who is also the submitter (to avoid duplicate messages)
  */
 async function notifyOwnerQuotaExceeded(
   submitterLineUserId: string,
   quota: { used: number; limit: number },
-  locale: "th" | "en"
+  locale: "th" | "en",
+  skipSubmitter: boolean = false
 ): Promise<void> {
-  console.log(`[notifyOwnerQuotaExceeded] Notifying owners about quota exceeded`);
+  console.log(`[notifyOwnerQuotaExceeded] Notifying owners about quota exceeded (skipSubmitter=${skipSubmitter})`);
   
   try {
     // Get approvers that are USERS only (not groups)
@@ -7241,6 +7243,12 @@ async function notifyOwnerQuotaExceeded(
       : `⚠️ ${submitterName} exceeded AI quota (${quota.used}/${quota.limit} this month)`;
     
     for (const approver of approvers) {
+      // Skip if approver is the submitter to avoid duplicate messages
+      if (skipSubmitter && approver.line_user_id === submitterLineUserId) {
+        console.log(`[notifyOwnerQuotaExceeded] Skipping submitter ${approver.display_name || approver.line_user_id}`);
+        continue;
+      }
+      
       if (approver.line_user_id) {
         await pushLineMessage(approver.line_user_id, message);
         console.log(`[notifyOwnerQuotaExceeded] Notified ${approver.display_name || approver.line_user_id}`);
@@ -7826,7 +7834,8 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
       await pushLineMessage(lineUserId, message);
       
       // Notify owner/admin via DM (text only, not to groups)
-      await notifyOwnerQuotaExceeded(lineUserId, quota, locale);
+      // Skip submitter to avoid duplicate messages if they are also an approver
+      await notifyOwnerQuotaExceeded(lineUserId, quota, locale, true);
       
       return;
     }
