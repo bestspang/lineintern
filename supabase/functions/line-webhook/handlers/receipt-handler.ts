@@ -787,25 +787,60 @@ export async function sendApprovalNotifications(
 ): Promise<void> {
   const approvers = await getReceiptApprovers();
   
-  // Filter to only USER approvers (NOT group approvers)
-  const userApprovers = approvers.filter(a => a.type === 'user' && a.line_user_id);
+  // Check notification target setting
+  const { data: notificationSetting } = await supabase
+    .from("receipt_settings")
+    .select("setting_value")
+    .eq("setting_key", "approval_notification_target")
+    .single();
   
-  if (userApprovers.length === 0) {
-    console.log("[sendApprovalNotifications] No user approvers configured (skipping group approvers)");
+  const targetConfig = notificationSetting?.setting_value as { target?: string } | null;
+  const notificationTarget = targetConfig?.target || 'users_only';
+  
+  // Filter approvers based on setting
+  let targetApprovers: ReceiptApprover[];
+  if (notificationTarget === 'users_and_groups') {
+    // Include both users and groups
+    targetApprovers = approvers.filter(a => 
+      (a.type === 'user' && a.line_user_id) || 
+      (a.type === 'group' && a.group_id)
+    );
+    console.log(`[sendApprovalNotifications] Target: users_and_groups - ${targetApprovers.length} approvers`);
+  } else {
+    // Default: users only
+    targetApprovers = approvers.filter(a => a.type === 'user' && a.line_user_id);
+    console.log(`[sendApprovalNotifications] Target: users_only - ${targetApprovers.length} user approvers (${approvers.length - targetApprovers.length} group approvers skipped)`);
+  }
+  
+  if (targetApprovers.length === 0) {
+    console.log("[sendApprovalNotifications] No approvers to notify");
     return;
   }
-
-  console.log(`[sendApprovalNotifications] Sending to ${userApprovers.length} user approvers (${approvers.length - userApprovers.length} group approvers skipped)`);
 
   const flexMessage = buildApproverFlexMessage(result, submitterInfo, locale, liffUrl, imageUrl);
   const notifiedTo: string[] = [];
 
-  for (const approver of userApprovers) {
+  for (const approver of targetApprovers) {
     try {
-      // Only send to users with line_user_id
-      await sendLineMessage(approver.line_user_id!, [flexMessage]);
-      notifiedTo.push(approver.line_user_id!);
-      console.log(`[sendApprovalNotifications] Sent to user: ${approver.display_name || approver.line_user_id}`);
+      if (approver.type === 'user' && approver.line_user_id) {
+        // Send DM to user
+        await sendLineMessage(approver.line_user_id, [flexMessage]);
+        notifiedTo.push(approver.line_user_id);
+        console.log(`[sendApprovalNotifications] Sent DM to user: ${approver.display_name || approver.line_user_id}`);
+      } else if (approver.type === 'group' && approver.group_id) {
+        // Send to group (need to get line_group_id)
+        const { data: group } = await supabase
+          .from("groups")
+          .select("line_group_id")
+          .eq("id", approver.group_id)
+          .single();
+        
+        if (group?.line_group_id) {
+          await sendLineMessage(group.line_group_id, [flexMessage]);
+          notifiedTo.push(group.line_group_id);
+          console.log(`[sendApprovalNotifications] Sent to group: ${approver.display_name}`);
+        }
+      }
     } catch (error) {
       console.error(`[sendApprovalNotifications] Error sending to approver ${approver.display_name}:`, error);
     }
