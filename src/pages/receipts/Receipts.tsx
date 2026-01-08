@@ -62,6 +62,9 @@ interface ReceiptRow {
   description: string | null;
   notes: string | null;
   status: string | null;
+  approval_status: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string | null;
   line_user_id: string;
   warnings: string[] | null;
@@ -83,6 +86,7 @@ export default function Receipts() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [approvalFilter, setApprovalFilter] = useState<string>('all');
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptRow | null>(null);
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -111,7 +115,7 @@ export default function Receipts() {
 
   // Fetch all receipts (admin view)
   const { data: receipts = [], isLoading } = useQuery({
-    queryKey: ['admin-receipts', search, statusFilter, categoryFilter],
+    queryKey: ['admin-receipts', search, statusFilter, categoryFilter, approvalFilter],
     queryFn: async () => {
       let query = supabase
         .from('receipts')
@@ -120,7 +124,8 @@ export default function Receipts() {
           total, subtotal, vat, receipt_date, category, 
           payment_method, payer_name, card_number_masked, card_type,
           description, notes,
-          status, created_at, line_user_id, warnings, confidence,
+          status, approval_status, approved_by, approved_at,
+          created_at, line_user_id, warnings, confidence,
           business:receipt_businesses(name)
         `)
         .order('created_at', { ascending: false })
@@ -134,6 +139,13 @@ export default function Receipts() {
       }
       if (categoryFilter !== 'all') {
         query = query.eq('category', categoryFilter);
+      }
+      if (approvalFilter !== 'all') {
+        if (approvalFilter === 'pending') {
+          query = query.is('approval_status', null);
+        } else {
+          query = query.eq('approval_status', approvalFilter);
+        }
       }
 
       const { data, error } = await query;
@@ -207,6 +219,10 @@ export default function Receipts() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/receipts/approval-logs')}>
+            <FileText className="h-4 w-4 mr-2" />
+            Approval Logs
+          </Button>
           <Button variant="outline" onClick={() => navigate('/receipts/settings')}>
             <Settings className="h-4 w-4 mr-2" />
             Settings
@@ -320,6 +336,18 @@ export default function Receipts() {
                 <SelectItem value="other">Other</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={approvalFilter} onValueChange={setApprovalFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Approval Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Approvals</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="retake_requested">Retake</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -348,6 +376,7 @@ export default function Receipts() {
                   <TableHead>Date</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Approval</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -389,6 +418,17 @@ export default function Receipts() {
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(receipt.status, (receipt.warnings?.length || 0) > 0)}
+                    </TableCell>
+                    <TableCell>
+                      {receipt.approval_status === 'approved' ? (
+                        <Badge className="bg-emerald-100 text-emerald-700">Approved</Badge>
+                      ) : receipt.approval_status === 'rejected' ? (
+                        <Badge variant="destructive">Rejected</Badge>
+                      ) : receipt.approval_status === 'retake_requested' ? (
+                        <Badge className="bg-amber-100 text-amber-700">Retake</Badge>
+                      ) : (
+                        <Badge variant="outline">Pending</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
