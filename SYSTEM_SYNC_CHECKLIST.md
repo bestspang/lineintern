@@ -86,6 +86,36 @@
 
 ---
 
+## 7. Deposit/Reimbursement Detection
+
+| ส่วน | ไฟล์ | สิ่งที่ต้อง sync |
+|------|------|------------------|
+| Settings UI | `src/pages/attendance/DepositSettings.tsx` | company_accounts, enable toggles |
+| Database | `deposit_settings` table | company_accounts, enable_deposit_detection, enable_reimbursement_detection |
+| LINE Handler | `supabase/functions/line-webhook/index.ts` | determineTransferType(), buildReimbursementFlex(), getDocumentTypeName() |
+| Admin List | `src/pages/attendance/Deposits.tsx` | document_type display/filter |
+| Portal Review | `src/pages/portal/DepositReview.tsx` | document_type display |
+
+### Logic Flow
+
+```
+1. Image received → classifyDocumentType()
+2. If deposit_slip → extractDepositDataFromImage() (with sender/recipient)
+3. → determineTransferType() (compare recipient vs company_accounts)
+4. → Check enable_deposit_detection / enable_reimbursement_detection
+5. → Save with correct document_type
+6. → Send appropriate Flex Message (buildDepositFlex or buildReimbursementFlex)
+```
+
+### เมื่อเพิ่ม document_type ใหม่
+
+1. **อัพเดท getDocumentTypeName()** - เพิ่ม type name ใน Record
+2. **อัพเดท Deposits.tsx** - เพิ่มใน filter และ getDocTypeLabel()
+3. **อัพเดท DepositReview.tsx** - แสดง badge และ title ที่ถูกต้อง
+4. **อัพเดท buildXxxFlex()** - สร้าง Flex Message ที่เหมาะสม
+
+---
+
 ## ⚠️ คำเตือนสำหรับ AI
 
 1. **อย่าแก้ไข functions ที่ทำงานดีอยู่แล้ว** โดยไม่จำเป็น
@@ -97,4 +127,5 @@
 ---
 
 ## Last Updated
+- 2026-01-08: Added Deposit/Reimbursement Detection section (Section 7)
 - 2026-01-07: Initial version - Added Portal Access Mode 'both' support
