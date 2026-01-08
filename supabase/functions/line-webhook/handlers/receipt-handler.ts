@@ -104,17 +104,21 @@ async function downloadLineImage(messageId: string): Promise<string | null> {
 // Group Permission Check
 // =============================
 
-interface EnabledGroupsConfig {
-  mode: 'all' | 'selected' | 'branch_linked';
-  group_ids?: string[];
-}
-
 /**
  * Check if a LINE group is allowed to submit receipts
+ * IMPORTANT: This function strictly follows collection_mode setting:
+ * - "mapped" mode: Only groups in receipt_group_mappings with is_enabled=true are allowed
+ * - "centralized" mode: Only the designated centralized group is allowed
+ * - DMs (no group) are always allowed
  */
 export async function canGroupSubmitReceipts(lineGroupId: string | null): Promise<boolean> {
   // DMs (no group) are always allowed
-  if (!lineGroupId) return true;
+  if (!lineGroupId) {
+    console.log("[canGroupSubmitReceipts] DM - allowed");
+    return true;
+  }
+
+  console.log(`[canGroupSubmitReceipts] Checking group: ${lineGroupId}`);
 
   try {
     // Check if system is enabled
@@ -129,6 +133,20 @@ export async function canGroupSubmitReceipts(lineGroupId: string | null): Promis
       return false;
     }
 
+    // Get internal group ID first
+    const { data: group } = await supabase
+      .from("groups")
+      .select("id, display_name")
+      .eq("line_group_id", lineGroupId)
+      .single();
+
+    if (!group) {
+      console.log("[canGroupSubmitReceipts] Group not found in DB - REJECTED");
+      return false;
+    }
+
+    console.log(`[canGroupSubmitReceipts] Internal group ID: ${group.id}, name: ${group.display_name}`);
+
     // Check collection mode
     const { data: modeSetting } = await supabase
       .from("receipt_settings")
@@ -136,85 +154,38 @@ export async function canGroupSubmitReceipts(lineGroupId: string | null): Promis
       .eq("setting_key", "collection_mode")
       .single();
 
-    if (modeSetting) {
-      const modeConfig = modeSetting.setting_value as { mode?: string; centralized_group_id?: string | null };
-      
-      if (modeConfig.mode === 'centralized') {
-        // In centralized mode, only the designated group can submit
-        if (!modeConfig.centralized_group_id) {
-          console.log("[canGroupSubmitReceipts] Centralized mode but no group configured");
-          return false;
-        }
-        
-        // Get internal group ID
-        const { data: group } = await supabase
-          .from("groups")
-          .select("id")
-          .eq("line_group_id", lineGroupId)
-          .single();
+    const modeConfig = modeSetting?.setting_value as { mode?: string; centralized_group_id?: string | null } | null;
+    const collectionMode = modeConfig?.mode || 'mapped';
+    
+    console.log(`[canGroupSubmitReceipts] Collection mode: ${collectionMode}`);
 
-        if (!group) {
-          console.log("[canGroupSubmitReceipts] Group not found in DB");
-          return false;
-        }
-
-        const isAllowed = group.id === modeConfig.centralized_group_id;
-        console.log(`[canGroupSubmitReceipts] Centralized mode check: ${isAllowed}`);
-        return isAllowed;
+    // CENTRALIZED MODE: Only the designated group can submit
+    if (collectionMode === 'centralized') {
+      if (!modeConfig?.centralized_group_id) {
+        console.log("[canGroupSubmitReceipts] Centralized mode but no group configured - REJECTED");
+        return false;
       }
+
+      const isAllowed = group.id === modeConfig.centralized_group_id;
+      console.log(`[canGroupSubmitReceipts] Centralized mode check: ${isAllowed ? 'ALLOWED' : 'REJECTED'}`);
+      return isAllowed;
     }
 
-    // Mapped mode: Check receipt_group_mappings table
-    const { data: group } = await supabase
-      .from("groups")
-      .select("id")
-      .eq("line_group_id", lineGroupId)
-      .single();
-
-    if (!group) {
-      console.log("[canGroupSubmitReceipts] Group not found in DB");
-      return false;
-    }
-
-    // Check receipt_group_mappings table
+    // MAPPED MODE: Only check receipt_group_mappings table (NO FALLBACK!)
     const { data: mapping } = await supabase
       .from("receipt_group_mappings")
-      .select("is_enabled")
+      .select("is_enabled, branch_id")
       .eq("group_id", group.id)
       .eq("is_enabled", true)
       .maybeSingle();
 
     if (mapping) {
-      console.log("[canGroupSubmitReceipts] Group enabled via mapping");
+      console.log(`[canGroupSubmitReceipts] Group enabled via mapping (branch: ${mapping.branch_id}) - ALLOWED`);
       return true;
     }
 
-    // Fallback: Check old enabled_groups setting for backwards compatibility
-    const { data: setting } = await supabase
-      .from("receipt_settings")
-      .select("setting_value")
-      .eq("setting_key", "enabled_groups")
-      .single();
-
-    if (!setting) return false; // No mapping = not allowed
-
-    const config = setting.setting_value as EnabledGroupsConfig;
-    
-    if (config.mode === "all") return true;
-    
-    if (config.mode === "selected") {
-      return config.group_ids?.includes(group.id) || false;
-    }
-    
-    if (config.mode === "branch_linked") {
-      const { data: branch } = await supabase
-        .from("branches")
-        .select("id")
-        .eq("line_group_id", lineGroupId)
-        .maybeSingle();
-      return !!branch;
-    }
-
+    // NOT in mapping = NOT allowed (no fallback to enabled_groups!)
+    console.log(`[canGroupSubmitReceipts] Group NOT in receipt_group_mappings - REJECTED`);
     return false;
   } catch (error) {
     console.error("[canGroupSubmitReceipts] Error:", error);
