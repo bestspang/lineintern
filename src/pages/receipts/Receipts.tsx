@@ -206,8 +206,8 @@ export default function Receipts() {
   const stats = {
     total: receipts.length,
     totalAmount: receipts.reduce((sum, r) => sum + (r.total || 0), 0),
-    saved: receipts.filter(r => r.status === 'saved').length,
-    needsReview: receipts.filter(r => r.status === 'needs_review').length,
+    pendingApproval: receipts.filter(r => !r.approval_status || r.approval_status === 'pending').length,
+    approved: receipts.filter(r => r.approval_status === 'approved').length,
   };
 
   const formatCurrency = (amount: number) => {
@@ -254,6 +254,21 @@ export default function Receipts() {
   const hasLowConfidence = (confidence: ReceiptRow['confidence']) => {
     if (!confidence) return false;
     return Object.values(confidence).some(v => v !== undefined && v < 0.5);
+  };
+
+  const getApprovalBadge = (approvalStatus: string | null) => {
+    switch (approvalStatus) {
+      case 'approved':
+        return <Badge className="bg-green-100 text-green-700">✓ Approved</Badge>;
+      case 'rejected':
+        return <Badge className="bg-red-100 text-red-700">✗ Rejected</Badge>;
+      case 'retake_requested':
+        return <Badge className="bg-orange-100 text-orange-700">📷 Retake</Badge>;
+      case 'not_receipt':
+        return <Badge className="bg-gray-100 text-gray-700">Not Receipt</Badge>;
+      default:
+        return <Badge variant="outline" className="text-amber-600 border-amber-400">⏳ Pending</Badge>;
+    }
   };
 
   return (
@@ -321,12 +336,12 @@ export default function Receipts() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <FileText className="h-6 w-6 text-green-600" />
+              <div className="h-12 w-12 rounded-lg bg-amber-100 flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Saved</p>
-                <p className="text-2xl font-bold">{stats.saved}</p>
+                <p className="text-sm text-muted-foreground">Pending Approval</p>
+                <p className="text-2xl font-bold">{stats.pendingApproval}</p>
               </div>
             </div>
           </CardContent>
@@ -334,12 +349,12 @@ export default function Receipts() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <AlertTriangle className="h-6 w-6 text-amber-600" />
+              <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Needs Review</p>
-                <p className="text-2xl font-bold">{stats.needsReview}</p>
+                <p className="text-sm text-muted-foreground">Approved</p>
+                <p className="text-2xl font-bold">{stats.approved}</p>
               </div>
             </div>
           </CardContent>
@@ -426,6 +441,7 @@ export default function Receipts() {
                   <TableHead>Date</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Approval</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -472,6 +488,9 @@ export default function Receipts() {
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(receipt.status, (receipt.warnings?.length || 0) > 0)}
+                    </TableCell>
+                    <TableCell>
+                      {getApprovalBadge(receipt.approval_status)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
