@@ -8162,6 +8162,10 @@ async function handleImageMessage(event: LineEvent) {
   console.log(`[handleImageMessage] Extracting data from slip...`);
   const extractedData = await extractDepositDataFromImage(imageBase64);
   
+  // Determine if this is a deposit or reimbursement
+  const transferType = await determineTransferType(extractedData);
+  console.log(`[handleImageMessage] Transfer type detected: ${transferType}`);
+  
   // Check for duplicate by reference number (even if hash is different)
   if (extractedData.reference_number && !isDuplicate) {
     const { data: duplicateByRef } = await supabase
@@ -8202,6 +8206,9 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
+  // Determine document type based on transfer type
+  const documentType = transferType === 'reimbursement' ? 'reimbursement' : 'deposit_slip';
+  
   // Insert deposit record (with duplicate flag if applicable)
   const { data: deposit, error: insertError } = await supabase
     .from('daily_deposits')
@@ -8217,10 +8224,10 @@ async function handleImageMessage(event: LineEvent) {
       bank_branch: extractedData.bank_branch,
       deposit_date_on_slip: extractedData.deposit_date,
       reference_number: extractedData.reference_number,
-      raw_ocr_result: { ...extractedData, source: 'line_group', classification },
+      raw_ocr_result: { ...extractedData, source: 'line_group', classification, transferType },
       extraction_confidence: extractedData.confidence,
-      // New fields for document classification and duplicate detection
-      document_type: 'deposit_slip',
+      // Document type based on transfer detection
+      document_type: documentType,
       photo_hash: photoHash,
       is_duplicate: isDuplicate,
       duplicate_of_id: duplicateOfId,
@@ -8257,7 +8264,7 @@ async function handleImageMessage(event: LineEvent) {
     return;
   }
   
-  console.log(`[handleImageMessage] Deposit created: ${deposit.id}`);
+  console.log(`[handleImageMessage] ${documentType === 'reimbursement' ? 'Reimbursement' : 'Deposit'} created: ${deposit.id}`);
   
   // Format amount
   const formatCurrency = (amount: number | null | undefined): string => {
@@ -8268,7 +8275,34 @@ async function handleImageMessage(event: LineEvent) {
   const now = getBangkokNow();
   const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   
-  // Send confirmation to employee
+  // Handle reimbursement differently
+  if (transferType === 'reimbursement') {
+    console.log(`[handleImageMessage] Sending reimbursement confirmation`);
+    
+    // Build Flex Message for reimbursement
+    const reimbursementFlexContent = buildReimbursementFlex({
+      sender_name: extractedData.sender_name || employee.full_name,
+      recipient_name: extractedData.recipient_name,
+      amount: extractedData.amount,
+      bank_name: extractedData.bank_name,
+      reference_number: extractedData.reference_number,
+      deposit_id: deposit.id
+    });
+    
+    const reimbursementFlexMessage = {
+      type: "flex",
+      altText: "💸 จ่ายคืนเงินสำรอง",
+      contents: reimbursementFlexContent
+    };
+    
+    await sendFlexMessage(event.replyToken, reimbursementFlexMessage);
+    
+    // Optionally notify admin about reimbursement (less urgently)
+    console.log(`[handleImageMessage] Reimbursement processed - no admin notification needed`);
+    return;
+  }
+  
+  // Regular deposit confirmation
   const confirmMessage = `✅ รับใบฝากเงินแล้ว
 ━━━━━━━━━━━━━━━━
 👤 พนักงาน: ${employee.full_name}
@@ -8628,7 +8662,7 @@ IMPORTANT:
   }
 }
 
-// Extract deposit data from image using AI
+// Extract deposit data from image using AI (enhanced with sender/recipient info)
 async function extractDepositDataFromImage(imageBase64: string): Promise<{
   amount?: number;
   account_number?: string;
@@ -8637,6 +8671,11 @@ async function extractDepositDataFromImage(imageBase64: string): Promise<{
   deposit_date?: string;
   reference_number?: string;
   confidence?: number;
+  // New fields for sender/recipient detection
+  sender_account?: string;
+  sender_name?: string;
+  recipient_account?: string;
+  recipient_name?: string;
 }> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (!LOVABLE_API_KEY) {
@@ -8659,22 +8698,28 @@ async function extractDepositDataFromImage(imageBase64: string): Promise<{
             content: [
               {
                 type: "text",
-                text: `Analyze this Thai bank deposit slip image and extract the following information. Return ONLY a valid JSON object with these fields:
+                text: `Analyze this Thai bank transfer/deposit slip image and extract the following information. Return ONLY a valid JSON object with these fields:
 {
-  "amount": <number or null - the deposit amount in Thai Baht>,
-  "account_number": <string or null - the destination account number>,
+  "amount": <number or null - the transfer/deposit amount in Thai Baht>,
+  "account_number": <string or null - the destination/recipient account number>,
   "bank_name": <string or null - the bank name>,
   "bank_branch": <string or null - the bank branch name if visible>,
   "deposit_date": <string or null - the deposit date in YYYY-MM-DD format>,
   "reference_number": <string or null - any reference/transaction number>,
-  "confidence": <number 0-1 - how confident you are in the extraction>
+  "confidence": <number 0-1 - how confident you are in the extraction>,
+  "sender_account": <string or null - the sender/source account number>,
+  "sender_name": <string or null - the sender name if visible>,
+  "recipient_account": <string or null - the recipient/destination account number>,
+  "recipient_name": <string or null - the recipient name if visible>
 }
 
 Important: 
 - Return ONLY the JSON object, no other text
 - If a field cannot be determined, use null
 - For amount, extract only the numeric value without currency symbols
-- Look for Thai text like "จำนวนเงิน", "เลขที่บัญชี", "วันที่", "เลขที่อ้างอิง"`
+- Look for Thai text like "จำนวนเงิน", "เลขที่บัญชี", "วันที่", "เลขที่อ้างอิง"
+- For sender: look for "จาก", "ผู้โอน", "From", "บัญชีต้นทาง"
+- For recipient: look for "ถึง", "ผู้รับ", "To", "บัญชีปลายทาง"`
               },
               {
                 type: "image_url",
@@ -8714,6 +8759,160 @@ Important:
     console.error("[extractDepositDataFromImage] Error:", error);
     return {};
   }
+}
+
+// Determine if transfer is a deposit (to company) or reimbursement (to employee)
+interface CompanyAccount {
+  account_number: string;
+  bank_code?: string;
+  account_name?: string;
+}
+
+async function determineTransferType(extractedData: {
+  recipient_account?: string;
+  recipient_name?: string;
+  sender_account?: string;
+  sender_name?: string;
+}): Promise<'deposit' | 'reimbursement' | 'unknown'> {
+  try {
+    // Get company accounts from deposit_settings
+    const { data: settings } = await supabase
+      .from('deposit_settings')
+      .select('company_accounts')
+      .eq('scope', 'global')
+      .maybeSingle();
+
+    const companyAccounts: CompanyAccount[] = (settings?.company_accounts as CompanyAccount[]) || [];
+    
+    if (companyAccounts.length === 0) {
+      console.log('[determineTransferType] No company accounts configured - defaulting to deposit');
+      return 'deposit'; // Default to deposit if no company accounts configured
+    }
+
+    // Normalize recipient account for comparison (remove dashes, spaces)
+    const recipientAccount = extractedData.recipient_account?.replace(/[-\s]/g, '') || '';
+    
+    if (!recipientAccount) {
+      console.log('[determineTransferType] No recipient account found - defaulting to unknown');
+      return 'unknown';
+    }
+
+    // Check if recipient account matches any company account
+    for (const acc of companyAccounts) {
+      const companyNum = acc.account_number?.replace(/[-\s]/g, '') || '';
+      if (companyNum && recipientAccount.includes(companyNum)) {
+        console.log(`[determineTransferType] Recipient matches company account: ${acc.account_number} - DEPOSIT`);
+        return 'deposit';
+      }
+      // Also check partial match (last 4-6 digits)
+      if (companyNum.length >= 4 && recipientAccount.slice(-6).includes(companyNum.slice(-4))) {
+        console.log(`[determineTransferType] Recipient partial match company account: ${acc.account_number} - DEPOSIT`);
+        return 'deposit';
+      }
+    }
+
+    // If not matching company accounts, it's likely a reimbursement
+    console.log(`[determineTransferType] Recipient ${recipientAccount} does not match any company account - REIMBURSEMENT`);
+    return 'reimbursement';
+
+  } catch (error) {
+    console.error('[determineTransferType] Error:', error);
+    return 'unknown';
+  }
+}
+
+// Build Flex Message for reimbursement confirmation
+function buildReimbursementFlex(data: {
+  sender_name?: string;
+  recipient_name?: string;
+  amount?: number;
+  bank_name?: string;
+  reference_number?: string;
+  deposit_id: string;
+}): any {
+  const formatCurrency = (amount: number | null | undefined): string => {
+    if (amount === null || amount === undefined) return "ไม่ระบุ";
+    return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
+  };
+
+  return {
+    type: "bubble",
+    size: "kilo",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#8B5CF6",
+      paddingAll: "12px",
+      contents: [
+        {
+          type: "text",
+          text: "💸 จ่ายคืนเงินสำรอง",
+          weight: "bold",
+          size: "lg",
+          color: "#FFFFFF"
+        }
+      ]
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      contents: [
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "👤 ผู้โอน:", size: "sm", color: "#666666", flex: 3 },
+            { type: "text", text: data.sender_name || "ไม่ระบุ", size: "sm", weight: "bold", flex: 5, wrap: true }
+          ]
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "👤 ผู้รับ:", size: "sm", color: "#666666", flex: 3 },
+            { type: "text", text: data.recipient_name || "ไม่ระบุ", size: "sm", weight: "bold", flex: 5, wrap: true }
+          ]
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "💰 จำนวน:", size: "sm", color: "#666666", flex: 3 },
+            { type: "text", text: formatCurrency(data.amount), size: "sm", weight: "bold", color: "#8B5CF6", flex: 5 }
+          ]
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "🏦 ธนาคาร:", size: "sm", color: "#666666", flex: 3 },
+            { type: "text", text: data.bank_name || "ไม่ระบุ", size: "sm", flex: 5 }
+          ]
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "📄 Ref:", size: "sm", color: "#666666", flex: 3 },
+            { type: "text", text: data.reference_number || "ไม่ระบุ", size: "sm", flex: 5 }
+          ]
+        },
+        {
+          type: "separator",
+          margin: "md"
+        },
+        {
+          type: "text",
+          text: "📋 บันทึกแล้ว (ไม่นับเป็นรายได้)",
+          size: "xs",
+          color: "#888888",
+          margin: "md",
+          align: "center"
+        }
+      ]
+    }
+  };
 }
 
 // Upload deposit image to storage

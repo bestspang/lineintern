@@ -1563,6 +1563,7 @@ export type Database = {
       deposit_settings: {
         Row: {
           branch_id: string | null
+          company_accounts: Json | null
           created_at: string
           deposit_deadline: string
           enable_face_verification: boolean
@@ -1578,6 +1579,7 @@ export type Database = {
         }
         Insert: {
           branch_id?: string | null
+          company_accounts?: Json | null
           created_at?: string
           deposit_deadline?: string
           enable_face_verification?: boolean
@@ -1593,6 +1595,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string | null
+          company_accounts?: Json | null
           created_at?: string
           deposit_deadline?: string
           enable_face_verification?: boolean

@@ -10,9 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Bell, Users, Save, Loader2, Camera, MessageSquare, UserCheck, X } from "lucide-react";
+import { Clock, Bell, Users, Save, Loader2, Camera, MessageSquare, UserCheck, X, Building2, Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+
+interface CompanyAccount {
+  account_number: string;
+  bank_code: string;
+  account_name: string;
+}
 
 interface DepositSettings {
   id: string;
@@ -26,6 +33,7 @@ interface DepositSettings {
   enable_reminder: boolean;
   enable_face_verification: boolean;
   enabled_deposit_groups: string[] | null;
+  company_accounts: CompanyAccount[] | null;
 }
 
 export default function DepositSettings() {
@@ -39,6 +47,12 @@ export default function DepositSettings() {
   const [enableReminder, setEnableReminder] = useState(true);
   const [enableFaceVerification, setEnableFaceVerification] = useState(true);
   const [enabledDepositGroups, setEnabledDepositGroups] = useState<string[]>([]);
+  const [companyAccounts, setCompanyAccounts] = useState<CompanyAccount[]>([]);
+  
+  // New account form state
+  const [newAccountNumber, setNewAccountNumber] = useState("");
+  const [newBankCode, setNewBankCode] = useState("");
+  const [newAccountName, setNewAccountName] = useState("");
 
   // Fetch settings
   const { data: settings, isLoading } = useQuery({
@@ -51,7 +65,12 @@ export default function DepositSettings() {
         .maybeSingle();
       
       if (error) throw error;
-      return data as DepositSettings | null;
+      if (!data) return null;
+      
+      return {
+        ...data,
+        company_accounts: (data.company_accounts as unknown as CompanyAccount[]) || []
+      } as DepositSettings;
     }
   });
 
@@ -98,6 +117,7 @@ export default function DepositSettings() {
       setEnableReminder(settings.enable_reminder);
       setEnableFaceVerification(settings.enable_face_verification);
       setEnabledDepositGroups(settings.enabled_deposit_groups || []);
+      setCompanyAccounts((settings.company_accounts as CompanyAccount[]) || []);
     }
   }, [settings]);
 
@@ -128,6 +148,31 @@ export default function DepositSettings() {
     );
   };
 
+  // Add company account
+  const addCompanyAccount = () => {
+    if (!newAccountNumber.trim()) {
+      toast.error("กรุณากรอกเลขบัญชี");
+      return;
+    }
+    
+    const newAccount: CompanyAccount = {
+      account_number: newAccountNumber.trim(),
+      bank_code: newBankCode.trim() || "ไม่ระบุ",
+      account_name: newAccountName.trim() || "บัญชีบริษัท"
+    };
+    
+    setCompanyAccounts(prev => [...prev, newAccount]);
+    setNewAccountNumber("");
+    setNewBankCode("");
+    setNewAccountName("");
+    toast.success("เพิ่มบัญชีบริษัทแล้ว");
+  };
+
+  // Remove company account
+  const removeCompanyAccount = (index: number) => {
+    setCompanyAccounts(prev => prev.filter((_, i) => i !== index));
+  };
+
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -141,6 +186,7 @@ export default function DepositSettings() {
         enable_reminder: enableReminder,
         enable_face_verification: enableFaceVerification,
         enabled_deposit_groups: enabledDepositGroups,
+        company_accounts: companyAccounts as unknown as Json,
         updated_at: new Date().toISOString()
       };
 
@@ -271,6 +317,80 @@ export default function DepositSettings() {
                   onCheckedChange={setEnableReminder}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Company Accounts for Auto-Detection */}
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                บัญชีบริษัท (สำหรับแยก Deposit vs Reimbursement)
+              </CardTitle>
+              <CardDescription>
+                ระบุเลขบัญชีบริษัทเพื่อให้ระบบแยกแยะอัตโนมัติ: สลิปโอนเข้าบัญชีบริษัท = ฝากเงินรายได้ / โอนให้พนักงาน = จ่ายคืนเงินสำรอง
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Add new account form */}
+              <div className="grid gap-3 sm:grid-cols-4 items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="account-number">เลขบัญชี *</Label>
+                  <Input
+                    id="account-number"
+                    placeholder="XXX-X-XXXXX-X"
+                    value={newAccountNumber}
+                    onChange={(e) => setNewAccountNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank-code">ธนาคาร</Label>
+                  <Input
+                    id="bank-code"
+                    placeholder="SCB, KBANK, BBL..."
+                    value={newBankCode}
+                    onChange={(e) => setNewBankCode(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="account-name">ชื่อบัญชี</Label>
+                  <Input
+                    id="account-name"
+                    placeholder="บริษัท ABC จำกัด"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                  />
+                </div>
+                <Button onClick={addCompanyAccount} variant="secondary">
+                  <Plus className="h-4 w-4 mr-1" />
+                  เพิ่ม
+                </Button>
+              </div>
+
+              {/* List of company accounts */}
+              {companyAccounts.length > 0 ? (
+                <div className="space-y-2">
+                  {companyAccounts.map((acc, index) => (
+                    <div key={index} className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="flex items-center gap-4">
+                        <Badge variant="outline">{acc.bank_code}</Badge>
+                        <span className="font-mono text-sm">{acc.account_number}</span>
+                        <span className="text-muted-foreground text-sm">{acc.account_name}</span>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => removeCompanyAccount(index)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg bg-muted/30">
+                  ยังไม่มีบัญชีบริษัท - สลิปทั้งหมดจะถูกบันทึกเป็น "ใบฝากเงิน"
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                💡 เมื่อตั้งค่าแล้ว: AI จะตรวจสอบบัญชีปลายทางของสลิป หากตรงกับบัญชีบริษัท = บันทึกเป็นรายได้ / หากไม่ตรง = บันทึกเป็นจ่ายคืนเงินสำรอง
+              </p>
             </CardContent>
           </Card>
 
