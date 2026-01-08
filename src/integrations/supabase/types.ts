@@ -1566,7 +1566,9 @@ export type Database = {
           company_accounts: Json | null
           created_at: string
           deposit_deadline: string
+          enable_deposit_detection: boolean | null
           enable_face_verification: boolean
+          enable_reimbursement_detection: boolean | null
           enable_reminder: boolean
           enabled_deposit_groups: string[] | null
           id: string
@@ -1582,7 +1584,9 @@ export type Database = {
           company_accounts?: Json | null
           created_at?: string
           deposit_deadline?: string
+          enable_deposit_detection?: boolean | null
           enable_face_verification?: boolean
+          enable_reimbursement_detection?: boolean | null
           enable_reminder?: boolean
           enabled_deposit_groups?: string[] | null
           id?: string
@@ -1598,7 +1602,9 @@ export type Database = {
           company_accounts?: Json | null
           created_at?: string
           deposit_deadline?: string
+          enable_deposit_detection?: boolean | null
           enable_face_verification?: boolean
+          enable_reimbursement_detection?: boolean | null
           enable_reminder?: boolean
           enabled_deposit_groups?: string[] | null
           id?: string

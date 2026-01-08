@@ -8166,6 +8166,26 @@ async function handleImageMessage(event: LineEvent) {
   const transferType = await determineTransferType(extractedData);
   console.log(`[handleImageMessage] Transfer type detected: ${transferType}`);
   
+  // Check if this transfer type is enabled
+  const { data: detectionSettings } = await supabase
+    .from('deposit_settings')
+    .select('enable_deposit_detection, enable_reimbursement_detection')
+    .eq('scope', 'global')
+    .maybeSingle();
+  
+  const depositEnabled = detectionSettings?.enable_deposit_detection ?? true;
+  const reimbursementEnabled = detectionSettings?.enable_reimbursement_detection ?? true;
+  
+  if (transferType === 'deposit' && !depositEnabled) {
+    console.log(`[handleImageMessage] Deposit detection disabled - skipping`);
+    return;
+  }
+  
+  if (transferType === 'reimbursement' && !reimbursementEnabled) {
+    console.log(`[handleImageMessage] Reimbursement detection disabled - skipping`);
+    return;
+  }
+  
   // Check for duplicate by reference number (even if hash is different)
   if (extractedData.reference_number && !isDuplicate) {
     const { data: duplicateByRef } = await supabase

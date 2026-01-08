@@ -34,6 +34,8 @@ interface DepositSettings {
   enable_face_verification: boolean;
   enabled_deposit_groups: string[] | null;
   company_accounts: CompanyAccount[] | null;
+  enable_deposit_detection: boolean;
+  enable_reimbursement_detection: boolean;
 }
 
 export default function DepositSettings() {
@@ -48,6 +50,8 @@ export default function DepositSettings() {
   const [enableFaceVerification, setEnableFaceVerification] = useState(true);
   const [enabledDepositGroups, setEnabledDepositGroups] = useState<string[]>([]);
   const [companyAccounts, setCompanyAccounts] = useState<CompanyAccount[]>([]);
+  const [enableDepositDetection, setEnableDepositDetection] = useState(true);
+  const [enableReimbursementDetection, setEnableReimbursementDetection] = useState(true);
   
   // New account form state
   const [newAccountNumber, setNewAccountNumber] = useState("");
@@ -118,6 +122,8 @@ export default function DepositSettings() {
       setEnableFaceVerification(settings.enable_face_verification);
       setEnabledDepositGroups(settings.enabled_deposit_groups || []);
       setCompanyAccounts((settings.company_accounts as CompanyAccount[]) || []);
+      setEnableDepositDetection(settings.enable_deposit_detection ?? true);
+      setEnableReimbursementDetection(settings.enable_reimbursement_detection ?? true);
     }
   }, [settings]);
 
@@ -187,6 +193,8 @@ export default function DepositSettings() {
         enable_face_verification: enableFaceVerification,
         enabled_deposit_groups: enabledDepositGroups,
         company_accounts: companyAccounts as unknown as Json,
+        enable_deposit_detection: enableDepositDetection,
+        enable_reimbursement_detection: enableReimbursementDetection,
         updated_at: new Date().toISOString()
       };
 
@@ -228,6 +236,48 @@ export default function DepositSettings() {
           <h1 className="text-2xl font-bold">ตั้งค่าระบบฝากเงิน</h1>
           <p className="text-muted-foreground">กำหนดเวลาฝากเงินและการแจ้งเตือน</p>
         </div>
+
+        {/* System Toggle Card */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              🔌 ระบบหลัก
+            </CardTitle>
+            <CardDescription>
+              เปิด/ปิดการตรวจจับสลิปโอนเงินแต่ละประเภท
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between py-2 border-b">
+              <div className="space-y-0.5">
+                <Label className="flex items-center gap-2">
+                  📥 ระบบตรวจจับใบฝากเงิน
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  AI ตรวจจับสลิปที่โอนเข้าบัญชีบริษัท (รายได้ประจำวัน)
+                </p>
+              </div>
+              <Switch
+                checked={enableDepositDetection}
+                onCheckedChange={setEnableDepositDetection}
+              />
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div className="space-y-0.5">
+                <Label className="flex items-center gap-2">
+                  💸 ระบบจ่ายคืนเงินสำรอง
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  AI ตรวจจับสลิปที่โอนให้พนักงาน (เบิกคืนเงินสำรอง)
+                </p>
+              </div>
+              <Switch
+                checked={enableReimbursementDetection}
+                onCheckedChange={setEnableReimbursementDetection}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* Time Settings */}
