@@ -502,21 +502,13 @@ export default function ReceiptSettings() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            onClick={() => navigate('/receipts/quota')}
-          >
-            Quota Management
-          </Button>
-          <Button 
-            onClick={() => saveMutation.mutate()} 
-            disabled={saveMutation.isPending || !hasChanges}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </div>
+        <Button 
+          onClick={() => saveMutation.mutate()} 
+          disabled={saveMutation.isPending || !hasChanges}
+        >
+          <Save className="h-4 w-4 mr-2" />
+          {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+        </Button>
       </div>
 
       {/* General Settings */}

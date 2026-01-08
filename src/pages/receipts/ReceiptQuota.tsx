@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ import {
   ArrowLeft, Search, Users, AlertTriangle, 
   CheckCircle, XCircle, MoreHorizontal, 
   RefreshCcw, ArrowUpCircle, Save, Gauge,
-  Package, Crown, TrendingUp
+  Package, Crown, TrendingUp, Infinity, Sparkles
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -105,6 +106,12 @@ export default function ReceiptQuota() {
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [editedLimit, setEditedLimit] = useState<number>(0);
 
+  // Bulk selection state
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [bulkPlanDialogOpen, setBulkPlanDialogOpen] = useState(false);
+  const [bulkResetDialogOpen, setBulkResetDialogOpen] = useState(false);
+  const [bulkNewPlanId, setBulkNewPlanId] = useState<string>('');
+
   // Get current period
   const now = new Date();
   const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -147,6 +154,20 @@ export default function ReceiptQuota() {
     },
   });
 
+  // Fetch default plan setting
+  const { data: defaultPlanSetting, isLoading: defaultPlanLoading } = useQuery({
+    queryKey: ['receipt-default-plan'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('receipt_settings')
+        .select('*')
+        .eq('setting_key', 'default_plan')
+        .single();
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+  });
+
   // Fetch users with LINE user IDs
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['users-for-quota'],
@@ -169,12 +190,15 @@ export default function ReceiptQuota() {
       { id: 'free', name: 'Free', ai_receipts_limit: 8, price_thb: 0 };
     
     const used = usage.ai_receipts_used || 0;
-    const limit = plan.ai_receipts_limit || 8;
-    const percentUsed = limit > 0 ? (used / limit) * 100 : 0;
+    const limit = plan.ai_receipts_limit;
+    const isUnlimited = limit === -1;
+    const percentUsed = isUnlimited ? 0 : (limit > 0 ? (used / limit) * 100 : 0);
     
     let status: 'ok' | 'warning' | 'exceeded' = 'ok';
-    if (percentUsed >= 100) status = 'exceeded';
-    else if (percentUsed >= 80) status = 'warning';
+    if (!isUnlimited) {
+      if (percentUsed >= 100) status = 'exceeded';
+      else if (percentUsed >= 80) status = 'warning';
+    }
     
     return {
       lineUserId: usage.line_user_id,
@@ -277,7 +301,100 @@ export default function ReceiptQuota() {
     },
   });
 
-  const isLoading = plansLoading || usageLoading || subsLoading || usersLoading;
+  // Update default plan mutation
+  const updateDefaultPlanMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const { error } = await supabase
+        .from('receipt_settings')
+        .upsert({
+          setting_key: 'default_plan',
+          setting_value: { plan_id: planId },
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'setting_key' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Default plan updated');
+      queryClient.invalidateQueries({ queryKey: ['receipt-default-plan'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to update default plan: ' + error.message);
+    },
+  });
+
+  // Bulk change plan mutation
+  const bulkChangePlanMutation = useMutation({
+    mutationFn: async ({ lineUserIds, planId }: { lineUserIds: string[]; planId: string }) => {
+      const today = new Date().toISOString().split('T')[0];
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      
+      for (const lineUserId of lineUserIds) {
+        const { error } = await supabase
+          .from('receipt_subscriptions')
+          .upsert({
+            line_user_id: lineUserId,
+            plan_id: planId,
+            current_period_start: today,
+            current_period_end: endOfMonth,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'line_user_id' });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success(`Plan changed for ${selectedUsers.length} users`);
+      queryClient.invalidateQueries({ queryKey: ['receipt-subscriptions'] });
+      setBulkPlanDialogOpen(false);
+      setSelectedUsers([]);
+      setBulkNewPlanId('');
+    },
+    onError: (error) => {
+      toast.error('Failed to change plans: ' + error.message);
+    },
+  });
+
+  // Bulk reset quota mutation
+  const bulkResetMutation = useMutation({
+    mutationFn: async (lineUserIds: string[]) => {
+      for (const lineUserId of lineUserIds) {
+        const { error } = await supabase
+          .from('receipt_usage')
+          .update({ ai_receipts_used: 0, updated_at: new Date().toISOString() })
+          .eq('line_user_id', lineUserId)
+          .eq('period_yyyymm', currentPeriod);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success(`Quota reset for ${selectedUsers.length} users`);
+      queryClient.invalidateQueries({ queryKey: ['receipt-usage'] });
+      setBulkResetDialogOpen(false);
+      setSelectedUsers([]);
+    },
+    onError: (error) => {
+      toast.error('Failed to reset quotas: ' + error.message);
+    },
+  });
+
+  const isLoading = plansLoading || usageLoading || subsLoading || usersLoading || defaultPlanLoading;
+
+  const currentDefaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || 'free';
+
+  const toggleUserSelection = (lineUserId: string) => {
+    setSelectedUsers(prev => 
+      prev.includes(lineUserId) 
+        ? prev.filter(id => id !== lineUserId)
+        : [...prev, lineUserId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUsers.length === sortedData.length) {
+      setSelectedUsers([]);
+    } else {
+      setSelectedUsers(sortedData.map(u => u.lineUserId));
+    }
+  };
 
   const getStatusBadge = (status: 'ok' | 'warning' | 'exceeded') => {
     switch (status) {
@@ -292,6 +409,8 @@ export default function ReceiptQuota() {
 
   const getPlanBadge = (planId: string) => {
     switch (planId) {
+      case 'infinite':
+        return <Badge className="gap-1 bg-gradient-to-r from-purple-600 to-pink-600"><Infinity className="h-3 w-3" /> Infinite</Badge>;
       case 'scale':
         return <Badge className="gap-1 bg-purple-600"><Crown className="h-3 w-3" /> Scale</Badge>;
       case 'pro':
@@ -301,6 +420,10 @@ export default function ReceiptQuota() {
       default:
         return <Badge variant="outline" className="gap-1">Free</Badge>;
     }
+  };
+
+  const formatLimit = (limit: number) => {
+    return limit === -1 ? '∞' : limit.toString();
   };
 
   if (isLoading) {
@@ -414,6 +537,40 @@ export default function ReceiptQuota() {
             </Select>
           </div>
 
+          {/* Bulk Actions Bar */}
+          {selectedUsers.length > 0 && (
+            <div className="flex items-center gap-4 mb-4 p-3 bg-muted rounded-lg">
+              <span className="text-sm font-medium">
+                {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''} selected
+              </span>
+              <div className="flex gap-2 ml-auto">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setBulkPlanDialogOpen(true)}
+                >
+                  <ArrowUpCircle className="h-4 w-4 mr-1" />
+                  Change Plan
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setBulkResetDialogOpen(true)}
+                >
+                  <RefreshCcw className="h-4 w-4 mr-1" />
+                  Reset Quota
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedUsers([])}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
+
           {sortedData.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No usage data found for this period
@@ -422,6 +579,12 @@ export default function ReceiptQuota() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={sortedData.length > 0 && selectedUsers.length === sortedData.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Usage</TableHead>
@@ -430,55 +593,108 @@ export default function ReceiptQuota() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedData.map((user) => (
-                  <TableRow key={user.lineUserId}>
-                    <TableCell className="font-medium">{user.displayName}</TableCell>
-                    <TableCell>{getPlanBadge(user.planId)}</TableCell>
-                    <TableCell>
-                      <div className="space-y-1 min-w-[150px]">
-                        <div className="flex justify-between text-sm">
-                          <span>{user.used} / {user.limit}</span>
-                          <span className="text-muted-foreground">{Math.round(user.percentUsed)}%</span>
-                        </div>
-                        <Progress 
-                          value={Math.min(user.percentUsed, 100)} 
-                          className={user.status === 'exceeded' ? '[&>div]:bg-destructive' : 
-                            user.status === 'warning' ? '[&>div]:bg-yellow-500' : ''}
+                {sortedData.map((user) => {
+                  const isUnlimited = user.limit === -1;
+                  return (
+                    <TableRow key={user.lineUserId}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedUsers.includes(user.lineUserId)}
+                          onCheckedChange={() => toggleUserSelection(user.lineUserId)}
                         />
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(user.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUser(user);
-                            setResetDialogOpen(true);
-                          }}>
-                            <RefreshCcw className="h-4 w-4 mr-2" />
-                            Reset Quota
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUser(user);
-                            setSelectedNewPlanId(user.planId);
-                            setChangePlanDialogOpen(true);
-                          }}>
-                            <ArrowUpCircle className="h-4 w-4 mr-2" />
-                            Change Plan
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="font-medium">{user.displayName}</TableCell>
+                      <TableCell>{getPlanBadge(user.planId)}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1 min-w-[150px]">
+                          <div className="flex justify-between text-sm">
+                            <span>{user.used} / {formatLimit(user.limit)}</span>
+                            {!isUnlimited && (
+                              <span className="text-muted-foreground">{Math.round(user.percentUsed)}%</span>
+                            )}
+                          </div>
+                          {isUnlimited ? (
+                            <div className="h-2 bg-gradient-to-r from-purple-200 to-pink-200 dark:from-purple-900 dark:to-pink-900 rounded-full" />
+                          ) : (
+                            <Progress 
+                              value={Math.min(user.percentUsed, 100)} 
+                              className={user.status === 'exceeded' ? '[&>div]:bg-destructive' : 
+                                user.status === 'warning' ? '[&>div]:bg-yellow-500' : ''}
+                            />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(user.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedUser(user);
+                              setResetDialogOpen(true);
+                            }}>
+                              <RefreshCcw className="h-4 w-4 mr-2" />
+                              Reset Quota
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedUser(user);
+                              setSelectedNewPlanId(user.planId);
+                              setChangePlanDialogOpen(true);
+                            }}>
+                              <ArrowUpCircle className="h-4 w-4 mr-2" />
+                              Change Plan
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Default Plan Setting */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            Default Plan for New Users
+          </CardTitle>
+          <CardDescription>
+            When a new user uses the receipt system for the first time, they will be assigned to this plan
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Select 
+              value={currentDefaultPlanId} 
+              onValueChange={(value) => updateDefaultPlanMutation.mutate(value)}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select default plan" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map(p => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} ({formatLimit(p.ai_receipts_limit)} AI receipts/month)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {updateDefaultPlanMutation.isPending && (
+              <span className="text-sm text-muted-foreground">Saving...</span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-3">
+            💡 Tip: Use "Infinite" for internal staff who should have unlimited access
+          </p>
         </CardContent>
       </Card>
 
@@ -486,7 +702,7 @@ export default function ReceiptQuota() {
       <Card>
         <CardHeader>
           <CardTitle>Plan Settings</CardTitle>
-          <CardDescription>Configure AI receipt limits for each plan</CardDescription>
+          <CardDescription>Configure AI receipt limits for each plan (-1 = unlimited)</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -510,10 +726,14 @@ export default function ReceiptQuota() {
                         value={editedLimit}
                         onChange={(e) => setEditedLimit(Number(e.target.value))}
                         className="w-24"
-                        min={0}
+                        min={-1}
+                        placeholder="-1 for unlimited"
                       />
                     ) : (
-                      <span>{plan.ai_receipts_limit}</span>
+                      <span className="flex items-center gap-1">
+                        {plan.ai_receipts_limit === -1 && <Infinity className="h-4 w-4" />}
+                        {formatLimit(plan.ai_receipts_limit)}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>{plan.businesses_limit}</TableCell>
@@ -599,7 +819,7 @@ export default function ReceiptQuota() {
               <SelectContent>
                 {plans.map(p => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.name} ({p.ai_receipts_limit} AI receipts/month)
+                    {p.name} ({formatLimit(p.ai_receipts_limit)} AI receipts/month)
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -617,6 +837,71 @@ export default function ReceiptQuota() {
               disabled={changePlanMutation.isPending || !selectedNewPlanId}
             >
               {changePlanMutation.isPending ? 'Changing...' : 'Change Plan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Change Plan Dialog */}
+      <Dialog open={bulkPlanDialogOpen} onOpenChange={setBulkPlanDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk Change Plan</DialogTitle>
+            <DialogDescription>
+              Change plan for {selectedUsers.length} selected user{selectedUsers.length > 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label>Select New Plan</Label>
+            <Select value={bulkNewPlanId} onValueChange={setBulkNewPlanId}>
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Select plan" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map(p => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} ({formatLimit(p.ai_receipts_limit)} AI receipts/month)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkPlanDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => bulkChangePlanMutation.mutate({ 
+                lineUserIds: selectedUsers, 
+                planId: bulkNewPlanId 
+              })}
+              disabled={bulkChangePlanMutation.isPending || !bulkNewPlanId}
+            >
+              {bulkChangePlanMutation.isPending ? 'Changing...' : `Change ${selectedUsers.length} Users`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Reset Quota Dialog */}
+      <Dialog open={bulkResetDialogOpen} onOpenChange={setBulkResetDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk Reset Quota</DialogTitle>
+            <DialogDescription>
+              Reset AI receipt quota for {selectedUsers.length} selected user{selectedUsers.length > 1 ? 's' : ''} for period {currentPeriod}?
+              This will set their usage back to 0.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkResetDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => bulkResetMutation.mutate(selectedUsers)}
+              disabled={bulkResetMutation.isPending}
+            >
+              {bulkResetMutation.isPending ? 'Resetting...' : `Reset ${selectedUsers.length} Users`}
             </Button>
           </DialogFooter>
         </DialogContent>
