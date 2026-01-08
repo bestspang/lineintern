@@ -79,6 +79,9 @@ export default function ReceiptSettings() {
   const [centralizedGroupId, setCentralizedGroupId] = useState<string | null>(null);
   const [trackSubmitterBranch, setTrackSubmitterBranch] = useState(false);
   const [approvalNotificationTarget, setApprovalNotificationTarget] = useState<'users_only' | 'users_and_groups'>('users_only');
+  const [replyOnSuccess, setReplyOnSuccess] = useState(true);
+  const [replyOnDuplicate, setReplyOnDuplicate] = useState(true);
+  const [replyOnError, setReplyOnError] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [approverSearchQuery, setApproverSearchQuery] = useState('');
@@ -198,6 +201,21 @@ export default function ReceiptSettings() {
           (notificationSetting.setting_value as { target?: string }).target as 'users_only' | 'users_and_groups' || 'users_only'
         );
       }
+
+      // Reply settings
+      const replySuccessSetting = settings.find(s => s.setting_key === 'reply_on_success');
+      const replyDuplicateSetting = settings.find(s => s.setting_key === 'reply_on_duplicate');
+      const replyErrorSetting = settings.find(s => s.setting_key === 'reply_on_error');
+
+      if (replySuccessSetting) {
+        setReplyOnSuccess((replySuccessSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+      if (replyDuplicateSetting) {
+        setReplyOnDuplicate((replyDuplicateSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
+      if (replyErrorSetting) {
+        setReplyOnError((replyErrorSetting.setting_value as { enabled?: boolean }).enabled ?? true);
+      }
     }
   }, [settings]);
 
@@ -225,6 +243,9 @@ export default function ReceiptSettings() {
         { key: 'auto_assign_branch', value: { enabled: autoAssignBranch } },
         { key: 'collection_mode', value: { mode: collectionMode, centralized_group_id: centralizedGroupId, track_submitter_branch: trackSubmitterBranch } },
         { key: 'approval_notification_target', value: { target: approvalNotificationTarget } },
+        { key: 'reply_on_success', value: { enabled: replyOnSuccess } },
+        { key: 'reply_on_duplicate', value: { enabled: replyOnDuplicate } },
+        { key: 'reply_on_error', value: { enabled: replyOnError } },
       ];
 
       for (const { key, value } of updates) {
@@ -574,6 +595,79 @@ export default function ReceiptSettings() {
               disabled={collectionMode === 'centralized'}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Reply Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5" />
+            การตอบกลับในกลุ่ม
+          </CardTitle>
+          <CardDescription>
+            เลือกว่าบอทจะตอบกลับอะไรบ้างเมื่อได้รับใบเสร็จในกลุ่ม LINE
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="reply-success">ตอบกลับเมื่อบันทึกสำเร็จ</Label>
+              <p className="text-sm text-muted-foreground">
+                ส่ง Flex Message ยืนยันว่าบันทึกใบเสร็จแล้ว
+              </p>
+            </div>
+            <Switch
+              id="reply-success"
+              checked={replyOnSuccess}
+              onCheckedChange={(checked) => {
+                setReplyOnSuccess(checked);
+                setHasChanges(true);
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="reply-duplicate">ตอบกลับเมื่อสลิปซ้ำ</Label>
+              <p className="text-sm text-muted-foreground">
+                แจ้งเตือนเมื่อใบเสร็จนี้เคยส่งไปแล้ว
+              </p>
+            </div>
+            <Switch
+              id="reply-duplicate"
+              checked={replyOnDuplicate}
+              onCheckedChange={(checked) => {
+                setReplyOnDuplicate(checked);
+                setHasChanges(true);
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="reply-error">ตอบกลับเมื่อเกิดข้อผิดพลาด</Label>
+              <p className="text-sm text-muted-foreground">
+                แจ้งข้อผิดพลาดเพื่อให้ผู้ส่งทราบ
+              </p>
+            </div>
+            <Switch
+              id="reply-error"
+              checked={replyOnError}
+              onCheckedChange={(checked) => {
+                setReplyOnError(checked);
+                setHasChanges(true);
+              }}
+            />
+          </div>
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>หมายเหตุ:</strong> การปิดการตอบกลับจะทำให้บอทไม่ส่งข้อความใดๆ กลับไปในกลุ่ม 
+              แต่ใบเสร็จจะยังถูกบันทึกในระบบตามปกติ
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
 
