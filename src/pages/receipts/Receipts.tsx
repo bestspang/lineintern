@@ -74,7 +74,8 @@ interface ReceiptRow {
     total?: number;
     category?: number;
   } | null;
-  business: { name: string } | null;
+  employee_name: string | null;
+  branch_name: string | null;
 }
 
 export default function Receipts() {
@@ -113,10 +114,11 @@ export default function Receipts() {
     },
   });
 
-  // Fetch all receipts (admin view)
+  // Fetch all receipts (admin view) with employee data
   const { data: receipts = [], isLoading } = useQuery({
     queryKey: ['admin-receipts', search, statusFilter, categoryFilter, approvalFilter],
     queryFn: async () => {
+      // Fetch receipts
       let query = supabase
         .from('receipts')
         .select(`
@@ -125,8 +127,7 @@ export default function Receipts() {
           payment_method, payer_name, card_number_masked, card_type,
           description, notes,
           status, approval_status, approved_by, approved_at,
-          created_at, line_user_id, warnings, confidence,
-          business:receipt_businesses(name)
+          created_at, line_user_id, warnings, confidence
         `)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -148,9 +149,34 @@ export default function Receipts() {
         }
       }
 
-      const { data, error } = await query;
+      const { data: receiptData, error } = await query;
       if (error) throw error;
-      return data as ReceiptRow[];
+
+      // Fetch employees with branches to map line_user_id -> employee name & branch
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('line_user_id, full_name, primary_branch_id');
+
+      // Fetch branches separately
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id, name');
+
+      const branchMap = new Map(branches?.map(b => [b.id, b.name]) || []);
+
+      const employeeMap = new Map(
+        employees?.map(e => [e.line_user_id, { 
+          name: e.full_name, 
+          branch: e.primary_branch_id ? branchMap.get(e.primary_branch_id) : null
+        }]) || []
+      );
+
+      // Map employee data to receipts
+      return (receiptData || []).map(r => ({
+        ...r,
+        employee_name: employeeMap.get(r.line_user_id)?.name || null,
+        branch_name: employeeMap.get(r.line_user_id)?.branch || null,
+      })) as ReceiptRow[];
     },
   });
 
@@ -372,12 +398,12 @@ export default function Receipts() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vendor</TableHead>
-                  <TableHead>Business</TableHead>
+                  <TableHead>พนักงาน</TableHead>
+                  <TableHead>สาขา</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Approval</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -396,7 +422,12 @@ export default function Receipts() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {receipt.business?.name || '-'}
+                      <span className="text-sm">{receipt.employee_name || '-'}</span>
+                    </TableCell>
+                    <TableCell>
+                      {receipt.branch_name ? (
+                        <Badge variant="outline">{receipt.branch_name}</Badge>
+                      ) : '-'}
                     </TableCell>
                     <TableCell>
                       {receipt.total 
@@ -419,19 +450,6 @@ export default function Receipts() {
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(receipt.status, (receipt.warnings?.length || 0) > 0)}
-                    </TableCell>
-                    <TableCell>
-                      {receipt.approval_status === 'approved' ? (
-                        <Badge className="bg-emerald-100 text-emerald-700">Approved</Badge>
-                      ) : receipt.approval_status === 'rejected' ? (
-                        <Badge variant="destructive">Rejected</Badge>
-                      ) : receipt.approval_status === 'retake_requested' ? (
-                        <Badge className="bg-amber-100 text-amber-700">Retake</Badge>
-                      ) : receipt.approval_status === 'not_receipt' ? (
-                        <Badge className="bg-gray-100 text-gray-700">📷 Not Receipt</Badge>
-                      ) : (
-                        <Badge variant="outline">Pending</Badge>
-                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
