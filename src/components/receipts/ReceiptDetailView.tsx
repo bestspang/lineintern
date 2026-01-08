@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Sheet,
   SheetContent,
@@ -31,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Calendar, 
   Tag, 
@@ -44,7 +46,9 @@ import {
   ZoomIn,
   Loader2,
   MapPin,
-  Receipt
+  Receipt,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -61,8 +65,12 @@ interface ReceiptDetailViewProps {
 export function ReceiptDetailView({ receiptId, open, onClose, onEdit }: ReceiptDetailViewProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [showImageZoom, setShowImageZoom] = useState(false);
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const { role } = useUserRole();
+  const { user } = useAuth();
   const canDelete = role === 'admin' || role === 'owner';
+  const canApprove = role === 'admin' || role === 'owner';
   const queryClient = useQueryClient();
 
   // Fetch receipt details
@@ -142,6 +150,30 @@ export function ReceiptDetailView({ receiptId, open, onClose, onEdit }: ReceiptD
     },
     onError: (error: Error) => {
       toast.error('เกิดข้อผิดพลาดในการลบ: ' + error.message);
+    },
+  });
+
+  // Approval mutation
+  const approvalMutation = useMutation({
+    mutationFn: async ({ approved, reason }: { approved: boolean; reason?: string }) => {
+      const { error } = await supabase
+        .from('receipts')
+        .update({
+          approval_status: approved ? 'approved' : 'rejected',
+          approved_at: new Date().toISOString(),
+          approved_by: user?.email || user?.id,
+          rejection_reason: reason || null,
+        })
+        .eq('id', receiptId);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      toast.success(variables.approved ? 'อนุมัติใบเสร็จสำเร็จ' : 'ปฏิเสธใบเสร็จสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['receipt-detail', receiptId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-receipts'] });
+    },
+    onError: (error: Error) => {
+      toast.error('เกิดข้อผิดพลาด: ' + error.message);
     },
   });
 
@@ -360,6 +392,90 @@ export function ReceiptDetailView({ receiptId, open, onClose, onEdit }: ReceiptD
                     </div>
                   </>
                 )}
+
+                <Separator />
+
+                {/* Approval Status */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">สถานะการอนุมัติ</span>
+                    <Badge variant={
+                      receipt.approval_status === 'approved' ? 'default' :
+                      receipt.approval_status === 'rejected' ? 'destructive' : 'secondary'
+                    }>
+                      {receipt.approval_status === 'approved' ? 'อนุมัติแล้ว' :
+                       receipt.approval_status === 'rejected' ? 'ปฏิเสธ' : 'รอตรวจสอบ'}
+                    </Badge>
+                  </div>
+
+                  {/* Rejection reason if exists */}
+                  {receipt.rejection_reason && (
+                    <div className="bg-destructive/10 rounded-lg p-3 border border-destructive/20">
+                      <p className="text-sm text-destructive font-medium">เหตุผลที่ปฏิเสธ:</p>
+                      <p className="text-sm text-destructive/80">{receipt.rejection_reason}</p>
+                    </div>
+                  )}
+
+                  {/* Approval Buttons - show only when pending and has permission */}
+                  {canApprove && (!receipt.approval_status || receipt.approval_status === 'pending') && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 border-green-500 text-green-600 hover:bg-green-50"
+                        onClick={() => approvalMutation.mutate({ approved: true })}
+                        disabled={approvalMutation.isPending}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        {approvalMutation.isPending ? 'กำลังดำเนินการ...' : 'Approve'}
+                      </Button>
+                      
+                      <AlertDialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 border-red-500 text-red-600 hover:bg-red-50"
+                            disabled={approvalMutation.isPending}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Deny
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>ปฏิเสธใบเสร็จ</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              กรุณาระบุเหตุผลในการปฏิเสธใบเสร็จนี้
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <Textarea
+                            placeholder="เหตุผลในการปฏิเสธ..."
+                            value={rejectionReason}
+                            onChange={(e) => setRejectionReason(e.target.value)}
+                          />
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setRejectionReason('')}>
+                              ยกเลิก
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-destructive hover:bg-destructive/90"
+                              onClick={() => {
+                                approvalMutation.mutate({ approved: false, reason: rejectionReason });
+                                setShowRejectDialog(false);
+                                setRejectionReason('');
+                              }}
+                            >
+                              ยืนยันปฏิเสธ
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-2">
