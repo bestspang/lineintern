@@ -171,13 +171,13 @@ serve(async (req) => {
 
     console.log(`Starting backfill for group: ${groupId || groupName}, limit: ${limit}, dryRun: ${dryRun}`);
 
-    // Find the group
-    let query = supabase.from('groups').select('id, name');
+    // Find the group - use display_name column
+    let query = supabase.from('groups').select('id, display_name');
     
     if (groupId) {
       query = query.eq('id', groupId);
     } else if (groupName) {
-      query = query.ilike('name', `%${groupName}%`);
+      query = query.ilike('display_name', `%${groupName}%`);
     } else {
       return new Response(
         JSON.stringify({ error: "Either groupId or groupName is required" }),
@@ -195,7 +195,7 @@ serve(async (req) => {
     }
 
     const group = groups[0];
-    console.log(`Found group: ${group.name} (${group.id})`);
+    console.log(`Found group: ${group.display_name} (${group.id})`);
 
     // Fetch messages from this group
     const { data: messages, error: msgError } = await supabase
@@ -297,7 +297,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        groupName: group.name,
+        groupName: group.display_name,
         groupId: group.id,
         results,
       }),
