@@ -77,7 +77,7 @@ import AttendanceHolidays from "./pages/attendance/Holidays";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
-import BranchReport from "./pages/BranchReport";
+import BranchReportsPage from "./pages/branch-reports";
 import { RootRedirect } from "./components/RootRedirect";
 
 // Portal pages
@@ -276,7 +276,7 @@ const App = () => (
                       <Route path="/receipts/quota" element={<ReceiptQuota />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
                       <Route path="/config-validator" element={<ConfigurationValidator />} />
-                      <Route path="/branch-report" element={<BranchReport />} />
+                      <Route path="/branch-report" element={<BranchReportsPage />} />
                       <Route path="/settings" element={<SettingsLayout />}>
                         <Route index element={<Settings />} />
                         <Route path="api-keys" element={<APIKeys />} />
