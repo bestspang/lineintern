@@ -3,7 +3,7 @@
  * Handles receipt image submissions and commands
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getBangkokDateString, formatBangkokTime, getBangkokNow } from "../../_shared/timezone.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1913,5 +1913,209 @@ export async function handleReceiptPostback(
     };
   }
 
+  // Handle approve receipt (by approver)
+  if (action === "approve_receipt" && receiptId) {
+    // Get approver info
+    const { data: approver } = await supabase
+      .from("users")
+      .select("display_name")
+      .eq("line_user_id", lineUserId)
+      .maybeSingle();
+
+    const { data: receipt, error: receiptError } = await supabase
+      .from("receipts")
+      .select("line_user_id, vendor, total")
+      .eq("id", receiptId)
+      .single();
+
+    if (receiptError || !receipt) {
+      console.error("[handleReceiptPostback] Receipt not found:", receiptError);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ ไม่พบใบเสร็จ" : "❌ Receipt not found",
+      };
+    }
+
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "approved",
+        approval_status: "approved",
+        approved_by: lineUserId,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error approving receipt:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    // Log approval
+    await supabase.from("receipt_approval_logs").insert({
+      receipt_id: receiptId,
+      action: "approved",
+      performed_by: lineUserId,
+      notes: `Approved by ${approver?.display_name || lineUserId}`,
+    });
+
+    // Notify submitter if different from approver
+    if (receipt.line_user_id && receipt.line_user_id !== lineUserId) {
+      await sendLineMessage(receipt.line_user_id, [{
+        type: "text",
+        text: locale === "th"
+          ? `✅ อนุมัติแล้ว: ใบเสร็จ ${receipt.vendor || ""} (฿${receipt.total?.toLocaleString() || 0})`
+          : `✅ Approved: Receipt ${receipt.vendor || ""} (฿${receipt.total?.toLocaleString() || 0})`,
+      }]);
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "✅ อนุมัติใบเสร็จเรียบร้อยแล้ว"
+        : "✅ Receipt approved successfully",
+    };
+  }
+
+  // Handle request retake (by approver)
+  if (action === "request_retake" && receiptId) {
+    const { data: receipt, error: receiptError } = await supabase
+      .from("receipts")
+      .select("line_user_id, vendor")
+      .eq("id", receiptId)
+      .single();
+
+    if (receiptError || !receipt) {
+      console.error("[handleReceiptPostback] Receipt not found:", receiptError);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ ไม่พบใบเสร็จ" : "❌ Receipt not found",
+      };
+    }
+
+    // Get approver info
+    const { data: approver } = await supabase
+      .from("users")
+      .select("display_name")
+      .eq("line_user_id", lineUserId)
+      .maybeSingle();
+
+    // Update status
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "retake_requested",
+        approval_status: "retake_requested",
+        submitter_notified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error requesting retake:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    // Log
+    await supabase.from("receipt_approval_logs").insert({
+      receipt_id: receiptId,
+      action: "retake_requested",
+      performed_by: lineUserId,
+      notes: `Retake requested by ${approver?.display_name || lineUserId}`,
+    });
+
+    // Notify submitter
+    if (receipt.line_user_id) {
+      await sendLineMessage(receipt.line_user_id, [{
+        type: "text",
+        text: locale === "th"
+          ? `📷 กรุณาถ่ายใบเสร็จใหม่: ${receipt.vendor || "ไม่ทราบชื่อร้าน"}\nเหตุผล: รูปไม่ชัดหรือข้อมูลไม่ครบ`
+          : `📷 Please retake receipt: ${receipt.vendor || "Unknown"}\nReason: Image unclear or incomplete data`,
+      }]);
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "📷 ส่งคำขอถ่ายใหม่เรียบร้อยแล้ว"
+        : "📷 Retake request sent successfully",
+    };
+  }
+
   return { handled: false, message: "" };
+}
+
+// =============================
+// Image URL Helper
+// =============================
+
+/**
+ * Get the public URL of a receipt image from storage
+ */
+export async function getReceiptImageUrl(receiptId: string): Promise<string | null> {
+  try {
+    // First try to get from receipt_files
+    const { data: file } = await supabase
+      .from("receipt_files")
+      .select("storage_path")
+      .eq("receipt_id", receiptId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (file?.storage_path) {
+      const { data } = supabase.storage
+        .from("receipt-files")
+        .getPublicUrl(file.storage_path);
+      return data?.publicUrl || null;
+    }
+
+    // Fallback: check if receipt has photo_url stored directly
+    const { data: receipt } = await supabase
+      .from("receipts")
+      .select("photo_url")
+      .eq("id", receiptId)
+      .single();
+
+    if (receipt?.photo_url) {
+      return receipt.photo_url;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[getReceiptImageUrl] Error:", error);
+    return null;
+  }
+}
+
+/**
+ * Get user display name from users table
+ */
+export async function getUserDisplayName(lineUserId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("users")
+    .select("display_name")
+    .eq("line_user_id", lineUserId)
+    .maybeSingle();
+  return data?.display_name || null;
+}
+
+/**
+ * Get branch name by ID
+ */
+export async function getBranchName(branchId: string | null): Promise<string | null> {
+  if (!branchId) return null;
+  const { data } = await supabase
+    .from("branches")
+    .select("name")
+    .eq("id", branchId)
+    .single();
+  return data?.name || null;
 }
