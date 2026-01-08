@@ -62,16 +62,28 @@ serve(async (req) => {
 
         // Default to free plan if no active subscription
         if (!plan) {
-          const { data: freePlan } = await supabase
+          // Get default plan setting
+          const { data: defaultPlanSetting } = await supabase
+            .from('receipt_settings')
+            .select('setting_value')
+            .eq('setting_key', 'default_plan')
+            .maybeSingle();
+          
+          const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || 'free';
+          
+          const { data: defaultPlan } = await supabase
             .from('receipt_plans')
             .select('id, name, ai_receipts_limit')
-            .eq('id', 'free')
+            .eq('id', defaultPlanId)
             .maybeSingle();
-          plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
+          plan = defaultPlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
         }
 
         const used = usage?.ai_receipts_used || 0;
-        const limit = plan.ai_receipts_limit || 5;
+        const limit = plan.ai_receipts_limit ?? 5;
+        
+        // Check for unlimited plan (limit = -1)
+        const unlimited = limit === -1;
 
         return new Response(
           JSON.stringify({
@@ -79,8 +91,9 @@ serve(async (req) => {
             quota: {
               used,
               limit,
-              remaining: Math.max(0, limit - used),
-              exceeded: used >= limit,
+              remaining: unlimited ? Infinity : Math.max(0, limit - used),
+              exceeded: unlimited ? false : used >= limit,
+              unlimited,
               plan_name: plan.name,
               period: periodYYYYMM,
             }

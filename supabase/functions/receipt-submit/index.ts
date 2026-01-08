@@ -128,7 +128,7 @@ function uint8ArrayToBase64(data: Uint8Array): string {
 // Quota Check
 // =============================================
 
-async function checkAndUpdateQuota(lineUserId: string): Promise<{ allowed: boolean; remaining: number; limit: number }> {
+async function checkAndUpdateQuota(lineUserId: string): Promise<{ allowed: boolean; remaining: number; limit: number; unlimited: boolean }> {
   const period = getCurrentPeriod();
 
   // Get or create subscription
@@ -139,12 +139,21 @@ async function checkAndUpdateQuota(lineUserId: string): Promise<{ allowed: boole
     .single();
 
   if (!subscription) {
-    // Create free subscription
+    // Get default plan setting
+    const { data: defaultPlanSetting } = await supabase
+      .from("receipt_settings")
+      .select("setting_value")
+      .eq("setting_key", "default_plan")
+      .single();
+    
+    const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || "free";
+    
+    // Create subscription with default plan
     await supabase.from("receipt_subscriptions").insert({
       line_user_id: lineUserId,
-      plan_id: "free",
+      plan_id: defaultPlanId,
     });
-    subscription = { plan_id: "free" };
+    subscription = { plan_id: defaultPlanId };
   }
 
   // Get plan limits
@@ -154,7 +163,12 @@ async function checkAndUpdateQuota(lineUserId: string): Promise<{ allowed: boole
     .eq("id", subscription.plan_id)
     .single();
 
-  const limit = plan?.ai_receipts_limit || 8;
+  const limit = plan?.ai_receipts_limit ?? 8;
+
+  // Check for unlimited plan (limit = -1)
+  if (limit === -1) {
+    return { allowed: true, remaining: Infinity, limit: -1, unlimited: true };
+  }
 
   // Get or create usage record
   let { data: usage } = await supabase
@@ -176,7 +190,7 @@ async function checkAndUpdateQuota(lineUserId: string): Promise<{ allowed: boole
   const used = usage.ai_receipts_used || 0;
   const allowed = used < limit;
 
-  return { allowed, remaining: limit - used, limit };
+  return { allowed, remaining: limit - used, limit, unlimited: false };
 }
 
 async function incrementQuotaUsage(lineUserId: string): Promise<void> {
