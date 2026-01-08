@@ -802,6 +802,99 @@ export type Database = {
         }
         Relationships: []
       }
+      branch_daily_reports: {
+        Row: {
+          bottled_water: number | null
+          branch_code: string
+          branch_name: string
+          chili_salt: number | null
+          created_at: string | null
+          cup_size_m: number | null
+          cup_size_s: number | null
+          diff_target: number | null
+          diff_target_percent: number | null
+          dried_lemon: number | null
+          honey_bottle: number | null
+          id: string
+          lineman_orders: number | null
+          merchandise_sold: Json | null
+          parsed_at: string | null
+          raw_message_text: string | null
+          report_date: string
+          reported_by_user_id: string | null
+          sales: number | null
+          sales_target: number | null
+          snacks: number | null
+          source_group_id: string | null
+          source_message_id: string | null
+          stock_lemon: number | null
+          tc: number | null
+          top_lemonade: Json | null
+          top_slurpee: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          bottled_water?: number | null
+          branch_code: string
+          branch_name: string
+          chili_salt?: number | null
+          created_at?: string | null
+          cup_size_m?: number | null
+          cup_size_s?: number | null
+          diff_target?: number | null
+          diff_target_percent?: number | null
+          dried_lemon?: number | null
+          honey_bottle?: number | null
+          id?: string
+          lineman_orders?: number | null
+          merchandise_sold?: Json | null
+          parsed_at?: string | null
+          raw_message_text?: string | null
+          report_date: string
+          reported_by_user_id?: string | null
+          sales?: number | null
+          sales_target?: number | null
+          snacks?: number | null
+          source_group_id?: string | null
+          source_message_id?: string | null
+          stock_lemon?: number | null
+          tc?: number | null
+          top_lemonade?: Json | null
+          top_slurpee?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          bottled_water?: number | null
+          branch_code?: string
+          branch_name?: string
+          chili_salt?: number | null
+          created_at?: string | null
+          cup_size_m?: number | null
+          cup_size_s?: number | null
+          diff_target?: number | null
+          diff_target_percent?: number | null
+          dried_lemon?: number | null
+          honey_bottle?: number | null
+          id?: string
+          lineman_orders?: number | null
+          merchandise_sold?: Json | null
+          parsed_at?: string | null
+          raw_message_text?: string | null
+          report_date?: string
+          reported_by_user_id?: string | null
+          sales?: number | null
+          sales_target?: number | null
+          snacks?: number | null
+          source_group_id?: string | null
+          source_message_id?: string | null
+          stock_lemon?: number | null
+          tc?: number | null
+          top_lemonade?: Json | null
+          top_slurpee?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       branches: {
         Row: {
           address: string | null

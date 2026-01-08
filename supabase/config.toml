@@ -209,3 +209,9 @@ verify_jwt = false
 
 [functions.liff-settings]
 verify_jwt = false
+
+[functions.branch-report-parser]
+verify_jwt = false
+
+[functions.branch-report-backfill]
+verify_jwt = false
