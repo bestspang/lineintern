@@ -171,6 +171,9 @@ export function ReceiptDetailView({ receiptId, open, onClose, onEdit }: ReceiptD
       toast.success(variables.approved ? 'อนุมัติใบเสร็จสำเร็จ' : 'ปฏิเสธใบเสร็จสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['receipt-detail', receiptId] });
       queryClient.invalidateQueries({ queryKey: ['admin-receipts'] });
+      setShowRejectDialog(false);
+      setRejectionReason('');
+      onClose();
     },
     onError: (error: Error) => {
       toast.error('เกิดข้อผิดพลาด: ' + error.message);

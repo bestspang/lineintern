@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -113,6 +113,28 @@ export default function Receipts() {
       setDeletingId(null);
     },
   });
+
+  // Realtime subscription for receipts changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('receipts-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'receipts'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['admin-receipts'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Fetch all receipts (admin view) with employee data
   const { data: receipts = [], isLoading } = useQuery({
