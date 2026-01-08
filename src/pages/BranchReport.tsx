@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format, subDays, startOfMonth, endOfMonth, parseISO, addDays } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, parseISO, addDays, subMonths, getDay } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,8 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { TrendingUp, TrendingDown, Calendar as CalendarIcon, Store, Target, Users, Package, RefreshCw, ChevronRight, Award, Citrus, IceCream } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, ComposedChart } from 'recharts';
+import { TrendingUp, TrendingDown, Calendar as CalendarIcon, Store, Target, Users, Package, RefreshCw, ChevronRight, ChevronLeft, Award, Citrus, IceCream, AlertTriangle, Trophy, Medal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BranchReport {
@@ -43,106 +43,221 @@ interface BranchReport {
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
-export default function BranchReport() {
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'month'>('30d');
-  const [selectedBranch, setSelectedBranch] = useState<string>('all'); // Now uses branch_name instead of code
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
-  // Calculate date range
+export default function BranchReport() {
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'month'>('90d');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [activeTab, setActiveTab] = useState<string>('daily');
+
+  // Calculate date range for all data (3 months back)
   const { startDate, endDate } = useMemo(() => {
     const now = new Date();
-    let start: Date;
-    let end = now;
-    
-    switch (dateRange) {
-      case '7d':
-        start = subDays(now, 7);
-        break;
-      case '30d':
-        start = subDays(now, 30);
-        break;
-      case '90d':
-        start = subDays(now, 90);
-        break;
-      case 'month':
-        start = startOfMonth(now);
-        end = endOfMonth(now);
-        break;
-      default:
-        start = subDays(now, 30);
-    }
-    
+    const start = subMonths(now, 3);
     return {
       startDate: format(start, 'yyyy-MM-dd'),
-      endDate: format(end, 'yyyy-MM-dd'),
+      endDate: format(now, 'yyyy-MM-dd'),
     };
-  }, [dateRange]);
+  }, []);
 
-  // Fetch branch reports
-  const { data: reports, isLoading, refetch } = useQuery({
-    queryKey: ['branch-reports', startDate, endDate, selectedBranch],
+  // Fetch all branch reports
+  const { data: allReports, isLoading, refetch } = useQuery({
+    queryKey: ['branch-reports-all', startDate, endDate],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('branch_daily_reports')
         .select('*')
         .gte('report_date', startDate)
         .lte('report_date', endDate)
         .order('report_date', { ascending: false });
       
-      // Filter by branch_name (not branch_code) to handle same code different branches
-      if (selectedBranch !== 'all') {
-        query = query.eq('branch_name', selectedBranch);
-      }
-      
-      const { data, error } = await query;
       if (error) throw error;
       return data as BranchReport[];
     },
   });
 
-  // Get unique branches by branch_name (handles same code, different branch names)
+  // Filter reports based on selection
+  const reports = useMemo(() => {
+    if (!allReports) return [];
+    let filtered = allReports;
+    
+    if (selectedBranch !== 'all') {
+      filtered = filtered.filter(r => r.branch_name === selectedBranch);
+    }
+    
+    return filtered;
+  }, [allReports, selectedBranch]);
+
+  // Get unique branches by branch_name
   const branches = useMemo(() => {
-    if (!reports) return [];
+    if (!allReports) return [];
     const uniqueBranches = new Map<string, { code: string; name: string }>();
-    reports.forEach(r => {
+    allReports.forEach(r => {
       if (!uniqueBranches.has(r.branch_name)) {
         uniqueBranches.set(r.branch_name, { code: r.branch_code, name: r.branch_name });
       }
     });
     return Array.from(uniqueBranches.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'));
-  }, [reports]);
+  }, [allReports]);
 
-  // Calculate summary stats
-  const summary = useMemo(() => {
-    if (!reports || reports.length === 0) {
-      return { totalSales: 0, totalTarget: 0, avgTc: 0, activeBranches: 0, totalBranches: 0, achievementPercent: 0 };
+  // Get reports for selected date
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const reportsForSelectedDate = useMemo(() => {
+    if (!allReports) return [];
+    return allReports.filter(r => r.report_date === selectedDateStr);
+  }, [allReports, selectedDateStr]);
+
+  // Get all unique dates that have reports
+  const reportDates = useMemo(() => {
+    if (!allReports) return new Set<string>();
+    return new Set(allReports.map(r => r.report_date));
+  }, [allReports]);
+
+  // Navigate to previous/next date with reports
+  const goToPreviousDate = () => {
+    const dates = Array.from(reportDates).sort();
+    const currentIdx = dates.indexOf(selectedDateStr);
+    if (currentIdx > 0) {
+      setSelectedDate(parseISO(dates[currentIdx - 1]));
+    } else if (dates.length > 0 && currentIdx === -1) {
+      // Find closest previous date
+      const prevDates = dates.filter(d => d < selectedDateStr);
+      if (prevDates.length > 0) {
+        setSelectedDate(parseISO(prevDates[prevDates.length - 1]));
+      }
+    }
+  };
+
+  const goToNextDate = () => {
+    const dates = Array.from(reportDates).sort();
+    const currentIdx = dates.indexOf(selectedDateStr);
+    if (currentIdx >= 0 && currentIdx < dates.length - 1) {
+      setSelectedDate(parseISO(dates[currentIdx + 1]));
+    } else if (currentIdx === -1) {
+      // Find closest next date
+      const nextDates = dates.filter(d => d > selectedDateStr);
+      if (nextDates.length > 0) {
+        setSelectedDate(parseISO(nextDates[0]));
+      }
+    }
+  };
+
+  // Calculate summary stats for selected date
+  const dailySummary = useMemo(() => {
+    if (!reportsForSelectedDate || reportsForSelectedDate.length === 0) {
+      return { totalSales: 0, totalTarget: 0, avgTc: 0, branchCount: 0, achievementPercent: 0 };
     }
 
-    // Get today's reports
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const todayReports = reports.filter(r => r.report_date === today);
-    
-    const totalSales = todayReports.reduce((sum, r) => sum + Number(r.sales || 0), 0);
-    const totalTarget = todayReports.reduce((sum, r) => sum + Number(r.sales_target || 0), 0);
-    const avgTc = todayReports.length > 0 
-      ? Math.round(todayReports.reduce((sum, r) => sum + (r.tc || 0), 0) / todayReports.length)
-      : 0;
+    const totalSales = reportsForSelectedDate.reduce((sum, r) => sum + Number(r.sales || 0), 0);
+    const totalTarget = reportsForSelectedDate.reduce((sum, r) => sum + Number(r.sales_target || 0), 0);
+    const avgTc = Math.round(reportsForSelectedDate.reduce((sum, r) => sum + (r.tc || 0), 0) / reportsForSelectedDate.length);
     const achievementPercent = totalTarget > 0 ? (totalSales / totalTarget) * 100 : 0;
-    
-    const uniqueBranches = new Set(reports.map(r => r.branch_code));
-    const activeBranchesToday = new Set(todayReports.map(r => r.branch_code));
 
     return {
       totalSales,
       totalTarget,
       avgTc,
-      activeBranches: activeBranchesToday.size,
-      totalBranches: uniqueBranches.size,
+      branchCount: reportsForSelectedDate.length,
       achievementPercent,
     };
-  }, [reports]);
+  }, [reportsForSelectedDate]);
 
-  // Prepare chart data - Daily trend
+  // Day of Week Analysis
+  const dayOfWeekData = useMemo(() => {
+    if (!allReports || allReports.length === 0) return [];
+    
+    const byDayOfWeek: { [key: number]: { total: number; count: number } } = {};
+    
+    allReports.forEach(r => {
+      const dayNum = getDay(parseISO(r.report_date));
+      if (!byDayOfWeek[dayNum]) {
+        byDayOfWeek[dayNum] = { total: 0, count: 0 };
+      }
+      byDayOfWeek[dayNum].total += Number(r.sales || 0);
+      byDayOfWeek[dayNum].count += 1;
+    });
+    
+    return Object.entries(byDayOfWeek)
+      .map(([day, data]) => ({
+        day: Number(day),
+        dayName: DAY_NAMES[Number(day)],
+        avgSales: Math.round(data.total / data.count),
+        totalSales: data.total,
+        count: data.count,
+      }))
+      .sort((a, b) => a.day - b.day);
+  }, [allReports]);
+
+  // Find best and worst days
+  const bestDay = useMemo(() => {
+    if (dayOfWeekData.length === 0) return null;
+    return dayOfWeekData.reduce((best, curr) => curr.avgSales > best.avgSales ? curr : best);
+  }, [dayOfWeekData]);
+
+  const worstDay = useMemo(() => {
+    if (dayOfWeekData.length === 0) return null;
+    return dayOfWeekData.reduce((worst, curr) => curr.avgSales < worst.avgSales ? curr : worst);
+  }, [dayOfWeekData]);
+
+  // Branch Performance Scorecard
+  const branchScorecard = useMemo(() => {
+    if (!allReports || allReports.length === 0) return [];
+    
+    const byBranch = new Map<string, {
+      name: string;
+      code: string;
+      totalSales: number;
+      totalTarget: number;
+      reportCount: number;
+      aboveTargetCount: number;
+      avgTc: number;
+      tcCount: number;
+      lastReportDate: string;
+    }>();
+    
+    allReports.forEach(r => {
+      const key = r.branch_name;
+      const existing = byBranch.get(key) || {
+        name: r.branch_name,
+        code: r.branch_code,
+        totalSales: 0,
+        totalTarget: 0,
+        reportCount: 0,
+        aboveTargetCount: 0,
+        avgTc: 0,
+        tcCount: 0,
+        lastReportDate: '',
+      };
+      
+      existing.totalSales += Number(r.sales || 0);
+      existing.totalTarget += Number(r.sales_target || 0);
+      existing.reportCount += 1;
+      if (Number(r.sales) >= Number(r.sales_target)) {
+        existing.aboveTargetCount += 1;
+      }
+      if (r.tc) {
+        existing.avgTc += r.tc;
+        existing.tcCount += 1;
+      }
+      if (!existing.lastReportDate || r.report_date > existing.lastReportDate) {
+        existing.lastReportDate = r.report_date;
+      }
+      
+      byBranch.set(key, existing);
+    });
+    
+    return Array.from(byBranch.values())
+      .map(b => ({
+        ...b,
+        avgTc: b.tcCount > 0 ? Math.round(b.avgTc / b.tcCount) : 0,
+        achievementRate: b.totalTarget > 0 ? Math.round((b.totalSales / b.totalTarget) * 100) : 0,
+        targetHitRate: b.reportCount > 0 ? Math.round((b.aboveTargetCount / b.reportCount) * 100) : 0,
+      }))
+      .sort((a, b) => b.totalSales - a.totalSales);
+  }, [allReports]);
+
+  // Daily trend data
   const dailyTrendData = useMemo(() => {
     if (!reports) return [];
     
@@ -165,31 +280,6 @@ export default function BranchReport() {
         branches: data.count,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [reports]);
-
-  // Branch comparison data
-  const branchComparisonData = useMemo(() => {
-    if (!reports) return [];
-    
-    const byBranch = new Map<string, { sales: number; target: number; name: string }>();
-    reports.forEach(r => {
-      const existing = byBranch.get(r.branch_code) || { sales: 0, target: 0, name: r.branch_name };
-      byBranch.set(r.branch_code, {
-        sales: existing.sales + Number(r.sales || 0),
-        target: existing.target + Number(r.sales_target || 0),
-        name: r.branch_name,
-      });
-    });
-    
-    return Array.from(byBranch.entries())
-      .map(([code, data]) => ({
-        code,
-        name: data.name,
-        sales: data.sales,
-        target: data.target,
-        achievement: data.target > 0 ? (data.sales / data.target) * 100 : 0,
-      }))
-      .sort((a, b) => b.sales - a.sales);
   }, [reports]);
 
   // Cup size distribution
@@ -220,7 +310,7 @@ export default function BranchReport() {
       
       lemonadeList.forEach((item: string, idx: number) => {
         if (item) {
-          const points = 5 - idx; // First place = 5 points, etc.
+          const points = 5 - idx;
           lemonadeCount.set(item, (lemonadeCount.get(item) || 0) + points);
         }
       });
@@ -245,59 +335,11 @@ export default function BranchReport() {
     };
   }, [reports]);
 
-  // Forecast calculation (Simple Moving Average + Trend)
-  const forecast = useMemo(() => {
-    if (!dailyTrendData || dailyTrendData.length < 7) return [];
-    
-    const recentDays = dailyTrendData.slice(-7);
-    const avgSales = recentDays.reduce((sum, d) => sum + d.sales, 0) / recentDays.length;
-    
-    // Calculate trend using linear regression
-    const n = dailyTrendData.length;
-    const xMean = (n - 1) / 2;
-    const yMean = dailyTrendData.reduce((sum, d) => sum + d.sales, 0) / n;
-    
-    let numerator = 0;
-    let denominator = 0;
-    dailyTrendData.forEach((d, i) => {
-      numerator += (i - xMean) * (d.sales - yMean);
-      denominator += (i - xMean) ** 2;
-    });
-    
-    const trend = denominator !== 0 ? numerator / denominator : 0;
-    
-    // Generate 7-day forecast
-    const forecastData = [];
-    for (let i = 1; i <= 7; i++) {
-      const predictedSales = avgSales + (trend * i);
-      const confidence = Math.max(0.6, 0.95 - (i * 0.05));
-      const date = addDays(new Date(), i);
-      
-      forecastData.push({
-        date: format(date, 'yyyy-MM-dd'),
-        displayDate: format(date, 'd MMM', { locale: th }),
-        predicted: Math.max(0, Math.round(predictedSales)),
-        lower: Math.max(0, Math.round(predictedSales * (1 - (1 - confidence) / 2))),
-        upper: Math.round(predictedSales * (1 + (1 - confidence) / 2)),
-        isForecast: true,
-      });
-    }
-    
-    return forecastData;
-  }, [dailyTrendData]);
-
-  // Combined data for forecast chart
-  const forecastChartData = useMemo(() => {
-    const historical = dailyTrendData.slice(-14).map(d => ({
-      ...d,
-      predicted: null,
-      lower: null,
-      upper: null,
-      isForecast: false,
-    }));
-    
-    return [...historical, ...forecast];
-  }, [dailyTrendData, forecast]);
+  // Missing branches for selected date
+  const missingBranches = useMemo(() => {
+    const reportedBranches = new Set(reportsForSelectedDate.map(r => r.branch_name));
+    return branches.filter(b => !reportedBranches.has(b.name));
+  }, [reportsForSelectedDate, branches]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('th-TH', {
@@ -332,24 +374,11 @@ export default function BranchReport() {
             Branch Report Dashboard
           </h1>
           <p className="text-muted-foreground mt-1">
-            Daily sales reports from all branches
+            Daily sales reports from all branches ({allReports?.length || 0} รายงาน)
           </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <Select value={dateRange} onValueChange={(v: any) => setDateRange(v)}>
-            <SelectTrigger className="w-[140px]">
-              <CalendarIcon className="h-4 w-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">7 วัน</SelectItem>
-              <SelectItem value="30d">30 วัน</SelectItem>
-              <SelectItem value="90d">90 วัน</SelectItem>
-              <SelectItem value="month">เดือนนี้</SelectItem>
-            </SelectContent>
-          </Select>
-          
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
             <SelectTrigger className="w-[220px]">
               <Store className="h-4 w-4 mr-2" />
@@ -371,126 +400,430 @@ export default function BranchReport() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              ยอดขายวันนี้
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.totalSales)}</div>
-            <p className="text-xs text-muted-foreground">
-              เป้า: {formatCurrency(summary.totalTarget)}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              % ทำได้ตามเป้า
-            </CardTitle>
-            <Target className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold flex items-center gap-2">
-              {summary.achievementPercent.toFixed(1)}%
-              {summary.achievementPercent >= 100 ? (
-                <Badge variant="default" className="bg-green-500">บรรลุเป้า!</Badge>
-              ) : (
-                <Badge variant="secondary">
-                  {(100 - summary.achievementPercent).toFixed(1)}% ขาด
-                </Badge>
-              )}
-            </div>
-            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-primary transition-all duration-500"
-                style={{ width: `${Math.min(100, summary.achievementPercent)}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              เฉลี่ย TC/สาขา
-            </CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.avgTc}</div>
-            <p className="text-xs text-muted-foreground">Transaction Count</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              สาขาที่รายงานวันนี้
-            </CardTitle>
-            <Store className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {summary.activeBranches}/{summary.totalBranches}
-            </div>
-            <p className="text-xs text-muted-foreground">สาขา</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Date Navigation */}
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex items-center justify-center gap-4">
+            <Button variant="outline" size="icon" onClick={goToPreviousDate}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="min-w-[200px]">
+                  <CalendarIcon className="h-4 w-4 mr-2" />
+                  {format(selectedDate, 'EEEE d MMMM yyyy', { locale: th })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  modifiers={{
+                    hasReport: Array.from(reportDates).map(d => parseISO(d)),
+                  }}
+                  modifiersStyles={{
+                    hasReport: { backgroundColor: 'hsl(var(--primary) / 0.2)', fontWeight: 'bold' },
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <Button variant="outline" size="icon" onClick={goToNextDate}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Charts */}
-      <Tabs defaultValue="trend" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="trend">แนวโน้มยอดขาย</TabsTrigger>
-          <TabsTrigger value="comparison">เปรียบเทียบสาขา</TabsTrigger>
-          <TabsTrigger value="forecast">พยากรณ์</TabsTrigger>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="daily">รายวัน</TabsTrigger>
+          <TabsTrigger value="dayofweek">วันในสัปดาห์</TabsTrigger>
+          <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
           <TabsTrigger value="products">สินค้าขายดี</TabsTrigger>
+          <TabsTrigger value="trend">แนวโน้ม</TabsTrigger>
         </TabsList>
         
-        {/* Trend Tab */}
-        <TabsContent value="trend" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>ยอดขายรายวัน</CardTitle>
-                <CardDescription>เปรียบเทียบยอดขายจริงกับเป้าหมาย</CardDescription>
+        {/* Daily View Tab */}
+        <TabsContent value="daily" className="space-y-4">
+          {/* Daily Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  ยอดขายรวม
+                </CardTitle>
+                <TrendingUp className="h-4 w-4 text-primary" />
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <AreaChart data={dailyTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="displayDate" className="text-xs" />
-                    <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} className="text-xs" />
-                    <Tooltip 
-                      formatter={(value: number) => formatCurrency(value)}
-                      labelFormatter={(label) => `วันที่ ${label}`}
-                    />
-                    <Legend />
-                    <Area 
-                      type="monotone" 
-                      dataKey="target" 
-                      name="เป้าหมาย" 
-                      stroke="hsl(var(--muted-foreground))" 
-                      fill="hsl(var(--muted))" 
-                      strokeDasharray="5 5"
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="sales" 
-                      name="ยอดขาย" 
-                      stroke="hsl(var(--primary))" 
-                      fill="hsl(var(--primary) / 0.3)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="text-2xl font-bold">{formatCurrency(dailySummary.totalSales)}</div>
+                <p className="text-xs text-muted-foreground">
+                  เป้า: {formatCurrency(dailySummary.totalTarget)}
+                </p>
               </CardContent>
             </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  % ทำได้ตามเป้า
+                </CardTitle>
+                <Target className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold flex items-center gap-2">
+                  {dailySummary.achievementPercent.toFixed(1)}%
+                  {dailySummary.achievementPercent >= 100 ? (
+                    <Badge variant="default" className="bg-green-500">บรรลุเป้า!</Badge>
+                  ) : dailySummary.achievementPercent > 0 ? (
+                    <Badge variant="secondary">
+                      {(100 - dailySummary.achievementPercent).toFixed(1)}% ขาด
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-500"
+                    style={{ width: `${Math.min(100, dailySummary.achievementPercent)}%` }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  เฉลี่ย TC/สาขา
+                </CardTitle>
+                <Users className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{dailySummary.avgTc}</div>
+                <p className="text-xs text-muted-foreground">Transaction Count</p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  สาขาที่รายงาน
+                </CardTitle>
+                <Store className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {dailySummary.branchCount}/{branches.length}
+                </div>
+                <p className="text-xs text-muted-foreground">สาขา</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Missing Branches Alert */}
+          {missingBranches.length > 0 && reportsForSelectedDate.length > 0 && (
+            <Card className="border-orange-500/50 bg-orange-500/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-600">
+                  <AlertTriangle className="h-4 w-4" />
+                  สาขาที่ยังไม่ส่งรายงาน ({missingBranches.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {missingBranches.map(b => (
+                    <Badge key={b.name} variant="outline" className="text-orange-600 border-orange-500">
+                      {b.code} - {b.name}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Daily Reports Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>รายงานวันที่ {format(selectedDate, 'd MMMM yyyy', { locale: th })}</CardTitle>
+              <CardDescription>
+                {reportsForSelectedDate.length > 0 
+                  ? `${reportsForSelectedDate.length} รายงาน`
+                  : 'ไม่มีรายงานในวันนี้'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {reportsForSelectedDate.length > 0 ? (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>สาขา</TableHead>
+                        <TableHead className="text-right">ยอดขาย</TableHead>
+                        <TableHead className="text-right">เป้า</TableHead>
+                        <TableHead className="text-right">%</TableHead>
+                        <TableHead className="text-right">TC</TableHead>
+                        <TableHead className="text-right">Stock</TableHead>
+                        <TableHead className="text-right">S/M</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reportsForSelectedDate.sort((a, b) => Number(b.sales) - Number(a.sales)).map((report) => (
+                        <TableRow key={report.id}>
+                          <TableCell>
+                            <div className="font-medium">{report.branch_code}</div>
+                            <div className="text-xs text-muted-foreground">{report.branch_name}</div>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(Number(report.sales))}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatCurrency(Number(report.sales_target))}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={report.diff_target_percent >= 0 ? 'default' : 'destructive'}>
+                              {report.diff_target_percent >= 0 ? '+' : ''}{report.diff_target_percent?.toFixed(1)}%
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{report.tc}</TableCell>
+                          <TableCell className="text-right">{report.stock_lemon}</TableCell>
+                          <TableCell className="text-right">
+                            {report.cup_size_s}/{report.cup_size_m}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CalendarIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>ไม่มีรายงานในวันที่เลือก</p>
+                  <p className="text-sm mt-2">ลองเลือกวันอื่นที่มีข้อมูล</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Day of Week Analysis Tab */}
+        <TabsContent value="dayofweek" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {bestDay && (
+              <Card className="border-green-500/50 bg-green-500/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-600">
+                    <Trophy className="h-4 w-4" />
+                    วันที่ขายดีที่สุด
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">วัน{bestDay.dayName}</div>
+                  <p className="text-sm text-muted-foreground">
+                    เฉลี่ย {formatCurrency(bestDay.avgSales)}/วัน
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            
+            {worstDay && (
+              <Card className="border-orange-500/50 bg-orange-500/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-600">
+                    <TrendingDown className="h-4 w-4" />
+                    วันที่ขายน้อยที่สุด
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-600">วัน{worstDay.dayName}</div>
+                  <p className="text-sm text-muted-foreground">
+                    เฉลี่ย {formatCurrency(worstDay.avgSales)}/วัน
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  ส่วนต่าง
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {bestDay && worstDay && (
+                  <>
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(bestDay.avgSales - worstDay.avgSales)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      +{((bestDay.avgSales / worstDay.avgSales - 1) * 100).toFixed(0)}% จากวันที่แย่สุด
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>ยอดขายเฉลี่ยแต่ละวันในสัปดาห์</CardTitle>
+              <CardDescription>วิเคราะห์ว่าวันไหนขายดีที่สุด</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={dayOfWeekData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="dayName" />
+                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip 
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value), 
+                      name === 'avgSales' ? 'ยอดขายเฉลี่ย' : name
+                    ]}
+                  />
+                  <Bar 
+                    dataKey="avgSales" 
+                    name="ยอดขายเฉลี่ย"
+                    fill="hsl(var(--primary))"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Branch Scorecard Tab */}
+        <TabsContent value="scorecard" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {branchScorecard.map((branch, idx) => (
+              <Card key={branch.name} className={cn(
+                idx === 0 && "border-yellow-500/50 bg-yellow-500/5",
+                idx === 1 && "border-gray-400/50 bg-gray-400/5",
+                idx === 2 && "border-orange-600/50 bg-orange-600/5"
+              )}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {idx === 0 && <Trophy className="h-5 w-5 text-yellow-500" />}
+                      {idx === 1 && <Medal className="h-5 w-5 text-gray-400" />}
+                      {idx === 2 && <Medal className="h-5 w-5 text-orange-600" />}
+                      <CardTitle className="text-lg">{branch.code}</CardTitle>
+                    </div>
+                    <Badge variant="outline">#{idx + 1}</Badge>
+                  </div>
+                  <CardDescription>{branch.name}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">ยอดขายรวม</span>
+                    <span className="font-bold">{formatCurrency(branch.totalSales)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">% ถึงเป้า</span>
+                    <Badge variant={branch.achievementRate >= 100 ? 'default' : 'secondary'}>
+                      {branch.achievementRate}%
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">อัตราทำได้ตามเป้า</span>
+                    <span className="text-sm">{branch.targetHitRate}% ({branch.aboveTargetCount}/{branch.reportCount})</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">เฉลี่ย TC</span>
+                    <span className="text-sm">{branch.avgTc}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">รายงานล่าสุด</span>
+                    <span className="text-xs text-muted-foreground">
+                      {format(parseISO(branch.lastReportDate), 'd MMM', { locale: th })}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Products Tab */}
+        <TabsContent value="products">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Citrus className="h-5 w-5 text-yellow-500" />
+                    น้ำเลม่อนขายดี
+                  </CardTitle>
+                  <CardDescription>รวมคะแนนจากการติดอันดับ</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {topSellers.lemonade.length > 0 ? (
+                    <div className="space-y-3">
+                      {topSellers.lemonade.map((item, idx) => (
+                        <div key={item.name} className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
+                            idx === 0 ? "bg-yellow-500 text-white" :
+                            idx === 1 ? "bg-gray-400 text-white" :
+                            idx === 2 ? "bg-orange-600 text-white" :
+                            "bg-muted text-muted-foreground"
+                          )}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium">{item.name}</p>
+                          </div>
+                          <Badge variant="secondary">{item.score} pts</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      ไม่มีข้อมูล
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <IceCream className="h-5 w-5 text-blue-500" />
+                    น้ำสเลอปี้ขายดี
+                  </CardTitle>
+                  <CardDescription>รวมคะแนนจากการติดอันดับ</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {topSellers.slurpee.length > 0 ? (
+                    <div className="space-y-3">
+                      {topSellers.slurpee.map((item, idx) => (
+                        <div key={item.name} className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
+                            idx === 0 ? "bg-yellow-500 text-white" :
+                            idx === 1 ? "bg-gray-400 text-white" :
+                            idx === 2 ? "bg-orange-600 text-white" :
+                            "bg-muted text-muted-foreground"
+                          )}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium">{item.name}</p>
+                          </div>
+                          <Badge variant="secondary">{item.score} pts</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      ไม่มีข้อมูล
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
             
             <Card>
               <CardHeader>
@@ -527,222 +860,51 @@ export default function BranchReport() {
             </Card>
           </div>
         </TabsContent>
-        
-        {/* Branch Comparison Tab */}
-        <TabsContent value="comparison">
+
+        {/* Trend Tab */}
+        <TabsContent value="trend" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>เปรียบเทียบสาขา</CardTitle>
-              <CardDescription>ยอดขายรวมแยกตามสาขา</CardDescription>
+              <CardTitle>แนวโน้มยอดขายรายวัน</CardTitle>
+              <CardDescription>เปรียบเทียบยอดขายจริงกับเป้าหมาย</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={branchComparisonData} layout="vertical">
+                <AreaChart data={dailyTrendData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis type="number" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis dataKey="code" type="category" width={60} />
+                  <XAxis dataKey="displayDate" className="text-xs" />
+                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} className="text-xs" />
                   <Tooltip 
-                    formatter={(value: number, name: string) => [formatCurrency(value), name === 'sales' ? 'ยอดขาย' : 'เป้าหมาย']}
+                    formatter={(value: number) => formatCurrency(value)}
+                    labelFormatter={(label) => `วันที่ ${label}`}
                   />
                   <Legend />
-                  <Bar dataKey="target" name="เป้าหมาย" fill="hsl(var(--muted))" />
-                  <Bar dataKey="sales" name="ยอดขาย" fill="hsl(var(--primary))" />
-                </BarChart>
+                  <Area 
+                    type="monotone" 
+                    dataKey="target" 
+                    name="เป้าหมาย" 
+                    stroke="hsl(var(--muted-foreground))" 
+                    fill="hsl(var(--muted))" 
+                    strokeDasharray="5 5"
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="sales" 
+                    name="ยอดขาย" 
+                    stroke="hsl(var(--primary))" 
+                    fill="hsl(var(--primary) / 0.3)" 
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
-        </TabsContent>
-        
-        {/* Forecast Tab */}
-        <TabsContent value="forecast">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                พยากรณ์ยอดขาย (7 วันข้างหน้า)
-              </CardTitle>
-              <CardDescription>
-                คำนวณจากค่าเฉลี่ยเคลื่อนที่และแนวโน้มข้อมูลย้อนหลัง
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {forecast.length > 0 ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <Card className="bg-primary/5 border-primary/20">
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">พรุ่งนี้ (คาดการณ์)</p>
-                        <p className="text-2xl font-bold text-primary">
-                          {formatCurrency(forecast[0]?.predicted || 0)}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-primary/5 border-primary/20">
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">รวม 7 วัน (คาดการณ์)</p>
-                        <p className="text-2xl font-bold text-primary">
-                          {formatCurrency(forecast.reduce((sum, f) => sum + f.predicted, 0))}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-primary/5 border-primary/20">
-                      <CardContent className="pt-4">
-                        <p className="text-sm text-muted-foreground">แนวโน้ม</p>
-                        <p className="text-2xl font-bold text-primary flex items-center gap-2">
-                          {forecast[6]?.predicted > forecast[0]?.predicted ? (
-                            <>
-                              <TrendingUp className="h-5 w-5 text-green-500" />
-                              ขาขึ้น
-                            </>
-                          ) : (
-                            <>
-                              <TrendingDown className="h-5 w-5 text-red-500" />
-                              ขาลง
-                            </>
-                          )}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  
-                  <ResponsiveContainer width="100%" height={350}>
-                    <AreaChart data={forecastChartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="displayDate" className="text-xs" />
-                      <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} className="text-xs" />
-                      <Tooltip 
-                        formatter={(value: number, name: string) => {
-                          if (value === null) return ['-', name];
-                          return [formatCurrency(value), name];
-                        }}
-                      />
-                      <Legend />
-                      <Area 
-                        type="monotone" 
-                        dataKey="sales" 
-                        name="ยอดขายจริง" 
-                        stroke="hsl(var(--primary))" 
-                        fill="hsl(var(--primary) / 0.3)" 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="upper" 
-                        name="ขอบบน" 
-                        stroke="hsl(var(--chart-2))" 
-                        fill="hsl(var(--chart-2) / 0.1)" 
-                        strokeDasharray="3 3"
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="predicted" 
-                        name="คาดการณ์" 
-                        stroke="hsl(var(--chart-3))" 
-                        fill="hsl(var(--chart-3) / 0.3)" 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="lower" 
-                        name="ขอบล่าง" 
-                        stroke="hsl(var(--chart-4))" 
-                        fill="hsl(var(--chart-4) / 0.1)" 
-                        strokeDasharray="3 3"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  ต้องมีข้อมูลอย่างน้อย 7 วันเพื่อพยากรณ์
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* Products Tab */}
-        <TabsContent value="products">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Citrus className="h-5 w-5 text-yellow-500" />
-                  น้ำเลม่อนขายดี
-                </CardTitle>
-                <CardDescription>รวมคะแนนจากการติดอันดับ</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {topSellers.lemonade.length > 0 ? (
-                  <div className="space-y-3">
-                    {topSellers.lemonade.map((item, idx) => (
-                      <div key={item.name} className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
-                          idx === 0 ? "bg-yellow-500 text-white" :
-                          idx === 1 ? "bg-gray-400 text-white" :
-                          idx === 2 ? "bg-orange-600 text-white" :
-                          "bg-muted text-muted-foreground"
-                        )}>
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium">{item.name}</p>
-                        </div>
-                        <Badge variant="secondary">{item.score} pts</Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-muted-foreground py-8">
-                    ไม่มีข้อมูล
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <IceCream className="h-5 w-5 text-blue-500" />
-                  น้ำสเลอปี้ขายดี
-                </CardTitle>
-                <CardDescription>รวมคะแนนจากการติดอันดับ</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {topSellers.slurpee.length > 0 ? (
-                  <div className="space-y-3">
-                    {topSellers.slurpee.map((item, idx) => (
-                      <div key={item.name} className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
-                          idx === 0 ? "bg-yellow-500 text-white" :
-                          idx === 1 ? "bg-gray-400 text-white" :
-                          idx === 2 ? "bg-orange-600 text-white" :
-                          "bg-muted text-muted-foreground"
-                        )}>
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium">{item.name}</p>
-                        </div>
-                        <Badge variant="secondary">{item.score} pts</Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-muted-foreground py-8">
-                    ไม่มีข้อมูล
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
 
       {/* Detailed Table */}
       <Card>
         <CardHeader>
-          <CardTitle>รายละเอียดรายงาน</CardTitle>
+          <CardTitle>รายละเอียดรายงานทั้งหมด</CardTitle>
           <CardDescription>
             ข้อมูลทั้งหมด {reports?.length || 0} รายการ
           </CardDescription>
