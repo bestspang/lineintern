@@ -7,6 +7,9 @@ import BranchReportHeader from './components/BranchReportHeader';
 // Lazy load heavy components
 const BranchReportOverview = lazy(() => import('./components/BranchReportOverview'));
 const BranchReportCharts = lazy(() => import('./components/BranchReportCharts'));
+const BranchReportAdvancedCharts = lazy(() => import('./components/BranchReportAdvancedCharts'));
+const BranchPerformanceScore = lazy(() => import('./components/BranchPerformanceScore'));
+const TopSellingHeatmap = lazy(() => import('./components/TopSellingHeatmap'));
 const BranchReportTable = lazy(() => import('./components/BranchReportTable'));
 
 function BranchReportContent() {
@@ -51,6 +54,20 @@ function BranchReportContent() {
           <Suspense fallback={<Skeleton className="h-64" />}>
             <BranchReportCharts />
           </Suspense>
+
+          <Suspense fallback={<Skeleton className="h-48" />}>
+            <BranchReportAdvancedCharts />
+          </Suspense>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            <Suspense fallback={<Skeleton className="h-64" />}>
+              <BranchPerformanceScore />
+            </Suspense>
+            
+            <Suspense fallback={<Skeleton className="h-64" />}>
+              <TopSellingHeatmap />
+            </Suspense>
+          </div>
 
           <Suspense fallback={<Skeleton className="h-96" />}>
             <BranchReportTable />

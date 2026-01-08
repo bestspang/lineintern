@@ -867,7 +867,7 @@ async function passiveBranchReportDetection(
   userId: string,
   groupId: string
 ): Promise<void> {
-  // Quick pattern check to avoid unnecessary processing
+  // Quick pattern check to avoid unnecessary AI calls
   if (!BRANCH_REPORT_PATTERN.test(messageText)) {
     return;
   }
@@ -875,57 +875,174 @@ async function passiveBranchReportDetection(
   console.log(`[passiveBranchReportDetection] Detected potential branch report from user ${userId} in group ${groupId}`);
 
   try {
-    // Parse report data inline (avoid function invoke for speed)
-    const parsed = parseBranchReportMessage(messageText);
+    // Try AI-powered parsing first for better accuracy
+    const parsed = await parseBranchReportWithAI(messageText);
     
     if (!parsed) {
-      console.log(`[passiveBranchReportDetection] Failed to parse report, skipping`);
+      console.log(`[passiveBranchReportDetection] AI parsing failed, trying regex fallback`);
+      const regexParsed = parseBranchReportMessage(messageText);
+      if (!regexParsed) {
+        console.log(`[passiveBranchReportDetection] Both AI and regex parsing failed, skipping`);
+        return;
+      }
+      // Use regex result as fallback
+      await saveBranchReport(regexParsed, messageId, userId, groupId, messageText);
       return;
     }
 
-    console.log(`[passiveBranchReportDetection] Parsed: ${parsed.branchCode} - ${parsed.reportDate} - Sales: ${parsed.sales}`);
-
-    // Upsert to database
-    const { error } = await supabase
-      .from('branch_daily_reports')
-      .upsert({
-        report_date: parsed.reportDate,
-        branch_code: parsed.branchCode,
-        branch_name: parsed.branchName,
-        sales: parsed.sales,
-        sales_target: parsed.salesTarget,
-        diff_target: parsed.diffTarget,
-        diff_target_percent: parsed.diffTargetPercent,
-        tc: parsed.tc,
-        stock_lemon: parsed.stockLemon,
-        cup_size_s: parsed.cupSizeS,
-        cup_size_m: parsed.cupSizeM,
-        dried_lemon: parsed.driedLemon,
-        chili_salt: parsed.chiliSalt,
-        honey_bottle: parsed.honeyBottle,
-        snacks: parsed.snacks,
-        bottled_water: parsed.bottledWater,
-        lineman_orders: parsed.linemanOrders,
-        top_lemonade: parsed.topLemonade,
-        top_slurpee: parsed.topSlurpee,
-        merchandise_sold: parsed.merchandiseSold,
-        source_message_id: messageId || null,
-        source_group_id: groupId,
-        reported_by_user_id: userId,
-        raw_message_text: messageText,
-        parsed_at: new Date().toISOString(),
-      }, {
-        onConflict: 'report_date,branch_code',
-        ignoreDuplicates: false,
-      });
-
-    if (error) {
-      console.error(`[passiveBranchReportDetection] Database error:`, error);
-    } else {
-      console.log(`[passiveBranchReportDetection] Successfully saved report for ${parsed.branchCode} on ${parsed.reportDate}`);
-    }
+    console.log(`[passiveBranchReportDetection] AI Parsed: ${parsed.branchCode} - ${parsed.reportDate} - Sales: ${parsed.sales}`);
+    await saveBranchReport(parsed, messageId, userId, groupId, messageText);
   } catch (error) {
     console.error(`[passiveBranchReportDetection] Error:`, error);
+    // Fallback to regex on AI error
+    try {
+      const regexParsed = parseBranchReportMessage(messageText);
+      if (regexParsed) {
+        await saveBranchReport(regexParsed, messageId, userId, groupId, messageText);
+      }
+    } catch (fallbackError) {
+      console.error(`[passiveBranchReportDetection] Fallback also failed:`, fallbackError);
+    }
+  }
+}
+
+// AI-powered branch report parsing
+async function parseBranchReportWithAI(text: string): Promise<ParsedBranchReport | null> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.log('[parseBranchReportWithAI] No API key, skipping AI parsing');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { 
+            role: 'system', 
+            content: `Parse Thai branch sales report. Convert DD/MM/YY Buddhist year to YYYY-MM-DD (69=2026, 68=2025). Return null for missing fields.` 
+          },
+          { role: 'user', content: text }
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "save_branch_report",
+            parameters: {
+              type: "object",
+              properties: {
+                branch_code: { type: "string" },
+                branch_name: { type: "string" },
+                report_date: { type: "string" },
+                sales: { type: "number", nullable: true },
+                sales_target: { type: "number", nullable: true },
+                tc: { type: "number", nullable: true },
+                stock_lemon: { type: "number", nullable: true },
+                cup_size_s: { type: "number", nullable: true },
+                cup_size_m: { type: "number", nullable: true },
+                lineman_orders: { type: "number", nullable: true },
+                top_lemonade: { type: "array", items: { type: "string" }, nullable: true },
+                top_slurpee: { type: "array", items: { type: "string" }, nullable: true },
+              },
+              required: ["branch_code", "branch_name", "report_date"]
+            }
+          }
+        }],
+        tool_choice: { type: "function", function: { name: "save_branch_report" } }
+      }),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) return null;
+
+    const parsed = JSON.parse(toolCall.function.arguments);
+    if (!parsed.branch_code || !parsed.report_date) return null;
+
+    const sales = parsed.sales || 0;
+    const salesTarget = parsed.sales_target || 0;
+
+    return {
+      branchCode: parsed.branch_code,
+      branchName: parsed.branch_name || '',
+      reportDate: parsed.report_date,
+      sales,
+      salesTarget,
+      diffTarget: sales - salesTarget,
+      diffTargetPercent: salesTarget > 0 ? ((sales - salesTarget) / salesTarget) * 100 : 0,
+      tc: parsed.tc || 0,
+      stockLemon: parsed.stock_lemon || 0,
+      cupSizeS: parsed.cup_size_s || 0,
+      cupSizeM: parsed.cup_size_m || 0,
+      driedLemon: 0,
+      chiliSalt: 0,
+      honeyBottle: 0,
+      snacks: 0,
+      bottledWater: 0,
+      linemanOrders: parsed.lineman_orders || 0,
+      topLemonade: parsed.top_lemonade || [],
+      topSlurpee: parsed.top_slurpee || [],
+      merchandiseSold: [],
+    };
+  } catch (error) {
+    console.error('[parseBranchReportWithAI] Error:', error);
+    return null;
+  }
+}
+
+// Save branch report to database
+async function saveBranchReport(
+  parsed: ParsedBranchReport,
+  messageId: string | undefined,
+  userId: string,
+  groupId: string,
+  rawText: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('branch_daily_reports')
+    .upsert({
+      report_date: parsed.reportDate,
+      branch_code: parsed.branchCode,
+      branch_name: parsed.branchName,
+      sales: parsed.sales,
+      sales_target: parsed.salesTarget,
+      diff_target: parsed.diffTarget,
+      diff_target_percent: parsed.diffTargetPercent,
+      tc: parsed.tc,
+      stock_lemon: parsed.stockLemon,
+      cup_size_s: parsed.cupSizeS,
+      cup_size_m: parsed.cupSizeM,
+      dried_lemon: parsed.driedLemon,
+      chili_salt: parsed.chiliSalt,
+      honey_bottle: parsed.honeyBottle,
+      snacks: parsed.snacks,
+      bottled_water: parsed.bottledWater,
+      lineman_orders: parsed.linemanOrders,
+      top_lemonade: parsed.topLemonade,
+      top_slurpee: parsed.topSlurpee,
+      merchandise_sold: parsed.merchandiseSold,
+      source_message_id: messageId || null,
+      source_group_id: groupId,
+      reported_by_user_id: userId,
+      raw_message_text: rawText,
+      parsed_at: new Date().toISOString(),
+    }, {
+      onConflict: 'report_date,branch_code',
+      ignoreDuplicates: false,
+    });
+
+  if (error) {
+    console.error(`[saveBranchReport] Database error:`, error);
+  } else {
+    console.log(`[saveBranchReport] Successfully saved report for ${parsed.branchCode} on ${parsed.reportDate}`);
   }
 }
 
