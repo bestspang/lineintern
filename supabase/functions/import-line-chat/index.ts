@@ -1,426 +1,387 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Branch detection by name patterns (more reliable than code)
-const BRANCH_PATTERNS = [
-  { pattern: /อีสต์วิลล์|อีสวิลล์|eastville|east\s*ville/i, code: 'CED', name: 'เซ็นทรัลอีสต์วิลล์' },
-  { pattern: /ภูเก็ต|phuket/i, code: 'CTP', name: 'เซ็นทรัลภูเก็ต' },
-  { pattern: /สยาม|siam|sqc/i, code: 'SQC', name: 'สยามเซ็นเตอร์' },
-  { pattern: /ควอเท|emq|เอ็ม/i, code: 'EMQ', name: 'เอ็มควอเทียร์' },
-  { pattern: /พาร์ค|ปาร์ค|ดุสิต|dusit|park|cdp/i, code: 'CDP', name: 'เซ็นทรัลปาร์ค ดุสิต' },
-];
-
-// Branch code mapping (fallback)
-const BRANCH_MAPPING: Record<string, { code: string; name: string }> = {
-  'CDP': { code: 'CDP', name: 'เซ็นทรัลปาร์ค ดุสิต' },
-  'SQC': { code: 'SQC', name: 'สยามเซ็นเตอร์' },
-  'EMQ': { code: 'EMQ', name: 'เอ็มควอเทียร์' },
-  'CTP': { code: 'CTP', name: 'เซ็นทรัลภูเก็ต' },
-  'CED': { code: 'CED', name: 'เซ็นทรัลอีสต์วิลล์' },
-};
-
 interface ParsedReport {
-  report_date: string;
   branch_code: string;
   branch_name: string;
+  report_date: string;
   sales: number | null;
   sales_target: number | null;
   diff_target: number | null;
   diff_target_percent: number | null;
   tc: number | null;
+  stock_lemon: number | null;
+  top_lemonade: string[] | null;
+  top_slurpee: string[] | null;
   cup_size_s: number | null;
   cup_size_m: number | null;
-  top_lemonade: string[];
-  top_slurpee: string[];
+  lineman_orders: number | null;
+  dried_lemon: number | null;
+  chili_salt: number | null;
+  honey_bottle: number | null;
+  snacks: number | null;
+  bottled_water: number | null;
+  merchandise_sold: any | null;
   raw_message_text: string;
 }
 
-// Parse Thai year format (68 -> 2025, 69 -> 2026)
-function parseThaiDate(dateStr: string): string | null {
-  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (!match) return null;
-  
-  const day = parseInt(match[1], 10);
-  const month = parseInt(match[2], 10);
-  let year = parseInt(match[3], 10);
-  
-  // Handle Thai Buddhist year (2568 = 2025) or short year (68 = 2025)
-  if (year >= 2500) {
-    year = year - 543; // Buddhist to Western
-  } else if (year >= 60 && year <= 99) {
-    year = 2000 + (year - 43); // 68 -> 2025
-  } else if (year <= 30) {
-    year = 2000 + year; // 25 -> 2025
+// Split content into report blocks
+function splitIntoReportBlocks(content: string): string[] {
+  // Clean the content first
+  let cleaned = content
+    .replace(/^\uFEFF/, '') // Remove BOM
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  // Split by "Code สาขา" pattern
+  const blocks: string[] = [];
+  const regex = /(?:^|\n)(?:"|")?Code\s*สาขา/gi;
+  let match;
+
+  // Find all matches
+  const matches: number[] = [];
+  while ((match = regex.exec(cleaned)) !== null) {
+    matches.push(match.index);
   }
-  
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  
-  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-}
 
-// Parse number from text (handles commas and trailing characters like -, .-)
-function parseNumber(text: string): number | null {
-  if (!text) return null;
-  // Remove commas, trailing dash, .-, and other non-numeric chars except . and -
-  const cleaned = text.replace(/,/g, '').replace(/\.?-$/, '').replace(/[^\d.-]/g, '');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
-}
-
-// Clean report text - remove timestamps, usernames, and quotes from LINE export
-function cleanReportText(text: string): string {
-  let cleaned = text;
-  // Remove LINE chat timestamp patterns: "10:25PM Bow Yonlada " or "9:30AM Username "
-  cleaned = cleaned.replace(/^\d{1,2}:\d{2}(?:AM|PM)\s+\S+(?:\s+\S+)?\s+/gim, '');
-  // Remove enclosing quotes
-  cleaned = cleaned.replace(/^"|"$/gm, '');
-  // Remove quoted lines that wrap the entire content
-  cleaned = cleaned.replace(/^"(.+)"$/s, '$1');
-  return cleaned;
-}
-
-// Detect branch from name patterns (more reliable than code)
-function detectBranchFromText(text: string): { code: string; name: string } | null {
-  // First try to extract branch name from the field "ชื่อสาขา : XXX"
-  const branchNameMatch = text.match(/ชื่อสาขา\s*:?\s*([^\n\r]+)/i);
-  const searchText = branchNameMatch ? branchNameMatch[1] : text;
-  
-  // Try each pattern
-  for (const { pattern, code, name } of BRANCH_PATTERNS) {
-    if (pattern.test(searchText)) {
-      return { code, name };
+  // Extract blocks between matches
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i];
+    const end = i + 1 < matches.length ? matches[i + 1] : cleaned.length;
+    const block = cleaned.slice(start, end).trim();
+    if (block.length > 50) { // Minimum length for a valid report
+      blocks.push(block);
     }
   }
-  
-  // Fallback: try to extract code and use mapping
-  const codeMatch = text.match(/Code\s*สาขา\s*:?\s*(\w+)/i);
-  if (codeMatch) {
-    const code = codeMatch[1].toUpperCase();
-    if (BRANCH_MAPPING[code]) {
-      return BRANCH_MAPPING[code];
-    }
-  }
-  
-  return null;
+
+  console.log(`Split into ${blocks.length} report blocks`);
+  return blocks;
 }
 
-// Parse a single report block
-function parseReportBlock(text: string, headerDate?: string): ParsedReport | null {
-  // Clean the text first
-  const cleanedText = cleanReportText(text);
-  
-  // Detect branch from name patterns (more reliable than code)
-  const branch = detectBranchFromText(cleanedText);
-  if (!branch) return null;
-  
-  // Extract date
-  const dateMatch = cleanedText.match(/(?:ว(?:ันที่)?\s*:?\s*)(\d{1,2}\/\d{1,2}\/\d{2,4})/i) ||
-                    cleanedText.match(/Date\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-  let reportDate = dateMatch ? parseThaiDate(dateMatch[1]) : null;
-  
-  // If date parsing failed, use header date
-  if (!reportDate && headerDate) {
-    reportDate = headerDate;
+// Call AI to parse reports
+async function parseReportsWithAI(blocks: string[]): Promise<ParsedReport[]> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    throw new Error('LOVABLE_API_KEY is not configured');
   }
-  
-  if (!reportDate) return null;
-  
-  // Extract sales - handle various formats: "Sales: 1,234", "Sales:\n1,234", "Sales 1234-"
-  const salesMatch = cleanedText.match(/Sales\s*:?\s*[\n\r]?\s*([\d,]+)(?:\s*\.?-)?/i);
-  const sales = salesMatch ? parseNumber(salesMatch[1]) : null;
-  
-  // Extract sales target - handle: "Sales Target: 8,000", "Sales Target:\n3,515-"
-  const targetMatch = cleanedText.match(/Sales\s*Target\s*:?\s*[\n\r]?\s*([\d,]+)(?:\s*\.?-)?/i);
-  const salesTarget = targetMatch ? parseNumber(targetMatch[1]) : null;
-  
-  // Extract diff target (number and percentage)
-  const diffMatch = cleanedText.match(/Diff\s*[Tt]arget\s*:?\s*[\n\r]?\s*([+-]?[\d,]+)\s*[\/|]?\s*([+-]?[\d.]+)\s*%?/i);
-  const diffTarget = diffMatch ? parseNumber(diffMatch[1]) : null;
-  const diffTargetPercent = diffMatch ? parseNumber(diffMatch[2]) : null;
-  
-  // Extract TC
-  const tcMatch = cleanedText.match(/TC\s*:?\s*[\n\r]?\s*(\d+)/i);
-  const tc = tcMatch ? parseInt(tcMatch[1], 10) : null;
-  
-  // Extract cup sizes
-  const sizeSMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Ss]\s*[=:]\s*(\d+)/i) ||
-                     cleanedText.match(/Size\s*S\s*[|:]?\s*(\d+)/i);
-  const sizeMMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Mm]\s*[=:]\s*(\d+)/i) ||
-                     cleanedText.match(/Size\s*M\s*[|:]?\s*(\d+)/i);
-  const cupSizeS = sizeSMatch ? parseInt(sizeSMatch[1], 10) : null;
-  const cupSizeM = sizeMMatch ? parseInt(sizeMMatch[1], 10) : null;
-  
-  // Extract top products (simplified)
-  const topLemonade: string[] = [];
-  const topSlurpee: string[] = [];
-  
-  // Look for lemonade/slurpee items
-  const lemonadeMatches = cleanedText.matchAll(/\d\.\s*([A-Za-z\s]+(?:Lemon(?:ade|nade)?|Slurpee|Slush))/gi);
-  for (const match of lemonadeMatches) {
-    const product = match[1].trim();
-    if (product.toLowerCase().includes('slurp') || product.toLowerCase().includes('slush')) {
-      if (topSlurpee.length < 3 && !topSlurpee.includes(product)) {
-        topSlurpee.push(product);
-      }
-    } else if (topLemonade.length < 3 && !topLemonade.includes(product)) {
-      topLemonade.push(product);
-    }
-  }
-  
-  return {
-    report_date: reportDate,
-    branch_code: branch.code,
-    branch_name: branch.name,
-    sales,
-    sales_target: salesTarget,
-    diff_target: diffTarget,
-    diff_target_percent: diffTargetPercent,
-    tc,
-    cup_size_s: cupSizeS,
-    cup_size_m: cupSizeM,
-    top_lemonade: topLemonade,
-    top_slurpee: topSlurpee,
-    raw_message_text: text.substring(0, 2000),
-  };
-}
 
-// Parse chat header date (format: "Sun, 01/04/2026" or "# Tue, 09/30/2025")
-function parseChatHeaderDate(line: string): string | null {
-  const match = line.match(/(?:#\s*)?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!match) return null;
-  
-  const month = match[1];
-  const day = match[2];
-  const year = match[3];
-  
-  return `${year}-${month}-${day}`;
-}
+  const systemPrompt = `คุณเป็น parser สำหรับรายงานยอดขายสาขา Goodchoose จาก LINE chat
 
-// Main parsing function
-function parseLineChatExport(content: string): ParsedReport[] {
-  const reports: ParsedReport[] = [];
-  const lines = content.split('\n');
-  
-  let currentHeaderDate: string | null = null;
-  let currentBlock = '';
-  let inReportBlock = false;
-  
-  // Pattern to detect start of a report block
-  const reportStartPatterns = [
-    /Code\s*สาขา/i,
-    /ชื่อสาขา\s*:/i,
-    /Sales\s*:?\s*[\n\r]?\s*[\d,]+/i,
-  ];
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // Check for chat header date
-    const headerDate = parseChatHeaderDate(line);
-    if (headerDate) {
-      currentHeaderDate = headerDate;
-      continue;
-    }
-    
-    // Detect start of a report block
-    const isReportStart = reportStartPatterns.some(p => p.test(line));
-    
-    if (isReportStart || (line.includes('Code') && line.toLowerCase().includes('สาขา'))) {
-      // If we were already in a block, parse it first
-      if (inReportBlock && currentBlock.trim()) {
-        const report = parseReportBlock(currentBlock, currentHeaderDate || undefined);
-        if (report) reports.push(report);
-      }
-      // Start new block
-      currentBlock = line + '\n';
-      inReportBlock = true;
-      continue;
-    }
-    
-    // Check for table-formatted reports (markdown style)
-    if (line.includes('| ') && (line.includes('CDP') || line.includes('SQC') || 
-        line.includes('EMQ') || line.includes('CTP') || line.includes('CED'))) {
-      // Parse table row
-      const cells = line.split('|').map(c => c.trim()).filter(c => c);
-      if (cells.length >= 5) {
-        const branchCode = cells[0];
-        if (BRANCH_MAPPING[branchCode]) {
-          const dateStr = cells[2] || '';
-          const salesStr = cells[3] || '';
-          const targetStr = cells[4] || '';
-          const diffStr = cells[5] || '';
-          const tcStr = cells[6] || '';
-          
-          const reportDate = parseThaiDate(dateStr) || currentHeaderDate;
-          if (reportDate) {
-            const branch = BRANCH_MAPPING[branchCode];
-            reports.push({
-              report_date: reportDate,
-              branch_code: branch.code,
-              branch_name: branch.name,
-              sales: parseNumber(salesStr),
-              sales_target: parseNumber(targetStr),
-              diff_target: parseNumber(diffStr.split('/')[0] || ''),
-              diff_target_percent: parseNumber(diffStr.split('/')[1] || ''),
-              tc: parseNumber(tcStr),
-              cup_size_s: null,
-              cup_size_m: null,
-              top_lemonade: [],
-              top_slurpee: [],
-              raw_message_text: line,
-            });
+รูปแบบรายงาน:
+- Code สาขา : XXX
+- ชื่อสาขา : ชื่อ
+- วันที่ : DD/MM/YY (ปี พ.ศ. 2 หลัก เช่น 69 = 2569 = 2026)
+- Sales : ยอดขาย (อาจมี comma)
+- Sales Target : เป้า
+- Diff target: ส่วนต่าง / เปอร์เซ็นต์
+- TC : จำนวนลูกค้า
+- Stock lemon : สต็อกมะนาว
+- เมนูน้ำเลม่อนที่ขายดี 3 อันดับ
+- น้ำสเลอปี้ที่ขายดี 3 อย่าง
+- แก้ว size s/m
+- เลมอนอบแห้ง
+- พริกเกลือ
+- น้ำผึ้งขวด
+- ขนม
+- น้ำขวด
+- Lineman orders
+
+Branch Mapping (ใช้ชื่อมาตรฐานเสมอ):
+- CDP = เซ็นทรัลพาร์ค ดุสิต
+- SQC = สยามสแควร์วัน
+- EMQ = เอ็มควอเทียร์
+- CTP = เซ็นทรัลภูเก็ต
+- CED = เซ็นทรัลอีสต์วิลล์
+
+สำคัญมาก:
+1. แปลงวันที่จาก DD/MM/YY (พ.ศ.) เป็น YYYY-MM-DD (ค.ศ.)
+   - ปี 69 = 2026, ปี 68 = 2025, ปี 67 = 2024
+   - ตัวอย่าง: 07/01/69 -> 2026-01-07
+2. ถ้า sales มี comma เช่น 1,624 ให้แปลงเป็นตัวเลข 1624
+3. ถ้า diff_target เป็นค่าลบ ให้ใส่เครื่องหมายลบ
+4. ถ้าหาข้อมูลไม่เจอ ให้ใส่ null
+5. ใช้ branch_name มาตรฐานจาก Branch Mapping เสมอ`;
+
+  const tool = {
+    type: "function",
+    function: {
+      name: "save_reports",
+      description: "บันทึกรายงานยอดขายที่ parse แล้ว",
+      parameters: {
+        type: "object",
+        properties: {
+          reports: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                branch_code: { type: "string" },
+                branch_name: { type: "string" },
+                report_date: { type: "string", description: "YYYY-MM-DD format" },
+                sales: { type: "number", nullable: true },
+                sales_target: { type: "number", nullable: true },
+                diff_target: { type: "number", nullable: true },
+                diff_target_percent: { type: "number", nullable: true },
+                tc: { type: "number", nullable: true },
+                stock_lemon: { type: "number", nullable: true },
+                top_lemonade: { type: "array", items: { type: "string" }, nullable: true },
+                top_slurpee: { type: "array", items: { type: "string" }, nullable: true },
+                cup_size_s: { type: "number", nullable: true },
+                cup_size_m: { type: "number", nullable: true },
+                dried_lemon: { type: "number", nullable: true },
+                chili_salt: { type: "number", nullable: true },
+                honey_bottle: { type: "number", nullable: true },
+                snacks: { type: "number", nullable: true },
+                bottled_water: { type: "number", nullable: true },
+                lineman_orders: { type: "number", nullable: true }
+              },
+              required: ["branch_code", "branch_name", "report_date"]
+            }
           }
-        }
-      }
-      continue;
-    }
-    
-    // Continue accumulating block
-    if (inReportBlock) {
-      currentBlock += line + '\n';
-      
-      // End block on certain patterns (but allow more lines for content)
-      if (line.includes('[Photo]') || line.includes('[Sticker]') || 
-          (line.match(/^\d{1,2}:\d{2}(?:AM|PM)\s/) && !line.includes('Sales')) ||
-          (line.startsWith('#') && !line.includes('Merchandise') && !line.includes('Top'))) {
-        const report = parseReportBlock(currentBlock, currentHeaderDate || undefined);
-        if (report) reports.push(report);
-        currentBlock = '';
-        inReportBlock = false;
+        },
+        required: ["reports"]
       }
     }
+  };
+
+  const userMessage = `Parse รายงานต่อไปนี้ (${blocks.length} รายงาน):
+
+${blocks.map((block, i) => `--- รายงานที่ ${i + 1} ---\n${block}`).join('\n\n')}`;
+
+  console.log(`Sending ${blocks.length} blocks to AI for parsing...`);
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      tools: [tool],
+      tool_choice: { type: "function", function: { name: "save_reports" } }
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('AI API error:', response.status, errorText);
+    throw new Error(`AI API error: ${response.status}`);
   }
-  
-  // Parse any remaining block
-  if (inReportBlock && currentBlock.trim()) {
-    const report = parseReportBlock(currentBlock, currentHeaderDate || undefined);
-    if (report) reports.push(report);
+
+  const data = await response.json();
+  console.log('AI response received');
+
+  // Extract tool call result
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall || toolCall.function.name !== 'save_reports') {
+    console.error('No valid tool call in response:', JSON.stringify(data));
+    throw new Error('AI did not return expected tool call');
   }
-  
-  // Deduplicate by branch_code + report_date (keep last one)
-  const uniqueReports = new Map<string, ParsedReport>();
-  for (const report of reports) {
-    const key = `${report.branch_code}_${report.report_date}`;
-    uniqueReports.set(key, report);
-  }
-  
-  return Array.from(uniqueReports.values());
+
+  const parsedData = JSON.parse(toolCall.function.arguments);
+  console.log(`AI parsed ${parsedData.reports?.length || 0} reports`);
+
+  return parsedData.reports || [];
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { content, dryRun = true } = await req.json();
-    
-    if (!content) {
-      return new Response(JSON.stringify({ error: 'Content is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const { content, dryRun = false } = await req.json();
+
+    if (!content || typeof content !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Content is required and must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`Parsing LINE chat export (${content.length} characters)...`);
+    console.log(`Processing content: ${content.length} characters`);
+
+    // Step 1: Split into report blocks
+    const blocks = splitIntoReportBlocks(content);
     
-    const reports = parseLineChatExport(content);
-    
-    console.log(`Found ${reports.length} reports`);
-    
-    // Log sample for debugging
-    if (reports.length > 0) {
-      console.log('Sample report:', JSON.stringify(reports[0]));
+    if (blocks.length === 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No report blocks found in content',
+          hint: 'Make sure the content contains reports with "Code สาขา" pattern'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // Step 2: Process in batches (10 reports per batch to avoid token limits)
+    const BATCH_SIZE = 10;
+    const allReports: ParsedReport[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < blocks.length; i += BATCH_SIZE) {
+      const batch = blocks.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(blocks.length / BATCH_SIZE)}`);
+      
+      try {
+        const parsedReports = await parseReportsWithAI(batch);
+        
+        // Add raw_message_text to each report
+        parsedReports.forEach((report, idx) => {
+          report.raw_message_text = batch[idx] || '';
+        });
+        
+        allReports.push(...parsedReports);
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : String(error);
+        const errorMsg = `Batch ${Math.floor(i / BATCH_SIZE) + 1} failed: ${errMessage}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
+      }
+    }
+
+    console.log(`Total parsed reports: ${allReports.length}`);
+
+    // Step 3: Validate and deduplicate
+    const validReports = allReports.filter(r => 
+      r.branch_code && 
+      r.branch_name && 
+      r.report_date && 
+      /^\d{4}-\d{2}-\d{2}$/.test(r.report_date)
+    );
+
+    // Deduplicate by branch_code + report_date
+    const uniqueKey = (r: ParsedReport) => `${r.branch_code}_${r.report_date}`;
+    const seen = new Set<string>();
+    const uniqueReports = validReports.filter(r => {
+      const key = uniqueKey(r);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    console.log(`Valid unique reports: ${uniqueReports.length}`);
 
     if (dryRun) {
-      // Return preview without saving
-      const summary = {
-        totalReports: reports.length,
-        byBranch: {} as Record<string, number>,
-        dateRange: { from: '', to: '' },
-        sampleReports: reports.slice(0, 5),
-      };
-      
-      for (const r of reports) {
-        summary.byBranch[r.branch_name] = (summary.byBranch[r.branch_name] || 0) + 1;
-      }
-      
-      const dates = reports.map(r => r.report_date).sort();
-      summary.dateRange.from = dates[0] || '';
-      summary.dateRange.to = dates[dates.length - 1] || '';
-      
-      return new Response(JSON.stringify({
+      return new Response(
+        JSON.stringify({
+          success: true,
+          dryRun: true,
+          summary: {
+            totalBlocks: blocks.length,
+            parsedReports: allReports.length,
+            validReports: validReports.length,
+            uniqueReports: uniqueReports.length,
+            errors: errors.length
+          },
+          reports: uniqueReports.map(r => ({
+            branch_code: r.branch_code,
+            branch_name: r.branch_name,
+            report_date: r.report_date,
+            sales: r.sales,
+            sales_target: r.sales_target,
+            diff_target: r.diff_target,
+            diff_target_percent: r.diff_target_percent,
+            tc: r.tc,
+            stock_lemon: r.stock_lemon,
+            top_lemonade: r.top_lemonade,
+            top_slurpee: r.top_slurpee
+          })),
+          errors
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Step 4: Upsert to database
+    const insertData = uniqueReports.map(r => ({
+      branch_code: r.branch_code,
+      branch_name: r.branch_name,
+      report_date: r.report_date,
+      sales: r.sales,
+      sales_target: r.sales_target,
+      diff_target: r.diff_target,
+      diff_target_percent: r.diff_target_percent,
+      tc: r.tc,
+      stock_lemon: r.stock_lemon,
+      top_lemonade: r.top_lemonade,
+      top_slurpee: r.top_slurpee,
+      cup_size_s: r.cup_size_s,
+      cup_size_m: r.cup_size_m,
+      dried_lemon: r.dried_lemon,
+      chili_salt: r.chili_salt,
+      honey_bottle: r.honey_bottle,
+      snacks: r.snacks,
+      bottled_water: r.bottled_water,
+      lineman_orders: r.lineman_orders,
+      raw_message_text: r.raw_message_text,
+      parsed_at: new Date().toISOString()
+    }));
+
+    const { data: upsertedData, error: upsertError } = await supabase
+      .from('branch_daily_reports')
+      .upsert(insertData, {
+        onConflict: 'branch_code,report_date',
+        ignoreDuplicates: false
+      })
+      .select('id');
+
+    if (upsertError) {
+      console.error('Upsert error:', upsertError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Database upsert failed',
+          details: upsertError.message,
+          parsed: uniqueReports.length
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Successfully upserted ${upsertedData?.length || 0} reports`);
+
+    return new Response(
+      JSON.stringify({
         success: true,
-        dryRun: true,
-        summary,
-        reports,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+        summary: {
+          totalBlocks: blocks.length,
+          parsedReports: allReports.length,
+          validReports: validReports.length,
+          uniqueReports: uniqueReports.length,
+          insertedReports: upsertedData?.length || 0,
+          errors: errors.length
+        },
+        errors: errors.length > 0 ? errors : undefined
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
-    // Actually insert/upsert the data
-    let inserted = 0;
-    let errors: string[] = [];
-    
-    for (const report of reports) {
-      const { error } = await supabase
-        .from('branch_daily_reports')
-        .upsert({
-          branch_code: report.branch_code,
-          branch_name: report.branch_name,
-          report_date: report.report_date,
-          sales: report.sales,
-          sales_target: report.sales_target,
-          diff_target: report.diff_target,
-          diff_target_percent: report.diff_target_percent,
-          tc: report.tc,
-          cup_size_s: report.cup_size_s,
-          cup_size_m: report.cup_size_m,
-          top_lemonade: report.top_lemonade.length > 0 ? report.top_lemonade : null,
-          top_slurpee: report.top_slurpee.length > 0 ? report.top_slurpee : null,
-          raw_message_text: report.raw_message_text,
-          parsed_at: new Date().toISOString(),
-        }, {
-          onConflict: 'report_date,branch_code,branch_name',
-          ignoreDuplicates: false,
-        });
-      
-      if (error) {
-        errors.push(`${report.branch_name} ${report.report_date}: ${error.message}`);
-        console.error('Insert error:', error);
-      } else {
-        inserted++;
-      }
-    }
-
-    return new Response(JSON.stringify({
-      success: true,
-      dryRun: false,
-      inserted,
-      total: reports.length,
-      errors: errors.slice(0, 10),
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
-  } catch (error: unknown) {
-    console.error('Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ 
-      error: errorMessage,
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+  } catch (error) {
+    console.error('Error in import-line-chat:', error);
+    const errMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: errMessage
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
