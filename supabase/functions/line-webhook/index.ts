@@ -7169,6 +7169,89 @@ async function replyToLineWithImage(replyToken: string, imageUrl: string, text?:
 }
 
 // =============================
+// PUSH MESSAGE HELPERS (for DM without reply token)
+// =============================
+
+/**
+ * Send a push message (DM) to a LINE user
+ * Use this instead of replyToLine when you don't have a replyToken
+ * or when you want to send a message without posting to a group
+ */
+async function pushLineMessage(to: string, text: string): Promise<void> {
+  console.log(`[pushLineMessage] Sending DM to ${to}`);
+  
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        to,
+        messages: [{ type: "text", text }],
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error(`[pushLineMessage] Failed: ${response.status} ${await response.text()}`);
+    } else {
+      console.log(`[pushLineMessage] Successfully sent DM`);
+    }
+  } catch (error) {
+    console.error(`[pushLineMessage] Error:`, error);
+  }
+}
+
+/**
+ * Notify owner/admin when a user exceeds their quota
+ * Only sends to USER approvers (not group approvers) via DM
+ */
+async function notifyOwnerQuotaExceeded(
+  submitterLineUserId: string,
+  quota: { used: number; limit: number },
+  locale: "th" | "en"
+): Promise<void> {
+  console.log(`[notifyOwnerQuotaExceeded] Notifying owners about quota exceeded`);
+  
+  try {
+    // Get approvers that are USERS only (not groups)
+    const { data: approvers } = await supabase
+      .from("receipt_approvers")
+      .select("line_user_id, display_name, type")
+      .eq("type", "user")
+      .eq("is_active", true);
+    
+    if (!approvers || approvers.length === 0) {
+      console.log(`[notifyOwnerQuotaExceeded] No user approvers configured`);
+      return;
+    }
+    
+    // Get submitter display name
+    const { data: submitter } = await supabase
+      .from("users")
+      .select("display_name")
+      .eq("line_user_id", submitterLineUserId)
+      .maybeSingle();
+    
+    const submitterName = submitter?.display_name || submitterLineUserId;
+    
+    const message = locale === "th"
+      ? `⚠️ ${submitterName} หมดโควต้า AI แล้ว (${quota.used}/${quota.limit} ใบเดือนนี้)`
+      : `⚠️ ${submitterName} exceeded AI quota (${quota.used}/${quota.limit} this month)`;
+    
+    for (const approver of approvers) {
+      if (approver.line_user_id) {
+        await pushLineMessage(approver.line_user_id, message);
+        console.log(`[notifyOwnerQuotaExceeded] Notified ${approver.display_name || approver.line_user_id}`);
+      }
+    }
+  } catch (error) {
+    console.error(`[notifyOwnerQuotaExceeded] Error:`, error);
+  }
+}
+
+// =============================
 // AUTO-SUMMARY & PERSONALITY HELPERS
 // =============================
 
@@ -7733,9 +7816,18 @@ async function handleReceiptImageInGroup(event: LineEvent, lineUserId: string, l
     // Check quota first
     const quota = await checkReceiptQuota(lineUserId);
     if (!quota.allowed) {
-      console.log(`[handleReceiptImageInGroup] Quota exceeded for ${lineUserId}`);
-      const flexMessage = buildQuotaExceededFlex(quota, locale);
-      await sendFlexMessage(event.replyToken, flexMessage);
+      console.log(`[handleReceiptImageInGroup] Quota exceeded for ${lineUserId} - sending DM only`);
+      
+      // DO NOT reply to group - send DM to submitter only
+      const message = locale === "th"
+        ? `⚠️ โควต้า AI หมดแล้ว (${quota.used}/${quota.limit} ใบเดือนนี้)\n\nคุณยังสามารถกรอกข้อมูลเองได้ไม่จำกัด`
+        : `⚠️ AI quota exceeded (${quota.used}/${quota.limit} this month)\n\nYou can still enter receipts manually.`;
+      
+      await pushLineMessage(lineUserId, message);
+      
+      // Notify owner/admin via DM (text only, not to groups)
+      await notifyOwnerQuotaExceeded(lineUserId, quota, locale);
+      
       return;
     }
     
