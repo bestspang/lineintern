@@ -30,41 +30,8 @@ interface ParsedReport {
   raw_message_text: string;
 }
 
-// Split content into report blocks
-function splitIntoReportBlocks(content: string): string[] {
-  // Clean the content first
-  let cleaned = content
-    .replace(/^\uFEFF/, '') // Remove BOM
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
-
-  // Split by "Code สาขา" pattern
-  const blocks: string[] = [];
-  const regex = /(?:^|\n)(?:"|")?Code\s*สาขา/gi;
-  let match;
-
-  // Find all matches
-  const matches: number[] = [];
-  while ((match = regex.exec(cleaned)) !== null) {
-    matches.push(match.index);
-  }
-
-  // Extract blocks between matches
-  for (let i = 0; i < matches.length; i++) {
-    const start = matches[i];
-    const end = i + 1 < matches.length ? matches[i + 1] : cleaned.length;
-    const block = cleaned.slice(start, end).trim();
-    if (block.length > 50) { // Minimum length for a valid report
-      blocks.push(block);
-    }
-  }
-
-  console.log(`Split into ${blocks.length} report blocks`);
-  return blocks;
-}
-
-// Call AI to parse reports
-async function parseReportsWithAI(blocks: string[]): Promise<ParsedReport[]> {
+// 100% AI-powered parsing - no regex splitting
+async function parseAllReportsWithAI(content: string): Promise<ParsedReport[]> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (!LOVABLE_API_KEY) {
     throw new Error('LOVABLE_API_KEY is not configured');
@@ -72,10 +39,15 @@ async function parseReportsWithAI(blocks: string[]): Promise<ParsedReport[]> {
 
   const systemPrompt = `คุณเป็น parser สำหรับรายงานยอดขายสาขา Goodchoose จาก LINE chat
 
-รูปแบบรายงาน:
+หน้าที่ของคุณ:
+1. อ่านข้อความทั้งหมดและระบุรายงานแต่ละฉบับเอง (ไม่มี regex ช่วย)
+2. รายงานแต่ละฉบับจะเริ่มต้นด้วย "Code สาขา" หรือ "code สาขา"
+3. แยกข้อมูลจากแต่ละรายงานให้ครบถ้วน
+
+รูปแบบรายงาน (อาจแตกต่างกันเล็กน้อย):
 - Code สาขา : XXX
 - ชื่อสาขา : ชื่อ
-- วันที่ : DD/MM/YY (ปี พ.ศ. 2 หลัก เช่น 69 = 2569 = 2026)
+- วันที่ : DD/MM/YY (ปี พ.ศ. 2 หลัก เช่น 69 = 2569 = 2026, 68 = 2568 = 2025)
 - Sales : ยอดขาย (อาจมี comma)
 - Sales Target : เป้า
 - Diff target: ส่วนต่าง / เปอร์เซ็นต์
@@ -105,13 +77,15 @@ Branch Mapping (ใช้ชื่อมาตรฐานเสมอ):
 2. ถ้า sales มี comma เช่น 1,624 ให้แปลงเป็นตัวเลข 1624
 3. ถ้า diff_target เป็นค่าลบ ให้ใส่เครื่องหมายลบ
 4. ถ้าหาข้อมูลไม่เจอ ให้ใส่ null
-5. ใช้ branch_name มาตรฐานจาก Branch Mapping เสมอ`;
+5. ใช้ branch_name มาตรฐานจาก Branch Mapping เสมอ
+6. ต้องหารายงานทั้งหมดในข้อความ ไม่ใช่แค่รายงานแรก
+7. เก็บ raw_message_text เป็นข้อความดิบของแต่ละรายงาน`;
 
   const tool = {
     type: "function",
     function: {
       name: "save_reports",
-      description: "บันทึกรายงานยอดขายที่ parse แล้ว",
+      description: "บันทึกรายงานยอดขายที่ parse แล้วทั้งหมด",
       parameters: {
         type: "object",
         properties: {
@@ -138,9 +112,10 @@ Branch Mapping (ใช้ชื่อมาตรฐานเสมอ):
                 honey_bottle: { type: "number", nullable: true },
                 snacks: { type: "number", nullable: true },
                 bottled_water: { type: "number", nullable: true },
-                lineman_orders: { type: "number", nullable: true }
+                lineman_orders: { type: "number", nullable: true },
+                raw_message_text: { type: "string", description: "ข้อความดิบของรายงานนี้" }
               },
-              required: ["branch_code", "branch_name", "report_date"]
+              required: ["branch_code", "branch_name", "report_date", "raw_message_text"]
             }
           }
         },
@@ -149,11 +124,13 @@ Branch Mapping (ใช้ชื่อมาตรฐานเสมอ):
     }
   };
 
-  const userMessage = `Parse รายงานต่อไปนี้ (${blocks.length} รายงาน):
+  const userMessage = `วิเคราะห์และแยกรายงานทั้งหมดจากข้อความนี้:
 
-${blocks.map((block, i) => `--- รายงานที่ ${i + 1} ---\n${block}`).join('\n\n')}`;
+${content}
 
-  console.log(`Sending ${blocks.length} blocks to AI for parsing...`);
+หมายเหตุ: ข้อความอาจมีหลายรายงานปนกัน ให้หาและ parse ทุกรายงานที่พบ`;
+
+  console.log(`[parseAllReportsWithAI] Sending content (${content.length} chars) to AI for parsing...`);
 
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -189,7 +166,7 @@ ${blocks.map((block, i) => `--- รายงานที่ ${i + 1} ---\n${bloc
   }
 
   const parsedData = JSON.parse(toolCall.function.arguments);
-  console.log(`AI parsed ${parsedData.reports?.length || 0} reports`);
+  console.log(`[parseAllReportsWithAI] AI found and parsed ${parsedData.reports?.length || 0} reports`);
 
   return parsedData.reports || [];
 }
@@ -214,51 +191,69 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing content: ${content.length} characters`);
+    console.log(`[import-line-chat] Processing content: ${content.length} characters`);
 
-    // Step 1: Split into report blocks
-    const blocks = splitIntoReportBlocks(content);
-    
-    if (blocks.length === 0) {
+    // Quick check if content might contain reports
+    if (!/code\s*สาขา/i.test(content)) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'No report blocks found in content',
+          error: 'No report patterns found in content',
           hint: 'Make sure the content contains reports with "Code สาขา" pattern'
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Step 2: Process in batches (10 reports per batch to avoid token limits)
-    const BATCH_SIZE = 10;
-    const allReports: ParsedReport[] = [];
+    // 100% AI parsing - no splitting, just send everything to AI
+    let allReports: ParsedReport[] = [];
     const errors: string[] = [];
 
-    for (let i = 0; i < blocks.length; i += BATCH_SIZE) {
-      const batch = blocks.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(blocks.length / BATCH_SIZE)}`);
+    // If content is very large, split by chunks (AI token limits)
+    const MAX_CHUNK_SIZE = 30000; // ~30k chars per chunk
+    const chunks: string[] = [];
+    
+    if (content.length > MAX_CHUNK_SIZE) {
+      // Smart split by finding "Code สาขา" boundaries
+      let currentChunk = '';
+      const lines = content.split('\n');
+      
+      for (const line of lines) {
+        if (currentChunk.length + line.length > MAX_CHUNK_SIZE && /code\s*สาขา/i.test(line)) {
+          if (currentChunk.length > 100) {
+            chunks.push(currentChunk);
+          }
+          currentChunk = line;
+        } else {
+          currentChunk += (currentChunk ? '\n' : '') + line;
+        }
+      }
+      if (currentChunk.length > 100) {
+        chunks.push(currentChunk);
+      }
+    } else {
+      chunks.push(content);
+    }
+
+    console.log(`[import-line-chat] Processing ${chunks.length} chunk(s)`);
+
+    for (let i = 0; i < chunks.length; i++) {
+      console.log(`[import-line-chat] Processing chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
       
       try {
-        const parsedReports = await parseReportsWithAI(batch);
-        
-        // Add raw_message_text to each report
-        parsedReports.forEach((report, idx) => {
-          report.raw_message_text = batch[idx] || '';
-        });
-        
+        const parsedReports = await parseAllReportsWithAI(chunks[i]);
         allReports.push(...parsedReports);
       } catch (error) {
         const errMessage = error instanceof Error ? error.message : String(error);
-        const errorMsg = `Batch ${Math.floor(i / BATCH_SIZE) + 1} failed: ${errMessage}`;
+        const errorMsg = `Chunk ${i + 1} failed: ${errMessage}`;
         console.error(errorMsg);
         errors.push(errorMsg);
       }
     }
 
-    console.log(`Total parsed reports: ${allReports.length}`);
+    console.log(`[import-line-chat] Total parsed reports: ${allReports.length}`);
 
-    // Step 3: Validate and deduplicate
+    // Validate and deduplicate
     const validReports = allReports.filter(r => 
       r.branch_code && 
       r.branch_name && 
@@ -276,7 +271,7 @@ serve(async (req) => {
       return true;
     });
 
-    console.log(`Valid unique reports: ${uniqueReports.length}`);
+    console.log(`[import-line-chat] Valid unique reports: ${uniqueReports.length}`);
 
     if (dryRun) {
       return new Response(
@@ -284,7 +279,7 @@ serve(async (req) => {
           success: true,
           dryRun: true,
           summary: {
-            totalBlocks: blocks.length,
+            totalChunks: chunks.length,
             parsedReports: allReports.length,
             validReports: validReports.length,
             uniqueReports: uniqueReports.length,
@@ -309,7 +304,7 @@ serve(async (req) => {
       );
     }
 
-    // Step 4: Upsert to database
+    // Upsert to database
     const insertData = uniqueReports.map(r => ({
       branch_code: r.branch_code,
       branch_name: r.branch_name,
@@ -355,13 +350,13 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Successfully upserted ${upsertedData?.length || 0} reports`);
+    console.log(`[import-line-chat] Successfully upserted ${upsertedData?.length || 0} reports`);
 
     return new Response(
       JSON.stringify({
         success: true,
         summary: {
-          totalBlocks: blocks.length,
+          totalChunks: chunks.length,
           parsedReports: allReports.length,
           validReports: validReports.length,
           uniqueReports: uniqueReports.length,
