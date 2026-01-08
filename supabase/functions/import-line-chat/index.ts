@@ -71,9 +71,21 @@ function parseThaiDate(dateStr: string): string | null {
 // Parse number from text (handles commas)
 function parseNumber(text: string): number | null {
   if (!text) return null;
-  const cleaned = text.replace(/,/g, '').replace(/[^\\d.-]/g, '');
+  const cleaned = text.replace(/,/g, '').replace(/[^\d.-]/g, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+// Clean report text - remove timestamps, usernames, and quotes from LINE export
+function cleanReportText(text: string): string {
+  let cleaned = text;
+  // Remove LINE chat timestamp patterns: "10:25PM Bow Yonlada " or "9:30AM Username "
+  cleaned = cleaned.replace(/^\d{1,2}:\d{2}(?:AM|PM)\s+\S+(?:\s+\S+)?\s+/gim, '');
+  // Remove enclosing quotes
+  cleaned = cleaned.replace(/^"|"$/gm, '');
+  // Remove quoted lines that wrap the entire content
+  cleaned = cleaned.replace(/^"(.+)"$/s, '$1');
+  return cleaned;
 }
 
 // Extract branch code from text
@@ -84,12 +96,15 @@ function extractBranchCode(text: string): string | null {
 
 // Parse a single report block
 function parseReportBlock(text: string, headerDate?: string): ParsedReport | null {
-  const branchCode = extractBranchCode(text);
+  // Clean the text first
+  const cleanedText = cleanReportText(text);
+  
+  const branchCode = extractBranchCode(cleanedText);
   if (!branchCode || !BRANCH_MAPPING[branchCode]) return null;
   
   // Extract date
-  const dateMatch = text.match(/(?:ว(?:ันที่)?\s*:?\s*)(\d{1,2}\/\d{1,2}\/\d{2})/i) ||
-                    text.match(/Date\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2})/i);
+  const dateMatch = cleanedText.match(/(?:ว(?:ันที่)?\s*:?\s*)(\d{1,2}\/\d{1,2}\/\d{2})/i) ||
+                    cleanedText.match(/Date\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2})/i);
   let reportDate = dateMatch ? parseThaiDate(dateMatch[1]) : null;
   
   // If date parsing failed, use header date
@@ -99,28 +114,28 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
   
   if (!reportDate) return null;
   
-  // Extract sales
-  const salesMatch = text.match(/Sales\s*:?\s*([\d,]+)/i);
+  // Extract sales - handle newline after label: "Sales:\n1,234" or "Sales: 1,234"
+  const salesMatch = cleanedText.match(/Sales\s*:?\s*[\n\r]?\s*([\d,]+)/i);
   const sales = salesMatch ? parseNumber(salesMatch[1]) : null;
   
-  // Extract sales target
-  const targetMatch = text.match(/Sales\s*Target\s*:?\s*([\d,]+)/i);
+  // Extract sales target - handle newline after label
+  const targetMatch = cleanedText.match(/Sales\s*Target\s*:?\s*[\n\r]?\s*([\d,]+)/i);
   const salesTarget = targetMatch ? parseNumber(targetMatch[1]) : null;
   
-  // Extract diff target (number and percentage)
-  const diffMatch = text.match(/Diff\s*[Tt]arget\s*:?\s*([+-]?[\d,]+)\s*\/?\s*([+-]?[\d.]+)\s*%?/i);
+  // Extract diff target (number and percentage) - handle newline
+  const diffMatch = cleanedText.match(/Diff\s*[Tt]arget\s*:?\s*[\n\r]?\s*([+-]?[\d,]+)\s*\/?\s*([+-]?[\d.]+)\s*%?/i);
   const diffTarget = diffMatch ? parseNumber(diffMatch[1]) : null;
   const diffTargetPercent = diffMatch ? parseNumber(diffMatch[2]) : null;
   
-  // Extract TC
-  const tcMatch = text.match(/TC\s*:?\s*(\d+)/i);
+  // Extract TC - handle newline
+  const tcMatch = cleanedText.match(/TC\s*:?\s*[\n\r]?\s*(\d+)/i);
   const tc = tcMatch ? parseInt(tcMatch[1], 10) : null;
   
   // Extract cup sizes
-  const sizeSMatch = text.match(/(?:แก้ว)?\s*[Ss]ize\s*[Ss]\s*[=:]\s*(\d+)/i) ||
-                     text.match(/Size\s*S\s*\|?\s*(\d+)/i);
-  const sizeMMatch = text.match(/(?:แก้ว)?\s*[Ss]ize\s*[Mm]\s*[=:]\s*(\d+)/i) ||
-                     text.match(/Size\s*M\s*\|?\s*(\d+)/i);
+  const sizeSMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Ss]\s*[=:]\s*(\d+)/i) ||
+                     cleanedText.match(/Size\s*S\s*\|?\s*(\d+)/i);
+  const sizeMMatch = cleanedText.match(/(?:แก้ว)?\s*[Ss]ize\s*[Mm]\s*[=:]\s*(\d+)/i) ||
+                     cleanedText.match(/Size\s*M\s*\|?\s*(\d+)/i);
   const cupSizeS = sizeSMatch ? parseInt(sizeSMatch[1], 10) : null;
   const cupSizeM = sizeMMatch ? parseInt(sizeMMatch[1], 10) : null;
   
@@ -129,7 +144,7 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
   const topSlurpee: string[] = [];
   
   // Look for lemonade/slurpee items
-  const lemonadeMatches = text.matchAll(/\d\.\s*([A-Za-z\s]+Lemon(?:ade|nade)?)/gi);
+  const lemonadeMatches = cleanedText.matchAll(/\d\.\s*([A-Za-z\s]+Lemon(?:ade|nade)?)/gi);
   for (const match of lemonadeMatches) {
     const product = match[1].trim();
     if (product.toLowerCase().includes('slurp') || product.toLowerCase().includes('slush')) {
@@ -156,7 +171,7 @@ function parseReportBlock(text: string, headerDate?: string): ParsedReport | nul
     cup_size_m: cupSizeM,
     top_lemonade: topLemonade,
     top_slurpee: topSlurpee,
-    raw_message_text: text.substring(0, 2000), // Limit raw text
+    raw_message_text: text.substring(0, 2000), // Keep original text
   };
 }
 
