@@ -774,7 +774,8 @@ export async function isSameGroupApproval(submissionGroupId: string | null): Pro
 }
 
 /**
- * Send approval notifications to all approvers via DM
+ * Send approval notifications to USER approvers only via DM
+ * IMPORTANT: Does NOT send to group approvers - only individual users
  * @param imageUrl - URL of the receipt image to include in the Flex Message
  */
 export async function sendApprovalNotifications(
@@ -785,35 +786,28 @@ export async function sendApprovalNotifications(
   imageUrl?: string
 ): Promise<void> {
   const approvers = await getReceiptApprovers();
-  if (approvers.length === 0) {
-    console.log("[sendApprovalNotifications] No approvers configured");
+  
+  // Filter to only USER approvers (NOT group approvers)
+  const userApprovers = approvers.filter(a => a.type === 'user' && a.line_user_id);
+  
+  if (userApprovers.length === 0) {
+    console.log("[sendApprovalNotifications] No user approvers configured (skipping group approvers)");
     return;
   }
+
+  console.log(`[sendApprovalNotifications] Sending to ${userApprovers.length} user approvers (${approvers.length - userApprovers.length} group approvers skipped)`);
 
   const flexMessage = buildApproverFlexMessage(result, submitterInfo, locale, liffUrl, imageUrl);
   const notifiedTo: string[] = [];
 
-  for (const approver of approvers) {
+  for (const approver of userApprovers) {
     try {
-      if (approver.type === "user" && approver.line_user_id) {
-        // Send DM to user
-        await sendLineMessage(approver.line_user_id, [flexMessage]);
-        notifiedTo.push(approver.line_user_id);
-      } else if (approver.type === "group" && approver.group_id) {
-        // Get group's line_group_id
-        const { data: group } = await supabase
-          .from("groups")
-          .select("line_group_id")
-          .eq("id", approver.group_id)
-          .single();
-        
-        if (group?.line_group_id) {
-          await sendLineMessage(group.line_group_id, [flexMessage]);
-          notifiedTo.push(group.line_group_id);
-        }
-      }
+      // Only send to users with line_user_id
+      await sendLineMessage(approver.line_user_id!, [flexMessage]);
+      notifiedTo.push(approver.line_user_id!);
+      console.log(`[sendApprovalNotifications] Sent to user: ${approver.display_name || approver.line_user_id}`);
     } catch (error) {
-      console.error(`[sendApprovalNotifications] Error sending to approver:`, error);
+      console.error(`[sendApprovalNotifications] Error sending to approver ${approver.display_name}:`, error);
     }
   }
 
