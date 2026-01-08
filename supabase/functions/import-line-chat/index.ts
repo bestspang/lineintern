@@ -332,7 +332,7 @@ serve(async (req) => {
     const { data: upsertedData, error: upsertError } = await supabase
       .from('branch_daily_reports')
       .upsert(insertData, {
-        onConflict: 'branch_code,report_date',
+        onConflict: 'report_date,branch_code,branch_name',
         ignoreDuplicates: false
       })
       .select('id');
