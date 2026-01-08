@@ -314,6 +314,7 @@ export async function getBranchFromGroup(
 
 export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus> {
   const period = getCurrentPeriod();
+  console.log(`[checkReceiptQuota] Checking quota for ${lineUserId}, period: ${period}`);
 
   // Get or create subscription
   let { data: subscription } = await supabase
@@ -331,6 +332,7 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
       .single();
     
     const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || "free";
+    console.log(`[checkReceiptQuota] No subscription found, creating with plan: ${defaultPlanId}`);
     
     await supabase.from("receipt_subscriptions").insert({
       line_user_id: lineUserId,
@@ -346,7 +348,10 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     .eq("id", subscription.plan_id)
     .single();
 
-  const limit = plan?.ai_receipts_limit ?? 8;
+  // Convert to number explicitly for type safety
+  const rawLimit = plan?.ai_receipts_limit;
+  const limit = Number(rawLimit ?? 8);
+  console.log(`[checkReceiptQuota] Plan: ${subscription.plan_id}, rawLimit: ${rawLimit}, limit: ${limit}, typeof rawLimit: ${typeof rawLimit}, typeof limit: ${typeof limit}`);
 
   // Get usage
   let { data: usage } = await supabase
@@ -357,9 +362,11 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     .single();
 
   const used = usage?.ai_receipts_used || 0;
+  console.log(`[checkReceiptQuota] Used: ${used}, Limit: ${limit}`);
 
-  // Handle unlimited plan (limit = -1)
-  if (limit === -1) {
+  // Handle unlimited plan (limit = -1 or any negative number)
+  if (limit < 0) {
+    console.log(`[checkReceiptQuota] UNLIMITED plan detected (limit=${limit}) - returning allowed: true`);
     return {
       allowed: true,
       used,
@@ -368,8 +375,11 @@ export async function checkReceiptQuota(lineUserId: string): Promise<QuotaStatus
     };
   }
 
+  const allowed = used < limit;
+  console.log(`[checkReceiptQuota] Limited plan - used: ${used}, limit: ${limit}, allowed: ${allowed}`);
+  
   return {
-    allowed: used < limit,
+    allowed,
     used,
     limit,
     remaining: Math.max(0, limit - used),
