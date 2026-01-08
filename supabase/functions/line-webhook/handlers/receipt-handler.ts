@@ -1104,6 +1104,12 @@ export function buildApproverFlexMessage(
     action: { type: "postback", label: locale === "th" ? "✗ ไม่อนุมัติ" : "✗ Reject", data: `action=reject_receipt&receipt_id=${result.receiptId}` },
   });
 
+  // Not Receipt button
+  actions.push({
+    type: "button", style: "secondary", color: "#6B7280",
+    action: { type: "postback", label: locale === "th" ? "📷 ไม่ใช่ใบเสร็จ" : "📷 Not Receipt", data: `action=mark_not_receipt&receipt_id=${result.receiptId}` },
+  });
+
   actions.push({
     type: "button", style: "secondary",
     action: { type: "postback", label: locale === "th" ? "🗑 ลบ" : "🗑 Delete", data: `action=delete_receipt&receipt_id=${result.receiptId}` },
@@ -2123,6 +2129,75 @@ export async function handleReceiptPostback(
       message: locale === "th"
         ? "❌ ไม่อนุมัติใบเสร็จแล้ว"
         : "❌ Receipt rejected",
+    };
+  }
+
+  // Handle mark as not a receipt (by approver)
+  if (action === "mark_not_receipt" && receiptId) {
+    const { data: approver } = await supabase
+      .from("users")
+      .select("display_name")
+      .eq("line_user_id", lineUserId)
+      .maybeSingle();
+
+    const { data: receipt, error: receiptError } = await supabase
+      .from("receipts")
+      .select("line_user_id, vendor")
+      .eq("id", receiptId)
+      .single();
+
+    if (receiptError || !receipt) {
+      console.error("[handleReceiptPostback] Receipt not found:", receiptError);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ ไม่พบใบเสร็จ" : "❌ Receipt not found",
+      };
+    }
+
+    // Update receipt status to invalid_image
+    const { error } = await supabase
+      .from("receipts")
+      .update({
+        status: "invalid_image",
+        approval_status: "not_receipt",
+        approved_by: lineUserId,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", receiptId);
+
+    if (error) {
+      console.error("[handleReceiptPostback] Error marking not receipt:", error);
+      return {
+        handled: true,
+        message: locale === "th" ? "❌ เกิดข้อผิดพลาด" : "❌ Error occurred",
+      };
+    }
+
+    // Log action
+    await supabase.from("receipt_approval_logs").insert({
+      receipt_id: receiptId,
+      action: "marked_not_receipt",
+      actioned_by_line_user_id: lineUserId,
+      actioned_by_name: approver?.display_name || null,
+      notes: `Marked as not a receipt by ${approver?.display_name || lineUserId}`,
+    });
+
+    // Notify submitter
+    if (receipt.line_user_id && receipt.line_user_id !== lineUserId) {
+      await sendLineMessage(receipt.line_user_id, [{
+        type: "text",
+        text: locale === "th"
+          ? `📷 รูปที่ส่งไม่ใช่ใบเสร็จ กรุณาส่งรูปใบเสร็จใหม่\nรูป: ${receipt.vendor || "(ไม่ทราบ)"}`
+          : `📷 The image sent is not a receipt. Please send a valid receipt image.\nImage: ${receipt.vendor || "(Unknown)"}`,
+      }]);
+    }
+
+    return {
+      handled: true,
+      message: locale === "th"
+        ? "📷 ระบุว่าไม่ใช่ใบเสร็จแล้ว"
+        : "📷 Marked as not a receipt",
     };
   }
 

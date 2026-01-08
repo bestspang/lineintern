@@ -18,6 +18,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // =============================================
 
 interface ExtractionResult {
+  // Selfie detection
+  is_selfie?: boolean;
+  selfie_confidence?: number;
+  // Standard extraction fields
   vendor: { value: string | null; confidence: number };
   vendor_address: { value: string | null; confidence: number };
   vendor_branch: { value: string | null; confidence: number };
@@ -348,10 +352,25 @@ async function extractReceiptData(imageBase64: string, mimeType: string): Promis
     return getEmptyExtraction(["AI not configured"]);
   }
 
-  const systemPrompt = `You are a Thai receipt data extraction assistant. Extract ALL information from the receipt image COMPLETELY - do not abbreviate or shorten any text.
+  const systemPrompt = `You are a Thai receipt data extraction assistant.
+
+FIRST - SELFIE DETECTION:
+Before extracting any data, check if this image contains a human face or selfie (a photo of a person).
+If the image is clearly a selfie or photo of a person (confidence > 0.9), return immediately:
+{
+  "is_selfie": true,
+  "selfie_confidence": 0.95,
+  "vendor": {"value": null, "confidence": 0},
+  "vendor_address": {"value": null, "confidence": 0},
+  ... (all other fields null/empty)
+}
+
+If NOT a selfie, proceed to extract receipt data:
 
 Return ONLY valid JSON matching this schema:
 {
+  "is_selfie": false,
+  "selfie_confidence": 0.0,
   "vendor": {"value": "FULL company name with legal form (e.g. ห้างหุ้นส่วนจำกัด xxx, บริษัท xxx จำกัด)", "confidence": 0.0-1.0},
   "vendor_address": {"value": "COMPLETE address with street number, soi, road, district, province, postal code", "confidence": 0.0-1.0},
   "vendor_branch": {"value": "branch name if shown (e.g. สาขา สำนักงานใหญ่, สาขา 001)", "confidence": 0.0-1.0},
@@ -382,6 +401,7 @@ Return ONLY valid JSON matching this schema:
 }
 
 CRITICAL RULES:
+- ALWAYS check for selfie/human face FIRST before extracting receipt data
 - Extract FULL company name including ห้างหุ้นส่วนจำกัด/บริษัท prefix - never abbreviate
 - Extract COMPLETE address - do not skip any part
 - Extract ALL items with FULL names - no abbreviations (e.g. "น้ำมันเบนซิน 95" not "เบนซิน 95")
@@ -439,6 +459,16 @@ CRITICAL RULES:
 
     const extracted = JSON.parse(jsonMatch[0]) as ExtractionResult;
     
+    // Check for selfie detection
+    if (extracted.is_selfie === true && (extracted.selfie_confidence || 0) > 0.9) {
+      console.log("[extractReceiptData] Selfie detected with high confidence");
+      return {
+        ...getEmptyExtraction(["Image is a selfie/photo of person"]),
+        is_selfie: true,
+        selfie_confidence: extracted.selfie_confidence || 0.95,
+      };
+    }
+
     // Validate and add warnings
     const warnings = extracted.warnings || [];
     if (!extracted.total?.value) warnings.push("Total missing");
@@ -448,7 +478,7 @@ CRITICAL RULES:
     // Apply vendor category hints if category confidence is low
     const enhancedExtraction = await applyCategoryHints(extracted);
 
-    return { ...enhancedExtraction, warnings };
+    return { ...enhancedExtraction, warnings, is_selfie: false, selfie_confidence: 0 };
   } catch (error) {
     console.error("AI extraction error:", error);
     return getEmptyExtraction(["AI extraction error"]);
@@ -457,6 +487,8 @@ CRITICAL RULES:
 
 function getEmptyExtraction(warnings: string[]): ExtractionResult {
   return {
+    is_selfie: false,
+    selfie_confidence: 0,
     vendor: { value: null, confidence: 0 },
     vendor_address: { value: null, confidence: 0 },
     vendor_branch: { value: null, confidence: 0 },
@@ -659,6 +691,22 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Check for selfie detection - reject immediately
+    if (extraction.is_selfie === true && (extraction.selfie_confidence || 0) > 0.9) {
+      console.log(`[receipt-submit] Selfie detected for user ${lineUserId}, rejecting`);
+      return new Response(
+        JSON.stringify({
+          error: "selfie_detected",
+          message: "รูปนี้เป็นรูปบุคคล ไม่สามารถใช้เป็นใบเสร็จได้\nกรุณาส่งรูปใบเสร็จหรือเอกสาร",
+          message_en: "This image is a selfie/photo of a person. Please send a receipt image.",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Check for duplicates using file hash
