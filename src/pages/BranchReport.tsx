@@ -116,27 +116,44 @@ export default function BranchReport() {
   // Get days for current time range
   const timeRangeDays = TIME_RANGE_OPTIONS.find(t => t.value === timeRange)?.days || 30;
 
-  // Check if supabase client is properly initialized
-  const isSupabaseReady = !!supabase?.from;
+  // Check if supabase client is properly initialized - robust check
+  const isSupabaseReady = !!(
+    supabase && 
+    typeof supabase.from === 'function' &&
+    import.meta.env.VITE_SUPABASE_URL
+  );
 
   // Fetch all branch reports
   const { data: allReports, isLoading, refetch } = useQuery({
     queryKey: ['branch-reports-all', startDate, endDate],
     queryFn: async () => {
-      if (!supabase?.from) {
-        throw new Error('Supabase client not initialized');
+      // Double-check supabase availability inside queryFn
+      if (!supabase || typeof supabase.from !== 'function') {
+        throw new Error('Supabase client not properly initialized');
       }
-      const { data, error } = await supabase
-        .from('branch_daily_reports')
-        .select('*')
-        .gte('report_date', startDate)
-        .lte('report_date', endDate)
-        .order('report_date', { ascending: false });
-      
-      if (error) throw error;
-      return data as BranchReport[];
+      try {
+        const { data, error } = await supabase
+          .from('branch_daily_reports')
+          .select('*')
+          .gte('report_date', startDate)
+          .lte('report_date', endDate)
+          .order('report_date', { ascending: false });
+        
+        if (error) throw error;
+        return data as BranchReport[];
+      } catch (error) {
+        console.error('Branch reports query error:', error);
+        throw error;
+      }
     },
     enabled: isSupabaseReady,
+    retry: (failureCount, error: Error) => {
+      // Don't retry if supabase is not ready
+      if (error.message?.includes('not properly initialized')) {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 
   // Filter reports based on time range and branch
@@ -672,7 +689,14 @@ export default function BranchReport() {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">กำลังโหลด...</p>
+          <p className="text-muted-foreground">กำลังโหลดระบบ...</p>
+          <Button 
+            variant="outline" 
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            รีเฟรชหน้า
+          </Button>
         </div>
       </div>
     );
