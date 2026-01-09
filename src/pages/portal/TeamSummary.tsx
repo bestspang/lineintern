@@ -4,15 +4,26 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Users, CheckCircle, Clock, XCircle, LogIn, LogOut } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
-import { formatBangkokISODate, formatBangkokTime, getBangkokNow } from '@/lib/timezone';
+import { formatBangkokTime, getBangkokNow } from '@/lib/timezone';
+
+interface EmployeeData {
+  id: string;
+  full_name: string;
+  nickname: string | null;
+}
+
+interface AttendanceLog {
+  employee_id: string;
+  event_type: string;
+  server_time: string;
+}
 
 interface EmployeeStatus {
   id: string;
   full_name: string;
-  code: string;
   status: 'checked_in' | 'checked_out' | 'not_checked_in';
   check_in_time: string | null;
   check_out_time: string | null;
@@ -35,33 +46,20 @@ export default function TeamSummary() {
     const fetchTeamStatus = async () => {
       if (!employee?.id) return;
 
-      // Use Bangkok timezone for today's date
-      const today = formatBangkokISODate(new Date());
+      const { data, error } = await portalApi<{
+        employees: EmployeeData[];
+        attendance: AttendanceLog[];
+      }>({
+        endpoint: 'team-summary',
+        employee_id: employee.id
+      });
 
-      // Get employees in the same branch (or all if admin)
-      let employeesQuery = supabase
-        .from('employees')
-        .select('id, full_name, code')
-        .eq('is_active', true);
-
-      if (!isAdmin && employee.branch_id) {
-        employeesQuery = employeesQuery.eq('branch_id', employee.branch_id);
-      }
-
-      const { data: employeeList } = await employeesQuery.order('full_name');
-
-      if (!employeeList) {
+      if (error || !data) {
         setLoading(false);
         return;
       }
 
-      // Get today's attendance logs using Bangkok date boundaries
-      const { data: logs } = await supabase
-        .from('attendance_logs')
-        .select('employee_id, event_type, server_time')
-        .gte('server_time', `${today}T00:00:00+07:00`)
-        .lt('server_time', `${today}T23:59:59+07:00`)
-        .order('server_time', { ascending: true });
+      const { employees: employeeList, attendance: logs } = data;
 
       // Build employee status map
       const statusMap: Record<string, { checkIn: string | null; checkOut: string | null }> = {};
@@ -88,7 +86,8 @@ export default function TeamSummary() {
         }
 
         return {
-          ...emp,
+          id: emp.id,
+          full_name: emp.full_name,
           status,
           check_in_time: attendance?.checkIn || null,
           check_out_time: attendance?.checkOut || null,
@@ -109,7 +108,7 @@ export default function TeamSummary() {
     };
 
     fetchTeamStatus();
-  }, [employee?.id, employee?.branch_id, isAdmin]);
+  }, [employee?.id]);
 
   const dateLocale = locale === 'th' ? th : enUS;
 
@@ -251,7 +250,6 @@ export default function TeamSummary() {
                       </div>
                       <div>
                         <p className="font-medium text-sm">{emp.full_name}</p>
-                        <p className="text-xs text-muted-foreground">{emp.code}</p>
                       </div>
                     </div>
                     <div className="text-right">

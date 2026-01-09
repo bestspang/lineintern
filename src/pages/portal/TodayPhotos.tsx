@@ -1,12 +1,30 @@
 import { useState } from 'react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Camera, Clock, MapPin, User } from 'lucide-react';
-import { formatBangkokISODate, formatBangkokTime } from '@/lib/timezone';
+import { formatBangkokTime } from '@/lib/timezone';
+
+interface Branch {
+  id: string;
+  name: string;
+}
+
+interface PhotoLog {
+  id: string;
+  event_type: string;
+  server_time: string;
+  photo_url: string;
+  employee: {
+    id: string;
+    full_name: string;
+    nickname: string | null;
+    branch: { id: string; name: string } | null;
+  };
+}
 
 export default function TodayPhotos() {
   const { employee, locale } = usePortal();
@@ -16,44 +34,28 @@ export default function TodayPhotos() {
   const { data: branches } = useQuery({
     queryKey: ['portal-branches'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('branches')
-        .select('id, name')
-        .eq('is_deleted', false)
-        .order('name');
+      if (!employee?.id) return [];
+      const { data } = await portalApi<Branch[]>({
+        endpoint: 'branches',
+        employee_id: employee.id
+      });
       return data || [];
     },
+    enabled: !!employee?.id
   });
 
   const { data: photos, isLoading } = useQuery({
-    queryKey: ['portal-today-photos', selectedBranch],
+    queryKey: ['portal-today-photos', selectedBranch, employee?.id],
     queryFn: async () => {
-      // Use Bangkok timezone for today's date
-      const today = formatBangkokISODate(new Date());
-      
-      let query = supabase
-        .from('attendance_logs')
-        .select(`
-          id,
-          event_type,
-          server_time,
-          photo_url,
-          latitude,
-          longitude,
-          employee:employees!inner(id, full_name, code, branch:branches!branch_id(name))
-        `)
-        .gte('server_time', `${today}T00:00:00+07:00`)
-        .lt('server_time', `${today}T23:59:59+07:00`)
-        .not('photo_url', 'is', null)
-        .order('server_time', { ascending: false });
-
-      if (selectedBranch !== 'all') {
-        query = query.eq('employee.branch_id', selectedBranch);
-      }
-
-      const { data } = await query;
+      if (!employee?.id) return [];
+      const { data } = await portalApi<PhotoLog[]>({
+        endpoint: 'today-photos',
+        employee_id: employee.id,
+        params: selectedBranch !== 'all' ? { branchId: selectedBranch } : undefined
+      });
       return data || [];
     },
+    enabled: !!employee?.id
   });
 
   if (!employee) return null;
@@ -90,7 +92,7 @@ export default function TodayPhotos() {
         </Card>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {photos?.map((log: any) => (
+          {photos?.map((log) => (
             <Card 
               key={log.id} 
               className="overflow-hidden cursor-pointer hover:ring-2 ring-primary transition-all"

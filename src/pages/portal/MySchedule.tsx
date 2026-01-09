@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CalendarDays, Clock, Coffee } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -30,35 +30,39 @@ export default function MySchedule() {
     setLoading(true);
 
     try {
-      // Fetch work schedule
-      const { data: scheduleData } = await supabase
-        .from('work_schedules')
-        .select('*, shift_template:shift_templates(*)')
-        .eq('employee_id', employee.id)
-        .single();
-
-      // Fetch shift assignments for the week
       const weekEnd = addDays(currentWeekStart, 6);
-      const { data: assignments } = await supabase
-        .from('shift_assignments')
-        .select('*, shift_template:shift_templates(*)')
-        .eq('employee_id', employee.id)
-        .gte('work_date', format(currentWeekStart, 'yyyy-MM-dd'))
-        .lte('work_date', format(weekEnd, 'yyyy-MM-dd'));
+      
+      const { data, error } = await portalApi<{
+        schedules: any[];
+        assignments: any[];
+      }>({
+        endpoint: 'schedules',
+        employee_id: employee.id,
+        params: {
+          weekStart: format(currentWeekStart, 'yyyy-MM-dd'),
+          weekEnd: format(weekEnd, 'yyyy-MM-dd')
+        }
+      });
+
+      if (error || !data) {
+        setLoading(false);
+        return;
+      }
+
+      const { schedules: scheduleData, assignments } = data;
 
       // Build week schedule
       const days: ScheduleDay[] = [];
       for (let i = 0; i < 7; i++) {
         const date = addDays(currentWeekStart, i);
-        const dayOfWeekNumber = date.getDay(); // 0=Sunday, 1=Monday, etc.
-        const assignment = assignments?.find(a => 
-          isSameDay(new Date(a.work_date), date)
+        const assignment = assignments?.find((a: any) => 
+          isSameDay(new Date(a.assignment_date), date)
         );
 
         let shift = undefined;
         
-        if (assignment?.shift_template) {
-          const template = assignment.shift_template as any;
+        if (assignment?.shift) {
+          const template = assignment.shift;
           shift = {
             name: template.name || 'กะพิเศษ',
             startTime: assignment.custom_start_time || template.start_time || '',
@@ -67,20 +71,14 @@ export default function MySchedule() {
           };
         } else if (assignment?.is_day_off) {
           shift = { name: 'วันหยุด', startTime: '', endTime: '', isOff: true };
-        } else if (scheduleData) {
-          // Use regular schedule - check if this day_of_week is a working day
-          const isWorkDay = scheduleData.is_working_day && scheduleData.day_of_week === dayOfWeekNumber;
-          
-          if (isWorkDay) {
-            shift = {
-              name: 'กะปกติ',
-              startTime: scheduleData.start_time || '',
-              endTime: scheduleData.end_time || '',
-              isOff: false,
-            };
-          } else if (scheduleData.day_of_week === dayOfWeekNumber && !scheduleData.is_working_day) {
-            shift = { name: 'วันหยุด', startTime: '', endTime: '', isOff: true };
-          }
+        } else if (scheduleData && scheduleData.length > 0) {
+          const schedule = scheduleData[0];
+          shift = {
+            name: 'กะปกติ',
+            startTime: schedule.start_time || '',
+            endTime: schedule.end_time || '',
+            isOff: false,
+          };
         }
 
         days.push({
