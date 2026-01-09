@@ -294,7 +294,7 @@ serve(async (req) => {
         auto_ot_enabled,
         max_work_hours_per_day,
         ot_warning_minutes,
-        branch:branches!inner(*)
+        branch:branches!employees_branch_id_fkey(*)
       `)
       .eq('id', claimedToken.employee_id)
       .eq('branch.is_deleted', false)
