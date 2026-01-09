@@ -76,6 +76,8 @@ interface ReceiptRow {
   } | null;
   employee_name: string | null;
   branch_name: string | null;
+  branch_id: string | null;
+  branch_source: string | null;
 }
 
 export default function Receipts() {
@@ -149,7 +151,8 @@ export default function Receipts() {
           payment_method, payer_name, card_number_masked, card_type,
           description, notes,
           status, approval_status, approved_by, approved_at,
-          created_at, line_user_id, warnings, confidence
+          created_at, line_user_id, warnings, confidence,
+          branch_id, branch_source
         `)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -194,10 +197,15 @@ export default function Receipts() {
       );
 
       // Map employee data to receipts
+      // Priority: receipt.branch_id (if set) > employee.primary_branch_id
       return (receiptData || []).map(r => ({
         ...r,
         employee_name: employeeMap.get(r.line_user_id)?.name || null,
-        branch_name: employeeMap.get(r.line_user_id)?.branch || null,
+        branch_name: r.branch_id 
+          ? branchMap.get(r.branch_id) || null
+          : (employeeMap.get(r.line_user_id)?.branch || null),
+        branch_id: r.branch_id || null,
+        branch_source: r.branch_source || null,
       })) as ReceiptRow[];
     },
   });
@@ -463,9 +471,14 @@ export default function Receipts() {
                       <span className="text-sm">{receipt.employee_name || '-'}</span>
                     </TableCell>
                     <TableCell>
-                      {receipt.branch_name ? (
-                        <Badge variant="outline">{receipt.branch_name}</Badge>
-                      ) : '-'}
+                      <div className="flex items-center gap-1">
+                        {receipt.branch_name ? (
+                          <Badge variant="outline">{receipt.branch_name}</Badge>
+                        ) : '-'}
+                        {receipt.branch_source === 'manual' && (
+                          <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">Manual</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {receipt.total 
