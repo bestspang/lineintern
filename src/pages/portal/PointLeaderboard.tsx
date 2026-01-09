@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Trophy, Medal, Award, Crown, Flame } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, Flame } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -20,7 +18,6 @@ interface LeaderboardEntry {
 }
 
 export default function PointLeaderboard() {
-  const navigate = useNavigate();
   const { employee, locale } = usePortal();
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -107,115 +104,110 @@ export default function PointLeaderboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 pb-24">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/portal')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
-            <h1 className="text-lg font-semibold">
-              {locale === 'th' ? 'Leaderboard' : 'Leaderboard'}
-            </h1>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Trophy className="h-6 w-6 text-yellow-500" />
+          {locale === 'th' ? 'Leaderboard' : 'Leaderboard'}
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {locale === 'th' ? 'อันดับคะแนนในสาขา' : 'Branch point rankings'}
+        </p>
       </div>
 
-      <div className="p-4 space-y-4">
-        {/* My Rank Card */}
-        {myRank && (
-          <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                    <span className="text-xl font-bold">#{myRank.rank}</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold">{locale === 'th' ? 'อันดับของคุณ' : 'Your Rank'}</p>
-                    <p className="text-2xl font-bold">{myRank.points.toLocaleString()} pts</p>
-                  </div>
+      {/* My Rank Card */}
+      {myRank && (
+        <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="text-xl font-bold">#{myRank.rank}</span>
                 </div>
-                {myRank.currentStreak > 0 && (
-                  <div className="flex items-center gap-1 bg-white/20 px-2 py-1 rounded-full">
-                    <Flame className="h-4 w-4 text-orange-300" />
-                    <span className="text-sm font-medium">{myRank.currentStreak}</span>
-                  </div>
-                )}
+                <div>
+                  <p className="font-semibold">{locale === 'th' ? 'อันดับของคุณ' : 'Your Rank'}</p>
+                  <p className="text-2xl font-bold">{myRank.points.toLocaleString()} pts</p>
+                </div>
               </div>
+              {myRank.currentStreak > 0 && (
+                <div className="flex items-center gap-1 bg-white/20 px-2 py-1 rounded-full">
+                  <Flame className="h-4 w-4 text-orange-300" />
+                  <span className="text-sm font-medium">{myRank.currentStreak}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Leaderboard List */}
+      <div className="space-y-2">
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))
+        ) : leaderboard.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">
+                {locale === 'th' ? 'ยังไม่มีข้อมูล' : 'No data yet'}
+              </p>
             </CardContent>
           </Card>
-        )}
-
-        {/* Leaderboard List */}
-        <div className="space-y-2">
-          {loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))
-          ) : leaderboard.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">
-                  {locale === 'th' ? 'ยังไม่มีข้อมูล' : 'No data yet'}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            leaderboard.map((entry) => {
-              const isMe = entry.employeeId === employee?.id;
-              
-              return (
-                <Card 
-                  key={entry.id}
-                  className={cn(
-                    'transition-all border',
-                    getRankBg(entry.rank, isMe),
-                    isMe && 'ring-2 ring-primary'
-                  )}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 flex justify-center">
-                        {getRankIcon(entry.rank)}
-                      </div>
-                      
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={entry.avatarUrl} />
-                        <AvatarFallback className="bg-muted">
-                          {entry.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          'font-medium truncate',
-                          isMe && 'text-primary'
-                        )}>
-                          {entry.name}
-                          {isMe && <span className="ml-1 text-xs">(คุณ)</span>}
-                        </p>
-                        {entry.currentStreak > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Flame className="h-3 w-3 text-orange-500" />
-                            <span>{entry.currentStreak} {locale === 'th' ? 'วันติดต่อกัน' : 'day streak'}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="text-right">
-                        <p className="font-bold text-lg">{entry.points.toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">pts</p>
-                      </div>
+        ) : (
+          leaderboard.map((entry) => {
+            const isMe = entry.employeeId === employee?.id;
+            
+            return (
+              <Card 
+                key={entry.id}
+                className={cn(
+                  'transition-all border',
+                  getRankBg(entry.rank, isMe),
+                  isMe && 'ring-2 ring-primary'
+                )}
+              >
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 flex justify-center">
+                      {getRankIcon(entry.rank)}
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
+                    
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={entry.avatarUrl} />
+                      <AvatarFallback className="bg-muted">
+                        {entry.name.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1 min-w-0">
+                      <p className={cn(
+                        'font-medium truncate',
+                        isMe && 'text-primary'
+                      )}>
+                        {entry.name}
+                        {isMe && <span className="ml-1 text-xs">(คุณ)</span>}
+                      </p>
+                      {entry.currentStreak > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Flame className="h-3 w-3 text-orange-500" />
+                          <span>{entry.currentStreak} {locale === 'th' ? 'วันติดต่อกัน' : 'day streak'}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      <p className="font-bold text-lg">{entry.points.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">pts</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );

@@ -3,7 +3,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { usePortal } from '@/contexts/PortalContext';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
-  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User
+  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
+  CalendarDays, Wallet, Trophy
 } from 'lucide-react';
 
 export default function Help() {
@@ -45,6 +46,18 @@ export default function Help() {
     {
       question: 'ยกเลิกคำขอ OT/ลา ได้ไหม?',
       answer: 'ได้ ถ้าคำขอยังไม่ได้รับการอนุมัติ ใช้คำสั่ง "ยกเลิก OT" หรือ "ยกเลิกลา" ในแชท LINE'
+    },
+    {
+      question: 'ฉันดู Payroll ของตัวเองได้อย่างไร?',
+      answer: 'กดเมนู "Payroll ของฉัน" เพื่อดูรายได้ประมาณการ ชั่วโมงทำงาน OT และรายละเอียดต่างๆ'
+    },
+    {
+      question: 'ตารางกะคืออะไร และดูได้ที่ไหน?',
+      answer: 'กดเมนู "ตารางกะ" เพื่อดูตารางการทำงานของคุณในแต่ละสัปดาห์ รวมถึงเวลาเข้า-ออกงาน และวันหยุด'
+    },
+    {
+      question: 'Leaderboard คืออะไร?',
+      answer: 'แสดงอันดับ Happy Points ของพนักงานในสาขาเดียวกัน แข่งขันกับเพื่อนร่วมงานเพื่อรับรางวัล'
     }
   ] : [
     {
@@ -82,6 +95,18 @@ export default function Help() {
     {
       question: 'Can I cancel OT/leave requests?',
       answer: 'Yes, if the request is still pending. Use "ยกเลิก OT" or "ยกเลิกลา" commands in LINE chat.'
+    },
+    {
+      question: 'How do I view my payroll?',
+      answer: 'Press "My Payroll" menu to see estimated earnings, work hours, OT, and other details.'
+    },
+    {
+      question: 'What is My Schedule and where can I view it?',
+      answer: 'Press "My Schedule" menu to view your weekly work schedule including shift times and days off.'
+    },
+    {
+      question: 'What is the Leaderboard?',
+      answer: 'Shows Happy Points rankings of employees in your branch. Compete with colleagues to earn rewards.'
     }
   ];
 
@@ -121,6 +146,24 @@ export default function Help() {
       title: locale === 'th' ? 'ใบเสร็จ' : 'Receipts',
       description: locale === 'th' ? 'จัดการใบเสร็จและค่าใช้จ่าย' : 'Manage receipts & expenses',
       path: '/portal/my-receipts'
+    },
+    {
+      icon: CalendarDays,
+      title: locale === 'th' ? 'ตารางกะ' : 'My Schedule',
+      description: locale === 'th' ? 'ดูตารางการทำงาน' : 'View work schedule',
+      path: '/portal/my-schedule'
+    },
+    {
+      icon: Wallet,
+      title: locale === 'th' ? 'Payroll ของฉัน' : 'My Payroll',
+      description: locale === 'th' ? 'ดูรายได้และเงินเดือน' : 'View earnings & salary',
+      path: '/portal/my-payroll'
+    },
+    {
+      icon: Trophy,
+      title: locale === 'th' ? 'Leaderboard' : 'Leaderboard',
+      description: locale === 'th' ? 'อันดับแต้มในทีม' : 'Team point rankings',
+      path: '/portal/leaderboard'
     },
     {
       icon: User,
