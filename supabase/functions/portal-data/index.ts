@@ -382,6 +382,144 @@ serve(async (req) => {
         break;
       }
 
+      case 'submit-leave': {
+        const result = await supabase
+          .from('leave_requests')
+          .insert({
+            employee_id,
+            leave_type: params.leave_type,
+            start_date: params.start_date,
+            end_date: params.end_date,
+            reason: params.reason,
+            total_days: params.total_days,
+            status: 'pending',
+            requested_at: new Date().toISOString(),
+            request_date: params.request_date,
+          })
+          .select()
+          .single();
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'submit-ot': {
+        const result = await supabase
+          .from('overtime_requests')
+          .insert({
+            employee_id,
+            request_date: params.request_date,
+            estimated_hours: params.estimated_hours,
+            reason: params.reason,
+            status: 'pending',
+            requested_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'ot-requests': {
+        const result = await supabase
+          .from('overtime_requests')
+          .select('id, request_date, estimated_hours, reason, status, created_at')
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false })
+          .limit(params?.limit || 10);
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'attendance-status': {
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Get can check-in/out status via RPC
+        const [checkInResult, checkOutResult] = await Promise.all([
+          supabase.rpc('can_employee_check_in', { p_employee_id: employee_id }),
+          supabase.rpc('can_employee_check_out', { p_employee_id: employee_id }),
+        ]);
+
+        // Get today's logs
+        const logsResult = await supabase
+          .from('attendance_logs')
+          .select('event_type, server_time, branch_id')
+          .eq('employee_id', employee_id)
+          .gte('server_time', `${today}T00:00:00`)
+          .lt('server_time', `${today}T23:59:59`)
+          .order('server_time', { ascending: true });
+
+        const todayLogs = logsResult.data || [];
+        const checkInLog = todayLogs.find((l: any) => l.event_type === 'check-in');
+        const checkOutLog = todayLogs.find((l: any) => l.event_type === 'check-out');
+
+        // Get branch name if checked in
+        let branchName: string | null = null;
+        if (checkInLog?.branch_id) {
+          const { data: branchData } = await supabase
+            .from('branches')
+            .select('name')
+            .eq('id', checkInLog.branch_id)
+            .single();
+          branchName = branchData?.name || null;
+        }
+
+        // Calculate minutes worked
+        let minutesWorked = null;
+        if (checkInLog && !checkOutLog) {
+          const checkInTime = new Date(checkInLog.server_time);
+          minutesWorked = Math.floor((new Date().getTime() - checkInTime.getTime()) / 60000);
+        } else if (checkInLog && checkOutLog) {
+          const checkInTime = new Date(checkInLog.server_time);
+          const checkOutTime = new Date(checkOutLog.server_time);
+          minutesWorked = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
+        }
+
+        // Check for leave/day-off
+        let isOnLeave = false;
+        let leaveType: string | null = null;
+        const flexDayOffResult = await supabase
+          .from('flexible_day_off_requests')
+          .select('reason')
+          .eq('employee_id', employee_id)
+          .eq('day_off_date', today)
+          .eq('status', 'approved')
+          .limit(1);
+        
+        if (flexDayOffResult.data && flexDayOffResult.data.length > 0) {
+          isOnLeave = true;
+          leaveType = flexDayOffResult.data[0]?.reason || 'day-off';
+        }
+
+        // Check for OT request
+        let hasOT = false;
+        const otResult = await supabase
+          .from('overtime_requests')
+          .select('id')
+          .eq('employee_id', employee_id)
+          .eq('request_date', today)
+          .eq('status', 'approved')
+          .limit(1);
+        
+        hasOT = !!(otResult.data && otResult.data.length > 0);
+
+        data = {
+          canCheckIn: checkInResult.data === true,
+          canCheckOut: checkOutResult.data === true,
+          todayCheckIn: checkInLog?.server_time || null,
+          todayCheckOut: checkOutLog?.server_time || null,
+          isWorking: !!checkInLog && !checkOutLog,
+          minutesWorked,
+          branchName,
+          isOnLeave,
+          leaveType,
+          hasOT
+        };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
