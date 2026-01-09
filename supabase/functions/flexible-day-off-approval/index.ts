@@ -91,7 +91,7 @@ serve(async (req) => {
         *,
         employees (
           id, full_name, code, line_user_id, announcement_group_line_id,
-          branch:branches(name)
+          branch:branches!employees_branch_id_fkey(name)
         )
       `)
       .in('id', idsToProcess)

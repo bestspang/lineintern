@@ -44,7 +44,7 @@ serve(async (req) => {
         id, code, full_name, line_user_id, announcement_group_line_id,
         flexible_day_off_enabled, flexible_days_per_week, 
         flexible_advance_days_required, flexible_auto_approve,
-        branch:branches(name)
+        branch:branches!employees_branch_id_fkey(name)
       `)
       .eq('id', body.employee_id)
       .maybeSingle();

@@ -91,7 +91,7 @@ serve(async (req) => {
     // Get employee details
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
-      .select('*, branch:branches(*)')
+      .select('*, branch:branches!employees_branch_id_fkey(*)')
       .eq('id', employee_id)
     .eq('is_active', true)
     .maybeSingle();

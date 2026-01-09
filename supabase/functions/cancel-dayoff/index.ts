@@ -42,7 +42,7 @@ serve(async (req) => {
       .from('flexible_day_off_requests')
       .select(`
         *,
-        employee:employees(id, code, full_name, line_user_id, announcement_group_line_id, branch:branches(name))
+        employee:employees(id, code, full_name, line_user_id, announcement_group_line_id, branch:branches!employees_branch_id_fkey(name))
       `)
       .eq('id', body.request_id)
       .maybeSingle();

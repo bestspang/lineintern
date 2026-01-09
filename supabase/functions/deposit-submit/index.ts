@@ -241,7 +241,7 @@ serve(async (req) => {
     // Get employee and branch info
     const { data: employee } = await supabase
       .from('employees')
-      .select('full_name, code, branch:branches(name)')
+      .select('full_name, code, branch:branches!employees_branch_id_fkey(name)')
       .eq('id', employeeId)
       .single();
 

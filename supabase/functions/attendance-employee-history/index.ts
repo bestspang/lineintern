@@ -70,7 +70,7 @@ serve(async (req) => {
 
     const { data: logs, error: logsError } = await supabase
       .from('attendance_logs')
-      .select('*, branch:branches(name)')
+      .select('*, branch:branches!attendance_logs_branch_id_fkey(name)')
       .eq('employee_id', token.employee_id)
       .gte('server_time', thirtyDaysAgo.toISOString())
       .order('server_time', { ascending: false });

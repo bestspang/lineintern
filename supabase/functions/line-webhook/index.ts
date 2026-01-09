@@ -1352,7 +1352,7 @@ async function handleOTRequestCommand(
     // Check if user is linked to an employee
     const { data: employee, error: empError } = await supabase
       .from('employees')
-      .select('*, branch:branches(*)')
+      .select('*, branch:branches!employees_branch_id_fkey(*)')
       .eq('line_user_id', lineUserId)
       .eq('is_active', true)
       .maybeSingle();
@@ -1466,7 +1466,7 @@ async function handleDayOffRequestCommand(
     // Check if user is linked to an employee
     const { data: employee, error: empError } = await supabase
       .from('employees')
-      .select('*, branch:branches(name)')
+      .select('*, branch:branches!employees_branch_id_fkey(name)')
       .eq('line_user_id', lineUserId)
       .eq('is_active', true)
       .maybeSingle();
@@ -7755,7 +7755,7 @@ async function handleAttendanceCommand(
     console.log(`[handleAttendanceCommand] Querying employees table with line_user_id: ${lineUserId}`);
     const { data: employee, error: empError } = await supabase
       .from('employees')
-      .select('*, branch:branches(*)')
+      .select('*, branch:branches!employees_branch_id_fkey(*)')
       .eq('line_user_id', lineUserId)
       .eq('is_active', true)
       .maybeSingle();
