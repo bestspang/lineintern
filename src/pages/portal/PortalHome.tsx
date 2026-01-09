@@ -474,14 +474,31 @@ export default function PortalHome() {
             </Badge>
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            {visibleManagerActions.map((action) => {
+            {[...visibleManagerActions].sort((a, b) => {
+              const aFav = isFavorite(a.path);
+              const bFav = isFavorite(b.path);
+              if (aFav && !bFav) return -1;
+              if (!aFav && bFav) return 1;
+              return 0;
+            }).map((action) => {
               const Icon = action.icon;
+              const isFav = isFavorite(action.path);
               return (
                 <Card
                   key={action.path}
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-amber-200/50"
+                  className={cn(
+                    "cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-amber-200/50 relative",
+                    isFav && "ring-2 ring-yellow-400/50"
+                  )}
                   onClick={() => navigate(action.path)}
                 >
+                  <FavoriteButton
+                    isFavorite={isFav}
+                    onToggle={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(action.path);
+                    }}
+                  />
                   <CardContent className="p-4">
                     <div className={cn(
                       'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
@@ -513,14 +530,31 @@ export default function PortalHome() {
             </Badge>
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            {visibleAdminActions.map((action) => {
+            {[...visibleAdminActions].sort((a, b) => {
+              const aFav = isFavorite(a.path);
+              const bFav = isFavorite(b.path);
+              if (aFav && !bFav) return -1;
+              if (!aFav && bFav) return 1;
+              return 0;
+            }).map((action) => {
               const Icon = action.icon;
+              const isFav = isFavorite(action.path);
               return (
                 <Card
                   key={action.path}
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-destructive/20"
+                  className={cn(
+                    "cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-destructive/20 relative",
+                    isFav && "ring-2 ring-yellow-400/50"
+                  )}
                   onClick={() => navigate(action.path)}
                 >
+                  <FavoriteButton
+                    isFavorite={isFav}
+                    onToggle={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(action.path);
+                    }}
+                  />
                   <CardContent className="p-4">
                     <div className={cn(
                       'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
@@ -552,14 +586,31 @@ export default function PortalHome() {
             </Badge>
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            {visibleHrActions.map((action) => {
+            {[...visibleHrActions].sort((a, b) => {
+              const aFav = isFavorite(a.path);
+              const bFav = isFavorite(b.path);
+              if (aFav && !bFav) return -1;
+              if (!aFav && bFav) return 1;
+              return 0;
+            }).map((action) => {
               const Icon = action.icon;
+              const isFav = isFavorite(action.path);
               return (
                 <Card
                   key={action.path}
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-muted"
+                  className={cn(
+                    "cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-muted relative",
+                    isFav && "ring-2 ring-yellow-400/50"
+                  )}
                   onClick={() => navigate(action.path)}
                 >
+                  <FavoriteButton
+                    isFavorite={isFav}
+                    onToggle={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(action.path);
+                    }}
+                  />
                   <CardContent className="p-4">
                     <div className={cn(
                       'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
