@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, Send, CheckCircle, XCircle, Clock3 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, parseISO } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -41,12 +41,11 @@ export default function RequestOT() {
   const fetchRequests = async () => {
     if (!employee?.id) return;
 
-    const { data, error } = await supabase
-      .from('overtime_requests')
-      .select('id, request_date, estimated_hours, reason, status, created_at')
-      .eq('employee_id', employee.id)
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const { data, error } = await portalApi<OTRequest[]>({
+      endpoint: 'ot-requests',
+      employee_id: employee.id,
+      params: { limit: 10 }
+    });
 
     if (!error && data) {
       setRequests(data);
@@ -70,16 +69,15 @@ export default function RequestOT() {
     setSubmitting(true);
 
     try {
-      const { error } = await supabase
-        .from('overtime_requests')
-        .insert({
-          employee_id: employee.id,
+      const { error } = await portalApi({
+        endpoint: 'submit-ot',
+        employee_id: employee.id,
+        params: {
           request_date: formData.request_date,
           estimated_hours: parseFloat(formData.estimated_hours),
           reason: formData.reason.trim(),
-          status: 'pending',
-          requested_at: new Date().toISOString(),
-        });
+        }
+      });
 
       if (error) throw error;
 

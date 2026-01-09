@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -251,64 +251,47 @@ export default function PortalHome() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch points
-  useEffect(() => {
-    const fetchPoints = async () => {
-      if (!employee?.id) return;
-      const { data } = await supabase
-        .from('happy_points')
-        .select('point_balance')
-        .eq('employee_id', employee.id)
-        .maybeSingle();
-      setPointBalance(data?.point_balance || 0);
-    };
-    fetchPoints();
-  }, [employee?.id]);
-
-  // Fetch attendance status
-  const fetchAttendanceStatus = useCallback(async () => {
+  // Fetch home summary data
+  const fetchHomeSummary = useCallback(async () => {
     if (!employee?.id) return;
     
     try {
-      const [checkInResult, checkOutResult] = await Promise.all([
-        supabase.rpc('can_employee_check_in', { p_employee_id: employee.id }),
-        supabase.rpc('can_employee_check_out', { p_employee_id: employee.id }),
-      ]);
-      
-      setCanCheckIn(checkInResult.data === true);
-      const working = checkOutResult.data === true;
-      setIsWorking(working);
-      
-      // Get minutes worked if working
-      if (working) {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        const { data: logs } = await supabase
-          .from('attendance_logs')
-          .select('server_time')
-          .eq('employee_id', employee.id)
-          .eq('event_type', 'check_in')
-          .gte('server_time', `${today}T00:00:00`)
-          .order('server_time', { ascending: false })
-          .limit(1);
+      const { data, error } = await portalApi<{
+        points: { current_balance: number } | null;
+        todayAttendance: { event_type: string; server_time: string }[];
+      }>({
+        endpoint: 'home-summary',
+        employee_id: employee.id
+      });
+
+      if (!error && data) {
+        setPointBalance(data.points?.current_balance || 0);
         
-        if (logs && logs.length > 0) {
-          const checkInTime = new Date(logs[0].server_time);
+        // Determine check-in/out status from today's attendance
+        const checkIn = data.todayAttendance?.find(a => a.event_type === 'check-in');
+        const checkOut = data.todayAttendance?.find(a => a.event_type === 'check-out');
+        
+        setCanCheckIn(!checkIn);
+        setIsWorking(!!checkIn && !checkOut);
+        
+        if (checkIn && !checkOut) {
+          const checkInTime = new Date(checkIn.server_time);
           const diff = Math.floor((Date.now() - checkInTime.getTime()) / 60000);
           setMinutesWorked(diff);
+        } else {
+          setMinutesWorked(null);
         }
-      } else {
-        setMinutesWorked(null);
       }
     } catch (error) {
-      console.error('Error fetching attendance status:', error);
+      console.error('Error fetching home summary:', error);
     }
   }, [employee?.id]);
 
   useEffect(() => {
-    fetchAttendanceStatus();
-    const interval = setInterval(fetchAttendanceStatus, 60000); // Refresh every minute
+    fetchHomeSummary();
+    const interval = setInterval(fetchHomeSummary, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [fetchAttendanceStatus]);
+  }, [fetchHomeSummary]);
 
   // Filter actions based on role
   const visibleManagerActions = managerActions.filter(

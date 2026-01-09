@@ -10,7 +10,7 @@ import {
   LogIn, LogOut, Coffee, Calendar, Timer
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -54,102 +54,18 @@ export default function CheckInOut() {
       setLoading(true);
       setError(null);
 
-      // Get today's date in Bangkok timezone
-      const today = format(new Date(), 'yyyy-MM-dd');
-      
-      // Check work session status using RPC
-      const [checkInResult, checkOutResult] = await Promise.all([
-        supabase.rpc('can_employee_check_in', { p_employee_id: employee.id }),
-        supabase.rpc('can_employee_check_out', { p_employee_id: employee.id }),
-      ]);
-
-      // Get today's logs separately to avoid deep type instantiation
-      const { data: todayLogsData } = await supabase
-        .from('attendance_logs')
-        .select('event_type, server_time, branch_id')
-        .eq('employee_id', employee.id)
-        .gte('server_time', `${today}T00:00:00`)
-        .lt('server_time', `${today}T23:59:59`)
-        .order('server_time', { ascending: true });
-
-      const todayLogs = todayLogsData || [];
-      const checkInLog = todayLogs.find(l => l.event_type === 'check-in');
-      const checkOutLog = todayLogs.find(l => l.event_type === 'check-out');
-      
-      // Get branch name if checked in
-      let branchName: string | null = null;
-      if (checkInLog?.branch_id) {
-        const { data: branchData } = await supabase
-          .from('branches')
-          .select('name')
-          .eq('id', checkInLog.branch_id)
-          .single();
-        branchName = branchData?.name || null;
-      }
-
-      // Calculate minutes worked
-      let minutesWorked = null;
-      if (checkInLog && !checkOutLog) {
-        const checkInTime = new Date(checkInLog.server_time);
-        minutesWorked = Math.floor((new Date().getTime() - checkInTime.getTime()) / 60000);
-      } else if (checkInLog && checkOutLog) {
-        const checkInTime = new Date(checkInLog.server_time);
-        const checkOutTime = new Date(checkOutLog.server_time);
-        minutesWorked = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
-      }
-
-      // Check for leave/day-off
-      let isOnLeave = false;
-      let leaveReason: string | null = null;
-      try {
-        const { data: flexDayOff } = await supabase
-          .from('flexible_day_off_requests')
-          .select('reason')
-          .match({ 
-            employee_id: employee.id, 
-            day_off_date: today, 
-            status: 'approved' 
-          })
-          .limit(1);
-        
-        if (flexDayOff && flexDayOff.length > 0) {
-          isOnLeave = true;
-          leaveReason = flexDayOff[0]?.reason || null;
-        }
-      } catch (e) {
-        console.log('[CheckInOut] Error checking day-off:', e);
-      }
-
-      // Check for OT request
-      let hasOT = false;
-      try {
-        const { data: otData } = await supabase
-          .from('overtime_requests')
-          .select('id')
-          .match({ 
-            employee_id: employee.id, 
-            ot_date: today, 
-            status: 'approved' 
-          })
-          .limit(1);
-        
-        hasOT = !!(otData && otData.length > 0);
-      } catch (e) {
-        console.log('[CheckInOut] Error checking OT:', e);
-      }
-
-      setAttendanceStatus({
-        canCheckIn: checkInResult.data === true,
-        canCheckOut: checkOutResult.data === true,
-        todayCheckIn: checkInLog?.server_time || null,
-        todayCheckOut: checkOutLog?.server_time || null,
-        isWorking: !!checkInLog && !checkOutLog,
-        minutesWorked,
-        branchName,
-        isOnLeave,
-        leaveType: leaveReason,
-        hasOT
+      const { data, error: apiError } = await portalApi<AttendanceStatus>({
+        endpoint: 'attendance-status',
+        employee_id: employee.id
       });
+
+      if (apiError) {
+        throw apiError;
+      }
+
+      if (data) {
+        setAttendanceStatus(data);
+      }
 
     } catch (err) {
       console.error('[CheckInOut] Error fetching status:', err);
