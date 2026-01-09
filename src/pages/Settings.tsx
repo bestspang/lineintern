@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image, MessageSquare } from 'lucide-react';
+import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image, MessageSquare, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LiffSettingsCard from '@/components/settings/LiffSettingsCard';
 // Separate component for Portal Access Mode to manage its own state
@@ -715,7 +715,7 @@ function RichMenuSetup() {
                   (e.target as HTMLImageElement).src = '/images/rich-menu.jpg';
                 }}
               />
-              <div className="text-xs space-y-1">
+              <div className="text-xs space-y-1 flex-1">
                 <p className="font-medium">
                   {currentRichMenu.image_source === 'upload' ? '📤 รูปที่ Upload' : '📁 รูป Default'}
                 </p>
@@ -732,6 +732,66 @@ function RichMenuSetup() {
                   ID: {currentRichMenu.richmenu_id.substring(0, 20)}...
                 </p>
               </div>
+            </div>
+            {/* Redeploy Button */}
+            <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (!currentRichMenu?.image_url) {
+                    toast({
+                      title: 'Error',
+                      description: 'ไม่พบ URL รูปภาพปัจจุบัน',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+                  setIsDeploying(true);
+                  setDeployResult(null);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('line-richmenu-setup', {
+                      body: { action: 'create-full', image_url: currentRichMenu.image_url }
+                    });
+                    if (error) throw error;
+                    if (data?.success) {
+                      setDeployResult({
+                        success: true,
+                        message: 'Rich Menu redeployed successfully!',
+                        richMenuId: data.richmenu_id
+                      });
+                      queryClient.invalidateQueries({ queryKey: ['current-richmenu'] });
+                      toast({
+                        title: 'Success',
+                        description: 'Rich Menu redeployed to LINE successfully!',
+                      });
+                    } else {
+                      throw new Error(data?.error || 'Unknown error');
+                    }
+                  } catch (error: any) {
+                    setDeployResult({
+                      success: false,
+                      message: error.message || 'Failed to redeploy Rich Menu'
+                    });
+                    toast({
+                      title: 'Error',
+                      description: error.message,
+                      variant: 'destructive',
+                    });
+                  } finally {
+                    setIsDeploying(false);
+                  }
+                }}
+                disabled={isDeploying}
+                className="w-full sm:w-auto"
+              >
+                {isDeploying ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Redeploy ด้วยรูปเดิม
+              </Button>
             </div>
           </div>
         ) : (
