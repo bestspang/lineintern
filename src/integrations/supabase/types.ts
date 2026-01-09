@@ -3496,6 +3496,35 @@ export type Database = {
           },
         ]
       }
+      portal_favorites: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          id: string
+          menu_path: string
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          menu_path: string
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          menu_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_favorites_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
