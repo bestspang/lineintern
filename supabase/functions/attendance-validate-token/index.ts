@@ -38,7 +38,7 @@ serve(async (req) => {
         *,
         employee:employees(
           *,
-          branch:branches(*)
+          branch:branches!employees_branch_id_fkey(*)
         )
       `)
       .eq('id', tokenId)
