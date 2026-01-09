@@ -417,7 +417,7 @@ export default function EmployeeSettings() {
         updateData.hours_per_day = null;
         updateData.break_hours = null;
         updateData.allowed_work_start_time = data.earliest_checkin_time + ":00"; // Auto-sync from earliest_checkin_time
-        updateData.allowed_work_end_time = '20:00:00'; // Default end time
+        updateData.allowed_work_end_time = data.latest_checkin_time + ":00"; // Auto-sync from latest_checkin_time
         updateData.preferred_start_time = null;
         updateData.auto_checkout_grace_period_minutes = 60;
         updateData.enable_pattern_learning = true;
