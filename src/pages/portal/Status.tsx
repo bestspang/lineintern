@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, LogIn, LogOut, Calendar, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { formatBangkokTime, formatBangkokISODate } from '@/lib/timezone';
 import { th, enUS } from 'date-fns/locale';
@@ -36,29 +36,15 @@ export default function Status() {
     const fetchTodayStatus = async () => {
       if (!employee?.id) return;
 
-      const bangkokToday = formatBangkokISODate(new Date());
-      const startOfDay = `${bangkokToday}T00:00:00+07:00`;
-      const endOfDay = `${bangkokToday}T23:59:59+07:00`;
+      const { data, error } = await portalApi<{ logs: TodayLog[]; session: WorkSession | null }>({
+        endpoint: 'today-status',
+        employee_id: employee.id
+      });
 
-      // Fetch today's logs
-      const [logsResult, sessionResult] = await Promise.all([
-        supabase
-          .from('attendance_logs')
-          .select('id, event_type, server_time, is_flagged, flag_reason, is_overtime')
-          .eq('employee_id', employee.id)
-          .gte('server_time', startOfDay)
-          .lte('server_time', endOfDay)
-          .order('server_time', { ascending: true }),
-        supabase
-          .from('work_sessions')
-          .select('id, actual_start_time, actual_end_time, net_work_minutes, status')
-          .eq('employee_id', employee.id)
-          .eq('work_date', bangkokToday)
-          .maybeSingle()
-      ]);
-
-      if (logsResult.data) setLogs(logsResult.data);
-      if (sessionResult.data) setSession(sessionResult.data);
+      if (!error && data) {
+        setLogs(data.logs || []);
+        setSession(data.session || null);
+      }
       
       setLoading(false);
     };

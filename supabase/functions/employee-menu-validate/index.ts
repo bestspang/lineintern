@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
         line_user_id,
         role_id,
         branch_id,
-        branches!inner (
+        branch:branches!employees_branch_id_fkey (
           id,
           name
         ),
@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
         )
       `)
       .eq('id', tokenData.employee_id)
-      .eq('branches.is_deleted', false)
+      .eq('branch.is_deleted', false)
       .maybeSingle();
     
     if (!employee) {
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
           code: employee.code,
           full_name: employee.full_name,
           role: employee.employee_roles || null,
-          branch: employee.branches || null
+          branch: employee.branch || null
         },
         menuItems
       }),

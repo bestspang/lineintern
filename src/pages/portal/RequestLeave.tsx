@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, Send, CheckCircle, XCircle, Clock3 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -52,12 +52,10 @@ export default function RequestLeave() {
   const fetchRequests = async () => {
     if (!employee?.id) return;
 
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .select('id, leave_type, start_date, end_date, reason, status, total_days, created_at')
-      .eq('employee_id', employee.id)
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const { data, error } = await portalApi<LeaveRequest[]>({
+      endpoint: 'leave-requests',
+      employee_id: employee.id
+    });
 
     if (!error && data) {
       setRequests(data);

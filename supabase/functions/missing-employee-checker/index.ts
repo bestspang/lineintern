@@ -74,11 +74,11 @@ serve(async (req) => {
           working_time_type,
           auto_checkout_grace_period_minutes,
           announcement_group_line_id,
-          branch:branches (
-            id,
-            name,
-            line_group_id
-          )
+        branch:branches!employees_branch_id_fkey (
+          id,
+          name,
+          line_group_id
+        )
         )
       `)
       .eq('status', 'active')
