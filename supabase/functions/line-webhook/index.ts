@@ -7748,10 +7748,11 @@ async function handleAttendanceCommand(
     return { detected: false, message: '' };
   }
 
-  console.log(`[handleAttendanceCommand] Processing ${type} for user ${user.id}`);
+  console.log(`[handleAttendanceCommand] Processing ${type} for user ${user.id}, lineUserId: ${lineUserId}`);
   
   try {
     // Check if user is linked to an employee
+    console.log(`[handleAttendanceCommand] Querying employees table with line_user_id: ${lineUserId}`);
     const { data: employee, error: empError } = await supabase
       .from('employees')
       .select('*, branch:branches(*)')
@@ -7759,8 +7760,36 @@ async function handleAttendanceCommand(
       .eq('is_active', true)
       .maybeSingle();
     
+    // Enhanced debug logging
+    console.log(`[handleAttendanceCommand] Employee query result:`, {
+      found: !!employee,
+      employeeId: employee?.id,
+      employeeName: employee?.full_name,
+      lineUserId: employee?.line_user_id,
+      isActive: employee?.is_active,
+      branchId: employee?.branch_id,
+      error: empError?.message || null
+    });
+    
     if (empError || !employee) {
-      console.log('[handleAttendanceCommand] Employee not found, prompting for linking');
+      console.log(`[handleAttendanceCommand] Employee NOT found for LINE ID: ${lineUserId}`);
+      console.log(`[handleAttendanceCommand] Query error:`, empError);
+      
+      // Debug: Check if employee exists with different conditions
+      const { data: anyEmployee, error: debugError } = await supabase
+        .from('employees')
+        .select('id, full_name, line_user_id, is_active')
+        .eq('line_user_id', lineUserId)
+        .maybeSingle();
+      
+      console.log(`[handleAttendanceCommand] Debug - Any employee with this LINE ID (ignoring is_active):`, {
+        found: !!anyEmployee,
+        id: anyEmployee?.id,
+        name: anyEmployee?.full_name,
+        isActive: anyEmployee?.is_active,
+        error: debugError?.message || null
+      });
+      
       const message = locale === 'th'
         ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ\n\nกรุณาติดต่อ HR เพื่อลงทะเบียนหรือเชื่อมโยงบัญชี LINE ของคุณกับระบบ\n\n---\n\nSorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.'
         : 'Sorry, your employee record is not found in the system.\n\nPlease contact HR to register or link your LINE account.';
