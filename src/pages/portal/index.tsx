@@ -24,7 +24,12 @@ export { default as ApproveOT } from './ApproveOT';
 export { default as ApproveLeave } from './ApproveLeave';
 export { default as ApproveEarlyLeave } from './ApproveEarlyLeave';
 export { default as TeamSummary } from './TeamSummary';
+export { default as DepositReviewList } from './DepositReviewList';
 
 // Admin pages
 export { default as TodayPhotos } from './TodayPhotos';
 export { default as DailySummary } from './DailySummary';
+export { default as ApproveRedemptions } from './ApproveRedemptions';
+
+// HR pages
+export { default as PayrollReport } from './PayrollReport';

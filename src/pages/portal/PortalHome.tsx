@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   Clock, Calendar, History, Users, Camera,
-  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut
+  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
+  Receipt, Gift, Banknote, FileText
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,24 @@ const quickActions: QuickAction[] = [
     path: '/portal/request-ot',
     color: 'from-orange-500 to-orange-600',
   },
+  {
+    icon: Receipt,
+    label: 'ใบเสร็จของฉัน',
+    labelEn: 'My Receipts',
+    description: 'ดูและจัดการใบเสร็จ',
+    descriptionEn: 'View & manage receipts',
+    path: '/portal/my-receipts',
+    color: 'from-teal-500 to-teal-600',
+  },
+  {
+    icon: Gift,
+    label: 'แลกรางวัล',
+    labelEn: 'Rewards',
+    description: 'ใช้แต้มแลกของรางวัล',
+    descriptionEn: 'Redeem rewards',
+    path: '/portal/rewards',
+    color: 'from-pink-500 to-pink-600',
+  },
 ];
 
 const managerActions: QuickAction[] = [
@@ -82,7 +101,17 @@ const managerActions: QuickAction[] = [
     descriptionEn: 'View team status today',
     path: '/portal/team-summary',
     color: 'from-cyan-500 to-cyan-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner'],
+    roles: ['manager', 'supervisor', 'admin', 'owner', 'hr'],
+  },
+  {
+    icon: Banknote,
+    label: 'ตรวจสอบใบฝาก',
+    labelEn: 'Review Deposits',
+    description: 'ตรวจสอบใบฝากเงินสาขา',
+    descriptionEn: 'Review branch deposits',
+    path: '/portal/deposit-review-list',
+    color: 'from-green-500 to-green-600',
+    roles: ['manager', 'admin', 'owner'],
   },
 ];
 
@@ -94,7 +123,7 @@ const adminActions: QuickAction[] = [
     description: 'ดูรูปเช็คอินวันนี้',
     descriptionEn: "View today's check-in photos",
     path: '/portal/photos',
-    color: 'from-pink-500 to-pink-600',
+    color: 'from-rose-500 to-rose-600',
     roles: ['admin', 'owner'],
   },
   {
@@ -106,6 +135,29 @@ const adminActions: QuickAction[] = [
     path: '/portal/daily-summary',
     color: 'from-indigo-500 to-indigo-600',
     roles: ['admin', 'owner'],
+  },
+  {
+    icon: Gift,
+    label: 'อนุมัติแลกรางวัล',
+    labelEn: 'Approve Redemptions',
+    description: 'อนุมัติการแลกรางวัล',
+    descriptionEn: 'Approve reward redemptions',
+    path: '/portal/approve-redemptions',
+    color: 'from-fuchsia-500 to-fuchsia-600',
+    roles: ['admin', 'owner'],
+  },
+];
+
+const hrActions: QuickAction[] = [
+  {
+    icon: FileText,
+    label: 'รายงาน Payroll',
+    labelEn: 'Payroll Report',
+    description: 'ดูสรุปการจ่ายเงินเดือน',
+    descriptionEn: 'View payroll summary',
+    path: '/portal/payroll-report',
+    color: 'from-slate-500 to-slate-600',
+    roles: ['hr', 'admin', 'owner'],
   },
 ];
 
@@ -177,6 +229,9 @@ export default function PortalHome() {
     (action) => !action.roles || action.roles.includes(roleKey)
   );
   const visibleAdminActions = adminActions.filter(
+    (action) => !action.roles || action.roles.includes(roleKey)
+  );
+  const visibleHrActions = hrActions.filter(
     (action) => !action.roles || action.roles.includes(roleKey)
   );
 
@@ -342,6 +397,45 @@ export default function PortalHome() {
                 <Card
                   key={action.path}
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-destructive/20"
+                  onClick={() => navigate(action.path)}
+                >
+                  <CardContent className="p-4">
+                    <div className={cn(
+                      'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
+                      action.color
+                    )}>
+                      <Icon className="h-5 w-5 text-white" />
+                    </div>
+                    <h4 className="font-semibold text-sm">
+                      {locale === 'th' ? action.label : action.labelEn}
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {locale === 'th' ? action.description : action.descriptionEn}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* HR Actions */}
+      {visibleHrActions.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1 flex items-center gap-2">
+            {locale === 'th' ? 'HR' : 'HR'}
+            <Badge variant="outline" className="text-[10px]">
+              HR
+            </Badge>
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {visibleHrActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Card
+                  key={action.path}
+                  className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group border-muted"
                   onClick={() => navigate(action.path)}
                 >
                   <CardContent className="p-4">

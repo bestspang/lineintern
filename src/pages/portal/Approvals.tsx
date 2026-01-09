@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, Calendar, ChevronRight, ClipboardList } from 'lucide-react';
+import { Clock, Calendar, ChevronRight, ClipboardList, Gift, Banknote } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -11,12 +11,14 @@ interface PendingCounts {
   ot: number;
   leave: number;
   earlyLeave: number;
+  redemptions: number;
+  deposits: number;
 }
 
 export default function Approvals() {
   const navigate = useNavigate();
   const { employee, locale, isManager, isAdmin } = usePortal();
-  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0 });
+  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, redemptions: 0, deposits: 0 });
   const [loading, setLoading] = useState(true);
 
   const fetchCounts = useCallback(async () => {
@@ -27,10 +29,12 @@ export default function Approvals() {
     let otCount = 0;
     let leaveCount = 0;
     let earlyLeaveCount = 0;
+    let redemptionsCount = 0;
+    let depositsCount = 0;
 
     if (isAdmin) {
       // Admin sees all pending requests
-      const [otRes, leaveRes, earlyRes] = await Promise.all([
+      const [otRes, leaveRes, earlyRes, redemptionRes, depositRes] = await Promise.all([
         supabase
           .from('overtime_requests')
           .select('id', { count: 'exact', head: true })
@@ -43,14 +47,24 @@ export default function Approvals() {
           .from('early_leave_requests')
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
+        supabase
+          .from('point_redemptions')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        supabase
+          .from('daily_deposits')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
       ]);
       otCount = otRes.count || 0;
       leaveCount = leaveRes.count || 0;
       earlyLeaveCount = earlyRes.count || 0;
+      redemptionsCount = redemptionRes.count || 0;
+      depositsCount = depositRes.count || 0;
     } else if (isManager && employee.branch_id) {
       // Manager sees only their branch's requests
       // Need to join with employees table to filter by branch
-      const [otRes, leaveRes, earlyRes] = await Promise.all([
+      const [otRes, leaveRes, earlyRes, depositRes] = await Promise.all([
         supabase
           .from('overtime_requests')
           .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
@@ -66,16 +80,24 @@ export default function Approvals() {
           .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
           .eq('status', 'pending')
           .eq('employee.branch_id', employee.branch_id),
+        supabase
+          .from('daily_deposits')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('branch_id', employee.branch_id),
       ]);
       otCount = otRes.count || 0;
       leaveCount = leaveRes.count || 0;
       earlyLeaveCount = earlyRes.count || 0;
+      depositsCount = depositRes.count || 0;
     }
 
     setCounts({
       ot: otCount,
       leave: leaveCount,
       earlyLeave: earlyLeaveCount,
+      redemptions: redemptionsCount,
+      deposits: depositsCount,
     });
     setLoading(false);
   }, [employee?.id, employee?.branch_id, isAdmin, isManager]);
@@ -118,7 +140,9 @@ export default function Approvals() {
     };
   }, [fetchCounts]);
 
-  const totalPending = counts.ot + counts.leave + counts.earlyLeave;
+  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.redemptions + counts.deposits;
+
+  const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
   const approvalItems = [
     {
@@ -142,6 +166,22 @@ export default function Approvals() {
       path: '/portal/approvals/early-leave',
       color: 'from-amber-500 to-amber-600',
     },
+    // Admin/Owner only: Redemptions
+    ...(['admin', 'owner'].includes(roleKey) ? [{
+      icon: Gift,
+      label: locale === 'th' ? 'แลกรางวัล' : 'Redemptions',
+      count: counts.redemptions,
+      path: '/portal/approve-redemptions',
+      color: 'from-fuchsia-500 to-fuchsia-600',
+    }] : []),
+    // Manager/Admin/Owner: Deposits
+    ...(['manager', 'admin', 'owner'].includes(roleKey) ? [{
+      icon: Banknote,
+      label: locale === 'th' ? 'ใบฝากเงิน' : 'Deposits',
+      count: counts.deposits,
+      path: '/portal/deposit-review-list',
+      color: 'from-green-500 to-green-600',
+    }] : []),
   ];
 
   if (loading) {
