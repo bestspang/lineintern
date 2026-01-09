@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, ReceiptText, Check, X, Eye, Calendar, User } from 'lucide-react';
+import { ReceiptText, Check, X, Eye, Calendar, User } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -29,7 +28,6 @@ interface Receipt {
 }
 
 export default function PortalReceiptManagement() {
-  const navigate = useNavigate();
   const { employee, locale, isAdmin } = usePortal();
   const [loading, setLoading] = useState(true);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -143,45 +141,46 @@ export default function PortalReceiptManagement() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 pb-24">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/portal')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <ReceiptText className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">
-              {locale === 'th' ? 'จัดการใบเสร็จ' : 'Receipt Management'}
-            </h1>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <ReceiptText className="h-6 w-6 text-primary" />
+          {locale === 'th' ? 'จัดการใบเสร็จ' : 'Receipt Management'}
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {locale === 'th' ? 'ตรวจสอบและอนุมัติใบเสร็จ' : 'Review and approve receipts'}
+        </p>
       </div>
 
-      <div className="p-4 space-y-4">
-        <Tabs value={filter} onValueChange={setFilter}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="pending">รอตรวจ</TabsTrigger>
-            <TabsTrigger value="approved">อนุมัติ</TabsTrigger>
-            <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* Tabs */}
+      <Tabs value={filter} onValueChange={setFilter}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="pending">รอตรวจ</TabsTrigger>
+          <TabsTrigger value="approved">อนุมัติ</TabsTrigger>
+          <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-        {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
+      {/* Receipt List */}
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full" />
-          ))
-        ) : receipts.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <ReceiptText className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">
-                {locale === 'th' ? 'ไม่มีใบเสร็จ' : 'No receipts'}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          receipts.map((receipt) => (
+          ))}
+        </div>
+      ) : receipts.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <ReceiptText className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">
+              {locale === 'th' ? 'ไม่มีใบเสร็จ' : 'No receipts'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {receipts.map((receipt) => (
             <Card key={receipt.id} className="overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -248,9 +247,9 @@ export default function PortalReceiptManagement() {
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Action Dialog */}
       <Dialog open={!!actionType} onOpenChange={() => { setActionType(null); setNotes(''); }}>

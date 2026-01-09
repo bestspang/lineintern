@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CalendarDays, Clock, Coffee } from 'lucide-react';
+import { CalendarDays, Clock, Coffee } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
@@ -21,7 +20,6 @@ interface ScheduleDay {
 }
 
 export default function MySchedule() {
-  const navigate = useNavigate();
   const { employee, locale } = usePortal();
   const [loading, setLoading] = useState(true);
   const [weekDays, setWeekDays] = useState<ScheduleDay[]>([]);
@@ -107,49 +105,45 @@ export default function MySchedule() {
   const today = new Date();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 pb-24">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/portal')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold">
-              {locale === 'th' ? 'ตารางกะของฉัน' : 'My Schedule'}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {format(currentWeekStart, 'd MMM', { locale: locale === 'th' ? th : undefined })} - {format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: locale === 'th' ? th : undefined })}
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <CalendarDays className="h-6 w-6" />
+          {locale === 'th' ? 'ตารางกะของฉัน' : 'My Schedule'}
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {format(currentWeekStart, 'd MMM', { locale: locale === 'th' ? th : undefined })} - {format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: locale === 'th' ? th : undefined })}
+        </p>
       </div>
 
-      <div className="p-4 space-y-3">
-        {/* Week Navigation */}
-        <div className="flex justify-between items-center">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))}
-          >
-            {locale === 'th' ? '← สัปดาห์ก่อน' : '← Previous'}
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
-          >
-            {locale === 'th' ? 'สัปดาห์นี้' : 'This Week'}
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))}
-          >
-            {locale === 'th' ? 'สัปดาห์หน้า →' : 'Next →'}
-          </Button>
-        </div>
+      {/* Week Navigation */}
+      <div className="flex justify-between items-center">
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))}
+        >
+          {locale === 'th' ? '← สัปดาห์ก่อน' : '← Previous'}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+        >
+          {locale === 'th' ? 'สัปดาห์นี้' : 'This Week'}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))}
+        >
+          {locale === 'th' ? 'สัปดาห์หน้า →' : 'Next →'}
+        </Button>
+      </div>
 
+      {/* Schedule Days */}
+      <div className="space-y-3">
         {loading ? (
           Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full" />

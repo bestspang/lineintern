@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Building2, TrendingUp, TrendingDown, Receipt, Users } from 'lucide-react';
+import { Building2, TrendingUp, TrendingDown, Receipt } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subDays } from 'date-fns';
@@ -21,7 +19,6 @@ interface BranchReport {
 }
 
 export default function PortalBranchReport() {
-  const navigate = useNavigate();
   const { employee, locale, isAdmin } = usePortal();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState<BranchReport[]>([]);
@@ -92,128 +89,122 @@ export default function PortalBranchReport() {
   };
 
   const totalSales = reports.reduce((sum, r) => sum + r.sales, 0);
-  const totalTarget = reports.reduce((sum, r) => sum + r.salesTarget, 0);
   const avgDiff = reports.length > 0 
     ? reports.reduce((sum, r) => sum + r.diffPercent, 0) / reports.length 
     : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 pb-24">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/portal')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">
-              {locale === 'th' ? 'รายงานสาขา' : 'Branch Report'}
-            </h1>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Building2 className="h-6 w-6 text-primary" />
+          {locale === 'th' ? 'รายงานสาขา' : 'Branch Report'}
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {locale === 'th' ? 'ยอดขายและผลประกอบการ' : 'Sales and performance'}
+        </p>
+      </div>
+
+      {/* Period Selector */}
+      <Select value={period} onValueChange={setPeriod}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="today">วันนี้</SelectItem>
+          <SelectItem value="yesterday">เมื่อวาน</SelectItem>
+          <SelectItem value="week">7 วันล่าสุด</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+              <CardContent className="p-4">
+                <Receipt className="h-5 w-5 mb-2 opacity-80" />
+                <p className="text-xl font-bold">฿{formatAmount(totalSales)}</p>
+                <p className="text-xs opacity-90">ยอดขายรวม</p>
+              </CardContent>
+            </Card>
 
-      <div className="p-4 space-y-4">
-        {/* Period Selector */}
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">วันนี้</SelectItem>
-            <SelectItem value="yesterday">เมื่อวาน</SelectItem>
-            <SelectItem value="week">7 วันล่าสุด</SelectItem>
-          </SelectContent>
-        </Select>
+            <Card className={`bg-gradient-to-br ${avgDiff >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-rose-500 to-rose-600'} text-white`}>
+              <CardContent className="p-4">
+                {avgDiff >= 0 ? (
+                  <TrendingUp className="h-5 w-5 mb-2 opacity-80" />
+                ) : (
+                  <TrendingDown className="h-5 w-5 mb-2 opacity-80" />
+                )}
+                <p className="text-xl font-bold">{avgDiff >= 0 ? '+' : ''}{avgDiff.toFixed(1)}%</p>
+                <p className="text-xs opacity-90">เทียบเป้า (เฉลี่ย)</p>
+              </CardContent>
+            </Card>
+          </div>
 
-        {loading ? (
-          <>
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </>
-        ) : (
-          <>
-            {/* Summary */}
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                <CardContent className="p-4">
-                  <Receipt className="h-5 w-5 mb-2 opacity-80" />
-                  <p className="text-xl font-bold">฿{formatAmount(totalSales)}</p>
-                  <p className="text-xs opacity-90">ยอดขายรวม</p>
-                </CardContent>
-              </Card>
+          {/* Branch List */}
+          {reports.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground">
+                  {locale === 'th' ? 'ไม่มีข้อมูลรายงาน' : 'No reports found'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {reports.map((report, i) => (
+                <Card key={`${report.branchCode}-${report.reportDate}-${i}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-semibold">{report.branchName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(report.reportDate), 'dd MMM yyyy', { locale: th })}
+                        </p>
+                      </div>
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                        report.diffPercent >= 0 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      }`}>
+                        {report.diffPercent >= 0 ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3" />
+                        )}
+                        {report.diffPercent >= 0 ? '+' : ''}{report.diffPercent.toFixed(1)}%
+                      </div>
+                    </div>
 
-              <Card className={`bg-gradient-to-br ${avgDiff >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-rose-500 to-rose-600'} text-white`}>
-                <CardContent className="p-4">
-                  {avgDiff >= 0 ? (
-                    <TrendingUp className="h-5 w-5 mb-2 opacity-80" />
-                  ) : (
-                    <TrendingDown className="h-5 w-5 mb-2 opacity-80" />
-                  )}
-                  <p className="text-xl font-bold">{avgDiff >= 0 ? '+' : ''}{avgDiff.toFixed(1)}%</p>
-                  <p className="text-xs opacity-90">เทียบเป้า (เฉลี่ย)</p>
-                </CardContent>
-              </Card>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold text-primary">฿{formatAmount(report.sales)}</p>
+                        <p className="text-xs text-muted-foreground">ยอดขาย</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold">฿{formatAmount(report.salesTarget)}</p>
+                        <p className="text-xs text-muted-foreground">เป้า</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold">{report.tc}</p>
+                        <p className="text-xs text-muted-foreground">TC</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-
-            {/* Branch List */}
-            {reports.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">
-                    {locale === 'th' ? 'ไม่มีข้อมูลรายงาน' : 'No reports found'}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {reports.map((report, i) => (
-                  <Card key={`${report.branchCode}-${report.reportDate}-${i}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="font-semibold">{report.branchName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(report.reportDate), 'dd MMM yyyy', { locale: th })}
-                          </p>
-                        </div>
-                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          report.diffPercent >= 0 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                        }`}>
-                          {report.diffPercent >= 0 ? (
-                            <TrendingUp className="h-3 w-3" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3" />
-                          )}
-                          {report.diffPercent >= 0 ? '+' : ''}{report.diffPercent.toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-lg font-bold text-primary">฿{formatAmount(report.sales)}</p>
-                          <p className="text-xs text-muted-foreground">ยอดขาย</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold">฿{formatAmount(report.salesTarget)}</p>
-                          <p className="text-xs text-muted-foreground">เป้า</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold">{report.tc}</p>
-                          <p className="text-xs text-muted-foreground">TC</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
