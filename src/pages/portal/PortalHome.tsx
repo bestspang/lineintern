@@ -1,18 +1,21 @@
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
-  Receipt, Gift, Banknote, FileText
+  Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
+  Wallet, Trophy, Building2, BarChart3, ReceiptText
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { useFavorites } from '@/hooks/useFavorites';
+import { FavoriteButton } from '@/components/portal/FavoriteButton';
 
 interface QuickAction {
   icon: typeof Clock;
@@ -36,13 +39,31 @@ const quickActions: QuickAction[] = [
     color: 'from-blue-500 to-blue-600',
   },
   {
+    icon: CalendarDays,
+    label: 'ตารางกะ',
+    labelEn: 'My Schedule',
+    description: 'ดูตารางกะประจำสัปดาห์',
+    descriptionEn: 'View weekly schedule',
+    path: '/portal/my-schedule',
+    color: 'from-sky-500 to-sky-600',
+  },
+  {
+    icon: Wallet,
+    label: 'Payroll ของฉัน',
+    labelEn: 'My Payroll',
+    description: 'ดูรายได้ประมาณการ',
+    descriptionEn: 'View estimated earnings',
+    path: '/portal/my-payroll',
+    color: 'from-emerald-500 to-emerald-600',
+  },
+  {
     icon: Calendar,
     label: 'วันลาคงเหลือ',
     labelEn: 'Leave Balance',
     description: 'ตรวจสอบวันลาที่เหลือ',
     descriptionEn: 'Check remaining leave days',
     path: '/portal/my-leave',
-    color: 'from-emerald-500 to-emerald-600',
+    color: 'from-teal-500 to-teal-600',
   },
   {
     icon: CalendarPlus,
@@ -69,7 +90,16 @@ const quickActions: QuickAction[] = [
     description: 'ดูและจัดการใบเสร็จ',
     descriptionEn: 'View & manage receipts',
     path: '/portal/my-receipts',
-    color: 'from-teal-500 to-teal-600',
+    color: 'from-cyan-500 to-cyan-600',
+  },
+  {
+    icon: Trophy,
+    label: 'Leaderboard',
+    labelEn: 'Leaderboard',
+    description: 'อันดับแต้มในทีม',
+    descriptionEn: 'Team point rankings',
+    path: '/portal/leaderboard',
+    color: 'from-amber-500 to-amber-600',
   },
   {
     icon: Gift,
@@ -113,6 +143,16 @@ const managerActions: QuickAction[] = [
     color: 'from-green-500 to-green-600',
     roles: ['manager', 'admin', 'owner'],
   },
+  {
+    icon: Building2,
+    label: 'รายงานสาขา',
+    labelEn: 'Branch Report',
+    description: 'ดูยอดขายและสถิติสาขา',
+    descriptionEn: 'View branch sales & stats',
+    path: '/portal/branch-report',
+    color: 'from-indigo-500 to-indigo-600',
+    roles: ['manager', 'admin', 'owner'],
+  },
 ];
 
 const adminActions: QuickAction[] = [
@@ -134,6 +174,36 @@ const adminActions: QuickAction[] = [
     descriptionEn: 'Statistics and reports',
     path: '/portal/daily-summary',
     color: 'from-indigo-500 to-indigo-600',
+    roles: ['admin', 'owner'],
+  },
+  {
+    icon: Users,
+    label: 'จัดการพนักงาน',
+    labelEn: 'Manage Employees',
+    description: 'ดูข้อมูลพนักงาน',
+    descriptionEn: 'View employee data',
+    path: '/portal/employees',
+    color: 'from-blue-500 to-blue-600',
+    roles: ['admin', 'owner'],
+  },
+  {
+    icon: ReceiptText,
+    label: 'จัดการใบเสร็จ',
+    labelEn: 'Receipt Management',
+    description: 'ตรวจสอบและอนุมัติใบเสร็จ',
+    descriptionEn: 'Review and approve receipts',
+    path: '/portal/receipt-management',
+    color: 'from-teal-500 to-teal-600',
+    roles: ['admin', 'owner'],
+  },
+  {
+    icon: BarChart3,
+    label: 'วิเคราะห์ใบเสร็จ',
+    labelEn: 'Receipt Analytics',
+    description: 'สถิติและรายงานใบเสร็จ',
+    descriptionEn: 'Receipt statistics and reports',
+    path: '/portal/receipt-analytics',
+    color: 'from-violet-500 to-violet-600',
     roles: ['admin', 'owner'],
   },
   {
@@ -164,12 +234,14 @@ const hrActions: QuickAction[] = [
 export default function PortalHome() {
   const navigate = useNavigate();
   const { employee, locale, isManager, isAdmin } = usePortal();
+  const { favorites, toggleFavorite, isFavorite } = useFavorites(employee?.id || '');
   
   // Check-in status state
   const [currentTime, setCurrentTime] = useState(new Date());
   const [canCheckIn, setCanCheckIn] = useState(true);
   const [isWorking, setIsWorking] = useState(false);
   const [minutesWorked, setMinutesWorked] = useState<number | null>(null);
+  const [pointBalance, setPointBalance] = useState(0);
 
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
@@ -178,6 +250,20 @@ export default function PortalHome() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch points
+  useEffect(() => {
+    const fetchPoints = async () => {
+      if (!employee?.id) return;
+      const { data } = await supabase
+        .from('happy_points')
+        .select('point_balance')
+        .eq('employee_id', employee.id)
+        .maybeSingle();
+      setPointBalance(data?.point_balance || 0);
+    };
+    fetchPoints();
+  }, [employee?.id]);
 
   // Fetch attendance status
   const fetchAttendanceStatus = useCallback(async () => {
@@ -234,6 +320,17 @@ export default function PortalHome() {
   const visibleHrActions = hrActions.filter(
     (action) => !action.roles || action.roles.includes(roleKey)
   );
+
+  // Sort quickActions by favorites
+  const sortedQuickActions = useMemo(() => {
+    return [...quickActions].sort((a, b) => {
+      const aFav = isFavorite(a.path);
+      const bFav = isFavorite(b.path);
+      if (aFav && !bFav) return -1;
+      if (!aFav && bFav) return 1;
+      return 0;
+    });
+  }, [favorites, isFavorite]);
 
   const formatDuration = (mins: number) => {
     const hours = Math.floor(mins / 60);
@@ -298,6 +395,20 @@ export default function PortalHome() {
         </CardContent>
       </Card>
 
+      {/* Points Card */}
+      <Card 
+        className="bg-gradient-to-br from-yellow-400 to-orange-500 text-white cursor-pointer hover:opacity-95 transition-opacity"
+        onClick={() => navigate('/portal/my-points')}
+      >
+        <CardContent className="p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">{locale === 'th' ? 'แต้มของฉัน' : 'My Points'}</p>
+            <p className="text-3xl font-bold">{pointBalance.toLocaleString()}</p>
+          </div>
+          <Coins className="h-10 w-10 opacity-80" />
+        </CardContent>
+      </Card>
+
       {/* Welcome Section */}
       <div className="text-center py-2">
         <h2 className="text-xl font-bold">
@@ -314,14 +425,25 @@ export default function PortalHome() {
           {locale === 'th' ? 'เมนูของฉัน' : 'My Menu'}
         </h3>
         <div className="grid grid-cols-2 gap-3">
-          {quickActions.map((action) => {
+          {sortedQuickActions.map((action) => {
             const Icon = action.icon;
+            const isFav = isFavorite(action.path);
             return (
               <Card
                 key={action.path}
-                className="cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group"
+                className={cn(
+                  "cursor-pointer hover:shadow-lg transition-all duration-200 active:scale-[0.98] overflow-hidden group relative",
+                  isFav && "ring-2 ring-yellow-400/50"
+                )}
                 onClick={() => navigate(action.path)}
               >
+                <FavoriteButton
+                  isFavorite={isFav}
+                  onToggle={(e) => {
+                    e.stopPropagation();
+                    toggleFavorite(action.path);
+                  }}
+                />
                 <CardContent className="p-4">
                   <div className={cn(
                     'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
