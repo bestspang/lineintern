@@ -85,11 +85,14 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
       bounds: { x: colWidth, y: 0, width: colWidth, height: rowHeight },
       action: { type: 'message', text: '/status', label: 'สถานะ' }
     },
+    // Top-right: เมนู (Menu) - Direct LIFF URL without path for faster loading
     {
       bounds: { x: colWidth * 2, y: 0, width: richMenuWidth - (colWidth * 2), height: rowHeight },
-      action: liffBaseUrl
-        ? { type: 'uri', uri: `${liffBaseUrl}/portal`, label: 'เมนู' }
-        : { type: 'message', text: '/menu', label: 'เมนู' }
+      action: { 
+        type: 'uri', 
+        uri: 'https://liff.line.me/2008841252-SKfNa87Z', 
+        label: 'เมนู' 
+      }
     },
     // Row 2: ลางาน, ขอ OT, ช่วยเหลือ
     {

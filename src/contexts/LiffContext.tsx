@@ -1,15 +1,23 @@
 /**
  * LIFF Context - LINE Front-end Framework Integration
  * Provides LIFF SDK initialization and user profile access
+ * 
+ * Optimizations:
+ * - Caches LIFF_ID in localStorage to reduce API calls
+ * - Uses global state to prevent double initialization
+ * - Skips init on non-LIFF routes
  */
 
-/**
- * LIFF Context - LINE Front-end Framework Integration
- * Provides LIFF SDK initialization and user profile access
- */
-
-import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  getGlobalLiffState, 
+  setGlobalLiffState, 
+  isLiffInitialized, 
+  getCachedLiffId, 
+  setCachedLiffId,
+  type LiffProfile as GlobalLiffProfile 
+} from '@/lib/liff-state';
 
 interface LiffProfile {
   userId: string;
@@ -147,6 +155,20 @@ export function LiffProvider({ children }: LiffProviderProps) {
       return;
     }
     
+    // Check if LIFF was already initialized globally (prevents double init)
+    if (isLiffInitialized() && !isRetry) {
+      console.log('[LIFF] Already initialized globally, restoring state...');
+      const globalState = getGlobalLiffState();
+      setIsReady(globalState.isReady);
+      setIsLoggedIn(globalState.isLoggedIn);
+      setIsInClient(globalState.isInClient);
+      setLiffId(globalState.liffId);
+      if (globalState.profile) {
+        setProfile(globalState.profile);
+      }
+      return;
+    }
+    
     // Check if we should skip LIFF initialization
     const shouldInitCheck = checkShouldInitLiff();
     
@@ -181,35 +203,46 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setError(null);
       setErrorDetails(null);
       
-      // Get LIFF_ID from api_configurations
-      const { data: config, error: configError } = await supabase
-        .from('api_configurations')
-        .select('key_value')
-        .eq('key_name', 'LIFF_ID')
-        .single();
+      // Try to use cached LIFF_ID first for faster loading
+      let liffIdToUse = getCachedLiffId();
+      
+      if (!liffIdToUse) {
+        // Get LIFF_ID from api_configurations
+        const { data: config, error: configError } = await supabase
+          .from('api_configurations')
+          .select('key_value')
+          .eq('key_name', 'LIFF_ID')
+          .single();
 
-      if (configError) {
-        console.error('[LIFF] Error fetching LIFF_ID:', configError);
-        const errInfo = categorizeError({ message: 'Config fetch failed' });
-        setError(errInfo.message);
-        setErrorDetails(errInfo);
-        setIsReady(true);
-        setIsRetrying(false);
-        return;
+        if (configError) {
+          console.error('[LIFF] Error fetching LIFF_ID:', configError);
+          const errInfo = categorizeError({ message: 'Config fetch failed' });
+          setError(errInfo.message);
+          setErrorDetails(errInfo);
+          setIsReady(true);
+          setIsRetrying(false);
+          return;
+        }
+
+        if (!config?.key_value) {
+          console.log('[LIFF] LIFF_ID not configured in api_configurations');
+          const errInfo: LiffError = { type: 'config', message: 'LIFF ยังไม่ได้ตั้งค่า' };
+          setError(errInfo.message);
+          setErrorDetails(errInfo);
+          setIsReady(true);
+          setIsRetrying(false);
+          return;
+        }
+        
+        liffIdToUse = config.key_value;
+        // Cache for next time
+        setCachedLiffId(liffIdToUse);
+        console.log('[LIFF] Got LIFF_ID from API, cached:', liffIdToUse);
+      } else {
+        console.log('[LIFF] Using cached LIFF_ID:', liffIdToUse);
       }
 
-      if (!config?.key_value) {
-        console.log('[LIFF] LIFF_ID not configured in api_configurations');
-        const errInfo: LiffError = { type: 'config', message: 'LIFF ยังไม่ได้ตั้งค่า' };
-        setError(errInfo.message);
-        setErrorDetails(errInfo);
-        setIsReady(true);
-        setIsRetrying(false);
-        return;
-      }
-
-      console.log('[LIFF] Got LIFF_ID:', config.key_value);
-      setLiffId(config.key_value);
+      setLiffId(liffIdToUse);
 
       // Dynamically import LIFF SDK
       console.log('[LIFF] Importing LIFF SDK...');
@@ -220,7 +253,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       // Initialize LIFF
       console.log('[LIFF] Calling liff.init()...');
       await liffInstance.init({
-        liffId: config.key_value,
+        liffId: liffIdToUse,
         withLoginOnExternalBrowser: false, // Don't auto-redirect on external browsers
       });
 
@@ -252,19 +285,33 @@ export function LiffProvider({ children }: LiffProviderProps) {
 
       // Set all states TOGETHER to prevent race condition
       // Profile first, then isLoggedIn, then isReady (so PortalContext sees complete state)
-      if (userProfile) {
-        setProfile({
-          userId: userProfile.userId,
-          displayName: userProfile.displayName,
-          pictureUrl: userProfile.pictureUrl,
-          statusMessage: userProfile.statusMessage,
-        });
+      const profileData = userProfile ? {
+        userId: userProfile.userId,
+        displayName: userProfile.displayName,
+        pictureUrl: userProfile.pictureUrl,
+        statusMessage: userProfile.statusMessage,
+      } : null;
+      
+      if (profileData) {
+        setProfile(profileData);
       }
       setIsInClient(liffInstance.isInClient());
       setIsLoggedIn(loggedIn);
       setIsReady(true); // Set this LAST so other contexts see complete state
       setIsRetrying(false);
       setRetryCount(0);
+      
+      // Save to global state to prevent double init
+      setGlobalLiffState({
+        isInitialized: true,
+        isReady: true,
+        isLoggedIn: loggedIn,
+        isInClient: liffInstance.isInClient(),
+        liffId: liffIdToUse,
+        profile: profileData,
+        error: null,
+      });
+      console.log('[LIFF] Global state saved');
     } catch (err: any) {
       console.error('[LIFF] Initialization error:', err);
       console.error('[LIFF] Error details:', JSON.stringify(err, null, 2));
