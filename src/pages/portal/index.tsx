@@ -12,6 +12,11 @@ export { default as MyProfile } from './MyProfile';
 export { default as Status } from './Status';
 export { default as Help } from './Help';
 
+// New employee pages
+export { default as MySchedule } from './MySchedule';
+export { default as MyPayroll } from './MyPayroll';
+export { default as PointLeaderboard } from './PointLeaderboard';
+
 // Receipt pages
 export { default as MyReceipts } from './MyReceipts';
 export { default as ReceiptDetail } from './ReceiptDetail';
@@ -25,11 +30,16 @@ export { default as ApproveLeave } from './ApproveLeave';
 export { default as ApproveEarlyLeave } from './ApproveEarlyLeave';
 export { default as TeamSummary } from './TeamSummary';
 export { default as DepositReviewList } from './DepositReviewList';
+export { default as PortalBranchReport } from './PortalBranchReport';
 
 // Admin pages
 export { default as TodayPhotos } from './TodayPhotos';
 export { default as DailySummary } from './DailySummary';
 export { default as ApproveRedemptions } from './ApproveRedemptions';
+export { default as PortalEmployees } from './PortalEmployees';
+export { default as PortalEmployeeDetail } from './PortalEmployeeDetail';
+export { default as PortalReceiptManagement } from './PortalReceiptManagement';
+export { default as PortalReceiptAnalytics } from './PortalReceiptAnalytics';
 
 // HR pages
 export { default as PayrollReport } from './PayrollReport';

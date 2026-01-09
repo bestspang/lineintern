@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
-  onToggle: () => void;
+  onToggle: (e: React.MouseEvent) => void;
   className?: string;
 }
 
@@ -13,7 +13,7 @@ export function FavoriteButton({ isFavorite, onToggle, className }: FavoriteButt
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onToggle();
+        onToggle(e);
       }}
       className={cn(
         'absolute top-2 right-2 p-1 rounded-full transition-all z-10',

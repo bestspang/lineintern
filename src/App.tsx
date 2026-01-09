@@ -88,7 +88,9 @@ import {
   Approvals, ApproveOT, ApproveLeave, ApproveEarlyLeave, TeamSummary, DepositReviewList,
   TodayPhotos, DailySummary, ApproveRedemptions,
   MyReceipts, ReceiptDetail, ReceiptBusinesses, ReceiptNew,
-  PayrollReport
+  PayrollReport, MySchedule, MyPayroll, PointLeaderboard,
+  PortalEmployees, PortalEmployeeDetail, PortalReceiptManagement, PortalReceiptAnalytics,
+  PortalBranchReport
 } from "./pages/portal";
 import DepositUpload from "./pages/portal/DepositUpload";
 import DepositReview from "./pages/portal/DepositReview";
@@ -191,6 +193,14 @@ const App = () => (
                       <Route path="/approve-redemptions" element={<ApproveRedemptions />} />
                       <Route path="/deposit-review-list" element={<DepositReviewList />} />
                       <Route path="/payroll-report" element={<PayrollReport />} />
+                      <Route path="/my-schedule" element={<MySchedule />} />
+                      <Route path="/my-payroll" element={<MyPayroll />} />
+                      <Route path="/leaderboard" element={<PointLeaderboard />} />
+                      <Route path="/employees" element={<PortalEmployees />} />
+                      <Route path="/employees/:id" element={<PortalEmployeeDetail />} />
+                      <Route path="/receipt-management" element={<PortalReceiptManagement />} />
+                      <Route path="/receipt-analytics" element={<PortalReceiptAnalytics />} />
+                      <Route path="/branch-report" element={<PortalBranchReport />} />
                         <Route path="*" element={<NotFound />} />
                       </Routes>
                     </PortalLayout>

@@ -45,40 +45,42 @@ export default function MySchedule() {
         .from('shift_assignments')
         .select('*, shift_template:shift_templates(*)')
         .eq('employee_id', employee.id)
-        .gte('assignment_date', format(currentWeekStart, 'yyyy-MM-dd'))
-        .lte('assignment_date', format(weekEnd, 'yyyy-MM-dd'));
+        .gte('work_date', format(currentWeekStart, 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEnd, 'yyyy-MM-dd'));
 
       // Build week schedule
       const days: ScheduleDay[] = [];
       for (let i = 0; i < 7; i++) {
         const date = addDays(currentWeekStart, i);
-        const dayOfWeek = format(date, 'EEEE').toLowerCase();
+        const dayOfWeekNumber = date.getDay(); // 0=Sunday, 1=Monday, etc.
         const assignment = assignments?.find(a => 
-          isSameDay(new Date(a.assignment_date), date)
+          isSameDay(new Date(a.work_date), date)
         );
 
         let shift = undefined;
         
         if (assignment?.shift_template) {
+          const template = assignment.shift_template as any;
           shift = {
-            name: assignment.shift_template.name,
-            startTime: assignment.shift_template.start_time,
-            endTime: assignment.shift_template.end_time,
+            name: template.name || 'กะพิเศษ',
+            startTime: assignment.custom_start_time || template.start_time || '',
+            endTime: assignment.custom_end_time || template.end_time || '',
             isOff: assignment.is_day_off || false,
           };
+        } else if (assignment?.is_day_off) {
+          shift = { name: 'วันหยุด', startTime: '', endTime: '', isOff: true };
         } else if (scheduleData) {
-          // Use regular schedule
-          const workDays = scheduleData.work_days as string[] || [];
-          const isWorkDay = workDays.includes(dayOfWeek) || workDays.includes(format(date, 'EEEE'));
+          // Use regular schedule - check if this day_of_week is a working day
+          const isWorkDay = scheduleData.is_working_day && scheduleData.day_of_week === dayOfWeekNumber;
           
-          if (isWorkDay && scheduleData.shift_template) {
+          if (isWorkDay) {
             shift = {
-              name: scheduleData.shift_template.name,
-              startTime: scheduleData.shift_template.start_time,
-              endTime: scheduleData.shift_template.end_time,
+              name: 'กะปกติ',
+              startTime: scheduleData.start_time || '',
+              endTime: scheduleData.end_time || '',
               isOff: false,
             };
-          } else if (!isWorkDay) {
+          } else if (scheduleData.day_of_week === dayOfWeekNumber && !scheduleData.is_working_day) {
             shift = { name: 'วันหยุด', startTime: '', endTime: '', isOff: true };
           }
         }

@@ -65,11 +65,11 @@ export default function MyPayroll() {
       // Fetch approved OT
       const { data: otRequests } = await supabase
         .from('overtime_requests')
-        .select('requested_hours, status')
+        .select('estimated_hours, status')
         .eq('employee_id', employee.id)
         .eq('status', 'approved')
-        .gte('overtime_date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('overtime_date', format(today, 'yyyy-MM-dd'));
+        .gte('request_date', format(monthStart, 'yyyy-MM-dd'))
+        .lte('request_date', format(today, 'yyyy-MM-dd'));
 
       // Fetch leaves
       const { data: leaves } = await supabase
@@ -88,7 +88,7 @@ export default function MyPayroll() {
 
       // Calculate totals
       const totalMinutes = sessions?.reduce((sum, s) => sum + (s.billable_minutes || 0), 0) || 0;
-      const otMinutes = (otRequests?.reduce((sum, o) => sum + (o.requested_hours || 0), 0) || 0) * 60;
+      const otMinutes = (otRequests?.reduce((sum, o) => sum + (o.estimated_hours || 0), 0) || 0) * 60;
       const workDays = sessions?.length || 0;
       const leaveDays = leaves?.length || 0;
 
@@ -101,9 +101,9 @@ export default function MyPayroll() {
       const absentDays = Math.max(0, expectedWorkDays - workDays - leaveDays);
 
       // Calculate estimated earnings
-      const baseSalary = settings?.monthly_salary || 0;
+      const baseSalary = settings?.salary_per_month || 0;
       const hourlyRate = settings?.hourly_rate || (baseSalary / 30 / 8);
-      const payType = settings?.salary_type || 'monthly';
+      const payType = settings?.pay_type || 'monthly';
 
       let estimatedEarnings = 0;
       if (payType === 'monthly') {

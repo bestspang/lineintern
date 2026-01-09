@@ -17,7 +17,6 @@ interface EmployeeData {
   name: string;
   role: string;
   branch: string;
-  phone?: string;
   joinDate?: string;
   isActive: boolean;
 }
@@ -46,19 +45,18 @@ export default function PortalEmployeeDetail() {
       // Fetch employee
       const { data: empData } = await supabase
         .from('employees')
-        .select('*, role:employee_roles(role_name), branch:branches(name)')
+        .select('*, branch:branches(name)')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
       if (empData) {
         setEmp({
           id: empData.id,
-          name: empData.name || empData.nickname || 'ไม่ระบุ',
-          role: (empData.role as any)?.role_name || 'พนักงาน',
+          name: empData.full_name || 'ไม่ระบุ',
+          role: empData.role || 'พนักงาน',
           branch: (empData.branch as any)?.name || '-',
-          phone: empData.phone || undefined,
           joinDate: empData.created_at,
-          isActive: empData.is_active,
+          isActive: empData.is_active ?? true,
         });
       }
 
@@ -282,14 +280,6 @@ export default function PortalEmployeeDetail() {
                   </span>
                   <span className="font-medium">{emp.role}</span>
                 </div>
-                {emp.phone && (
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-muted-foreground">
-                      {locale === 'th' ? 'เบอร์โทร' : 'Phone'}
-                    </span>
-                    <span className="font-medium">{emp.phone}</span>
-                  </div>
-                )}
                 {emp.joinDate && (
                   <div className="flex justify-between items-center py-2">
                     <span className="text-muted-foreground">
