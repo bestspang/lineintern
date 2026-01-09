@@ -50,6 +50,8 @@ interface ReceiptData {
     total?: number;
     category?: number;
   } | null;
+  branch_id?: string | null;
+  branch_source?: string | null;
 }
 
 interface ReceiptInlineEditProps {
@@ -131,10 +133,25 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
     card_type: receipt.card_type || '',
     description: receipt.description || '',
     notes: receipt.notes || '',
+    branch_id: receipt.branch_id || '',
   });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [branches, setBranches] = useState<{id: string; name: string}[]>([]);
+
+  // Fetch branches for dropdown
+  useEffect(() => {
+    async function fetchBranches() {
+      const { data } = await supabase
+        .from('branches')
+        .select('id, name')
+        .eq('is_deleted', false)
+        .order('name');
+      setBranches(data || []);
+    }
+    fetchBranches();
+  }, []);
 
   // Fetch receipt image
   useEffect(() => {
@@ -247,6 +264,8 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
           card_type: data.card_type || null,
           description: data.description || null,
           notes: data.notes || null,
+          branch_id: data.branch_id || null,
+          branch_source: data.branch_id ? 'manual' : null,
           status: 'saved',
           updated_at: new Date().toISOString(),
         })
@@ -645,6 +664,36 @@ export function ReceiptInlineEdit({ receipt, onClose }: ReceiptInlineEditProps) 
                     placeholder="Additional notes"
                     rows={2}
                   />
+                </div>
+              </div>
+
+              {/* Section: Company Branch */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground border-b pb-1">
+                  สาขาบริษัท (Our Branch)
+                </h3>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="branch_id">สาขาที่ทำการจ่าย</Label>
+                  <Select 
+                    value={formData.branch_id} 
+                    onValueChange={(value) => setFormData({ ...formData, branch_id: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="เลือกสาขา (หรือใช้สาขาพนักงาน)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">ใช้สาขาจากพนักงาน</SelectItem>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    หากไม่เลือก จะใช้สาขาจากพนักงานที่ส่งใบเสร็จ
+                  </p>
                 </div>
               </div>
             </form>
