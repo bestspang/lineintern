@@ -1864,6 +1864,208 @@ function parseDateInput(input: string): Date | null {
 }
 
 // =============================
+// CANCEL OT COMMAND HANDLER
+// =============================
+
+interface CancelOTResult {
+  detected: boolean;
+  message: string;
+}
+
+async function handleCancelOTCommand(
+  messageText: string,
+  user: any,
+  lineUserId: string,
+  locale: 'en' | 'th'
+): Promise<CancelOTResult> {
+  // Pattern matching for cancel OT commands
+  const cancelPatterns = [
+    /^\/cancel-ot\s*(.*)$/i,
+    /^\/cancelot\s*(.*)$/i,
+    /^\/ยกเลิกot\s*(.*)$/i,
+    /^\/ยกเลิกโอที\s*(.*)$/i,
+    /^ยกเลิก\s*ot\s*(.*)$/i,
+    /^ยกเลิกโอที\s*(.*)$/i,
+  ];
+
+  let requestIdOrDate = '';
+  for (const pattern of cancelPatterns) {
+    const match = messageText.trim().match(pattern);
+    if (match) {
+      requestIdOrDate = match[1].trim();
+      break;
+    }
+  }
+
+  // Check if command was matched
+  if (!cancelPatterns.some(p => p.test(messageText.trim()))) {
+    return { detected: false, message: '' };
+  }
+
+  console.log(`[handleCancelOTCommand] Processing cancel OT request for user ${user.id} with input: "${requestIdOrDate}"`);
+
+  try {
+    // Check if user is linked to an employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('id, full_name, code')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (empError || !employee) {
+      console.log('[handleCancelOTCommand] Employee not found');
+      const message = locale === 'th'
+        ? 'ขออภัยครับ ยังไม่พบข้อมูลพนักงานของคุณในระบบ'
+        : 'Sorry, your employee record is not found.';
+      return { detected: true, message };
+    }
+
+    // Fetch pending OT requests for this employee
+    const { data: pendingRequests, error: fetchError } = await supabase
+      .from('overtime_requests')
+      .select('id, request_date, start_time, end_time, hours, reason, created_at')
+      .eq('employee_id', employee.id)
+      .eq('status', 'pending')
+      .order('request_date', { ascending: true });
+
+    if (fetchError) {
+      console.error('[handleCancelOTCommand] Error fetching OT requests:', fetchError);
+      const message = locale === 'th'
+        ? 'เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาลองใหม่'
+        : 'Error fetching data. Please try again.';
+      return { detected: true, message };
+    }
+
+    if (!pendingRequests || pendingRequests.length === 0) {
+      const message = locale === 'th'
+        ? '✅ คุณไม่มีคำขอ OT ที่รออนุมัติอยู่'
+        : '✅ You have no pending OT requests.';
+      return { detected: true, message };
+    }
+
+    // Thai months for formatting
+    const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    // Helper to format date
+    const formatDate = (dateStr: string) => {
+      const d = new Date(dateStr);
+      return locale === 'th' 
+        ? `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    // If no specific request specified
+    if (!requestIdOrDate) {
+      if (pendingRequests.length === 1) {
+        // Only one pending request - cancel it directly
+        const request = pendingRequests[0];
+        
+        // Call cancel-ot edge function
+        const { data, error } = await supabase.functions.invoke('cancel-ot', {
+          body: {
+            request_id: request.id,
+            employee_id: employee.id,
+            reason: 'Cancelled by employee via LINE',
+            source: 'line'
+          }
+        });
+
+        if (error || !data?.success) {
+          const message = locale === 'th'
+            ? `❌ ไม่สามารถยกเลิกได้: ${data?.error || error?.message || 'กรุณาลองใหม่'}`
+            : `❌ Cannot cancel: ${data?.error || error?.message || 'Please try again'}`;
+          return { detected: true, message };
+        }
+
+        const formattedDate = formatDate(request.request_date);
+        const timeRange = `${request.start_time?.substring(0, 5) || '?'} - ${request.end_time?.substring(0, 5) || '?'}`;
+        
+        const message = locale === 'th'
+          ? `✅ ยกเลิกคำขอ OT แล้ว\n\n📅 วันที่: ${formattedDate}\n⏰ เวลา: ${timeRange}\n🕐 จำนวน: ${request.hours || '-'} ชั่วโมง`
+          : `✅ OT request cancelled\n\n📅 Date: ${formattedDate}\n⏰ Time: ${timeRange}\n🕐 Hours: ${request.hours || '-'}`;
+        return { detected: true, message };
+      } else {
+        // Multiple pending requests - show list
+        let listMsg = locale === 'th'
+          ? '📋 คุณมีคำขอ OT ที่รออนุมัติหลายรายการ:\n\n'
+          : '📋 You have multiple pending OT requests:\n\n';
+
+        pendingRequests.forEach((req, idx) => {
+          const formattedDate = formatDate(req.request_date);
+          const timeRange = `${req.start_time?.substring(0, 5) || '?'}-${req.end_time?.substring(0, 5) || '?'}`;
+          listMsg += `${idx + 1}. ${formattedDate} (${timeRange})${req.reason ? ` - ${req.reason.substring(0, 20)}...` : ''}\n`;
+        });
+
+        listMsg += locale === 'th'
+          ? '\n💡 พิมพ์ /cancel-ot [วันที่] เพื่อยกเลิก\nเช่น /cancel-ot พรุ่งนี้'
+          : '\n💡 Type /cancel-ot [date] to cancel\nE.g., /cancel-ot tomorrow';
+
+        return { detected: true, message: listMsg };
+      }
+    }
+
+    // Try to find the request by date
+    const parsedDate = parseDateInput(requestIdOrDate);
+    if (parsedDate) {
+      const dateStr = getBangkokDateString(parsedDate);
+      const matchingRequest = pendingRequests.find(r => r.request_date === dateStr);
+
+      if (matchingRequest) {
+        const { data, error } = await supabase.functions.invoke('cancel-ot', {
+          body: {
+            request_id: matchingRequest.id,
+            employee_id: employee.id,
+            reason: 'Cancelled by employee via LINE',
+            source: 'line'
+          }
+        });
+
+        if (error || !data?.success) {
+          const message = locale === 'th'
+            ? `❌ ไม่สามารถยกเลิกได้: ${data?.error || error?.message || 'กรุณาลองใหม่'}`
+            : `❌ Cannot cancel: ${data?.error || error?.message || 'Please try again'}`;
+          return { detected: true, message };
+        }
+
+        const formattedDate = formatDate(matchingRequest.request_date);
+        const timeRange = `${matchingRequest.start_time?.substring(0, 5) || '?'} - ${matchingRequest.end_time?.substring(0, 5) || '?'}`;
+        
+        const message = locale === 'th'
+          ? `✅ ยกเลิกคำขอ OT แล้ว\n\n📅 วันที่: ${formattedDate}\n⏰ เวลา: ${timeRange}\n🕐 จำนวน: ${matchingRequest.hours || '-'} ชั่วโมง`
+          : `✅ OT request cancelled\n\n📅 Date: ${formattedDate}\n⏰ Time: ${timeRange}\n🕐 Hours: ${matchingRequest.hours || '-'}`;
+        return { detected: true, message };
+      } else {
+        const formattedDate = formatDate(parsedDate.toISOString().split('T')[0]);
+        const message = locale === 'th'
+          ? `❌ ไม่พบคำขอ OT วันที่ ${formattedDate} ที่รออนุมัติ`
+          : `❌ No pending OT request found for ${formattedDate}`;
+        return { detected: true, message };
+      }
+    }
+
+    // Could not parse - show usage
+    const message = locale === 'th'
+      ? `❌ ไม่เข้าใจรูปแบบ "${requestIdOrDate}"\n\n` +
+        `ตัวอย่าง:\n` +
+        `• /cancel-ot พรุ่งนี้\n` +
+        `• /cancel-ot 2024-12-10`
+      : `❌ Could not understand "${requestIdOrDate}"\n\n` +
+        `Examples:\n` +
+        `• /cancel-ot tomorrow\n` +
+        `• /cancel-ot 2024-12-10`;
+    return { detected: true, message };
+
+  } catch (error) {
+    console.error('[handleCancelOTCommand] Error:', error);
+    const message = locale === 'th'
+      ? 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่'
+      : 'System error. Please try again.';
+    return { detected: true, message };
+  }
+}
+
+// =============================
 // OT APPROVAL DETECTION
 // =============================
 
@@ -9790,6 +9992,20 @@ async function handleMessageEvent(event: LineEvent) {
         return;
       } catch (error) {
         console.error('[handleMessageEvent] Error sending cancel day-off response:', error);
+      }
+    }
+    
+    // Cancel OT Request Command Detection (DM only)
+    const cancelOTResult = await handleCancelOTCommand(event.message.text, user, lineUserId, attendanceLocale);
+    
+    if (cancelOTResult.detected) {
+      console.log(`[handleMessageEvent] Detected cancel OT command from user ${user.id}`);
+      try {
+        await replyToLine(event.replyToken, cancelOTResult.message);
+        console.log('[handleMessageEvent] Sent cancel OT response');
+        return;
+      } catch (error) {
+        console.error('[handleMessageEvent] Error sending cancel OT response:', error);
       }
     }
     
