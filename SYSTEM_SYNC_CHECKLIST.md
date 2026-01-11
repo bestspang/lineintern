@@ -116,6 +116,46 @@
 
 ---
 
+## 8. Portal Pages & portal-data Endpoints
+
+| Portal Page | portal-data Endpoint | Status |
+|-------------|---------------------|--------|
+| PortalHome | home-summary | ✅ |
+| CheckInOut | attendance-status | ✅ |
+| MyWorkHistory | attendance-history | ✅ |
+| MyPayroll | payroll | ✅ |
+| MyLeaveBalance | leave-balance | ✅ |
+| MySchedule | schedules | ✅ |
+| MyProfile | profile | ✅ |
+| RequestLeave | submit-leave | ✅ |
+| RequestOT | submit-ot, ot-requests | ✅ |
+| DepositUpload | - (uses deposit-submit) | ✅ |
+| RewardShop | - (direct queries) | ⏳ |
+
+### เมื่อเพิ่ม Portal Page ใหม่:
+1. เพิ่ม endpoint ใน portal-data/index.ts
+2. สร้าง page ใน src/pages/portal/
+3. ใช้ portalApi() แทน supabase.from() (ถ้าต้องการ bypass RLS)
+4. อัพเดท Help.tsx ถ้าเป็น user-facing feature
+5. เพิ่ม route ใน App.tsx
+
+---
+
+## 9. Help.tsx Content Sync
+
+| Component | สิ่งที่ต้อง sync |
+|-----------|-----------------|
+| quickActions | ต้องครอบคลุมทุก user-facing features |
+| faqs | ต้องตอบคำถามเกี่ยวกับทุก features |
+
+### เมื่อเพิ่ม Feature ใหม่ที่ User ใช้งาน:
+1. เพิ่ม Quick Action ใน Help.tsx (ถ้ามี dedicated page)
+2. เพิ่ม FAQ อธิบายวิธีใช้งาน
+3. ทั้ง Thai และ English versions
+4. ตรวจสอบ icon import
+
+---
+
 ## ⚠️ คำเตือนสำหรับ AI
 
 1. **อย่าแก้ไข functions ที่ทำงานดีอยู่แล้ว** โดยไม่จำเป็น
@@ -123,9 +163,12 @@
 3. **ใช้ explicit relationship syntax** เมื่อ query tables ที่มี multiple foreign keys
 4. **อัปเดต documentation** เมื่อเพิ่ม features ใหม่
 5. **ทดสอบก่อน deploy** โดยเฉพาะเมื่อแก้ไข edge functions
+6. **อัพเดท Help.tsx** เมื่อเพิ่ม Portal features ใหม่
+7. **เพิ่ม command ใน 3 ที่** เมื่อเพิ่ม bot command: parser, handler, bot_commands table
 
 ---
 
 ## Last Updated
+- 2026-01-11: Added Portal Pages sync (Section 8) and Help.tsx sync (Section 9), updated warnings
 - 2026-01-08: Added Deposit/Reimbursement Detection section (Section 7)
 - 2026-01-07: Initial version - Added Portal Access Mode 'both' support

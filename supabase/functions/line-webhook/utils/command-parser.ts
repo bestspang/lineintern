@@ -32,7 +32,7 @@ export interface ParsedCommand {
     | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
     | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | 'cancel_dayoff' 
-    | 'memory_summary' | 'receipt' | 'receipt_summary' | 'businesses' 
+    | 'cancel_ot' | 'memory_summary' | 'receipt' | 'receipt_summary' | 'businesses' 
     | 'export_month' | 'this_month' | 'set_default_business' | null;
   userQuestion: string;
   rawText: string;
@@ -147,6 +147,14 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     '/ยกเลิกวันหยุด': 'cancel_dayoff',
     '/canceldayoff': 'cancel_dayoff',
     '/ยกเลิกขอหยุด': 'cancel_dayoff',
+    
+    // Cancel OT
+    '/cancel-ot': 'cancel_ot',
+    '/cancelot': 'cancel_ot',
+    '/ยกเลิกot': 'cancel_ot',
+    '/ยกเลิกโอที': 'cancel_ot',
+    'ยกเลิก ot': 'cancel_ot',
+    'ยกเลิกโอที': 'cancel_ot',
     
     // Memory Summary (Admin/Owner only)
     '/memorysummary': 'memory_summary',

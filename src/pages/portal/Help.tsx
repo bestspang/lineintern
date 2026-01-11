@@ -4,7 +4,7 @@ import { usePortal } from '@/contexts/PortalContext';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
-  CalendarDays, Wallet, Trophy
+  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare
 } from 'lucide-react';
 
 export default function Help() {
@@ -58,6 +58,22 @@ export default function Help() {
     {
       question: 'Leaderboard คืออะไร?',
       answer: 'แสดงอันดับ Happy Points ของพนักงานในสาขาเดียวกัน แข่งขันกับเพื่อนร่วมงานเพื่อรับรางวัล'
+    },
+    {
+      question: 'ฉันจะส่งใบฝากเงินได้อย่างไร?',
+      answer: 'กดเมนู "ฝากเงิน" ถ่ายรูปหน้าเพื่อยืนยันตัวตน แล้วถ่ายรูปใบฝากเงิน ระบบจะดึงข้อมูลให้อัตโนมัติ'
+    },
+    {
+      question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?',
+      answer: 'ใช้คำสั่ง "/cancel-ot" หรือ "ยกเลิกโอที" ในแชท LINE หากคำขอยังรออนุมัติ'
+    },
+    {
+      question: 'ดูประวัติการเข้างานได้ที่ไหน?',
+      answer: 'กดเมนู "ประวัติการเข้างาน" เพื่อดูบันทึกการเช็คอิน/เอาท์ และสถานะการทำงานย้อนหลัง'
+    },
+    {
+      question: 'หน้าอนุมัติใช้ทำอะไร?',
+      answer: 'สำหรับหัวหน้างาน ใช้อนุมัติ/ปฏิเสธคำขอลา, OT, การลาก่อนเวลา และการแลกของรางวัลของทีม'
     }
   ] : [
     {
@@ -107,6 +123,22 @@ export default function Help() {
     {
       question: 'What is the Leaderboard?',
       answer: 'Shows Happy Points rankings of employees in your branch. Compete with colleagues to earn rewards.'
+    },
+    {
+      question: 'How do I submit a deposit slip?',
+      answer: 'Press "Deposit" menu, take a face photo for verification, then capture the deposit slip. System will auto-extract data.'
+    },
+    {
+      question: 'How do I cancel an OT request?',
+      answer: 'Use "/cancel-ot" or "ยกเลิกโอที" command in LINE chat if the request is still pending.'
+    },
+    {
+      question: 'Where can I view my work history?',
+      answer: 'Press "Work History" menu to see your check-in/out records and attendance status.'
+    },
+    {
+      question: 'What is the Approvals page for?',
+      answer: 'For supervisors to approve/reject leave requests, OT, early leave, and reward redemptions from their team.'
     }
   ];
 
@@ -170,6 +202,24 @@ export default function Help() {
       title: locale === 'th' ? 'โปรไฟล์' : 'My Profile',
       description: locale === 'th' ? 'ดูข้อมูลส่วนตัว' : 'View your profile',
       path: '/portal/my-profile'
+    },
+    {
+      icon: Banknote,
+      title: locale === 'th' ? 'ฝากเงิน' : 'Deposit',
+      description: locale === 'th' ? 'ส่งใบฝากเงินประจำวัน' : 'Submit daily deposit slip',
+      path: '/portal/deposit-upload'
+    },
+    {
+      icon: History,
+      title: locale === 'th' ? 'ประวัติการเข้างาน' : 'Work History',
+      description: locale === 'th' ? 'ดูบันทึกการเข้างานย้อนหลัง' : 'View attendance history',
+      path: '/portal/my-history'
+    },
+    {
+      icon: CheckSquare,
+      title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
+      description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
+      path: '/portal/approvals'
     }
   ];
 
