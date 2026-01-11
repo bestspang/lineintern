@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, Calendar, ChevronRight, ClipboardList, Gift, Banknote } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 
 interface PendingCounts {
   ot: number;
@@ -24,120 +24,28 @@ export default function Approvals() {
   const fetchCounts = useCallback(async () => {
     if (!employee?.id) return;
 
-    // Build query based on role
-    // Admin: see all, Manager: see only their branch
-    let otCount = 0;
-    let leaveCount = 0;
-    let earlyLeaveCount = 0;
-    let redemptionsCount = 0;
-    let depositsCount = 0;
-
-    if (isAdmin) {
-      // Admin sees all pending requests
-      const [otRes, leaveRes, earlyRes, redemptionRes, depositRes] = await Promise.all([
-        supabase
-          .from('overtime_requests')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        supabase
-          .from('leave_requests')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        supabase
-          .from('early_leave_requests')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        supabase
-          .from('point_redemptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        supabase
-          .from('daily_deposits')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-      ]);
-      otCount = otRes.count || 0;
-      leaveCount = leaveRes.count || 0;
-      earlyLeaveCount = earlyRes.count || 0;
-      redemptionsCount = redemptionRes.count || 0;
-      depositsCount = depositRes.count || 0;
-    } else if (isManager && employee.branch_id) {
-      // Manager sees only their branch's requests
-      // Need to join with employees table to filter by branch
-      const [otRes, leaveRes, earlyRes, depositRes] = await Promise.all([
-        supabase
-          .from('overtime_requests')
-          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-          .eq('status', 'pending')
-          .eq('employee.branch_id', employee.branch_id),
-        supabase
-          .from('leave_requests')
-          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-          .eq('status', 'pending')
-          .eq('employee.branch_id', employee.branch_id),
-        supabase
-          .from('early_leave_requests')
-          .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-          .eq('status', 'pending')
-          .eq('employee.branch_id', employee.branch_id),
-        supabase
-          .from('daily_deposits')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending')
-          .eq('branch_id', employee.branch_id),
-      ]);
-      otCount = otRes.count || 0;
-      leaveCount = leaveRes.count || 0;
-      earlyLeaveCount = earlyRes.count || 0;
-      depositsCount = depositRes.count || 0;
-    }
-
-    setCounts({
-      ot: otCount,
-      leave: leaveCount,
-      earlyLeave: earlyLeaveCount,
-      redemptions: redemptionsCount,
-      deposits: depositsCount,
+    const { data, error } = await portalApi<PendingCounts>({
+      endpoint: 'approval-counts',
+      employee_id: employee.id,
+      params: {
+        branchId: employee.branch_id,
+        isAdmin: isAdmin
+      }
     });
+
+    if (!error && data) {
+      setCounts(data);
+    }
     setLoading(false);
-  }, [employee?.id, employee?.branch_id, isAdmin, isManager]);
+  }, [employee?.id, employee?.branch_id, isAdmin]);
 
   useEffect(() => {
     fetchCounts();
-
-    // Subscribe to realtime updates for all request tables
-    const otChannel = supabase
-      .channel('portal-approvals-ot')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'overtime_requests' },
-        () => fetchCounts()
-      )
-      .subscribe();
-
-    const leaveChannel = supabase
-      .channel('portal-approvals-leave')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'leave_requests' },
-        () => fetchCounts()
-      )
-      .subscribe();
-
-    const earlyLeaveChannel = supabase
-      .channel('portal-approvals-early-leave')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'early_leave_requests' },
-        () => fetchCounts()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(otChannel);
-      supabase.removeChannel(leaveChannel);
-      supabase.removeChannel(earlyLeaveChannel);
-    };
+    
+    // Refresh counts periodically (every 30 seconds)
+    const interval = setInterval(fetchCounts, 30000);
+    
+    return () => clearInterval(interval);
   }, [fetchCounts]);
 
   const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.redemptions + counts.deposits;

@@ -1,5 +1,13 @@
+/**
+ * ⚠️ PORTAL DATA API - CRITICAL TIMEZONE HANDLING
+ * Always use getBangkokDateString() from timezone.ts, NEVER new Date().toISOString().split('T')[0]
+ * 
+ * This edge function bypasses RLS by using service role key.
+ * All portal pages should use portalApi() helper to call this function.
+ */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,15 +74,16 @@ serve(async (req) => {
       }
 
       case 'today-status': {
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
         
         // Get today's logs
         const logsResult = await supabase
           .from('attendance_logs')
           .select('*')
           .eq('employee_id', employee_id)
-          .gte('server_time', `${today}T00:00:00`)
-          .lte('server_time', `${today}T23:59:59`)
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
         // Get today's work session
@@ -129,7 +138,7 @@ serve(async (req) => {
           .eq('employee_id', employee_id)
           .maybeSingle();
 
-        // Get current month work sessions
+        // Get current month work sessions (use Bangkok timezone for month boundaries)
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -158,12 +167,22 @@ serve(async (req) => {
           .eq('status', 'approved')
           .gte('start_date', monthStart.toISOString().split('T')[0])
           .lte('end_date', monthEnd.toISOString().split('T')[0]);
+        
+        // Get attendance logs for late detection
+        const logsResult = await supabase
+          .from('attendance_logs')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', monthStart.toISOString())
+          .lte('server_time', now.toISOString());
 
         data = {
           settings: settingsResult.data,
           sessions: sessionsResult.data || [],
           overtime: otResult.data || [],
-          leaves: leaveResult.data || []
+          leaves: leaveResult.data || [],
+          checkInLogs: logsResult.data || []
         };
         error = settingsResult.error || sessionsResult.error;
         break;
@@ -187,7 +206,7 @@ serve(async (req) => {
           .from('point_redemptions')
           .select(`
             *,
-            reward:rewards(*)
+            reward:point_rewards(*)
           `)
           .eq('employee_id', employee_id)
           .eq('status', 'pending')
@@ -253,8 +272,37 @@ serve(async (req) => {
         break;
       }
 
+      // NEW: Full profile with schedules
+      case 'profile-full': {
+        // Get employee with branch and role
+        const empResult = await supabase
+          .from('employees')
+          .select(`
+            *,
+            branch:branches!employees_branch_id_fkey(*),
+            role:employee_roles(*)
+          `)
+          .eq('id', employee_id)
+          .maybeSingle();
+        
+        // Get work schedules
+        const schedulesResult = await supabase
+          .from('work_schedules')
+          .select('day_of_week, is_working_day, start_time, end_time, expected_hours')
+          .eq('employee_id', employee_id)
+          .order('day_of_week');
+
+        data = {
+          employee: empResult.data,
+          schedules: schedulesResult.data || []
+        };
+        error = empResult.error;
+        break;
+      }
+
       case 'home-summary': {
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
         
         // Get points
         const pointsResult = await supabase
@@ -268,8 +316,8 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('event_type, server_time, is_overtime')
           .eq('employee_id', employee_id)
-          .gte('server_time', `${today}T00:00:00`)
-          .lte('server_time', `${today}T23:59:59`)
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
         // Get pending approvals count (for managers)
@@ -309,7 +357,8 @@ serve(async (req) => {
         }
 
         const branchId = empResult.data.branch_id;
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
 
         // Get all employees in the branch
         const employeesResult = await supabase
@@ -325,8 +374,8 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('employee_id, event_type, server_time')
           .in('employee_id', employeeIds)
-          .gte('server_time', `${today}T00:00:00`)
-          .lte('server_time', `${today}T23:59:59`)
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
         data = {
@@ -338,7 +387,8 @@ serve(async (req) => {
       }
 
       case 'today-photos': {
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
         const branchId = params?.branchId;
         
         let query = supabase
@@ -356,8 +406,8 @@ serve(async (req) => {
             )
           `)
           .not('photo_url', 'is', null)
-          .gte('server_time', `${today}T00:00:00`)
-          .lte('server_time', `${today}T23:59:59`)
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: false });
 
         if (branchId) {
@@ -434,7 +484,8 @@ serve(async (req) => {
       }
 
       case 'attendance-status': {
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
         
         // Get can check-in/out status via RPC
         const [checkInResult, checkOutResult] = await Promise.all([
@@ -442,18 +493,18 @@ serve(async (req) => {
           supabase.rpc('can_employee_check_out', { p_employee_id: employee_id }),
         ]);
 
-        // Get today's logs
+        // Get today's logs with proper timezone
         const logsResult = await supabase
           .from('attendance_logs')
           .select('event_type, server_time, branch_id')
           .eq('employee_id', employee_id)
-          .gte('server_time', `${today}T00:00:00`)
-          .lt('server_time', `${today}T23:59:59`)
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .lt('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
         const todayLogs = logsResult.data || [];
-        const checkInLog = todayLogs.find((l: any) => l.event_type === 'check-in');
-        const checkOutLog = todayLogs.find((l: any) => l.event_type === 'check-out');
+        const checkInLog = todayLogs.find((l: any) => l.event_type === 'check-in' || l.event_type === 'check_in');
+        const checkOutLog = todayLogs.find((l: any) => l.event_type === 'check-out' || l.event_type === 'check_out');
 
         // Get branch name if checked in
         let branchName: string | null = null;
@@ -517,6 +568,301 @@ serve(async (req) => {
           leaveType,
           hasOT
         };
+        break;
+      }
+
+      // ========== NEW ENDPOINTS FOR PORTAL MIGRATION ==========
+
+      // Approval counts for Approvals.tsx
+      case 'approval-counts': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        let otQuery = supabase
+          .from('overtime_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
+        let leaveQuery = supabase
+          .from('leave_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
+        let earlyLeaveQuery = supabase
+          .from('early_leave_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
+        let redemptionsQuery = supabase
+          .from('point_redemptions')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
+        let depositsQuery = supabase
+          .from('daily_deposits')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
+        // Manager filter by branch (need to filter after fetch for requests without direct branch_id)
+        if (!isAdmin && branchId) {
+          depositsQuery = depositsQuery.eq('branch_id', branchId);
+        }
+
+        const [otRes, leaveRes, earlyRes, redemptionRes, depositRes] = await Promise.all([
+          otQuery,
+          leaveQuery,
+          earlyLeaveQuery,
+          redemptionsQuery,
+          depositsQuery
+        ]);
+
+        // For manager, we need to filter OT/Leave/EarlyLeave by fetching with branch
+        if (!isAdmin && branchId) {
+          const [otBranchRes, leaveBranchRes, earlyBranchRes] = await Promise.all([
+            supabase
+              .from('overtime_requests')
+              .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+              .eq('status', 'pending')
+              .eq('employee.branch_id', branchId),
+            supabase
+              .from('leave_requests')
+              .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+              .eq('status', 'pending')
+              .eq('employee.branch_id', branchId),
+            supabase
+              .from('early_leave_requests')
+              .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+              .eq('status', 'pending')
+              .eq('employee.branch_id', branchId),
+          ]);
+
+          data = {
+            ot: otBranchRes.count || 0,
+            leave: leaveBranchRes.count || 0,
+            earlyLeave: earlyBranchRes.count || 0,
+            redemptions: 0, // Manager doesn't see redemptions
+            deposits: depositRes.count || 0
+          };
+        } else {
+          data = {
+            ot: otRes.count || 0,
+            leave: leaveRes.count || 0,
+            earlyLeave: earlyRes.count || 0,
+            redemptions: redemptionRes.count || 0,
+            deposits: depositRes.count || 0
+          };
+        }
+        break;
+      }
+
+      // Pending OT requests for ApproveOT.tsx
+      case 'pending-ot-requests': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        let query = supabase
+          .from('overtime_requests')
+          .select(`
+            id, request_date, estimated_hours, reason, status, created_at,
+            employee:employees!overtime_requests_employee_id_fkey (
+              id, full_name, code, branch_id,
+              branch:branches!employees_branch_id_fkey ( name )
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
+
+        const { data: requests, error: reqError } = await query;
+
+        if (reqError) {
+          error = reqError;
+        } else {
+          // Filter by branch for managers
+          let filtered = requests || [];
+          if (!isAdmin && branchId) {
+            filtered = filtered.filter((r: any) => r.employee?.branch_id === branchId);
+          }
+          data = filtered;
+        }
+        break;
+      }
+
+      // Approve/Reject OT request
+      case 'approve-ot': {
+        const { requestId, approved, approverEmployeeId } = params;
+
+        const { error: updateError } = await supabase
+          .from('overtime_requests')
+          .update({
+            status: approved ? 'approved' : 'rejected',
+            approved_at: new Date().toISOString(),
+            approved_by_admin_id: approverEmployeeId,
+          })
+          .eq('id', requestId);
+
+        if (updateError) {
+          error = updateError;
+        } else {
+          data = { success: true };
+        }
+        break;
+      }
+
+      // Pending leave requests for ApproveLeave.tsx
+      case 'pending-leave-requests': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        const { data: requests, error: reqError } = await supabase
+          .from('leave_requests')
+          .select(`
+            id, leave_type, start_date, end_date, reason, status, total_days, created_at,
+            employee:employees!leave_requests_employee_id_fkey (
+              id, full_name, code, branch_id,
+              branch:branches!employees_branch_id_fkey ( name )
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
+
+        if (reqError) {
+          error = reqError;
+        } else {
+          let filtered = requests || [];
+          if (!isAdmin && branchId) {
+            filtered = filtered.filter((r: any) => r.employee?.branch_id === branchId);
+          }
+          data = filtered;
+        }
+        break;
+      }
+
+      // Approve/Reject leave request
+      case 'approve-leave': {
+        const { requestId, approved, approverEmployeeId } = params;
+
+        const { error: updateError } = await supabase
+          .from('leave_requests')
+          .update({
+            status: approved ? 'approved' : 'rejected',
+            approved_at: new Date().toISOString(),
+            approved_by_admin_id: approverEmployeeId,
+          })
+          .eq('id', requestId);
+
+        if (updateError) {
+          error = updateError;
+        } else {
+          data = { success: true };
+        }
+        break;
+      }
+
+      // Pending early leave requests for ApproveEarlyLeave.tsx
+      case 'pending-early-leave-requests': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        const { data: requests, error: reqError } = await supabase
+          .from('early_leave_requests')
+          .select(`
+            id, request_date, leave_reason, leave_type, actual_work_hours, required_work_hours, status, created_at,
+            employee:employees!early_leave_requests_employee_id_fkey (
+              id, full_name, code, branch_id,
+              branch:branches!employees_branch_id_fkey ( name )
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
+
+        if (reqError) {
+          error = reqError;
+        } else {
+          let filtered = requests || [];
+          if (!isAdmin && branchId) {
+            filtered = filtered.filter((r: any) => r.employee?.branch_id === branchId);
+          }
+          data = filtered;
+        }
+        break;
+      }
+
+      // Approve/Reject early leave request
+      case 'approve-early-leave': {
+        const { requestId, approved, approverEmployeeId } = params;
+
+        const { error: updateError } = await supabase
+          .from('early_leave_requests')
+          .update({
+            status: approved ? 'approved' : 'rejected',
+            approved_at: new Date().toISOString(),
+            approved_by_admin_id: approverEmployeeId,
+          })
+          .eq('id', requestId);
+
+        if (updateError) {
+          error = updateError;
+        } else {
+          data = { success: true };
+        }
+        break;
+      }
+
+      // Available rewards for RewardShop.tsx
+      case 'rewards-list': {
+        const result = await supabase
+          .from('point_rewards')
+          .select('*')
+          .eq('is_active', true)
+          .order('point_cost', { ascending: true });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Points balance for RewardShop.tsx
+      case 'my-points-balance': {
+        const result = await supabase
+          .from('happy_points')
+          .select('point_balance, current_balance, total_earned, current_streak')
+          .eq('employee_id', employee_id)
+          .maybeSingle();
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Leaderboard for PointLeaderboard.tsx
+      case 'leaderboard': {
+        const branchId = params?.branchId;
+        const limit = params?.limit || 20;
+
+        let query = supabase
+          .from('happy_points')
+          .select(`
+            id,
+            employee_id,
+            point_balance,
+            current_streak,
+            employee:employees!inner(
+              id,
+              full_name,
+              nickname,
+              branch_id
+            )
+          `)
+          .order('point_balance', { ascending: false })
+          .limit(limit);
+
+        if (branchId) {
+          query = query.eq('employee.branch_id', branchId);
+        }
+
+        const result = await query;
+        data = result.data;
+        error = result.error;
         break;
       }
 

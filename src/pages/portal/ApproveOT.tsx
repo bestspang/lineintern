@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Check, X, Clock } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, parseISO } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -35,73 +35,46 @@ export default function ApproveOT() {
   const [processing, setProcessing] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
-    // Build query - join with employees to get branch info
-    let query = supabase
-      .from('overtime_requests')
-      .select(`
-        id, request_date, estimated_hours, reason, status, created_at,
-        employee:employees!overtime_requests_employee_id_fkey (
-          id, full_name, code, branch_id,
-          branch:branches!employees_branch_id_fkey ( name )
-        )
-      `)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
+    if (!employee?.id) return;
 
-    // Manager can only see their branch's requests
-    if (!isAdmin && employee?.branch_id) {
-      query = query.eq('employee.branch_id', employee.branch_id);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await portalApi<OTRequest[]>({
+      endpoint: 'pending-ot-requests',
+      employee_id: employee.id,
+      params: {
+        branchId: employee.branch_id,
+        isAdmin: isAdmin
+      }
+    });
 
     if (!error && data) {
-      // Filter out any null employees (shouldn't happen but type safety)
-      const validData = data.filter(d => d.employee !== null) as unknown as OTRequest[];
-      setRequests(validData);
+      setRequests(data.filter(d => d.employee !== null));
     }
     setLoading(false);
-  }, [isAdmin, employee?.branch_id]);
+  }, [employee?.id, employee?.branch_id, isAdmin]);
 
-  // Initial fetch + realtime subscription
   useEffect(() => {
     fetchRequests();
-
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel('overtime-requests-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'overtime_requests',
-          filter: 'status=eq.pending'
-        },
-        () => {
-          // Refetch on any change to pending requests
-          fetchRequests();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchRequests, 30000);
+    return () => clearInterval(interval);
   }, [fetchRequests]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
+    if (!employee?.id) return;
+    
     setProcessing(requestId);
 
     try {
-      const { error } = await supabase
-        .from('overtime_requests')
-        .update({
-          status: approved ? 'approved' : 'rejected',
-          approved_at: new Date().toISOString(),
-          approved_by_admin_id: employee?.id,
-        })
-        .eq('id', requestId);
+      const { error } = await portalApi({
+        endpoint: 'approve-ot',
+        employee_id: employee.id,
+        params: {
+          requestId,
+          approved,
+          approverEmployeeId: employee.id
+        }
+      });
 
       if (error) throw error;
 
