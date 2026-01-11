@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Check, X, Clock } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, parseISO } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -37,74 +37,48 @@ export default function ApproveEarlyLeave() {
   const [processing, setProcessing] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
-    if (!employee) return;
+    if (!employee?.id) return;
     
-    let query = supabase
-      .from('early_leave_requests')
-      .select(`
-        id, request_date, leave_reason, leave_type, actual_work_hours, required_work_hours, status, created_at,
-        employee:employees!early_leave_requests_employee_id_fkey (
-          id, full_name, code, branch_id,
-          branch:branches!employees_branch_id_fkey ( name )
-        )
-      `)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-
-    const { data, error } = await query;
+    const { data, error } = await portalApi<EarlyLeaveRequest[]>({
+      endpoint: 'pending-early-leave-requests',
+      employee_id: employee.id,
+      params: {
+        branchId: employee.branch_id,
+        isAdmin: isAdmin
+      }
+    });
 
     if (!error && data) {
-      // Filter by branch for managers (not admin)
-      let filtered = data as unknown as EarlyLeaveRequest[];
-      if (isManager && !isAdmin && employee.branch_id) {
-        filtered = filtered.filter(req => req.employee?.branch_id === employee.branch_id);
-      }
-      setRequests(filtered);
+      setRequests(data.filter(d => d.employee !== null));
     }
     setLoading(false);
-  }, [employee, isManager, isAdmin]);
+  }, [employee?.id, employee?.branch_id, isAdmin]);
 
-  // Initial fetch + realtime subscription
   useEffect(() => {
     if (employee) {
       fetchRequests();
     }
-
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel('early-leave-requests-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'early_leave_requests',
-          filter: 'status=eq.pending'
-        },
-        () => {
-          // Refetch on any change to pending requests
-          fetchRequests();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchRequests, 30000);
+    return () => clearInterval(interval);
   }, [employee, fetchRequests]);
 
   const handleApproval = async (requestId: string, approved: boolean) => {
+    if (!employee?.id) return;
+    
     setProcessing(requestId);
 
     try {
-      const { error } = await supabase
-        .from('early_leave_requests')
-        .update({
-          status: approved ? 'approved' : 'rejected',
-          approved_at: new Date().toISOString(),
-          approved_by_admin_id: employee?.id,
-        })
-        .eq('id', requestId);
+      const { error } = await portalApi({
+        endpoint: 'approve-early-leave',
+        employee_id: employee.id,
+        params: {
+          requestId,
+          approved,
+          approverEmployeeId: employee.id
+        }
+      });
 
       if (error) throw error;
 

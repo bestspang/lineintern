@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
+import { portalApi } from '@/lib/portal-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,42 +28,50 @@ interface Reward {
   cooldown_days: number;
 }
 
+interface PointsBalance {
+  point_balance?: number;
+  current_balance?: number;
+  total_earned?: number;
+  current_streak?: number;
+}
+
 export default function RewardShop() {
   const { employee, locale } = usePortal();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
 
+  // Use portalApi for points balance
   const { data: happyPoints } = useQuery({
     queryKey: ['my-happy-points', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return null;
-      const { data, error } = await supabase
-        .from('happy_points')
-        .select('point_balance')
-        .eq('employee_id', employee.id)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') throw error;
+      const { data, error } = await portalApi<PointsBalance>({
+        endpoint: 'my-points-balance',
+        employee_id: employee.id
+      });
+      if (error) throw error;
       return data;
     },
     enabled: !!employee?.id,
   });
 
+  // Use portalApi for rewards list
   const { data: rewards, isLoading } = useQuery({
     queryKey: ['available-rewards'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('point_rewards')
-        .select('*')
-        .eq('is_active', true)
-        .order('point_cost', { ascending: true });
-      
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<Reward[]>({
+        endpoint: 'rewards-list',
+        employee_id: employee.id
+      });
       if (error) throw error;
-      return data as Reward[];
+      return data || [];
     },
+    enabled: !!employee?.id,
   });
 
+  // Redemption still uses edge function directly (has complex logic)
   const redeemMutation = useMutation({
     mutationFn: async (rewardId: string) => {
       const response = await supabase.functions.invoke('point-redemption', {
@@ -97,7 +106,7 @@ export default function RewardShop() {
     },
   });
 
-  const balance = happyPoints?.point_balance || 0;
+  const balance = happyPoints?.point_balance || happyPoints?.current_balance || 0;
 
   const groupedRewards = rewards?.reduce((acc, reward) => {
     if (!acc[reward.category]) acc[reward.category] = [];

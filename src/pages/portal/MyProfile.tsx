@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { User, Building2, Clock, Calendar, Link2, Link2Off, Loader2, CheckCircle2 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
+import { portalApi } from '@/lib/portal-api';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -16,12 +17,9 @@ interface WorkSchedule {
   expected_hours: number | null;
 }
 
-interface EmployeeDetails {
-  shift_start_time: string | null;
-  shift_end_time: string | null;
-  hours_per_day: number | null;
-  working_time_type: string | null;
-  flexible_day_off_enabled: boolean | null;
+interface ProfileData {
+  employee: any;
+  schedules: WorkSchedule[];
 }
 
 interface GoogleConnection {
@@ -34,7 +32,7 @@ interface GoogleConnection {
 export default function MyProfile() {
   const { employee, locale } = usePortal();
   const [schedules, setSchedules] = useState<WorkSchedule[]>([]);
-  const [details, setDetails] = useState<EmployeeDetails | null>(null);
+  const [employeeDetails, setEmployeeDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [googleConnection, setGoogleConnection] = useState<GoogleConnection | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -43,30 +41,19 @@ export default function MyProfile() {
     const fetchData = async () => {
       if (!employee?.id) return;
 
-      // Fetch work schedules
-      const { data: scheduleData } = await supabase
-        .from('work_schedules')
-        .select('day_of_week, is_working_day, start_time, end_time, expected_hours')
-        .eq('employee_id', employee.id)
-        .order('day_of_week');
+      // Use portalApi for profile data
+      const { data, error } = await portalApi<ProfileData>({
+        endpoint: 'profile-full',
+        employee_id: employee.id
+      });
 
-      if (scheduleData) {
-        setSchedules(scheduleData);
-      }
-
-      // Fetch employee details
-      const { data: empData } = await supabase
-        .from('employees')
-        .select('shift_start_time, shift_end_time, hours_per_day, working_time_type, flexible_day_off_enabled, line_user_id')
-        .eq('id', employee.id)
-        .single();
-
-      if (empData) {
-        setDetails(empData);
+      if (!error && data) {
+        setSchedules(data.schedules || []);
+        setEmployeeDetails(data.employee);
         
         // Check Google connection if we have LINE user ID
-        if (empData.line_user_id) {
-          checkGoogleConnection(empData.line_user_id);
+        if (data.employee?.line_user_id) {
+          checkGoogleConnection(data.employee.line_user_id);
         }
       }
 
@@ -78,6 +65,7 @@ export default function MyProfile() {
 
   const checkGoogleConnection = async (lineUserId: string) => {
     try {
+      // Google OAuth check still needs direct supabase.functions.invoke
       const { data, error } = await supabase.functions.invoke('google-oauth', {
         body: { action: 'check_connection', lineUserId }
       });
@@ -100,6 +88,7 @@ export default function MyProfile() {
     try {
       const redirectUri = `${window.location.origin}/portal/my-profile`;
       
+      // Google OAuth needs direct supabase.functions.invoke
       const { data, error } = await supabase.functions.invoke('google-oauth', {
         body: { 
           action: 'get_auth_url', 
@@ -200,6 +189,8 @@ export default function MyProfile() {
       </div>
     );
   }
+
+  const details = employeeDetails || employee;
 
   return (
     <div className="space-y-6">

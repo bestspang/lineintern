@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, LogIn, LogOut, AlertCircle, Calendar } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
-import { format, subDays, parseISO } from 'date-fns';
+import { portalApi } from '@/lib/portal-api';
+import { format, parseISO } from 'date-fns';
 import { formatBangkokTime, formatBangkokISODate, getBangkokHoursMinutes } from '@/lib/timezone';
 import { th, enUS } from 'date-fns/locale';
 
@@ -36,14 +36,11 @@ export default function MyWorkHistory() {
     const fetchHistory = async () => {
       if (!employee?.id) return;
 
-      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
-
-      const { data, error } = await supabase
-        .from('attendance_logs')
-        .select('id, event_type, server_time, is_flagged, flag_reason, is_overtime, source')
-        .eq('employee_id', employee.id)
-        .gte('server_time', thirtyDaysAgo)
-        .order('server_time', { ascending: false });
+      const { data, error } = await portalApi<AttendanceLog[]>({
+        endpoint: 'attendance-history',
+        employee_id: employee.id,
+        params: { days: 30 }
+      });
 
       if (!error && data) {
         setLogs(data);

@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Trophy, Medal, Award, Crown, Flame } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { cn } from '@/lib/utils';
 
 interface LeaderboardEntry {
@@ -15,6 +15,19 @@ interface LeaderboardEntry {
   points: number;
   currentStreak: number;
   rank: number;
+}
+
+interface LeaderboardApiResponse {
+  id: string;
+  employee_id: string;
+  point_balance: number;
+  current_streak: number;
+  employee: {
+    id: string;
+    full_name: string;
+    nickname: string | null;
+    branch_id: string | null;
+  };
 }
 
 export default function PointLeaderboard() {
@@ -28,30 +41,20 @@ export default function PointLeaderboard() {
     setLoading(true);
 
     try {
-      // Fetch top 10 by points within same branch
-      const { data } = await supabase
-        .from('happy_points')
-        .select(`
-          id,
-          employee_id,
-          point_balance,
-          current_streak,
-          employees!inner(
-            id,
-            name,
-            line_user_id,
-            branch_id
-          )
-        `)
-        .eq('employees.branch_id', employee.branch?.id)
-        .order('point_balance', { ascending: false })
-        .limit(20);
+      const { data, error } = await portalApi<LeaderboardApiResponse[]>({
+        endpoint: 'leaderboard',
+        employee_id: employee.id,
+        params: {
+          branchId: employee.branch?.id,
+          limit: 20
+        }
+      });
 
-      if (data) {
-        const entries: LeaderboardEntry[] = data.map((item: any, index: number) => ({
+      if (!error && data) {
+        const entries: LeaderboardEntry[] = data.map((item, index) => ({
           id: item.id,
           employeeId: item.employee_id,
-          name: item.employees.name,
+          name: item.employee?.full_name || item.employee?.nickname || 'Unknown',
           points: item.point_balance || 0,
           currentStreak: item.current_streak || 0,
           rank: index + 1,

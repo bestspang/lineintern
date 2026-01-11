@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Wallet, Clock, AlertCircle, Calendar, TrendingUp, Banknote } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format, startOfMonth, isWeekend } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -22,6 +22,14 @@ interface PayrollData {
   estimatedEarnings: number;
 }
 
+interface PayrollApiResponse {
+  settings: any;
+  sessions: any[];
+  overtime: any[];
+  leaves: any[];
+  checkInLogs: any[];
+}
+
 export default function MyPayroll() {
   const { employee, locale } = usePortal();
   const [loading, setLoading] = useState(true);
@@ -32,50 +40,19 @@ export default function MyPayroll() {
     setLoading(true);
 
     try {
+      const { data, error } = await portalApi<PayrollApiResponse>({
+        endpoint: 'payroll',
+        employee_id: employee.id
+      });
+
+      if (error || !data) {
+        console.error('Error fetching payroll:', error);
+        setLoading(false);
+        return;
+      }
+
       const today = new Date();
       const monthStart = startOfMonth(today);
-
-      // Fetch payroll settings
-      const { data: settings } = await supabase
-        .from('employee_payroll_settings')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .single();
-
-      // Fetch work sessions
-      const { data: sessions } = await supabase
-        .from('work_sessions')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .gte('work_date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('work_date', format(today, 'yyyy-MM-dd'));
-
-      // Fetch attendance logs for late count
-      const { data: logs } = await supabase
-        .from('attendance_logs')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .eq('event_type', 'check_in')
-        .gte('server_time', monthStart.toISOString())
-        .lte('server_time', today.toISOString());
-
-      // Fetch approved OT
-      const { data: otRequests } = await supabase
-        .from('overtime_requests')
-        .select('estimated_hours, status')
-        .eq('employee_id', employee.id)
-        .eq('status', 'approved')
-        .gte('request_date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('request_date', format(today, 'yyyy-MM-dd'));
-
-      // Fetch leaves
-      const { data: leaves } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .eq('status', 'approved')
-        .gte('start_date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('start_date', format(today, 'yyyy-MM-dd'));
 
       // Calculate expected work days (excluding weekends)
       let expectedWorkDays = 0;
@@ -84,13 +61,13 @@ export default function MyPayroll() {
       }
 
       // Calculate totals
-      const totalMinutes = sessions?.reduce((sum, s) => sum + (s.billable_minutes || 0), 0) || 0;
-      const otMinutes = (otRequests?.reduce((sum, o) => sum + (o.estimated_hours || 0), 0) || 0) * 60;
-      const workDays = sessions?.length || 0;
-      const leaveDays = leaves?.length || 0;
+      const totalMinutes = data.sessions?.reduce((sum, s) => sum + (s.billable_minutes || 0), 0) || 0;
+      const otMinutes = (data.overtime?.reduce((sum, o) => sum + (o.estimated_hours || 0), 0) || 0) * 60;
+      const workDays = data.sessions?.length || 0;
+      const leaveDays = data.leaves?.length || 0;
 
-      // Late detection (simplified)
-      const lateDays = logs?.filter(l => {
+      // Late detection (simplified - check-in after 9am)
+      const lateDays = data.checkInLogs?.filter(l => {
         const checkInHour = new Date(l.server_time).getHours();
         return checkInHour >= 9;
       }).length || 0;
@@ -98,9 +75,9 @@ export default function MyPayroll() {
       const absentDays = Math.max(0, expectedWorkDays - workDays - leaveDays);
 
       // Calculate estimated earnings
-      const baseSalary = settings?.salary_per_month || 0;
-      const hourlyRate = settings?.hourly_rate || (baseSalary / 30 / 8);
-      const payType = settings?.pay_type || 'monthly';
+      const baseSalary = data.settings?.salary_per_month || 0;
+      const hourlyRate = data.settings?.hourly_rate || (baseSalary / 30 / 8);
+      const payType = data.settings?.pay_type || 'monthly';
 
       let estimatedEarnings = 0;
       if (payType === 'monthly') {
