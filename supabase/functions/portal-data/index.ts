@@ -866,6 +866,209 @@ serve(async (req) => {
         break;
       }
 
+      // ========== RECEIPT & REDEMPTION ENDPOINTS ==========
+
+      // My businesses for ReceiptNew.tsx, ReceiptDetail.tsx, ReceiptBusinesses.tsx
+      case 'my-businesses': {
+        // Get employee's line_user_id first
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = [];
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+
+        const result = await supabase
+          .from('receipt_businesses')
+          .select('id, name, is_default, tax_id, created_at')
+          .eq('line_user_id', lineUserId)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // My receipts list for MyReceipts.tsx
+      case 'my-receipts-list': {
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = [];
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+        const businessId = params?.businessId;
+        const limit = params?.limit || 50;
+
+        let query = supabase
+          .from('receipts')
+          .select('id, vendor, total, receipt_date, category, created_at, status, business_id')
+          .eq('line_user_id', lineUserId)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (businessId && businessId !== 'all') {
+          query = query.eq('business_id', businessId);
+        }
+
+        const result = await query;
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Receipt detail for ReceiptDetail.tsx
+      case 'receipt-detail': {
+        const receiptId = params?.receiptId;
+        if (!receiptId) {
+          error = { message: 'receiptId is required' };
+          break;
+        }
+
+        // Get receipt with files
+        const receiptResult = await supabase
+          .from('receipts')
+          .select('*, receipt_files(*)')
+          .eq('id', receiptId)
+          .single();
+
+        // Get receipt items
+        const itemsResult = await supabase
+          .from('receipt_items')
+          .select('*')
+          .eq('receipt_id', receiptId)
+          .order('sort_order', { ascending: true });
+
+        data = {
+          receipt: receiptResult.data,
+          items: itemsResult.data || []
+        };
+        error = receiptResult.error;
+        break;
+      }
+
+      // My redemptions for MyRedemptions.tsx
+      case 'my-redemptions-list': {
+        const result = await supabase
+          .from('point_redemptions')
+          .select(`
+            *,
+            point_rewards (name, name_th, icon)
+          `)
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Check today deposit for DepositUpload.tsx
+      case 'check-today-deposit': {
+        // Get employee's branch
+        const empResult = await supabase
+          .from('employees')
+          .select('branch_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.branch_id) {
+          data = null;
+          break;
+        }
+
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
+
+        const result = await supabase
+          .from('daily_deposits')
+          .select('*, employees(full_name)')
+          .eq('branch_id', empResult.data.branch_id)
+          .eq('deposit_date', today)
+          .maybeSingle();
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // AI quota for ReceiptBusinesses.tsx
+      case 'my-receipt-quota': {
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = { used: 0, limit: 5, planName: 'Free' };
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+        const now = new Date();
+        const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const today = getBangkokDateString();
+
+        // Get usage
+        const { data: usage } = await supabase
+          .from('receipt_usage')
+          .select('ai_receipts_used')
+          .eq('line_user_id', lineUserId)
+          .eq('period_yyyymm', period)
+          .maybeSingle();
+
+        // Get active subscription
+        const { data: subscription } = await supabase
+          .from('receipt_subscriptions')
+          .select('plan_id')
+          .eq('line_user_id', lineUserId)
+          .lte('current_period_start', today)
+          .gte('current_period_end', today)
+          .maybeSingle();
+
+        // Get plan details
+        let plan = null;
+        if (subscription?.plan_id) {
+          const { data: planData } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', subscription.plan_id)
+            .single();
+          plan = planData;
+        }
+
+        // Default to free plan
+        if (!plan) {
+          const { data: freePlan } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', 'free')
+            .maybeSingle();
+          plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
+        }
+
+        data = {
+          used: usage?.ai_receipts_used || 0,
+          limit: plan?.ai_receipts_limit || 5,
+          planName: plan?.name || 'Free',
+        };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,8 +42,9 @@ serve(async (req) => {
           'Authorization': `Bearer ${supabaseAnonKey}`,
           'x-cron-secret': cronSecret,
         },
+        // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
         body: JSON.stringify({ 
-          target_date: target_date || new Date().toISOString().split('T')[0],
+          target_date: target_date || getBangkokDateString(),
           force_send: force_send ?? true 
         }),
       }

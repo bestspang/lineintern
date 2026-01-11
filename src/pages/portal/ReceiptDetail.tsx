@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -81,71 +82,59 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState<ReceiptItem[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-  // Fetch receipt
-  const { data: receipt, isLoading } = useQuery({
-    queryKey: ['receipt-detail', id],
+  // Fetch receipt + items via portal API (bypasses RLS)
+  const { data: receiptData, isLoading } = useQuery({
+    queryKey: ['receipt-detail', id, employee?.id],
     queryFn: async () => {
-      if (!id) return null;
-      const { data, error } = await supabase
-        .from('receipts')
-        .select('*, receipt_files(*)')
-        .eq('id', id)
-        .single();
-      if (error) throw error;
+      if (!id || !employee?.id) return null;
       
-      // Populate form
-      setFormData({
-        vendor: data.vendor || '',
-        vendor_address: data.vendor_address || '',
-        vendor_branch: data.vendor_branch || '',
-        tax_id: data.tax_id || '',
-        receipt_number: data.receipt_number || '',
-        total: data.total?.toString() || '',
-        receipt_date: data.receipt_date || '',
-        category: data.category || '',
-        description: data.description || '',
-        business_id: data.business_id || '',
-        payment_method: data.payment_method || '',
-        card_number_masked: data.card_number_masked || '',
-        payer_name: data.payer_name || '',
+      const { data, error } = await portalApi<{ receipt: any; items: any[] }>({
+        endpoint: 'receipt-detail',
+        employee_id: employee.id,
+        params: { receiptId: id }
       });
+      if (error) throw error;
+      
+      if (data?.receipt) {
+        // Populate form
+        setFormData({
+          vendor: data.receipt.vendor || '',
+          vendor_address: data.receipt.vendor_address || '',
+          vendor_branch: data.receipt.vendor_branch || '',
+          tax_id: data.receipt.tax_id || '',
+          receipt_number: data.receipt.receipt_number || '',
+          total: data.receipt.total?.toString() || '',
+          receipt_date: data.receipt.receipt_date || '',
+          category: data.receipt.category || '',
+          description: data.receipt.description || '',
+          business_id: data.receipt.business_id || '',
+          payment_method: data.receipt.payment_method || '',
+          card_number_masked: data.receipt.card_number_masked || '',
+          payer_name: data.receipt.payer_name || '',
+        });
+        
+        // Set items
+        if (data.items && data.items.length > 0) {
+          setItems(data.items.map((item: any) => ({
+            id: item.id,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unit_price: item.unit_price,
+            amount: item.amount,
+          })));
+        }
+      }
       
       return data;
     },
-    enabled: !!id,
+    enabled: !!id && !!employee?.id,
   });
 
-  // Fetch receipt items
-  const { data: receiptItems = [] } = useQuery({
-    queryKey: ['receipt-items', id],
-    queryFn: async () => {
-      if (!id) return [];
-      const { data, error } = await supabase
-        .from('receipt_items')
-        .select('*')
-        .eq('receipt_id', id)
-        .order('sort_order', { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!id,
-  });
+  // Extract receipt from data
+  const receipt = receiptData?.receipt;
 
-  // Set items when fetched
-  useEffect(() => {
-    if (receiptItems.length > 0) {
-      setItems(receiptItems.map(item => ({
-        id: item.id,
-        item_name: item.item_name,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        amount: item.amount,
-      })));
-    }
-  }, [receiptItems]);
-
-  // Fetch receipt image
+  // Fetch receipt image - Note: storage.createSignedUrl still needs supabase client
   useEffect(() => {
     async function fetchImage() {
       if (!receipt?.receipt_files?.[0]?.storage_path) return;
@@ -161,20 +150,19 @@ export default function ReceiptDetail() {
     fetchImage();
   }, [receipt]);
 
-  // Fetch businesses
+  // Fetch businesses via portal API (bypasses RLS)
   const { data: businesses = [] } = useQuery({
-    queryKey: ['my-businesses', employee?.line_user_id],
+    queryKey: ['my-businesses', employee?.id],
     queryFn: async () => {
-      if (!employee?.line_user_id) return [];
-      const { data, error } = await supabase
-        .from('receipt_businesses')
-        .select('id, name, is_default')
-        .eq('line_user_id', employee.line_user_id)
-        .order('is_default', { ascending: false });
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<{ id: string; name: string; is_default: boolean }[]>({
+        endpoint: 'my-businesses',
+        employee_id: employee.id
+      });
       if (error) throw error;
-      return data;
+      return data || [];
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
   // Update mutation

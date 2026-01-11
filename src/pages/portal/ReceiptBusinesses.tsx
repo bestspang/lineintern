@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { formatBangkokISODate } from '@/lib/timezone';
 
 interface Business {
   id: string;
@@ -56,79 +58,34 @@ export default function ReceiptBusinesses() {
     is_default: false,
   });
 
-  // Fetch businesses
+  // Fetch businesses via portal API (bypasses RLS)
   const { data: businesses = [], isLoading } = useQuery({
-    queryKey: ['my-businesses', employee?.line_user_id],
+    queryKey: ['my-businesses', employee?.id],
     queryFn: async () => {
-      if (!employee?.line_user_id) return [];
-      const { data, error } = await supabase
-        .from('receipt_businesses')
-        .select('id, name, is_default, tax_id, created_at')
-        .eq('line_user_id', employee.line_user_id)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true });
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<Business[]>({
+        endpoint: 'my-businesses',
+        employee_id: employee.id
+      });
       if (error) throw error;
-      return data as Business[];
+      return data || [];
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
-  // Fetch quota
+  // Fetch quota via portal API (bypasses RLS)
   const { data: quota } = useQuery({
-    queryKey: ['my-quota', employee?.line_user_id],
+    queryKey: ['my-quota', employee?.id],
     queryFn: async () => {
-      if (!employee?.line_user_id) return null;
-      
-      // Get current period (format: YYYY-MM)
-      const now = new Date();
-      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const today = now.toISOString().split('T')[0];
-      
-      // Get usage
-      const { data: usage } = await supabase
-        .from('receipt_usage')
-        .select('ai_receipts_used')
-        .eq('line_user_id', employee.line_user_id)
-        .eq('period_yyyymm', period)
-        .maybeSingle();
-      
-      // Get active subscription (within current period dates)
-      const { data: subscription } = await supabase
-        .from('receipt_subscriptions')
-        .select('plan_id')
-        .eq('line_user_id', employee.line_user_id)
-        .lte('current_period_start', today)
-        .gte('current_period_end', today)
-        .maybeSingle();
-      
-      // Get plan details
-      let plan = null;
-      if (subscription?.plan_id) {
-        const { data: planData } = await supabase
-          .from('receipt_plans')
-          .select('id, name, ai_receipts_limit')
-          .eq('id', subscription.plan_id)
-          .single();
-        plan = planData;
-      }
-      
-      // Default to free plan if no active subscription
-      if (!plan) {
-        const { data: freePlan } = await supabase
-          .from('receipt_plans')
-          .select('id, name, ai_receipts_limit')
-          .eq('id', 'free')
-          .maybeSingle();
-        plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
-      }
-      
-      return {
-        used: usage?.ai_receipts_used || 0,
-        limit: plan?.ai_receipts_limit || 5,
-        planName: plan?.name || 'Free',
-      };
+      if (!employee?.id) return null;
+      const { data, error } = await portalApi<{ used: number; limit: number; planName: string }>({
+        endpoint: 'my-receipt-quota',
+        employee_id: employee.id
+      });
+      if (error) throw error;
+      return data;
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
   // Create/Update mutation

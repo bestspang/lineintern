@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -109,8 +110,8 @@ Deno.serve(async (req) => {
       menuItems = basicMenus || [];
     }
 
-    // Get today's attendance status
-    const today = new Date().toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+    const today = getBangkokDateString();
     
     // Check if employee can check in/out
     const [checkInResult, checkOutResult, todayLogsResult] = await Promise.all([
