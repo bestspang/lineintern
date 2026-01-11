@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Save, Receipt, Building2 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { toast } from 'sonner';
 import {
   Select,
@@ -18,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ReceiptDuplicateAlert } from '@/components/receipts/ReceiptDuplicateAlert';
+import { formatBangkokISODate } from '@/lib/timezone';
 
 interface Business {
   id: string;
@@ -33,21 +35,21 @@ export default function ReceiptNew() {
   const [vendor, setVendor] = useState('');
   const [total, setTotal] = useState('');
   const [category, setCategory] = useState('');
-  const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
+  // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+  const [receiptDate, setReceiptDate] = useState(formatBangkokISODate(new Date()));
   const [notes, setNotes] = useState('');
   const [businessId, setBusinessId] = useState<string>('');
   const [taxId, setTaxId] = useState('');
 
-  // Fetch businesses
+  // Fetch businesses via portal API (bypasses RLS)
   const { data: businesses = [], isLoading: businessesLoading } = useQuery({
-    queryKey: ['my-businesses', employee?.line_user_id],
+    queryKey: ['my-businesses', employee?.id],
     queryFn: async () => {
-      if (!employee?.line_user_id) return [];
-      const { data, error } = await supabase
-        .from('receipt_businesses')
-        .select('id, name, is_default')
-        .eq('line_user_id', employee.line_user_id)
-        .order('is_default', { ascending: false });
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<Business[]>({
+        endpoint: 'my-businesses',
+        employee_id: employee.id
+      });
       if (error) throw error;
       
       // Set default business
@@ -56,9 +58,9 @@ export default function ReceiptNew() {
         setBusinessId(defaultBiz.id);
       }
       
-      return data as Business[];
+      return data || [];
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
   // Create receipt mutation

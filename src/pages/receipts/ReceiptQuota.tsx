@@ -46,6 +46,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { formatBangkokISODate } from '@/lib/timezone';
 
 interface Plan {
   id: string;
@@ -255,8 +256,9 @@ export default function ReceiptQuota() {
   // Change plan mutation
   const changePlanMutation = useMutation({
     mutationFn: async ({ lineUserId, planId }: { lineUserId: string; planId: string }) => {
-      const today = new Date().toISOString().split('T')[0];
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+      const today = formatBangkokISODate(new Date());
+      const endOfMonth = formatBangkokISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
       
       // Upsert subscription
       const { error } = await supabase
@@ -325,8 +327,9 @@ export default function ReceiptQuota() {
   // Bulk change plan mutation
   const bulkChangePlanMutation = useMutation({
     mutationFn: async ({ lineUserIds, planId }: { lineUserIds: string[]; planId: string }) => {
-      const today = new Date().toISOString().split('T')[0];
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+      const today = formatBangkokISODate(new Date());
+      const endOfMonth = formatBangkokISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
       
       for (const lineUserId of lineUserIds) {
         const { error } = await supabase

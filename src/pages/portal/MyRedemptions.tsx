@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { usePortal } from '@/contexts/PortalContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,21 +29,17 @@ interface Redemption {
 export default function MyRedemptions() {
   const { employee, locale } = usePortal();
 
+  // Fetch redemptions via portal API (bypasses RLS)
   const { data: redemptions, isLoading } = useQuery({
     queryKey: ['my-redemptions', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return [];
-      const { data, error } = await supabase
-        .from('point_redemptions')
-        .select(`
-          *,
-          point_rewards (name, name_th, icon)
-        `)
-        .eq('employee_id', employee.id)
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await portalApi<Redemption[]>({
+        endpoint: 'my-redemptions-list',
+        employee_id: employee.id
+      });
       if (error) throw error;
-      return data as unknown as Redemption[];
+      return data || [];
     },
     enabled: !!employee?.id,
   });

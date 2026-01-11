@@ -9,7 +9,7 @@ import {
   Building2, Plus, Filter
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
-import { supabase } from '@/integrations/supabase/client';
+import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
@@ -51,43 +51,35 @@ export default function MyReceipts() {
   const [selectedBusiness, setSelectedBusiness] = useState<string>('all');
   const dateLocale = locale === 'th' ? th : enUS;
 
-  // Fetch businesses
+  // Fetch businesses via portal API (bypasses RLS)
   const { data: businesses = [] } = useQuery({
-    queryKey: ['my-businesses', employee?.line_user_id],
+    queryKey: ['my-businesses', employee?.id],
     queryFn: async () => {
-      if (!employee?.line_user_id) return [];
-      const { data, error } = await supabase
-        .from('receipt_businesses')
-        .select('id, name, is_default')
-        .eq('line_user_id', employee.line_user_id)
-        .order('is_default', { ascending: false });
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<Business[]>({
+        endpoint: 'my-businesses',
+        employee_id: employee.id
+      });
       if (error) throw error;
-      return data as Business[];
+      return data || [];
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
-  // Fetch receipts
+  // Fetch receipts via portal API (bypasses RLS)
   const { data: receipts = [], isLoading: receiptsLoading } = useQuery({
-    queryKey: ['my-receipts', employee?.line_user_id, selectedBusiness],
+    queryKey: ['my-receipts', employee?.id, selectedBusiness],
     queryFn: async () => {
-      if (!employee?.line_user_id) return [];
-      let query = supabase
-        .from('receipts')
-        .select('id, vendor, total, receipt_date, category, created_at, status, business_id')
-        .eq('line_user_id', employee.line_user_id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (selectedBusiness !== 'all') {
-        query = query.eq('business_id', selectedBusiness);
-      }
-
-      const { data, error } = await query;
+      if (!employee?.id) return [];
+      const { data, error } = await portalApi<ReceiptItem[]>({
+        endpoint: 'my-receipts-list',
+        employee_id: employee.id,
+        params: { businessId: selectedBusiness, limit: 50 }
+      });
       if (error) throw error;
-      return data as ReceiptItem[];
+      return data || [];
     },
-    enabled: !!employee?.line_user_id,
+    enabled: !!employee?.id,
   });
 
   // Calculate summary

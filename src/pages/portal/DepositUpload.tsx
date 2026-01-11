@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, User, FileText, ArrowRight, ArrowLeft, RefreshCw, Sparkles, Edit3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { portalApi } from "@/lib/portal-api";
 import { toast } from "sonner";
 import LivenessCamera, { LivenessData } from "@/components/attendance/LivenessCamera";
+import { formatBangkokISODate } from "@/lib/timezone";
 
 type Step = 'face' | 'slip' | 'preview' | 'complete';
 
@@ -54,24 +56,22 @@ export default function DepositUpload() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+  const today = formatBangkokISODate(new Date());
 
-  // Check if already submitted today
+  // Check if already submitted today via portal API (bypasses RLS)
   useEffect(() => {
     async function checkTodayDeposit() {
-      if (!employee?.branch_id) {
+      if (!employee?.id) {
         setCheckingDeposit(false);
         return;
       }
 
       try {
-        const { data } = await supabase
-          .from('daily_deposits')
-          .select('*, employees(full_name)')
-          .eq('branch_id', employee.branch_id)
-          .eq('deposit_date', today)
-          .maybeSingle();
-
+        const { data } = await portalApi({
+          endpoint: 'check-today-deposit',
+          employee_id: employee.id
+        });
         setTodayDeposit(data);
       } catch (error) {
         console.error("Error checking deposit:", error);
@@ -81,7 +81,7 @@ export default function DepositUpload() {
     }
 
     checkTodayDeposit();
-  }, [employee?.branch_id, today]);
+  }, [employee?.id]);
 
   // Handle face verification complete - receives Blob from LivenessCamera
   const handleFaceVerified = useCallback((blob: Blob, liveness: LivenessData) => {
