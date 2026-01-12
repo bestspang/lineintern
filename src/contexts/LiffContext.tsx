@@ -83,8 +83,9 @@ export function LiffProvider({ children }: LiffProviderProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [initProgress, setInitProgress] = useState<string>('');
-  const isInitializing = React.useRef(false);
-  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const isInitializing = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isReadyRef = useRef(false); // Track isReady in ref to avoid stale closure
 
   const MAX_RETRIES = 2;
 
@@ -197,9 +198,9 @@ export function LiffProvider({ children }: LiffProviderProps) {
     isInitializing.current = true;
     setInitProgress('กำลังเริ่มต้น...');
     
-    // Set timeout for initialization
+    // Set timeout for initialization - use ref to avoid stale closure
     timeoutRef.current = setTimeout(() => {
-      if (!isReady && isInitializing.current) {
+      if (!isReadyRef.current && isInitializing.current) {
         console.error('[LIFF] Initialization timeout after', INIT_TIMEOUT_MS, 'ms');
         const timeoutError: LiffError = { 
           type: 'network', 
@@ -208,6 +209,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
         setError(timeoutError.message);
         setErrorDetails(timeoutError);
         setIsReady(true);
+        isReadyRef.current = true;
         setIsRetrying(false);
         setInitProgress('');
         isInitializing.current = false;
@@ -342,6 +344,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setIsInClient(liffInstance.isInClient());
       setIsLoggedIn(loggedIn);
       setIsReady(true); // Set this LAST so other contexts see complete state
+      isReadyRef.current = true;
       setIsRetrying(false);
       setRetryCount(0);
       setInitProgress('');
@@ -381,22 +384,25 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setError(errInfo.message);
       setErrorDetails(errInfo);
       setIsReady(true);
+      isReadyRef.current = true;
       setIsRetrying(false);
       setInitProgress('');
       isInitializing.current = false;
     }
-  }, [retryCount, isReady]);
+  }, [retryCount]);
 
   // Manual retry function
   const retry = useCallback(() => {
     if (isRetrying) return;
     setRetryCount(0);
     setIsReady(false);
+    isReadyRef.current = false;
     setError(null);
     setErrorDetails(null);
     initLiff(true);
   }, [initLiff, isRetrying]);
 
+  // Only run once on mount
   useEffect(() => {
     initLiff();
     
@@ -406,6 +412,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
         clearTimeout(timeoutRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const closeLiff = () => {
