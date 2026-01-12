@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -136,9 +137,9 @@ export default function OvertimeManagement() {
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-300">
                 This page is for testing OT system functions. For managing OT requests, go to{' '}
-                <a href="/attendance/overtime-requests" className="underline font-medium">
+                <Link to="/attendance/overtime-requests" className="underline font-medium">
                   OT Requests page
-                </a>.
+                </Link>.
               </p>
             </div>
           </div>

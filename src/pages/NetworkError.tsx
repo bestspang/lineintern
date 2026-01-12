@@ -1,4 +1,5 @@
 import { WifiOff, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -32,9 +33,9 @@ export default function NetworkError() {
           </Button>
           
           <div className="text-center">
-            <a href="/" className="text-sm text-muted-foreground hover:text-foreground underline">
+            <Link to="/" className="text-sm text-muted-foreground hover:text-foreground underline">
               กลับหน้าหลัก
-            </a>
+            </Link>
           </div>
         </CardContent>
       </Card>
