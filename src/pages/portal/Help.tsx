@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { usePortal } from '@/contexts/PortalContext';
@@ -246,9 +247,9 @@ export default function Help() {
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map((action, idx) => (
-              <a
+              <Link
                 key={idx}
-                href={action.path}
+                to={action.path}
                 className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
               >
                 <action.icon className="h-6 w-6 text-primary" />
@@ -256,7 +257,7 @@ export default function Help() {
                   <p className="font-medium text-sm">{action.title}</p>
                   <p className="text-xs text-muted-foreground">{action.description}</p>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         </CardContent>
