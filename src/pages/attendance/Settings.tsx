@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -322,10 +323,10 @@ export default function AttendanceSettings() {
                     Daily attendance summaries and delivery schedules are now managed on the Reports & Summaries page with advanced scheduling options, multiple delivery destinations, and delivery history tracking.
                   </p>
                   <Button asChild variant="outline" size="sm" className="mt-2">
-                    <a href="/attendance/summaries" className="flex items-center gap-2">
+                    <Link to="/attendance/summaries" className="flex items-center gap-2">
                       <SettingsIcon className="h-4 w-4" />
                       Configure Summaries & Delivery →
-                    </a>
+                    </Link>
                   </Button>
                 </div>
               </div>

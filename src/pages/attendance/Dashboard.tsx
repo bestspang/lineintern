@@ -20,6 +20,7 @@
  * [ ] Realtime subscription channel is properly cleaned up
  */
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -577,7 +578,7 @@ export default function AttendanceDashboard() {
               <CardDescription>วันลาคงเหลือของพนักงานทั้งหมด (ปี {new Date().getFullYear()})</CardDescription>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href="/attendance/leave-balance">จัดการวันลา →</a>
+              <Link to="/attendance/leave-balance">จัดการวันลา →</Link>
             </Button>
           </div>
         </CardHeader>
@@ -590,7 +591,7 @@ export default function AttendanceDashboard() {
                 <p className="text-sm text-muted-foreground">กรุณาไปหน้า Leave Balance เพื่อสร้างข้อมูลวันลาประจำปี</p>
               </div>
               <Button variant="outline" size="sm" asChild>
-                <a href="/attendance/leave-balance">ไปหน้า Leave Balance →</a>
+                <Link to="/attendance/leave-balance">ไปหน้า Leave Balance →</Link>
               </Button>
             </div>
           ) : (

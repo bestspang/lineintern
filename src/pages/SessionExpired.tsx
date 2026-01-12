@@ -1,7 +1,7 @@
 import { LogOut, LogIn } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useNavigate } from "react-router-dom";
 
 export default function SessionExpired() {
   const navigate = useNavigate();
@@ -38,9 +38,9 @@ export default function SessionExpired() {
           </Button>
           
           <div className="text-center">
-            <a href="/" className="text-sm text-muted-foreground hover:text-foreground underline">
+            <Link to="/" className="text-sm text-muted-foreground hover:text-foreground underline">
               กลับหน้าหลัก
-            </a>
+            </Link>
           </div>
         </CardContent>
       </Card>

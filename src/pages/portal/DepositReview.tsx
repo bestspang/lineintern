@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { usePortal } from "@/contexts/PortalContext";
 
 interface Deposit {
   id: string;
@@ -58,6 +59,7 @@ export default function DepositReview() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const { employee: currentAdmin } = usePortal();
   
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -148,13 +150,12 @@ export default function DepositReview() {
 
       if (updateError) throw updateError;
 
-      // Log the approval
       const { error: logError } = await supabase
         .from('deposit_approval_logs')
         .insert({
           deposit_id: deposit.id,
           action: 'approved',
-          performed_by_name: 'Admin', // TODO: Get actual admin name from session
+          performed_by_name: currentAdmin?.full_name || 'Admin',
           old_values: {
             status: deposit.status,
             amount: deposit.amount,
@@ -199,7 +200,7 @@ export default function DepositReview() {
         .insert({
           deposit_id: deposit.id,
           action: 'rejected',
-          performed_by_name: 'Admin',
+          performed_by_name: currentAdmin?.full_name || 'Admin',
           old_values: { status: deposit.status },
           new_values: { status: 'rejected', rejection_reason: rejectionReason },
           reason: rejectionReason,
@@ -252,7 +253,7 @@ export default function DepositReview() {
         .insert({
           deposit_id: deposit.id,
           action: 'edited',
-          performed_by_name: 'Admin',
+          performed_by_name: currentAdmin?.full_name || 'Admin',
           old_values: oldValues,
           new_values: newValues,
           decision_method: 'web'

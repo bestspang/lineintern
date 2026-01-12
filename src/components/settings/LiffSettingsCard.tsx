@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -158,9 +159,9 @@ export default function LiffSettingsCard() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               กรุณาตั้งค่า <strong>LIFF_ID</strong> ในหน้า{' '}
-              <a href="/settings/api-keys" className="underline text-primary">
+              <Link to="/settings/api-keys" className="underline text-primary">
                 API Keys
-              </a>{' '}
+              </Link>{' '}
               ก่อนใช้งาน
             </AlertDescription>
           </Alert>
@@ -201,7 +202,7 @@ export default function LiffSettingsCard() {
                   <li>ไปที่ <a href="https://developers.line.biz/console/" target="_blank" className="underline">LINE Developers Console</a></li>
                   <li>หา Channel ที่มี LIFF ID: <code className="bg-muted px-1">{liffIdConfig}</code></li>
                   <li>Copy Channel ID และ Channel Secret จาก Channel นั้น</li>
-                  <li>กรอกใน <a href="/settings/api-keys" className="underline">API Keys</a></li>
+                  <li>กรอกใน <Link to="/settings/api-keys" className="underline">API Keys</Link></li>
                 </ol>
               </div>
             </AlertDescription>
@@ -236,9 +237,9 @@ export default function LiffSettingsCard() {
               <p className="font-medium mb-1">ต้องตั้งค่า LINE Login Credentials</p>
               <p className="text-sm mb-2">
                 กรุณาตั้งค่า {liffInfo.missing?.join(', ')} ใน{' '}
-                <a href="/settings/api-keys" className="underline font-medium">
+                <Link to="/settings/api-keys" className="underline font-medium">
                   API Keys
-                </a>
+                </Link>
               </p>
               <p className="text-xs text-muted-foreground">
                 ข้อมูลนี้อยู่ใน LINE Developers Console → LINE Login Channel (ต้องเป็น Channel เดียวกับที่สร้าง LIFF)
