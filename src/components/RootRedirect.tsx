@@ -199,7 +199,9 @@ export function RootRedirect() {
     };
   }, []);
 
-  if (authLoading || checking) {
+  // Show loading ONLY while checking LIFF context
+  // Once LIFF check is done, redirect immediately (don't wait for auth)
+  if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -207,10 +209,20 @@ export function RootRedirect() {
     );
   }
 
-  // If in LINE context → go to Portal
+  // If in LINE context → go to Portal (regardless of auth state)
   if (isLiffContext) {
     console.log('[RootRedirect] LINE context detected, redirecting to /portal');
     return <Navigate to="/portal" replace />;
+  }
+
+  // Not in LIFF context - check auth state
+  // If auth is still loading, show loading spinner
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   // If has user → go to Dashboard
