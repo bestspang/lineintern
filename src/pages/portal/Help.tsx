@@ -5,7 +5,7 @@ import { usePortal } from '@/contexts/PortalContext';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
-  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare
+  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus
 } from 'lucide-react';
 
 export default function Help() {
@@ -155,6 +155,12 @@ export default function Help() {
       title: locale === 'th' ? 'ขอลางาน' : 'Request Leave',
       description: locale === 'th' ? 'ส่งคำขอลาหยุด' : 'Submit leave request',
       path: '/portal/request-leave'
+    },
+    {
+      icon: CalendarMinus,
+      title: locale === 'th' ? 'วันลาคงเหลือ' : 'Leave Balance',
+      description: locale === 'th' ? 'ตรวจสอบวันลาที่เหลือ' : 'Check remaining leave days',
+      path: '/portal/my-leave'
     },
     {
       icon: FileText,
