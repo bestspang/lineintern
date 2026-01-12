@@ -46,6 +46,7 @@ export interface LiffContextType {
   openExternalUrl: (url: string) => void;
   retry: () => void;
   isRetrying: boolean;
+  initProgress: string;
 }
 
 const LiffContext = createContext<LiffContextType | undefined>(undefined);
@@ -67,6 +68,9 @@ interface LiffProviderProps {
   children: ReactNode;
 }
 
+// Timeout constants
+const INIT_TIMEOUT_MS = 10000; // 10 seconds max wait for LIFF init
+
 export function LiffProvider({ children }: LiffProviderProps) {
   const [isReady, setIsReady] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -78,7 +82,9 @@ export function LiffProvider({ children }: LiffProviderProps) {
   const [liff, setLiff] = useState<any>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [initProgress, setInitProgress] = useState<string>('');
   const isInitializing = React.useRef(false);
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const MAX_RETRIES = 2;
 
@@ -155,6 +161,12 @@ export function LiffProvider({ children }: LiffProviderProps) {
       return;
     }
     
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
     // Check if LIFF was already initialized globally (prevents double init)
     if (isLiffInitialized() && !isRetry) {
       console.log('[LIFF] Already initialized globally, restoring state...');
@@ -183,6 +195,24 @@ export function LiffProvider({ children }: LiffProviderProps) {
     
     console.log('[LIFF] Proceeding with init:', shouldInitCheck.reason);
     isInitializing.current = true;
+    setInitProgress('กำลังเริ่มต้น...');
+    
+    // Set timeout for initialization
+    timeoutRef.current = setTimeout(() => {
+      if (!isReady && isInitializing.current) {
+        console.error('[LIFF] Initialization timeout after', INIT_TIMEOUT_MS, 'ms');
+        const timeoutError: LiffError = { 
+          type: 'network', 
+          message: 'การเชื่อมต่อใช้เวลานานเกินไป กรุณาลองใหม่' 
+        };
+        setError(timeoutError.message);
+        setErrorDetails(timeoutError);
+        setIsReady(true);
+        setIsRetrying(false);
+        setInitProgress('');
+        isInitializing.current = false;
+      }
+    }, INIT_TIMEOUT_MS);
     
     try {
       // Debug logging for URL state
@@ -204,6 +234,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setErrorDetails(null);
       
       // Try to use cached LIFF_ID first for faster loading
+      setInitProgress('กำลังโหลดการตั้งค่า...');
       let liffIdToUse = getCachedLiffId();
       
       if (!liffIdToUse) {
@@ -216,21 +247,25 @@ export function LiffProvider({ children }: LiffProviderProps) {
 
         if (configError) {
           console.error('[LIFF] Error fetching LIFF_ID:', configError);
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
           const errInfo = categorizeError({ message: 'Config fetch failed' });
           setError(errInfo.message);
           setErrorDetails(errInfo);
           setIsReady(true);
           setIsRetrying(false);
+          setInitProgress('');
           return;
         }
 
         if (!config?.key_value) {
           console.log('[LIFF] LIFF_ID not configured in api_configurations');
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
           const errInfo: LiffError = { type: 'config', message: 'LIFF ยังไม่ได้ตั้งค่า' };
           setError(errInfo.message);
           setErrorDetails(errInfo);
           setIsReady(true);
           setIsRetrying(false);
+          setInitProgress('');
           return;
         }
         
@@ -245,12 +280,14 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setLiffId(liffIdToUse);
 
       // Dynamically import LIFF SDK
+      setInitProgress('กำลังโหลด LINE SDK...');
       console.log('[LIFF] Importing LIFF SDK...');
       const liffModule = await import('@line/liff');
       const liffInstance = liffModule.default;
       setLiff(liffInstance);
 
       // Initialize LIFF
+      setInitProgress('กำลังเชื่อมต่อ LINE...');
       console.log('[LIFF] Calling liff.init()...');
       await liffInstance.init({
         liffId: liffIdToUse,
@@ -263,12 +300,19 @@ export function LiffProvider({ children }: LiffProviderProps) {
       console.log('[LIFF] OS:', liffInstance.getOS?.() || 'unknown');
       console.log('[LIFF] Language:', liffInstance.getLanguage?.() || 'unknown');
 
+      // Clear timeout since init succeeded
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       // CRITICAL: Check login and get profile BEFORE setting isReady
       // This prevents race condition where PortalContext sees isReady=true but isLoggedIn=false
       const loggedIn = liffInstance.isLoggedIn();
       let userProfile = null;
 
       if (loggedIn) {
+        setInitProgress('กำลังโหลดข้อมูลผู้ใช้...');
         console.log('[LIFF] Fetching user profile...');
         try {
           userProfile = await liffInstance.getProfile();
@@ -300,6 +344,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setIsReady(true); // Set this LAST so other contexts see complete state
       setIsRetrying(false);
       setRetryCount(0);
+      setInitProgress('');
       
       // Save to global state to prevent double init
       setGlobalLiffState({
@@ -316,12 +361,19 @@ export function LiffProvider({ children }: LiffProviderProps) {
       console.error('[LIFF] Initialization error:', err);
       console.error('[LIFF] Error details:', JSON.stringify(err, null, 2));
       
+      // Clear timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      
       const errInfo = categorizeError(err);
       
       // Auto-retry for network errors
       if (errInfo.type === 'network' && retryCount < MAX_RETRIES) {
         console.log(`[LIFF] Network error, auto-retrying (${retryCount + 1}/${MAX_RETRIES})...`);
         setRetryCount(prev => prev + 1);
+        setInitProgress(`กำลังลองใหม่ครั้งที่ ${retryCount + 1}...`);
         setTimeout(() => initLiff(true), 1000 * (retryCount + 1));
         return;
       }
@@ -330,19 +382,30 @@ export function LiffProvider({ children }: LiffProviderProps) {
       setErrorDetails(errInfo);
       setIsReady(true);
       setIsRetrying(false);
+      setInitProgress('');
+      isInitializing.current = false;
     }
-  }, [retryCount]);
+  }, [retryCount, isReady]);
 
   // Manual retry function
   const retry = useCallback(() => {
     if (isRetrying) return;
     setRetryCount(0);
     setIsReady(false);
+    setError(null);
+    setErrorDetails(null);
     initLiff(true);
   }, [initLiff, isRetrying]);
 
   useEffect(() => {
     initLiff();
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, []);
 
   const closeLiff = () => {
@@ -374,6 +437,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
       openExternalUrl,
       retry,
       isRetrying,
+      initProgress,
     }}>
       {children}
     </LiffContext.Provider>
