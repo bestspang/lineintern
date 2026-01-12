@@ -1,12 +1,14 @@
 import { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer } from 'lucide-react';
+import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer, RefreshCw, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortal } from '@/contexts/PortalContext';
+import { useLiffOptional } from '@/contexts/LiffContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { PortalErrorBoundary } from './PortalErrorBoundary';
 
 interface NavItem {
@@ -30,7 +32,8 @@ const navItems: NavItem[] = [
 export function PortalLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { employee, loading, error, locale, isManager } = usePortal();
+  const { employee, loading, error, locale, isManager, refreshData } = usePortal();
+  const liff = useLiffOptional();
 
   // Filter nav items based on role
   const filteredNavItems = navItems.filter((item) => {
@@ -39,14 +42,34 @@ export function PortalLayout({ children }: { children: ReactNode }) {
     return item.roles.includes(employee.role.role_key.toLowerCase());
   });
 
+  // Handle retry
+  const handleRetry = () => {
+    if (liff?.retry) {
+      liff.retry();
+    }
+    if (refreshData) {
+      refreshData();
+    } else {
+      window.location.reload();
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="p-4 pb-24">
-          <div className="max-w-lg mx-auto space-y-4">
-            <Skeleton className="h-16 w-full rounded-xl" />
-            <Skeleton className="h-48 w-full rounded-xl" />
-            <Skeleton className="h-32 w-full rounded-xl" />
+          <div className="max-w-lg mx-auto space-y-4 flex flex-col items-center justify-center min-h-[80vh]">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-10 w-10 text-primary animate-spin" />
+              <p className="text-muted-foreground text-sm">
+                {liff?.initProgress || (locale === 'th' ? 'กำลังโหลด...' : 'Loading...')}
+              </p>
+            </div>
+            <div className="w-full space-y-3 mt-8">
+              <Skeleton className="h-16 w-full rounded-xl" />
+              <Skeleton className="h-32 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
           </div>
         </div>
       </div>
@@ -63,15 +86,32 @@ export function PortalLayout({ children }: { children: ReactNode }) {
               <CardTitle>{locale === 'th' ? 'เกิดข้อผิดพลาด' : 'Error'}</CardTitle>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
-            <p className="mt-4 text-sm text-muted-foreground text-center">
+            <p className="text-sm text-muted-foreground text-center">
               {locale === 'th'
-                ? 'กรุณาขอลิงก์เมนูใหม่จาก LINE'
-                : 'Please request a new menu link from LINE'}
+                ? 'กรุณาลองใหม่อีกครั้ง หรือขอลิงก์เมนูใหม่จาก LINE'
+                : 'Please try again or request a new menu link from LINE'}
             </p>
+            <Button 
+              onClick={handleRetry} 
+              className="w-full"
+              disabled={liff?.isRetrying}
+            >
+              {liff?.isRetrying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {locale === 'th' ? 'กำลังลองใหม่...' : 'Retrying...'}
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  {locale === 'th' ? 'ลองใหม่' : 'Retry'}
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
       </div>
