@@ -57,7 +57,8 @@ import {
   Mail,
   ShoppingBag,
   Receipt,
-  PieChart
+  PieChart,
+  Flag
 } from 'lucide-react';
 import {
   Sidebar,
@@ -94,6 +95,8 @@ const navigationGroups = [
       { title: 'Overview', titleTh: 'ภาพรวม', url: '/', icon: LayoutDashboard },
       { title: 'Branch Report', titleTh: 'รายงานสาขา', url: '/branch-report', icon: TrendingUp },
       { title: 'Health Monitoring', titleTh: 'ตรวจสอบสุขภาพ', url: '/health-monitoring', icon: Activity },
+      { title: 'Pre-Deploy Checklist', titleTh: 'เช็คลิสต์ก่อน Deploy', url: '/pre-deploy-checklist', icon: ClipboardCheck },
+      { title: 'Feature Flags', titleTh: 'Feature Flags', url: '/feature-flags', icon: Flag },
       { title: 'Config Validator', titleTh: 'ตรวจสอบการตั้งค่า', url: '/config-validator', icon: Settings },
     ],
   },

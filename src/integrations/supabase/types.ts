@@ -1545,6 +1545,45 @@ export type Database = {
           },
         ]
       }
+      deploy_checklist_runs: {
+        Row: {
+          checks: Json
+          created_at: string | null
+          failed_count: number | null
+          id: string
+          notes: string | null
+          overall_status: string | null
+          passed_count: number | null
+          run_by: string | null
+          run_date: string | null
+          skipped_count: number | null
+        }
+        Insert: {
+          checks?: Json
+          created_at?: string | null
+          failed_count?: number | null
+          id?: string
+          notes?: string | null
+          overall_status?: string | null
+          passed_count?: number | null
+          run_by?: string | null
+          run_date?: string | null
+          skipped_count?: number | null
+        }
+        Update: {
+          checks?: Json
+          created_at?: string | null
+          failed_count?: number | null
+          id?: string
+          notes?: string | null
+          overall_status?: string | null
+          passed_count?: number | null
+          run_by?: string | null
+          run_date?: string | null
+          skipped_count?: number | null
+        }
+        Relationships: []
+      }
       deposit_approval_logs: {
         Row: {
           action: string
@@ -2255,6 +2294,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      feature_flags: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          display_name: string
+          enabled_for_employees: string[] | null
+          enabled_for_roles: string[] | null
+          flag_key: string
+          id: string
+          is_enabled: boolean | null
+          rollout_percentage: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          display_name: string
+          enabled_for_employees?: string[] | null
+          enabled_for_roles?: string[] | null
+          flag_key: string
+          id?: string
+          is_enabled?: boolean | null
+          rollout_percentage?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          display_name?: string
+          enabled_for_employees?: string[] | null
+          enabled_for_roles?: string[] | null
+          flag_key?: string
+          id?: string
+          is_enabled?: boolean | null
+          rollout_percentage?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       flexible_day_off_requests: {
         Row: {
@@ -4775,6 +4859,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_health_logs: {
+        Row: {
+          check_type: string
+          created_at: string | null
+          details: Json | null
+          error_message: string | null
+          id: string
+          response_time_ms: number | null
+          status: string
+        }
+        Insert: {
+          check_type: string
+          created_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          response_time_ms?: number | null
+          status: string
+        }
+        Update: {
+          check_type?: string
+          created_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          response_time_ms?: number | null
+          status?: string
+        }
+        Relationships: []
       }
       system_settings: {
         Row: {
