@@ -88,7 +88,7 @@ export default function Users() {
       <Card>
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="text-base sm:text-lg">All Users</CardTitle>
-          <CardDescription>
+          <div className="text-sm text-muted-foreground">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
               <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-3 w-3 sm:h-4 sm:w-4" />
@@ -138,7 +138,7 @@ export default function Users() {
                 </Button>
               </div>
             </div>
-          </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="p-3 sm:p-6">
           {isLoading ? (

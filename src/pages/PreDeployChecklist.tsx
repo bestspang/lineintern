@@ -151,7 +151,7 @@ function AutomatedChecks({
           }
           case 'edge_functions': {
             try {
-              const { data, error } = await supabase.functions.invoke('health', {
+              const { data, error } = await supabase.functions.invoke('health-check', {
                 method: 'GET',
               });
               result = {
