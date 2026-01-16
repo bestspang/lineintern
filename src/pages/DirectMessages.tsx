@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Search, MessageSquare, User, Bot, Building, ArrowLeft, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { formatBangkokDateTime } from '@/lib/timezone';
 
 interface DMConversation {
   id: string;
@@ -389,7 +390,7 @@ export default function DirectMessages() {
                       </div>
                       <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
                       <p className="text-[10px] opacity-50 mt-1 text-right">
-                        {new Date(msg.sent_at).toLocaleString('th-TH')}
+                        {formatBangkokDateTime(msg.sent_at)}
                       </p>
                     </div>
                   </div>
