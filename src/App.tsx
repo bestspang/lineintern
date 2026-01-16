@@ -77,6 +77,8 @@ import AttendanceHolidays from "./pages/attendance/Holidays";
 import EmployeeMenu from "./pages/EmployeeMenu";
 import HealthMonitoring from "./pages/HealthMonitoring";
 import ConfigurationValidator from "./pages/ConfigurationValidator";
+import PreDeployChecklist from "./pages/PreDeployChecklist";
+import FeatureFlags from "./pages/FeatureFlags";
 import BranchReportsPage from "./pages/branch-reports";
 import { RootRedirect } from "./components/RootRedirect";
 
@@ -290,6 +292,8 @@ const App = () => (
                       <Route path="/receipts/quota" element={<ReceiptQuota />} />
                       <Route path="/health-monitoring" element={<HealthMonitoring />} />
                       <Route path="/config-validator" element={<ConfigurationValidator />} />
+                      <Route path="/pre-deploy-checklist" element={<PreDeployChecklist />} />
+                      <Route path="/feature-flags" element={<FeatureFlags />} />
                       <Route path="/branch-report" element={<BranchReportsPage />} />
                       <Route path="/settings" element={<SettingsLayout />}>
                         <Route index element={<Settings />} />
