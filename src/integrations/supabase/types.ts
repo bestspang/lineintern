@@ -6162,6 +6162,7 @@ export type Database = {
       has_admin_access: { Args: { _user_id: string }; Returns: boolean }
       has_field_access: { Args: { check_user_id: string }; Returns: boolean }
       has_hr_access: { Args: { _user_id: string }; Returns: boolean }
+      has_management_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
