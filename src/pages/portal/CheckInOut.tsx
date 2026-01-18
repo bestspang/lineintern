@@ -85,15 +85,36 @@ export default function CheckInOut() {
   const handleCheckInOut = async () => {
     if (!employee || !attendanceStatus) return;
     
-    const action = attendanceStatus.canCheckIn ? 'check-in' : 'check-out';
+    const action = attendanceStatus.canCheckIn ? 'check_in' : 'check_out';
     
-    // For now, navigate to a message indicating to use LINE for check-in
-    // In the future, this can be enhanced with location/photo capture
-    toast.info(
-      locale === 'th' 
-        ? `กรุณาพิมพ์ /${action === 'check-in' ? 'checkin' : 'checkout'} ใน LINE เพื่อ${action === 'check-in' ? 'เช็คอิน' : 'เช็คเอาท์'}`
-        : `Please type /${action} in LINE to ${action}`
-    );
+    try {
+      setSubmitting(true);
+      
+      // Create attendance token via portal API
+      const { data, error } = await portalApi<{ token_id: string }>({
+        endpoint: 'create-attendance-token',
+        employee_id: employee.id,
+        params: { type: action }
+      });
+      
+      if (error || !data?.token_id) {
+        toast.error(locale === 'th' 
+          ? 'ไม่สามารถสร้างลิงก์ได้ กรุณาลองใหม่' 
+          : 'Failed to create link. Please try again.');
+        return;
+      }
+      
+      // Navigate to attendance page with token
+      navigate(`/attendance?t=${data.token_id}`);
+      
+    } catch (err) {
+      console.error('[CheckInOut] Error creating token:', err);
+      toast.error(locale === 'th' 
+        ? 'เกิดข้อผิดพลาด กรุณาลองใหม่' 
+        : 'An error occurred. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const formatDuration = (minutes: number) => {
