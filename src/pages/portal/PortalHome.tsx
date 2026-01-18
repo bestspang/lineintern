@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
@@ -236,13 +238,8 @@ export default function PortalHome() {
   const { employee, locale, isManager, isAdmin } = usePortal();
   const { favorites, toggleFavorite, isFavorite } = useFavorites(employee?.id || '');
   
-  // Check-in status state
+  // Clock state
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [canCheckIn, setCanCheckIn] = useState(true);
-  const [isWorking, setIsWorking] = useState(false);
-  const [minutesWorked, setMinutesWorked] = useState<number | null>(null);
-  const [pointBalance, setPointBalance] = useState(0);
-
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
   // Realtime clock
@@ -251,11 +248,11 @@ export default function PortalHome() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch home summary data
-  const fetchHomeSummary = useCallback(async () => {
-    if (!employee?.id) return;
-    
-    try {
+  // Fetch home summary data using useQuery
+  const { data: homeSummary, isLoading: isLoadingSummary } = useQuery({
+    queryKey: ['home-summary', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return null;
       const { data, error } = await portalApi<{
         points: { current_balance: number } | null;
         todayAttendance: { event_type: string; server_time: string }[];
@@ -264,34 +261,27 @@ export default function PortalHome() {
         employee_id: employee.id
       });
 
-      if (!error && data) {
-        setPointBalance(data.points?.current_balance || 0);
-        
-        // Determine check-in/out status from today's attendance
-        const checkIn = data.todayAttendance?.find(a => a.event_type === 'check-in');
-        const checkOut = data.todayAttendance?.find(a => a.event_type === 'check-out');
-        
-        setCanCheckIn(!checkIn);
-        setIsWorking(!!checkIn && !checkOut);
-        
-        if (checkIn && !checkOut) {
-          const checkInTime = new Date(checkIn.server_time);
-          const diff = Math.floor((Date.now() - checkInTime.getTime()) / 60000);
-          setMinutesWorked(diff);
-        } else {
-          setMinutesWorked(null);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching home summary:', error);
-    }
-  }, [employee?.id]);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!employee?.id,
+    refetchInterval: 60000, // Refresh every minute
+  });
 
-  useEffect(() => {
-    fetchHomeSummary();
-    const interval = setInterval(fetchHomeSummary, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, [fetchHomeSummary]);
+  // Derived state from homeSummary
+  const pointBalance = homeSummary?.points?.current_balance || 0;
+  const checkIn = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-in');
+  const checkOut = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-out');
+  const canCheckIn = !checkIn;
+  const isWorking = !!checkIn && !checkOut;
+  
+  const minutesWorked = useMemo(() => {
+    if (checkIn && !checkOut) {
+      const checkInTime = new Date(checkIn.server_time);
+      return Math.floor((Date.now() - checkInTime.getTime()) / 60000);
+    }
+    return null;
+  }, [checkIn, checkOut, currentTime]); // Update when clock ticks
 
   // Filter actions based on role
   const visibleManagerActions = managerActions.filter(
@@ -386,7 +376,11 @@ export default function PortalHome() {
         <CardContent className="p-4 flex items-center justify-between">
           <div>
             <p className="text-sm opacity-90">{locale === 'th' ? 'แต้มของฉัน' : 'My Points'}</p>
-            <p className="text-3xl font-bold">{pointBalance.toLocaleString()}</p>
+            {isLoadingSummary ? (
+              <Skeleton className="h-9 w-20 bg-white/30" />
+            ) : (
+              <p className="text-3xl font-bold">{pointBalance.toLocaleString()}</p>
+            )}
           </div>
           <Coins className="h-10 w-10 opacity-80" />
         </CardContent>
