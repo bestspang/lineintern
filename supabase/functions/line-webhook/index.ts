@@ -8062,20 +8062,24 @@ async function handleAttendanceCommand(
           }
         } else if (type === 'check_out') {
           if (currentTimeInMinutes < startTimeInMinutes) {
-            // Too early (before work even starts)
+            // Too early (before work even starts) - block checkout
             message = locale === 'th'
               ? `⏰ ยังไม่ถึงเวลางาน\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลางาน: ${startTimeStr} - ${endTimeStr}\n\nกรุณาลองใหม่ในเวลางาน\n\n---\n\n⏰ Not yet work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during work hours`
               : `⏰ Not yet work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\nPlease try again during work hours`;
+            const smartQuickReply = await getSmartQuickReply(locale);
+            return { detected: true, type, message, quickReply: smartQuickReply };
           } else {
-            // After hours - suggest OT request
-            message = locale === 'th'
-              ? `⏰ เลยเวลางานแล้ว\n\n🕐 เวลาปัจจุบัน: ${currentTimeStr}\n✅ เวลางาน: ${startTimeStr} - ${endTimeStr}\n\n💡 หากต้องการทำงานต่อ:\nพิมพ์: /ot [เหตุผล]\nตัวอย่าง: /ot งานยังไม่เสร็จ\n\n---\n\n⏰ Past work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\n💡 To continue working:\nType: /ot [reason]\nExample: /ot unfinished tasks`
-              : `⏰ Past work hours\n\n🕐 Current time: ${currentTimeStr}\n✅ Work hours: ${startTimeStr} - ${endTimeStr}\n\n💡 To continue working:\nType: /ot [reason]\nExample: /ot unfinished tasks`;
+            // After hours - ALLOW checkout (billable hours will be capped by attendance-submit)
+            console.log(`[handleAttendanceCommand] After work hours (${currentTimeStr} > ${endTimeStr}) but allowing checkout - billable hours will be capped`);
+            // Fall through to token creation - don't block
           }
         }
         
-        const smartQuickReply = await getSmartQuickReply(locale);
-        return { detected: true, type, message, quickReply: smartQuickReply };
+        // Only block check_in outside work hours
+        if (type === 'check_in') {
+          const smartQuickReply = await getSmartQuickReply(locale);
+          return { detected: true, type, message, quickReply: smartQuickReply };
+        }
       }
       
       console.log(`[handleAttendanceCommand] Time validation passed: within work hours`);
