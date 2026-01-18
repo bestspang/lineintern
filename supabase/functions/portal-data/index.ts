@@ -1129,6 +1129,8 @@ serve(async (req) => {
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + tokenValidityMinutes);
         
+        console.log(`[portal-data] Creating ${type} token for ${employee_id}, expires in ${tokenValidityMinutes} mins`);
+        
         // Insert new token
         const { data: token, error: tokenError } = await supabase
           .from('attendance_tokens')
@@ -1142,11 +1144,12 @@ serve(async (req) => {
           .single();
         
         if (tokenError) {
+          console.error(`[portal-data] Token insert failed:`, tokenError);
           error = tokenError;
         } else {
+          console.log(`[portal-data] Created attendance token: ${token.id}`);
           data = { token_id: token.id };
         }
-        console.log(`[portal-data] Created attendance token: ${token?.id} for ${employee_id}`);
         break;
       }
 
