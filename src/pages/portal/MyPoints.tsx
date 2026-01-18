@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
+import { portalApi } from '@/lib/portal-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -17,13 +17,12 @@ export default function MyPoints() {
     queryKey: ['my-happy-points', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return null;
-      const { data, error } = await supabase
-        .from('happy_points')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .single();
+      const { data, error } = await portalApi({
+        endpoint: 'my-points',
+        employee_id: employee.id
+      });
       
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
       return data;
     },
     enabled: !!employee?.id,
@@ -33,15 +32,14 @@ export default function MyPoints() {
     queryKey: ['my-recent-transactions', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return [];
-      const { data, error } = await supabase
-        .from('point_transactions')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      const { data, error } = await portalApi({
+        endpoint: 'my-transactions',
+        employee_id: employee.id,
+        params: { limit: 10 }
+      });
       
       if (error) throw error;
-      return data;
+      return data || [];
     },
     enabled: !!employee?.id,
   });
@@ -50,17 +48,13 @@ export default function MyPoints() {
     queryKey: ['my-pending-redemptions', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return [];
-      const { data, error } = await supabase
-        .from('point_redemptions')
-        .select(`
-          *,
-          point_rewards (name, name_th, icon)
-        `)
-        .eq('employee_id', employee.id)
-        .eq('status', 'pending');
+      const { data, error } = await portalApi({
+        endpoint: 'my-pending-redemptions',
+        employee_id: employee.id
+      });
       
       if (error) throw error;
-      return data;
+      return data || [];
     },
     enabled: !!employee?.id,
   });

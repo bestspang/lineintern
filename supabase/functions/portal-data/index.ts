@@ -1072,6 +1072,50 @@ serve(async (req) => {
         break;
       }
 
+      // ========================================
+      // MY POINTS PAGE ENDPOINTS (bypass RLS)
+      // ========================================
+      case 'my-points': {
+        const result = await supabase
+          .from('happy_points')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .maybeSingle();
+        
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'my-transactions': {
+        const limit = params?.limit || 10;
+        const result = await supabase
+          .from('point_transactions')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        
+        data = result.data || [];
+        error = result.error;
+        break;
+      }
+
+      case 'my-pending-redemptions': {
+        const result = await supabase
+          .from('point_redemptions')
+          .select(`
+            *,
+            point_rewards (name, name_th, icon)
+          `)
+          .eq('employee_id', employee_id)
+          .eq('status', 'pending');
+        
+        data = result.data || [];
+        error = result.error;
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
