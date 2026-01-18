@@ -1116,6 +1116,40 @@ serve(async (req) => {
         break;
       }
 
+      case 'create-attendance-token': {
+        const type = params?.type || 'check_in'; // 'check_in' or 'check_out'
+        
+        // Get employee's effective settings for token validity
+        const { data: settings } = await supabase
+          .rpc('get_effective_attendance_settings', { p_employee_id: employee_id });
+        
+        const tokenValidityMinutes = (settings as any)?.token_validity_minutes || 10;
+        
+        // Create expires_at
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + tokenValidityMinutes);
+        
+        // Insert new token
+        const { data: token, error: tokenError } = await supabase
+          .from('attendance_tokens')
+          .insert({
+            employee_id: employee_id,
+            type: type,
+            expires_at: expiresAt.toISOString(),
+            status: 'pending'
+          })
+          .select('id')
+          .single();
+        
+        if (tokenError) {
+          error = tokenError;
+        } else {
+          data = { token_id: token.id };
+        }
+        console.log(`[portal-data] Created attendance token: ${token?.id} for ${employee_id}`);
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
