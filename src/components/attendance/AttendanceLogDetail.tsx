@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { MapPin, Camera, Smartphone, AlertTriangle, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-
+import { MapPreviewModal } from '@/components/shared/MapPreviewModal';
 interface AttendanceLogDetailProps {
   log: any;
   open: boolean;
@@ -14,6 +15,7 @@ interface AttendanceLogDetailProps {
 
 export default function AttendanceLogDetail({ log, open, onOpenChange }: AttendanceLogDetailProps) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [showMapModal, setShowMapModal] = useState(false);
 
   // Generate signed URL when log changes
   useEffect(() => {
@@ -142,15 +144,24 @@ export default function AttendanceLogDetail({ log, open, onOpenChange }: Attenda
                     </div>
                   )}
                   <div className="mt-2">
-                    <a
-                      href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline text-xs sm:text-sm"
+                    <Button
+                      variant="link"
+                      className="p-0 h-auto text-xs sm:text-sm"
+                      onClick={() => setShowMapModal(true)}
                     >
-                      View on Google Maps →
-                    </a>
+                      View on Map →
+                    </Button>
                   </div>
+                  
+                  {log.latitude && log.longitude && (
+                    <MapPreviewModal
+                      open={showMapModal}
+                      onOpenChange={setShowMapModal}
+                      latitude={log.latitude}
+                      longitude={log.longitude}
+                      title={`${log.employee?.full_name || 'Location'} - ${log.event_type === 'check_in' ? 'Check In' : 'Check Out'}`}
+                    />
+                  )}
                 </div>
               </div>
             </>

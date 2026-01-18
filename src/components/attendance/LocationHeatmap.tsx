@@ -163,8 +163,8 @@ const LocationHeatmap: React.FC<LocationHeatmapProps> = ({
           'circle-radius': 6,
           'circle-color': [
             'match',
-            ['get', 'isRemote'],
-            true, '#10b981',
+            ['to-string', ['get', 'isRemote']],
+            'true', '#10b981',
             '#3b82f6'
           ],
           'circle-stroke-width': 2,
