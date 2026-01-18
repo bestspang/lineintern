@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -123,6 +123,97 @@ export default function MyPoints() {
           </CardContent>
         </Card>
       </div>
+
+      {/* How to Earn Points */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Star className="h-4 w-4 text-yellow-500" />
+            {locale === 'th' ? 'วิธีการได้แต้ม' : 'How to Earn Points'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Attendance Section */}
+          <div>
+            <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-green-500" />
+              {locale === 'th' ? 'การเข้างาน' : 'Attendance'}
+            </h4>
+            <div className="grid grid-cols-1 gap-2 text-sm pl-6">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">🕐 {locale === 'th' ? 'มาตรงเวลา' : 'On-time check-in'}</span>
+                <Badge variant="outline" className="text-green-600">+10</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">✅ {locale === 'th' ? 'ยืนยันตัวตนสำเร็จ' : 'Identity verified'}</span>
+                <Badge variant="outline" className="text-green-600">+5</Badge>
+              </div>
+            </div>
+          </div>
+          
+          {/* Response Section */}
+          <div>
+            <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-blue-500" />
+              {locale === 'th' ? 'การตอบกลับ (สูงสุด 20/วัน)' : 'Responses (Max 20/day)'}
+            </h4>
+            <div className="grid grid-cols-1 gap-2 text-sm pl-6">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">🏆 {locale === 'th' ? 'ตอบเร็ว + มีเนื้อหา' : 'Fast + detailed'}</span>
+                <Badge variant="outline" className="text-green-600">+8</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">👍 {locale === 'th' ? 'ตอบเร็ว' : 'Fast response'}</span>
+                <Badge variant="outline" className="text-green-600">+3</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">⏰ {locale === 'th' ? 'ตอบช้าแต่ละเอียด' : 'Late but detailed'}</span>
+                <Badge variant="outline" className="text-green-600">+2</Badge>
+              </div>
+            </div>
+          </div>
+          
+          {/* Streak Bonus Section */}
+          <div>
+            <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+              <Flame className="h-4 w-4 text-orange-500" />
+              {locale === 'th' ? 'โบนัส Streak' : 'Streak Bonus'}
+            </h4>
+            <div className="grid grid-cols-1 gap-2 text-sm pl-6">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">🔥 {locale === 'th' ? 'มาตรงเวลา 5 วันติด' : '5-day on-time streak'}</span>
+                <Badge variant="outline" className="text-green-600">+50</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">🏆 {locale === 'th' ? 'มาตรงเวลาทั้งเดือน' : 'Perfect month'}</span>
+                <Badge variant="outline" className="text-green-600">+100</Badge>
+              </div>
+            </div>
+          </div>
+          
+          {/* Health Bonus Section */}
+          <div>
+            <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+              <Heart className="h-4 w-4 text-red-500" />
+              {locale === 'th' ? 'โบนัสสุขภาพ' : 'Health Bonus'}
+            </h4>
+            <div className="grid grid-cols-1 gap-2 text-sm pl-6">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">💚 {locale === 'th' ? 'เริ่มต้นทุกเดือน' : 'Monthly base'}</span>
+                <Badge variant="outline" className="text-green-600">+100</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">😷 {locale === 'th' ? 'ลาป่วยไม่มีใบรับรอง' : 'Sick leave (no cert)'}</span>
+                <Badge variant="outline" className="text-orange-600">-30</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">🏥 {locale === 'th' ? 'ลาป่วยมีใบรับรอง' : 'Sick leave (with cert)'}</span>
+                <Badge variant="outline" className="text-orange-600">-5</Badge>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Daily Progress */}
       <Card>
