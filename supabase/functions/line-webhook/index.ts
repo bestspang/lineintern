@@ -3018,7 +3018,7 @@ function extractTaskDescription(text: string, mentions: Array<{ lineUserId: stri
     taskText = taskText.replace(phrase, ' ');
   }
   
-  return taskText.trim();
+  return taskText.replace(/\s+/g, ' ').trim();
 }
 
 async function detectWorkAssignment(
@@ -3088,6 +3088,15 @@ async function createWorkTask(
   groupId: string,
   locale: 'th' | 'en' = 'th'
 ): Promise<{ success: boolean; taskId?: string; error?: string }> {
+  // Get assigner display name
+  const { data: assignerUser } = await supabase
+    .from('users')
+    .select('display_name')
+    .eq('id', assignerUserId)
+    .maybeSingle();
+  
+  const assignerName = assignerUser?.display_name || 'Someone';
+  
   // Get assignee user ID
   const { data: assigneeUser } = await supabase
     .from('users')
@@ -3105,7 +3114,7 @@ async function createWorkTask(
     .insert({
       group_id: groupId,
       title: assignment.taskDescription,
-      description: `งานที่มอบหมายโดย @assigner ให้ @${assignment.assigneeDisplayName}`,
+      description: `งานที่มอบหมายโดย @${assignerName} ให้ @${assignment.assigneeDisplayName}`,
       due_at: assignment.deadline!.toISOString(),
       status: 'pending',
       task_type: 'work_assignment',

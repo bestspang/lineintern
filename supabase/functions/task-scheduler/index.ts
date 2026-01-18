@@ -47,6 +47,7 @@ serve(async (req) => {
     console.log(`[task-scheduler] 🕐 Current time (Bangkok): ${bangkokNow.toISOString()}`);
     console.log(`[task-scheduler] 🔍 Checking tasks due before: ${now.toISOString()}`);
 
+    // Skip work_assignment tasks - they are handled by work-reminder edge function
     const { data: dueTasks, error: fetchError } = await supabase
       .from("tasks")
       .select(`
@@ -56,6 +57,7 @@ serve(async (req) => {
         assigned:users!tasks_assigned_to_user_id_fkey(display_name)
       `)
       .eq("status", "pending")
+      .neq("task_type", "work_assignment")
       .lte("due_at", now.toISOString());
 
     if (fetchError) {
