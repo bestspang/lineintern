@@ -31,12 +31,28 @@ export default function MyLeaveBalance() {
     const fetchBalance = async () => {
       if (!employee?.id) return;
 
-      const { data, error } = await supabase
+      // First try to get current year's balance
+      let { data, error } = await supabase
         .from('leave_balances')
         .select('*')
         .eq('employee_id', employee.id)
         .eq('leave_year', currentYear)
         .maybeSingle();
+
+      // If no data for current year, get the latest available year
+      if (!error && !data) {
+        const latestResult = await supabase
+          .from('leave_balances')
+          .select('*')
+          .eq('employee_id', employee.id)
+          .order('leave_year', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (!latestResult.error && latestResult.data) {
+          data = latestResult.data;
+        }
+      }
 
       if (!error && data) {
         setBalance(data);
