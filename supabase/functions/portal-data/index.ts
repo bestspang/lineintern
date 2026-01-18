@@ -234,8 +234,7 @@ serve(async (req) => {
         const schedulesResult = await supabase
           .from('work_schedules')
           .select('*')
-          .eq('employee_id', employee_id)
-          .eq('is_active', true);
+          .eq('employee_id', employee_id);
 
         // Get shift assignments for the week
         const assignmentsResult = await supabase
@@ -307,7 +306,7 @@ serve(async (req) => {
         // Get points
         const pointsResult = await supabase
           .from('happy_points')
-          .select('current_balance, total_earned, current_streak')
+          .select('point_balance, total_earned, current_punctuality_streak')
           .eq('employee_id', employee_id)
           .maybeSingle();
 
@@ -332,7 +331,11 @@ serve(async (req) => {
           .eq('status', 'pending');
 
         data = {
-          points: pointsResult.data,
+          points: pointsResult.data ? {
+            current_balance: pointsResult.data.point_balance,
+            current_streak: pointsResult.data.current_punctuality_streak,
+            total_earned: pointsResult.data.total_earned
+          } : null,
           todayAttendance: attendanceResult.data || [],
           pendingApprovals: {
             overtime: pendingOTResult.count || 0,
@@ -845,7 +848,7 @@ serve(async (req) => {
             id,
             employee_id,
             point_balance,
-            current_streak,
+            current_punctuality_streak,
             employee:employees!inner(
               id,
               full_name,

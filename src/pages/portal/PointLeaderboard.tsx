@@ -21,7 +21,7 @@ interface LeaderboardApiResponse {
   id: string;
   employee_id: string;
   point_balance: number;
-  current_streak: number;
+  current_punctuality_streak: number;
   employee: {
     id: string;
     full_name: string;
@@ -56,7 +56,7 @@ export default function PointLeaderboard() {
           employeeId: item.employee_id,
           name: item.employee?.full_name || item.employee?.nickname || 'Unknown',
           points: item.point_balance || 0,
-          currentStreak: item.current_streak || 0,
+          currentStreak: item.current_punctuality_streak || 0,
           rank: index + 1,
         }));
 
