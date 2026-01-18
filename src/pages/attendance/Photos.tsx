@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Camera, Search, Calendar, User, MapPin, Building2, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { MapPreviewModal } from '@/components/shared/MapPreviewModal';
 
 interface AttendancePhoto {
   id: string;
@@ -37,6 +38,7 @@ export default function AttendancePhotos() {
   const [dateTo, setDateTo] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<AttendancePhoto | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [showMapModal, setShowMapModal] = useState(false);
 
   const { data: branches } = useQuery({
     queryKey: ['branches'],
@@ -400,17 +402,26 @@ export default function AttendancePhotos() {
                       <MapPin className="h-3 w-3" />
                       Location
                     </Label>
-                    <a
-                      href={`https://www.google.com/maps?q=${selectedPhoto.latitude},${selectedPhoto.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline"
+                    <Button
+                      variant="link"
+                      className="p-0 h-auto text-sm"
+                      onClick={() => setShowMapModal(true)}
                     >
                       View on Map
-                    </a>
+                    </Button>
                   </div>
                 )}
               </div>
+              
+              {selectedPhoto.latitude && selectedPhoto.longitude && (
+                <MapPreviewModal
+                  open={showMapModal}
+                  onOpenChange={setShowMapModal}
+                  latitude={selectedPhoto.latitude}
+                  longitude={selectedPhoto.longitude}
+                  title={`${selectedPhoto.employee.full_name} - ${selectedPhoto.event_type === 'check_in' ? 'Check In' : 'Check Out'}`}
+                />
+              )}
             </CardContent>
           </Card>
         </div>

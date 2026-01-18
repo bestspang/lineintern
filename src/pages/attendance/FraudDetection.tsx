@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Shield, AlertTriangle, Copy, Clock, MapPin, User, Calendar } from "lucide-react";
 import { format } from "date-fns";
-
+import { MapPreviewModal } from "@/components/shared/MapPreviewModal";
 interface FraudLog {
   id: string;
   employee_id: string;
@@ -45,6 +45,7 @@ export default function FraudDetection() {
   const [selectedLog, setSelectedLog] = useState<FraudLog | null>(null);
   const [comparisonLog, setComparisonLog] = useState<FraudLog | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [showMapModal, setShowMapModal] = useState(false);
 
   // Fetch fraud statistics
   const { data: stats } = useQuery({
@@ -380,16 +381,25 @@ export default function FraudDetection() {
                     <MapPin className="h-4 w-4 text-muted-foreground" />
                     <span>{selectedLog.branch?.name || "Unknown Branch"}</span>
                     {selectedLog.latitude && selectedLog.longitude && (
-                      <a
-                        href={`https://www.google.com/maps?q=${selectedLog.latitude},${selectedLog.longitude}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline"
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto text-xs"
+                        onClick={() => setShowMapModal(true)}
                       >
                         View on Map
-                      </a>
+                      </Button>
                     )}
                   </div>
+                  
+                  {selectedLog.latitude && selectedLog.longitude && (
+                    <MapPreviewModal
+                      open={showMapModal}
+                      onOpenChange={setShowMapModal}
+                      latitude={selectedLog.latitude}
+                      longitude={selectedLog.longitude}
+                      title={`${selectedLog.employee.full_name} - ${selectedLog.event_type}`}
+                    />
+                  )}
                 </CardContent>
               </Card>
 
