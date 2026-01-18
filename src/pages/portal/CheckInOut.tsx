@@ -104,8 +104,8 @@ export default function CheckInOut() {
         return;
       }
       
-      // Navigate to attendance page with token
-      navigate(`/attendance?t=${data.token_id}`);
+      // Full page navigation to attendance page (outside portal routes)
+      window.location.href = `/attendance?t=${data.token_id}`;
       
     } catch (err) {
       console.error('[CheckInOut] Error creating token:', err);
