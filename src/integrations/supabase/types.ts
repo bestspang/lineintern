@@ -3530,6 +3530,51 @@ export type Database = {
         }
         Relationships: []
       }
+      point_rules: {
+        Row: {
+          category: string
+          conditions: Json | null
+          created_at: string | null
+          description: string | null
+          description_th: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          name_th: string | null
+          points: number
+          rule_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          conditions?: Json | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          name_th?: string | null
+          points: number
+          rule_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          conditions?: Json | null
+          created_at?: string | null
+          description?: string | null
+          description_th?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          name_th?: string | null
+          points?: number
+          rule_key?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       point_transactions: {
         Row: {
           amount: number

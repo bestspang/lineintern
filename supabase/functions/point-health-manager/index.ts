@@ -70,6 +70,24 @@ async function distributeMonthlyBonus(supabase: any) {
   
   logger.info('Distributing monthly health bonuses', { month: currentMonth });
 
+  // Fetch health bonus rule from database
+  const { data: healthRule } = await supabase
+    .from('point_rules')
+    .select('points, is_active')
+    .eq('rule_key', 'health_monthly')
+    .maybeSingle();
+
+  // Check if rule is active
+  if (healthRule && !healthRule.is_active) {
+    logger.info('Health monthly bonus rule is disabled');
+    return new Response(
+      JSON.stringify({ success: true, processed: 0, message: 'Rule is disabled' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const HEALTH_BONUS = healthRule?.points || 100;
+
   // Get all employees who haven't received this month's bonus
   const { data: employees, error: fetchError } = await supabase
     .from('happy_points')
@@ -89,7 +107,6 @@ async function distributeMonthlyBonus(supabase: any) {
   }
 
   let successCount = 0;
-  const HEALTH_BONUS = 100;
 
   for (const hp of employees) {
     try {
@@ -145,6 +162,23 @@ async function processSickLeavePenalty(
 ) {
   logger.info('Processing sick leave penalty', { employee_id, has_certificate });
 
+  // Fetch penalty rules from database
+  const ruleKey = has_certificate ? 'sick_leave_with_cert' : 'sick_leave_no_cert';
+  const { data: penaltyRule } = await supabase
+    .from('point_rules')
+    .select('points, is_active')
+    .eq('rule_key', ruleKey)
+    .maybeSingle();
+
+  // Check if rule is active
+  if (penaltyRule && !penaltyRule.is_active) {
+    logger.info(`Sick leave penalty rule ${ruleKey} is disabled`);
+    return new Response(
+      JSON.stringify({ success: true, deducted: 0, message: 'Rule is disabled' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const { data: hp, error: fetchError } = await supabase
     .from('happy_points')
     .select('*')
@@ -155,8 +189,9 @@ async function processSickLeavePenalty(
     throw new Error('Employee happy_points record not found');
   }
 
-  // Penalty amounts
-  const penaltyAmount = has_certificate ? 5 : 30;
+  // Penalty amounts from DB (stored as negative in rules)
+  const defaultPenalty = has_certificate ? 5 : 30;
+  const penaltyAmount = penaltyRule ? Math.abs(penaltyRule.points) : defaultPenalty;
   const description = has_certificate
     ? '🏥 Sick leave (with certificate) - Minimal processing fee'
     : '😷 Sick leave (no certificate) - Health bonus deduction';

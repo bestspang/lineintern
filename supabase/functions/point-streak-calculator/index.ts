@@ -46,9 +46,28 @@ serve(async (req) => {
 
     logger.info(`Processing ${isMonthly ? 'monthly' : 'weekly'} streak bonuses`);
 
-    // Get employees with qualifying streaks
-    const minStreak = isMonthly ? 20 : 5; // ~20 working days for monthly, 5 for weekly
-    const bonusAmount = isMonthly ? 100 : 50;
+    // Fetch point rules from database
+    const ruleKey = isMonthly ? 'streak_monthly' : 'streak_weekly';
+    const { data: streakRule } = await supabase
+      .from('point_rules')
+      .select('points, is_active, conditions')
+      .eq('rule_key', ruleKey)
+      .maybeSingle();
+
+    // Check if rule is active
+    if (streakRule && !streakRule.is_active) {
+      logger.info(`Streak rule ${ruleKey} is disabled`);
+      return new Response(
+        JSON.stringify({ success: true, processed: 0, message: 'Rule is disabled' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get values from DB or use defaults
+    const defaultMinStreak = isMonthly ? 20 : 5;
+    const defaultBonusAmount = isMonthly ? 100 : 50;
+    const minStreak = streakRule?.conditions?.min_streak || defaultMinStreak;
+    const bonusAmount = streakRule?.points || defaultBonusAmount;
     const bonusDescription = isMonthly 
       ? '🏆 Monthly Perfect Attendance - Full month on time!'
       : '🔥 Weekly Streak Bonus - 5 consecutive on-time days!';

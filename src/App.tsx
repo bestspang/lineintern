@@ -101,6 +101,7 @@ import DepositSettings from "./pages/attendance/DepositSettings";
 import HappyPoints from "./pages/attendance/HappyPoints";
 import AttendanceRewards from "./pages/attendance/Rewards";
 import PointTransactions from "./pages/attendance/PointTransactions";
+import PointRules from "./pages/attendance/PointRules";
 import MyPoints from "./pages/portal/MyPoints";
 import RewardShop from "./pages/portal/RewardShop";
 import MyRedemptions from "./pages/portal/MyRedemptions";
@@ -278,6 +279,7 @@ const App = () => (
                       <Route path="/attendance/happy-points" element={<HappyPoints />} />
                       <Route path="/attendance/rewards" element={<AttendanceRewards />} />
                       <Route path="/attendance/point-transactions" element={<PointTransactions />} />
+                      <Route path="/attendance/point-rules" element={<PointRules />} />
                       <Route path="/attendance/redemption-approvals" element={<RedemptionApprovals />} />
                       <Route path="/attendance/shift-templates" element={<ShiftTemplates />} />
                       <Route path="/attendance/schedules" element={<Schedules />} />
