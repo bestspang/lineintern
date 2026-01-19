@@ -911,13 +911,21 @@ serve(async (req) => {
           ? existingSessions[0].session_number + 1 
           : 1;
         
-        // คำนวณ grace period expiry
-        const hoursPerDay = token.employee.hours_per_day || 8;
+        // คำนวณ grace period expiry เฉพาะ hours_based เท่านั้น
+        let graceExpiresAt: Date | null = null;
         const breakHours = token.employee.break_hours || 1;
-        const gracePeriodMinutes = token.employee.auto_checkout_grace_period_minutes || 60;
         
-        const totalMinutes = (hoursPerDay + breakHours) * 60;
-        const graceExpiresAt = new Date(Date.now() + (totalMinutes + gracePeriodMinutes) * 60 * 1000);
+        if (token.employee.working_time_type === 'hours_based') {
+          const hoursPerDay = token.employee.hours_per_day || 8;
+          const gracePeriodMinutes = token.employee.auto_checkout_grace_period_minutes || 60;
+          
+          const totalMinutes = (hoursPerDay + breakHours) * 60;
+          graceExpiresAt = new Date(Date.now() + (totalMinutes + gracePeriodMinutes) * 60 * 1000);
+          
+          console.log(`[work_sessions] hours_based employee - grace expires at: ${graceExpiresAt.toISOString()}`);
+        } else {
+          console.log(`[work_sessions] time_based employee "${token.employee.full_name}" - no grace period (will use midnight auto-checkout if needed)`);
+        }
         
         // สร้าง session
         const { error: sessionError } = await supabase.from('work_sessions').insert({
@@ -926,7 +934,7 @@ serve(async (req) => {
           session_number: sessionNumber,
           checkin_log_id: logData.id,
           actual_start_time: new Date().toISOString(),
-          auto_checkout_grace_expires_at: graceExpiresAt.toISOString(),
+          auto_checkout_grace_expires_at: graceExpiresAt?.toISOString() || null,
           break_minutes: breakHours * 60,
           status: 'active'
         });

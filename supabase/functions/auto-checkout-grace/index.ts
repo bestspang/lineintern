@@ -96,7 +96,8 @@ Deno.serve(async (req) => {
           announcement_group_line_id,
           hours_per_day, break_hours,
           auto_checkout_grace_period_minutes,
-          branch_id
+          branch_id,
+          working_time_type
         )
       `)
       .eq('status', 'active')
@@ -106,9 +107,29 @@ Deno.serve(async (req) => {
     if (error) throw error;
     
     let autoCheckouts = 0;
+    let skippedNonHoursBased = 0;
     
     for (const session of sessions || []) {
       const employee = session.employees;
+      
+      // Safety check: Skip non-hours_based employees
+      // (ป้องกัน legacy data ที่อาจมี grace_expires_at แม้เป็น time_based)
+      if (employee.working_time_type !== 'hours_based') {
+        logger.info('Skipping non-hours_based employee (safety check)', { 
+          employeeId: employee.id,
+          employeeName: employee.full_name,
+          workingTimeType: employee.working_time_type
+        });
+        
+        // Clear invalid grace period for this session
+        await supabase
+          .from('work_sessions')
+          .update({ auto_checkout_grace_expires_at: null })
+          .eq('id', session.id);
+        
+        skippedNonHoursBased++;
+        continue;
+      }
       
       // แปลงจาก UTC database timestamp เป็น Bangkok time
       const graceExpiresAtBangkok = toBangkokTime(session.auto_checkout_grace_expires_at);
@@ -312,6 +333,7 @@ Deno.serve(async (req) => {
     
     logger.info('Grace period check completed', { 
       autoCheckouts,
+      skippedNonHoursBased,
       totalSessions: sessions?.length || 0,
       bangkokTime: formatBangkokTime(bangkokNow)
     });
@@ -320,6 +342,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         autoCheckouts,
+        skippedNonHoursBased,
         totalSessions: sessions?.length || 0,
         checkedAt: formatBangkokTime(bangkokNow)
       }),
