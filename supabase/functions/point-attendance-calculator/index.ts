@@ -129,6 +129,20 @@ serve(async (req) => {
 
     logger.info('Processing attendance points', { employee_id, is_on_time, fraud_score });
 
+    // Fetch point rules from database
+    const { data: pointRules } = await supabase
+      .from('point_rules')
+      .select('rule_key, points, is_active, conditions')
+      .in('rule_key', ['punctuality', 'integrity']);
+
+    const rulesMap = new Map(
+      (pointRules || []).map((r: any) => [r.rule_key, r])
+    );
+
+    // Default values if rules not found
+    const punctualityRule = rulesMap.get('punctuality') || { points: 10, is_active: true };
+    const integrityRule = rulesMap.get('integrity') || { points: 5, is_active: true };
+
     // Get or create happy_points record
     let { data: happyPoints, error: hpError } = await supabase
       .from('happy_points')
@@ -158,14 +172,15 @@ serve(async (req) => {
     const transactions: any[] = [];
     const today = getBangkokDateString();
 
-    // 1. Punctuality Points (+10)
-    if (is_on_time) {
-      totalPointsAwarded += 10;
+    // 1. Punctuality Points (from DB rule)
+    if (is_on_time && punctualityRule.is_active) {
+      const points = punctualityRule.points;
+      totalPointsAwarded += points;
       transactions.push({
         employee_id,
         transaction_type: 'earn',
         category: 'attendance',
-        amount: 10,
+        amount: points,
         balance_after: happyPoints.point_balance + totalPointsAwarded,
         description: '🕐 Punctuality bonus - On time check-in',
         reference_id: attendance_log_id,
@@ -174,14 +189,15 @@ serve(async (req) => {
       });
     }
 
-    // 2. Integrity Points (+5 for fraud_score = 0)
-    if (fraud_score === 0) {
-      totalPointsAwarded += 5;
+    // 2. Integrity Points (from DB rule)
+    if (fraud_score === 0 && integrityRule.is_active) {
+      const points = integrityRule.points;
+      totalPointsAwarded += points;
       transactions.push({
         employee_id,
         transaction_type: 'earn',
         category: 'attendance',
-        amount: 5,
+        amount: points,
         balance_after: happyPoints.point_balance + totalPointsAwarded,
         description: '✅ Integrity bonus - Clean verification',
         reference_id: attendance_log_id,

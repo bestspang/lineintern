@@ -58,7 +58,8 @@ import {
   ShoppingBag,
   Receipt,
   PieChart,
-  Flag
+  Flag,
+  Settings2
 } from 'lucide-react';
 import {
   Sidebar,
@@ -193,6 +194,7 @@ const navigationGroups = [
     items: [
       { title: 'Happy Points', titleTh: 'แต้มความสุข', url: '/attendance/happy-points', icon: Trophy },
       { title: 'Point Transactions', titleTh: 'ธุรกรรมแต้ม', url: '/attendance/point-transactions', icon: Wallet },
+      { title: 'Point Rules', titleTh: 'เงื่อนไขแต้ม', url: '/attendance/point-rules', icon: Settings2 },
       { title: 'Rewards', titleTh: 'รางวัล', url: '/attendance/rewards', icon: Gift },
       { title: 'Redemption Approvals', titleTh: 'อนุมัติแลกรางวัล', url: '/attendance/redemption-approvals', icon: ShoppingBag },
     ],

@@ -21,16 +21,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const DAILY_CAP = 20;
+// Default values (overridden by DB rules)
+const DEFAULT_DAILY_CAP = 20;
 const DEBOUNCE_MINUTES = 2;
 const WORK_START_HOUR = 8;
 const WORK_END_HOUR = 19;
-
-// Score definitions
-const SCORE_PERFECT = 8;
-const SCORE_HELPFUL_ACK = 3;
-const SCORE_LATE_BUT_SURE = 2;
-const SCORE_SPAM = 0;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -60,6 +55,28 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Fetch point rules from database
+    const { data: pointRules } = await supabase
+      .from('point_rules')
+      .select('rule_key, points, is_active, conditions')
+      .in('rule_key', ['response_perfect', 'response_ack', 'response_late', 'response_daily_cap']);
+
+    const rulesMap = new Map(
+      (pointRules || []).map((r: any) => [r.rule_key, r])
+    );
+
+    // Get values from DB or use defaults
+    const perfectRule = rulesMap.get('response_perfect') || { points: 8, is_active: true };
+    const ackRule = rulesMap.get('response_ack') || { points: 3, is_active: true };
+    const lateRule = rulesMap.get('response_late') || { points: 2, is_active: true };
+    const capRule = rulesMap.get('response_daily_cap') || { points: DEFAULT_DAILY_CAP, is_active: true };
+
+    const SCORE_PERFECT = perfectRule.points;
+    const SCORE_HELPFUL_ACK = ackRule.points;
+    const SCORE_LATE_BUT_SURE = lateRule.points;
+    const SCORE_SPAM = 0;
+    const DAILY_CAP = capRule.points;
 
     // Layer C: Working Hours Only Check
     const now = new Date();
