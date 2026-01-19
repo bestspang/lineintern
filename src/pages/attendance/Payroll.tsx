@@ -2046,101 +2046,108 @@ export default function Payroll() {
                           </tr>
                           
                           {/* Expanded Row - Details */}
-                          {isExpanded && record && (
+                          {isExpanded && (
                             <tr className="bg-muted/30">
                               <td colSpan={7} className="p-4">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  {/* Work Info */}
-                                  <div className="space-y-2">
-                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">การทำงาน</h5>
-                                    <div className="space-y-1 text-sm">
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">วันทำงาน:</span>
-                                        <span>{record.actual_work_days}/{record.scheduled_work_days}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">ชั่วโมงรวม:</span>
-                                        <span>{record.total_work_hours?.toFixed(1) || 0} ชม.</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">OT:</span>
-                                        <span className="text-orange-600">{record.ot_hours?.toFixed(1) || 0} ชม.</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Leave & Absent */}
-                                  <div className="space-y-2">
-                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">ขาด/ลา/สาย</h5>
-                                    <div className="space-y-1 text-sm">
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">ขาด:</span>
-                                        <span className="text-red-600">{record.absent_days || 0} วัน</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">ลา:</span>
-                                        <span className="text-blue-600">{record.leave_days || 0} วัน</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">สาย:</span>
-                                        <span className="text-yellow-600">{record.late_count || 0} ครั้ง ({record.late_minutes || 0} นาที)</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">ออกก่อน:</span>
-                                        <span>{record.early_leave_count || 0} ครั้ง</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Income */}
-                                  <div className="space-y-2">
-                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">รายได้</h5>
-                                    <div className="space-y-1 text-sm">
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">เงินเดือน:</span>
-                                        <span>฿{(record.base_salary || 0).toLocaleString()}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">ค่า OT:</span>
-                                        <span className="text-green-600">+฿{(record.ot_pay || 0).toLocaleString()}</span>
-                                      </div>
-                                      {(record.allowances || []).map((a: any, i: number) => (
-                                        <div key={i} className="flex justify-between">
-                                          <span className="text-muted-foreground">{a.name}:</span>
-                                          <span className="text-green-600">+฿{(a.amount || 0).toLocaleString()}</span>
+                                {record ? (
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {/* Work Info */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-xs font-semibold text-muted-foreground uppercase">การทำงาน</h5>
+                                      <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">วันทำงาน:</span>
+                                          <span>{record.actual_work_days}/{record.scheduled_work_days}</span>
                                         </div>
-                                      ))}
-                                      <div className="flex justify-between font-medium border-t pt-1">
-                                        <span>รวมรายได้:</span>
-                                        <span className="text-green-600">฿{(record.gross_pay || 0).toLocaleString()}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Deductions */}
-                                  <div className="space-y-2">
-                                    <h5 className="text-xs font-semibold text-muted-foreground uppercase">หัก</h5>
-                                    <div className="space-y-1 text-sm">
-                                      {(record.deductions || []).map((d: any, i: number) => (
-                                        <div key={i} className="flex justify-between">
-                                          <span className="text-muted-foreground">{d.name}:</span>
-                                          <span className="text-red-600">-฿{(d.amount || 0).toLocaleString()}</span>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">ชั่วโมงรวม:</span>
+                                          <span>{record.total_work_hours?.toFixed(1) || 0} ชม.</span>
                                         </div>
-                                      ))}
-                                      {(record.deductions || []).length === 0 && (
-                                        <span className="text-muted-foreground text-xs">ไม่มีรายการหัก</span>
-                                      )}
-                                      <div className="flex justify-between font-medium border-t pt-1">
-                                        <span>รวมหัก:</span>
-                                        <span className="text-red-600">-฿{(record.total_deductions || 0).toLocaleString()}</span>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">OT:</span>
+                                          <span className="text-orange-600">{record.ot_hours?.toFixed(1) || 0} ชม.</span>
+                                        </div>
                                       </div>
-                                      <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                                        <span>สุทธิ:</span>
-                                        <span className="text-primary">฿{(record.net_pay || 0).toLocaleString()}</span>
+                                    </div>
+                                    
+                                    {/* Leave & Absent */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-xs font-semibold text-muted-foreground uppercase">ขาด/ลา/สาย</h5>
+                                      <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">ขาด:</span>
+                                          <span className="text-red-600">{record.absent_days || 0} วัน</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">ลา:</span>
+                                          <span className="text-blue-600">{record.leave_days || 0} วัน</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">สาย:</span>
+                                          <span className="text-yellow-600">{record.late_count || 0} ครั้ง ({record.late_minutes || 0} นาที)</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">ออกก่อน:</span>
+                                          <span>{record.early_leave_count || 0} ครั้ง</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Income */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-xs font-semibold text-muted-foreground uppercase">รายได้</h5>
+                                      <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">เงินเดือน:</span>
+                                          <span>฿{(record.base_salary || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">ค่า OT:</span>
+                                          <span className="text-green-600">+฿{(record.ot_pay || 0).toLocaleString()}</span>
+                                        </div>
+                                        {(record.allowances || []).map((a: any, i: number) => (
+                                          <div key={i} className="flex justify-between">
+                                            <span className="text-muted-foreground">{a.name}:</span>
+                                            <span className="text-green-600">+฿{(a.amount || 0).toLocaleString()}</span>
+                                          </div>
+                                        ))}
+                                        <div className="flex justify-between font-medium border-t pt-1">
+                                          <span>รวมรายได้:</span>
+                                          <span className="text-green-600">฿{(record.gross_pay || 0).toLocaleString()}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Deductions */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-xs font-semibold text-muted-foreground uppercase">หัก</h5>
+                                      <div className="space-y-1 text-sm">
+                                        {(record.deductions || []).map((d: any, i: number) => (
+                                          <div key={i} className="flex justify-between">
+                                            <span className="text-muted-foreground">{d.name}:</span>
+                                            <span className="text-red-600">-฿{(d.amount || 0).toLocaleString()}</span>
+                                          </div>
+                                        ))}
+                                        {(record.deductions || []).length === 0 && (
+                                          <span className="text-muted-foreground text-xs">ไม่มีรายการหัก</span>
+                                        )}
+                                        <div className="flex justify-between font-medium border-t pt-1">
+                                          <span>รวมหัก:</span>
+                                          <span className="text-red-600">-฿{(record.total_deductions || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                                          <span>สุทธิ:</span>
+                                          <span className="text-primary">฿{(record.net_pay || 0).toLocaleString()}</span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
+                                ) : (
+                                  <div className="text-center py-6 text-muted-foreground">
+                                    <p className="font-medium">ยังไม่มีข้อมูลเงินเดือนสำหรับงวดนี้</p>
+                                    <p className="text-xs mt-1">กรุณากดปุ่ม "คำนวณเงินเดือน" เพื่อสร้างข้อมูล</p>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           )}
