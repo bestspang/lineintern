@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Flame, Star, Search, TrendingUp, Users, Coins } from 'lucide-react';
+import { Trophy, Flame, Star, Search, TrendingUp, Users, Coins, RefreshCw, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface HappyPointsData {
   id: string;
@@ -28,7 +30,8 @@ interface HappyPointsData {
 
 export default function HappyPoints() {
   const [searchTerm, setSearchTerm] = useState('');
-
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const queryClient = useQueryClient();
   const { data: happyPoints, isLoading } = useQuery({
     queryKey: ['happy-points'],
     queryFn: async () => {
@@ -74,14 +77,51 @@ export default function HappyPoints() {
 
   const top3 = filteredPoints?.slice(0, 3) || [];
 
+  const handleRecalculateStreaks = async () => {
+    setIsRecalculating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('streak-backfill');
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        toast.success(`Streaks recalculated! Updated: ${data.summary.updated}, Unchanged: ${data.summary.unchanged}`);
+        // Refetch data
+        queryClient.invalidateQueries({ queryKey: ['happy-points'] });
+        queryClient.invalidateQueries({ queryKey: ['happy-points-stats'] });
+      } else {
+        throw new Error(data?.error || 'Unknown error');
+      }
+    } catch (error: any) {
+      console.error('Recalculate error:', error);
+      toast.error(`Failed to recalculate: ${error.message}`);
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Trophy className="h-6 w-6 text-yellow-500" />
-          Happy Points Dashboard
-        </h1>
-        <p className="text-muted-foreground">ภาพรวมแต้มความสุขของพนักงานทั้งหมด</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Trophy className="h-6 w-6 text-yellow-500" />
+            Happy Points Dashboard
+          </h1>
+          <p className="text-muted-foreground">ภาพรวมแต้มความสุขของพนักงานทั้งหมด</p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={handleRecalculateStreaks}
+          disabled={isRecalculating}
+        >
+          {isRecalculating ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Recalculate Streaks
+        </Button>
       </div>
 
       {/* Stats Cards */}
