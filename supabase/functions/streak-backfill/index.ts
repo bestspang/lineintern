@@ -222,11 +222,11 @@ async function recalculateStreak(
       // Consecutive work day
       currentStreak++;
     } else {
-      // Not consecutive, save current streak if it's the longest
+      // Not consecutive (missed a work day), save current streak if it's the longest
       if (currentStreak > longestStreak) {
         longestStreak = currentStreak;
       }
-      // This is the start of a new streak segment
+      // Reset streak to 0 for missed work day, this on-time day starts fresh at 1
       currentStreak = 1;
     }
     

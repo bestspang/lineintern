@@ -235,8 +235,8 @@ serve(async (req) => {
             newStreak
           });
         } else {
-          // Missed a work day - reset streak to 1
-          newStreak = 1;
+          // Missed a work day - reset streak to 0
+          newStreak = 0;
           logger.info('Streak reset (missed work day)', {
             employee_id,
             lastDate,

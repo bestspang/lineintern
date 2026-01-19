@@ -856,11 +856,27 @@ serve(async (req) => {
     // ============================================================
     if (token.type === 'check_in') {
       try {
-        // Determine if on-time (check against shift_start_time or standard time)
+        // Determine if on-time (check against shift_start_time + grace period)
         const now = new Date();
         const bangkokTimeStr = formatBangkokTime(now, 'HH:mm:ss');
         const shiftStart = token.employee.shift_start_time || '09:00:00';
-        const isOnTime = bangkokTimeStr <= shiftStart;
+        
+        // Get grace period from settings (default 15 minutes)
+        const { data: gracePeriodSettings } = await supabase
+          .from('attendance_settings')
+          .select('grace_period_minutes')
+          .eq('scope', 'global')
+          .maybeSingle();
+        const gracePeriodMinutes = gracePeriodSettings?.grace_period_minutes || 15;
+        
+        // Add grace period to shift start for on-time calculation
+        const [shiftH, shiftM] = shiftStart.split(':').map(Number);
+        const totalMinutes = shiftH * 60 + shiftM + gracePeriodMinutes;
+        const deadlineH = Math.floor(totalMinutes / 60);
+        const deadlineM = totalMinutes % 60;
+        const deadlineStr = `${String(deadlineH).padStart(2, '0')}:${String(deadlineM).padStart(2, '0')}:00`;
+        
+        const isOnTime = bangkokTimeStr <= deadlineStr;
         
         // Call point-attendance-calculator asynchronously (fire-and-forget)
         const pointCalcUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/point-attendance-calculator`;
