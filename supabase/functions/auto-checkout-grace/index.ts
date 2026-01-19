@@ -131,14 +131,11 @@ Deno.serve(async (req) => {
         continue;
       }
       
-      // แปลงจาก UTC database timestamp เป็น Bangkok time
-      const graceExpiresAtBangkok = toBangkokTime(session.auto_checkout_grace_expires_at);
-      
       // ตรวจสอบว่าหมดเวลา grace period แล้วหรือยัง
       if (hasBangkokTimePassed(session.auto_checkout_grace_expires_at)) {
         logger.info('Grace period expired, checking for existing checkout', { 
           employeeId: employee.id,
-          graceExpiresAtBangkok: formatBangkokTime(graceExpiresAtBangkok),
+          graceExpiresAtBangkok: formatBangkokTime(session.auto_checkout_grace_expires_at),
           graceExpiresAtUTC: session.auto_checkout_grace_expires_at
         });
         
@@ -195,7 +192,7 @@ Deno.serve(async (req) => {
             server_time: new Date().toISOString(),
             source: 'auto_checkout_grace',
             branch_id: employee.branch_id,
-            admin_notes: `Auto checked out after grace period expired at ${formatBangkokTime(graceExpiresAtBangkok)}`
+            admin_notes: `Auto checked out after grace period expired at ${formatBangkokTime(session.auto_checkout_grace_expires_at)}`
           })
           .select()
           .single();
@@ -232,14 +229,13 @@ Deno.serve(async (req) => {
         
         // ส่งการแจ้งเตือนไป LINE
         const hoursWorked = (netWorkMinutes / 60).toFixed(1);
-        const checkoutTimeBangkok = toBangkokTime(checkoutLog.server_time);
         
         let message = `🚪 Auto Check-out (Grace Period)\n\n`;
         message += `พนักงาน: ${employee.full_name} (${employee.code})\n`;
-        message += `เวลาออก: ${formatBangkokTime(checkoutTimeBangkok, 'HH:mm')} น.\n`;
+        message += `เวลาออก: ${formatBangkokTime(checkoutLog.server_time, 'HH:mm')} น.\n`;
         message += `ชั่วโมงทำงาน: ${hoursWorked} ชม.\n\n`;
         message += `📌 ระบบทำการ check-out อัตโนมัติเนื่องจากพ้นช่วง grace period แล้ว\n`;
-        message += `Grace Period หมดเวลา: ${formatBangkokTime(graceExpiresAtBangkok, 'HH:mm')} น.`;
+        message += `Grace Period หมดเวลา: ${formatBangkokTime(session.auto_checkout_grace_expires_at, 'HH:mm')} น.`;
         
         // ส่งไปพนักงาน
         if (employee.line_user_id) {
