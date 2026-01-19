@@ -262,7 +262,7 @@ serve(async (req) => {
         current_punctuality_streak,
         longest_punctuality_streak,
         last_punctuality_date,
-        employees(name, nickname, full_name)
+        employees(full_name, code)
       `);
 
     if (fetchError) {
@@ -276,9 +276,9 @@ serve(async (req) => {
       if (!emp) return 'Unknown';
       if (Array.isArray(emp)) {
         const e = emp[0];
-        return e?.nickname || e?.full_name || e?.name || 'Unknown';
+        return e?.full_name || e?.code || 'Unknown';
       }
-      return emp.nickname || emp.full_name || emp.name || 'Unknown';
+      return emp.full_name || emp.code || 'Unknown';
     };
     let unchanged = 0;
 
