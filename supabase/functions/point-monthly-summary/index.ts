@@ -112,12 +112,31 @@ serve(async (req) => {
       );
     }
 
-    // Get current month info
+    // Get current date in Bangkok timezone
     const now = new Date();
-    const currentMonth = THAI_MONTHS[now.getMonth()];
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const bangkokOffset = 7 * 60 * 60 * 1000; // UTC+7
+    const bangkokNow = new Date(now.getTime() + bangkokOffset);
     
-    logger.info('Starting monthly summary process', { month: currentMonth });
+    // Check if today is the last day of the month
+    const tomorrow = new Date(bangkokNow);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    if (tomorrow.getDate() !== 1) {
+      // Not last day of month, skip execution
+      logger.info('Not last day of month, skipping monthly summary', { 
+        today: bangkokNow.getDate(),
+        tomorrowDate: tomorrow.getDate()
+      });
+      return new Response(
+        JSON.stringify({ success: true, message: 'Not last day of month, skipped' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const currentMonth = THAI_MONTHS[bangkokNow.getMonth()];
+    const firstDayOfMonth = new Date(bangkokNow.getFullYear(), bangkokNow.getMonth(), 1).toISOString();
+    
+    logger.info('Starting monthly summary process (last day of month)', { month: currentMonth });
 
     const results = {
       monthly_streak_awarded: 0,
