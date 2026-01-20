@@ -294,7 +294,16 @@ export default function Rewards() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        {reward.requires_approval && <ShieldCheck className="h-4 w-4 text-blue-500 mx-auto" />}
+                        <Switch
+                          checked={reward.requires_approval}
+                          onCheckedChange={(checked) => {
+                            updateMutation.mutate({ 
+                              id: reward.id, 
+                              requires_approval: checked 
+                            });
+                          }}
+                          disabled={updateMutation.isPending}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
