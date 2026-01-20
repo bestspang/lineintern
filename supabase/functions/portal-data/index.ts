@@ -1116,6 +1116,29 @@ serve(async (req) => {
         break;
       }
 
+      // ========================================
+      // POINT RULES SUMMARY (for dynamic UI values)
+      // ========================================
+      case 'point-rules-summary': {
+        const result = await supabase
+          .from('point_rules')
+          .select('rule_key, points, is_active, conditions')
+          .eq('is_active', true);
+        
+        // Convert to map for easy lookup
+        const rulesMap: Record<string, { points: number; conditions?: any }> = {};
+        for (const rule of result.data || []) {
+          rulesMap[rule.rule_key] = { 
+            points: rule.points,
+            conditions: rule.conditions 
+          };
+        }
+        
+        data = rulesMap;
+        error = result.error;
+        break;
+      }
+
       case 'create-attendance-token': {
         const type = params?.type || 'check_in'; // 'check_in' or 'check_out'
         
