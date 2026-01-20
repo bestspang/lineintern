@@ -9757,13 +9757,18 @@ async function handleMessageEvent(event: LineEvent) {
     .catch(err => console.error("[Memory Writer] Passive invoke error:", err));
 
   // HAPPY POINTS: Track response for point-response-tracker (fire-and-forget)
-  // Check if user is an employee and award response points
+  // Use data from replyContext (response_time_seconds) and employee
+  // Note: This handler only processes text messages, so is_sticker/is_file_upload are always false
   supabase.functions
     .invoke("point-response-tracker", {
       body: {
-        line_user_id: user.line_user_id,
-        group_id: group.id,
-        message_text: event.message.text,
+        employee_id: employee.id,
+        message_id: insertedMessage?.id || null,
+        response_time_seconds: replyContext?.responseTimeSeconds || null,
+        message_length: event.message.text?.length || 0,
+        is_sticker: false,  // This handler only processes text messages
+        is_file_upload: false,  // Stickers/files are handled separately
+        trigger_source: isDM ? 'dm' : 'group',
       },
     })
     .catch(err => console.error("[Point Response Tracker] Passive invoke error:", err));
