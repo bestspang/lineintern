@@ -62,6 +62,10 @@ function formatMessage(
     streak: number;
     balance: number;
     month: string;
+    attendance_points?: number;
+    response_points?: number;
+    streak_points?: number;
+    health_points?: number;
   }
 ): string {
   let message = template;
@@ -70,6 +74,10 @@ function formatMessage(
   message = message.replace(/{streak}/g, String(data.streak));
   message = message.replace(/{balance}/g, String(data.balance));
   message = message.replace(/{month}/g, data.month);
+  message = message.replace(/{attendance_points}/g, String(data.attendance_points || 0));
+  message = message.replace(/{response_points}/g, String(data.response_points || 0));
+  message = message.replace(/{streak_points}/g, String(data.streak_points || 0));
+  message = message.replace(/{health_points}/g, String(data.health_points || 0));
   return message;
 }
 
@@ -257,32 +265,49 @@ serve(async (req) => {
 
       for (const employee of employees || []) {
         try {
-          // Get this month's transactions
-          const { data: transactions } = await supabase
-            .from('point_transactions')
-            .select('amount, category')
-            .eq('employee_id', employee.id)
-            .gte('created_at', firstDayOfMonth);
+        // Get include categories from conditions
+        const includeCategories = summaryRule.conditions?.include_categories || ['attendance', 'response', 'streak', 'health'];
 
-          const totalEarned = (transactions || [])
-            .filter(t => t.amount > 0)
-            .reduce((sum, t) => sum + t.amount, 0);
+        // Get this month's transactions
+        const { data: transactions } = await supabase
+          .from('point_transactions')
+          .select('amount, category')
+          .eq('employee_id', employee.id)
+          .gte('created_at', firstDayOfMonth);
 
-          // Get current balance
-          const { data: happyPoint } = await supabase
-            .from('happy_points')
-            .select('point_balance, current_punctuality_streak')
-            .eq('employee_id', employee.id)
-            .maybeSingle();
+        // Calculate points by category
+        const categoryPoints = { attendance: 0, response: 0, streak: 0, health: 0 };
+        for (const t of transactions || []) {
+          if (t.amount > 0 && categoryPoints.hasOwnProperty(t.category)) {
+            categoryPoints[t.category as keyof typeof categoryPoints] += t.amount;
+          }
+        }
 
-          if (summaryRule.notify_message_template && (summaryRule.notify_dm || summaryRule.notify_group)) {
-            const message = formatMessage(summaryRule.notify_message_template, {
-              name: employee.full_name || 'พนักงาน',
-              points: totalEarned,
-              streak: happyPoint?.current_punctuality_streak || 0,
-              balance: happyPoint?.point_balance || 0,
-              month: currentMonth
-            });
+        // Calculate total (only from included categories)
+        let totalEarned = 0;
+        for (const cat of includeCategories) {
+          totalEarned += categoryPoints[cat as keyof typeof categoryPoints] || 0;
+        }
+
+        // Get current balance
+        const { data: happyPoint } = await supabase
+          .from('happy_points')
+          .select('point_balance, current_punctuality_streak')
+          .eq('employee_id', employee.id)
+          .maybeSingle();
+
+        if (summaryRule.notify_message_template && (summaryRule.notify_dm || summaryRule.notify_group)) {
+          const message = formatMessage(summaryRule.notify_message_template, {
+            name: employee.full_name || 'พนักงาน',
+            points: totalEarned,
+            streak: happyPoint?.current_punctuality_streak || 0,
+            balance: happyPoint?.point_balance || 0,
+            month: currentMonth,
+            attendance_points: includeCategories.includes('attendance') ? categoryPoints.attendance : 0,
+            response_points: includeCategories.includes('response') ? categoryPoints.response : 0,
+            streak_points: includeCategories.includes('streak') ? categoryPoints.streak : 0,
+            health_points: includeCategories.includes('health') ? categoryPoints.health : 0,
+          });
 
             // Send to group
             if (summaryRule.notify_group) {
