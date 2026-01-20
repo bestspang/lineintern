@@ -204,15 +204,16 @@ export default function MyPoints() {
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🏆 {locale === 'th' ? 'ตอบเร็ว + มีเนื้อหา' : 'Fast + detailed'}</span>
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_fast_detailed?.points || 8}</Badge>
+                {/* SYNC: rule_key must match point_rules table - response_perfect, response_ack, response_late */}
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_perfect?.points || 8}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">👍 {locale === 'th' ? 'ตอบเร็ว' : 'Fast response'}</span>
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_fast?.points || 3}</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_ack?.points || 3}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">⏰ {locale === 'th' ? 'ตอบช้าแต่ละเอียด' : 'Late but detailed'}</span>
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_late_detailed?.points || 2}</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_late?.points || 2}</Badge>
               </div>
             </div>
           </div>
@@ -246,13 +247,14 @@ export default function MyPoints() {
                 <span className="text-muted-foreground">💚 {locale === 'th' ? 'เริ่มต้นทุกเดือน' : 'Monthly base'}</span>
                 <Badge variant="outline" className="text-green-600">+{pointRules?.health_monthly?.points || 100}</Badge>
               </div>
+              {/* SYNC: rule_key must match point_rules table - sick_leave_no_cert, sick_leave_with_cert */}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">😷 {locale === 'th' ? 'ลาป่วยไม่มีใบรับรอง' : 'Sick leave (no cert)'}</span>
-                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.health_deduct_no_cert?.points || 30)}</Badge>
+                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.sick_leave_no_cert?.points || 30)}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🏥 {locale === 'th' ? 'ลาป่วยมีใบรับรอง' : 'Sick leave (with cert)'}</span>
-                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.health_deduct_with_cert?.points || 5)}</Badge>
+                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.sick_leave_with_cert?.points || 5)}</Badge>
               </div>
             </div>
           </div>
