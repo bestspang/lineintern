@@ -2546,9 +2546,11 @@ export type Database = {
           health_bonus_month: number | null
           id: string
           last_punctuality_date: string | null
+          last_shield_used_at: string | null
           longest_punctuality_streak: number | null
           monthly_health_bonus: number | null
           point_balance: number
+          streak_shields: number | null
           total_earned: number
           total_spent: number
           updated_at: string | null
@@ -2562,9 +2564,11 @@ export type Database = {
           health_bonus_month?: number | null
           id?: string
           last_punctuality_date?: string | null
+          last_shield_used_at?: string | null
           longest_punctuality_streak?: number | null
           monthly_health_bonus?: number | null
           point_balance?: number
+          streak_shields?: number | null
           total_earned?: number
           total_spent?: number
           updated_at?: string | null
@@ -2578,9 +2582,11 @@ export type Database = {
           health_bonus_month?: number | null
           id?: string
           last_punctuality_date?: string | null
+          last_shield_used_at?: string | null
           longest_punctuality_streak?: number | null
           monthly_health_bonus?: number | null
           point_balance?: number
+          streak_shields?: number | null
           total_earned?: number
           total_spent?: number
           updated_at?: string | null
