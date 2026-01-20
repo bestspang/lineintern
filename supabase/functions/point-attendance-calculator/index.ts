@@ -342,15 +342,46 @@ serve(async (req) => {
             newStreak
           });
         } else {
-          // Missed a work day - reset streak to 1 (today counts as first day)
-          newStreak = 1;
-          logger.info('Streak reset (missed work day)', {
-            employee_id,
-            lastDate,
-            previousWorkDay,
-            today,
-            newStreak
-          });
+          // Missed a work day - check for shield protection
+          if ((happyPoints.streak_shields || 0) > 0) {
+            // Use shield to protect streak
+            await supabase
+              .from('happy_points')
+              .update({ 
+                streak_shields: happyPoints.streak_shields - 1,
+                last_shield_used_at: today
+              })
+              .eq('id', happyPoints.id);
+            
+            // Log shield usage
+            await supabase.from('point_transactions').insert({
+              employee_id,
+              transaction_type: 'spend',
+              category: 'streak',
+              amount: 0,
+              balance_after: happyPoints.point_balance,
+              description: '🛡️ Streak Shield used - streak protected from missed day!',
+              metadata: { reason: 'shield_used_missed_day', streak_protected: happyPoints.current_punctuality_streak }
+            });
+            
+            // Streak continues from previous value + 1 for today
+            newStreak = (happyPoints.current_punctuality_streak || 0) + 1;
+            logger.info('Shield used to protect streak (missed work day)', { 
+              employee_id, 
+              streak: newStreak,
+              shields_remaining: happyPoints.streak_shields - 1
+            });
+          } else {
+            // No shield - reset streak to 1 (today counts as first day)
+            newStreak = 1;
+            logger.info('Streak reset (missed work day, no shield)', {
+              employee_id,
+              lastDate,
+              previousWorkDay,
+              today,
+              newStreak
+            });
+          }
         }
       }
 
@@ -358,9 +389,40 @@ serve(async (req) => {
         longestStreak = newStreak;
       }
     } else {
-      // Late - reset streak to 0
-      newStreak = 0;
-      logger.info('Streak reset (late check-in)', { employee_id, today });
+      // Late check-in - check for shield protection
+      if ((happyPoints.streak_shields || 0) > 0) {
+        // Use shield to protect streak
+        await supabase
+          .from('happy_points')
+          .update({ 
+            streak_shields: happyPoints.streak_shields - 1,
+            last_shield_used_at: today
+          })
+          .eq('id', happyPoints.id);
+        
+        // Log shield usage
+        await supabase.from('point_transactions').insert({
+          employee_id,
+          transaction_type: 'spend',
+          category: 'streak',
+          amount: 0,
+          balance_after: happyPoints.point_balance,
+          description: '🛡️ Streak Shield used - streak protected from late check-in!',
+          metadata: { reason: 'shield_used_late', streak_protected: happyPoints.current_punctuality_streak }
+        });
+        
+        // Keep current streak (don't increment since late, but don't reset)
+        newStreak = happyPoints.current_punctuality_streak || 0;
+        logger.info('Shield used to protect streak (late check-in)', { 
+          employee_id, 
+          streak: newStreak,
+          shields_remaining: happyPoints.streak_shields - 1
+        });
+      } else {
+        // No shield - reset streak to 0
+        newStreak = 0;
+        logger.info('Streak reset (late check-in, no shield)', { employee_id, today });
+      }
     }
 
     // Insert transactions

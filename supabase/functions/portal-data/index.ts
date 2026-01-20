@@ -828,7 +828,7 @@ serve(async (req) => {
       case 'my-points-balance': {
         const result = await supabase
           .from('happy_points')
-          .select('point_balance, current_balance, total_earned, current_streak')
+          .select('point_balance, current_balance, total_earned, current_streak, streak_shields')
           .eq('employee_id', employee_id)
           .maybeSingle();
 

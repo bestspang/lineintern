@@ -190,16 +190,36 @@ async function processRedemption(supabase: any, employee_id: string, reward_id: 
     metadata: { reward_name: reward.name, reward_id }
   });
 
-  await supabase
-    .from('happy_points')
-    .update({
-      point_balance: newBalance,
-      total_spent: hp.total_spent + reward.point_cost,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', hp.id);
+  // 9. Special handling for Streak Shield
+  if (reward.name === 'Streak Shield') {
+    // Add shield to employee's inventory instead of creating regular redemption
+    await supabase
+      .from('happy_points')
+      .update({
+        point_balance: newBalance,
+        total_spent: hp.total_spent + reward.point_cost,
+        streak_shields: (hp.streak_shields || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', hp.id);
+    
+    logger.info('Streak Shield added to inventory', { 
+      employee_id, 
+      new_shield_count: (hp.streak_shields || 0) + 1 
+    });
+  } else {
+    // Regular redemption
+    await supabase
+      .from('happy_points')
+      .update({
+        point_balance: newBalance,
+        total_spent: hp.total_spent + reward.point_cost,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', hp.id);
+  }
 
-  // 9. Update stock
+  // 10. Update stock
   if (reward.stock_limit !== null) {
     await supabase
       .from('point_rewards')

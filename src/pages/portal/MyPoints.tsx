@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star } from 'lucide-react';
+import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -115,6 +115,30 @@ export default function MyPoints() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Streak Shield Card */}
+      {(happyPoints?.streak_shields || 0) > 0 && (
+        <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-blue-500" />
+                <span className="font-medium">
+                  {locale === 'th' ? 'โล่ป้องกัน Streak' : 'Streak Shields'}
+                </span>
+              </div>
+              <Badge variant="secondary" className="text-lg px-3">
+                {happyPoints.streak_shields}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 pl-7">
+              {locale === 'th' 
+                ? 'จะใช้อัตโนมัติเมื่อคุณมาสายหรือขาดงาน'
+                : 'Will auto-activate when you check in late or miss work'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-3">
