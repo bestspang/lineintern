@@ -218,3 +218,6 @@ verify_jwt = false
 
 [functions.import-line-chat]
 verify_jwt = false
+
+[functions.point-monthly-summary]
+verify_jwt = false

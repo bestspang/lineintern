@@ -126,7 +126,20 @@ serve(async (req) => {
     const { type } = await req.json().catch(() => ({ type: 'weekly' }));
     const isMonthly = type === 'monthly';
 
-    logger.info(`Processing ${isMonthly ? 'monthly' : 'weekly'} streak bonuses (backup cron)`);
+    // Monthly processing is now handled by point-monthly-summary function
+    if (isMonthly) {
+      logger.info('Monthly streak processing delegated to point-monthly-summary');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Monthly processing handled by point-monthly-summary function',
+          processed: 0 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    logger.info('Processing weekly streak bonuses (backup cron)');
 
     // Fetch point rules from database (include notification settings)
     const ruleKey = isMonthly ? 'streak_monthly' : 'streak_weekly';
