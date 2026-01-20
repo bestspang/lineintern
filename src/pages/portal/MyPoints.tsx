@@ -10,6 +10,11 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
+// Type for point rules from database
+interface PointRulesMap {
+  [key: string]: { points: number; conditions?: any };
+}
+
 export default function MyPoints() {
   const { employee, locale } = usePortal();
 
@@ -24,6 +29,21 @@ export default function MyPoints() {
       
       if (error) throw error;
       return data;
+    },
+    enabled: !!employee?.id,
+  });
+
+  // Fetch point rules for dynamic values
+  const { data: pointRules } = useQuery({
+    queryKey: ['point-rules-summary'],
+    queryFn: async () => {
+      if (!employee?.id) return null;
+      const { data, error } = await portalApi({
+        endpoint: 'point-rules-summary',
+        employee_id: employee.id
+      });
+      if (error) throw error;
+      return data as PointRulesMap;
     },
     enabled: !!employee?.id,
   });
@@ -142,11 +162,11 @@ export default function MyPoints() {
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🕐 {locale === 'th' ? 'มาตรงเวลา' : 'On-time check-in'}</span>
-                <Badge variant="outline" className="text-green-600">+10</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.punctuality?.points || 10}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">✅ {locale === 'th' ? 'ยืนยันตัวตนสำเร็จ' : 'Identity verified'}</span>
-                <Badge variant="outline" className="text-green-600">+5</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.integrity?.points || 5}</Badge>
               </div>
             </div>
           </div>
@@ -160,15 +180,15 @@ export default function MyPoints() {
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🏆 {locale === 'th' ? 'ตอบเร็ว + มีเนื้อหา' : 'Fast + detailed'}</span>
-                <Badge variant="outline" className="text-green-600">+8</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_fast_detailed?.points || 8}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">👍 {locale === 'th' ? 'ตอบเร็ว' : 'Fast response'}</span>
-                <Badge variant="outline" className="text-green-600">+3</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_fast?.points || 3}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">⏰ {locale === 'th' ? 'ตอบช้าแต่ละเอียด' : 'Late but detailed'}</span>
-                <Badge variant="outline" className="text-green-600">+2</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.response_late_detailed?.points || 2}</Badge>
               </div>
             </div>
           </div>
@@ -182,11 +202,11 @@ export default function MyPoints() {
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🔥 {locale === 'th' ? 'มาตรงเวลา 5 วันติด' : '5-day on-time streak'}</span>
-                <Badge variant="outline" className="text-green-600">+50</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.streak_weekly?.points || 50}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🏆 {locale === 'th' ? 'มาตรงเวลาทั้งเดือน' : 'Perfect month'}</span>
-                <Badge variant="outline" className="text-green-600">+100</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.streak_monthly?.points || 100}</Badge>
               </div>
             </div>
           </div>
@@ -200,15 +220,15 @@ export default function MyPoints() {
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">💚 {locale === 'th' ? 'เริ่มต้นทุกเดือน' : 'Monthly base'}</span>
-                <Badge variant="outline" className="text-green-600">+100</Badge>
+                <Badge variant="outline" className="text-green-600">+{pointRules?.health_monthly?.points || 100}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">😷 {locale === 'th' ? 'ลาป่วยไม่มีใบรับรอง' : 'Sick leave (no cert)'}</span>
-                <Badge variant="outline" className="text-orange-600">-30</Badge>
+                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.health_deduct_no_cert?.points || 30)}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">🏥 {locale === 'th' ? 'ลาป่วยมีใบรับรอง' : 'Sick leave (with cert)'}</span>
-                <Badge variant="outline" className="text-orange-600">-5</Badge>
+                <Badge variant="outline" className="text-orange-600">-{Math.abs(pointRules?.health_deduct_with_cert?.points || 5)}</Badge>
               </div>
             </div>
           </div>

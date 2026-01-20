@@ -21,8 +21,6 @@ verify_jwt = false
 [functions.report-generator]
 verify_jwt = false
 
-[functions.health]
-verify_jwt = false
 
 [functions.fix-user-names]
 verify_jwt = false

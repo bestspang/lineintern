@@ -33,6 +33,18 @@ export default function Help() {
       answer: 'คะแนนสะสมจากการมาทำงานตรงเวลา ทำ OT และกิจกรรมต่างๆ สามารถนำไปแลกของรางวัลได้'
     },
     {
+      question: 'ฉันได้แต้ม Happy Points จากอะไรบ้าง?',
+      answer: 'มาตรงเวลา (+10), ยืนยันตัวตนสำเร็จ (+5), ตอบกลับในแชท (สูงสุด +20/วัน), streak 5 วันติด (+50), และโบนัสสุขภาพต้นเดือน (+100)'
+    },
+    {
+      question: 'Streak คืออะไร และนับอย่างไร?',
+      answer: 'Streak คือจำนวนวันที่มาตรงเวลาติดต่อกัน ระบบข้ามวันหยุดและวันลาอัตโนมัติ ถ้าสาย 1 วัน streak จะรีเซ็ตเป็น 0 ครบ 5 วันติดได้โบนัส +50 แต้ม'
+    },
+    {
+      question: 'แต้มถูกหักได้ไหม?',
+      answer: 'ได้ จากโบนัสสุขภาพ 100 แต้มที่ได้ต้นเดือน หากลาป่วยไม่มีใบรับรองแพทย์หัก -30 หรือมีใบรับรองหัก -5'
+    },
+    {
       question: 'ฉันเช็คอินไม่ได้ แสดง "นอกพื้นที่"',
       answer: 'ตรวจสอบว่าอยู่ในพื้นที่ที่กำหนดและเปิด GPS แล้ว ถ้ายังมีปัญหาให้ติดต่อ HR'
     },
@@ -96,6 +108,18 @@ export default function Help() {
     {
       question: 'What are Happy Points?',
       answer: 'Points earned from on-time attendance, OT, and various activities. Can be redeemed for rewards.'
+    },
+    {
+      question: 'How do I earn Happy Points?',
+      answer: 'On-time check-in (+10), identity verification (+5), chat responses (max +20/day), 5-day streak (+50), and monthly health bonus (+100).'
+    },
+    {
+      question: 'What is a Streak and how is it counted?',
+      answer: 'Streak is consecutive on-time days. System skips holidays and approved leaves. Being late once resets streak to 0. Every 5 days gives +50 bonus.'
+    },
+    {
+      question: 'Can points be deducted?',
+      answer: 'Yes, from your 100-point monthly health bonus. Sick leave without certificate deducts -30, with certificate deducts -5.'
     },
     {
       question: 'I cannot check in, shows "Out of area"',
