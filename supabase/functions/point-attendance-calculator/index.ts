@@ -117,6 +117,7 @@ async function sendPointNotification(
     points: number;
     streak: number;
     newBalance: number;
+    shieldsRemaining?: number;
   }
 ): Promise<void> {
   if (!options.messageTemplate) {
@@ -143,6 +144,7 @@ async function sendPointNotification(
     message = message.replace(/{points}/g, String(options.points));
     message = message.replace(/{balance}/g, String(options.newBalance));
     message = message.replace(/{streak}/g, String(options.streak));
+    message = message.replace(/{shields_remaining}/g, String(options.shieldsRemaining ?? 0));
 
     const accessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     if (!accessToken) {
@@ -342,13 +344,15 @@ serve(async (req) => {
             newStreak
           });
         } else {
-          // Missed a work day - check for shield protection
+        // Missed a work day - check for shield protection
           if ((happyPoints.streak_shields || 0) > 0) {
+            const shieldsRemaining = happyPoints.streak_shields - 1;
+            
             // Use shield to protect streak
             await supabase
               .from('happy_points')
               .update({ 
-                streak_shields: happyPoints.streak_shields - 1,
+                streak_shields: shieldsRemaining,
                 last_shield_used_at: today
               })
               .eq('id', happyPoints.id);
@@ -369,7 +373,19 @@ serve(async (req) => {
             logger.info('Shield used to protect streak (missed work day)', { 
               employee_id, 
               streak: newStreak,
-              shields_remaining: happyPoints.streak_shields - 1
+              shields_remaining: shieldsRemaining
+            });
+            
+            // Send LINE notification for shield usage
+            await sendPointNotification(supabase, {
+              employeeId: employee_id,
+              messageTemplate: '🛡️ {name}! โล่ป้องกันช่วยรักษา streak {streak} วันของคุณไว้แล้ว! เหลือโล่อีก {shields_remaining} อัน',
+              notifyGroup: true,
+              notifyDm: true,
+              points: 0,
+              streak: newStreak,
+              newBalance: happyPoints.point_balance,
+              shieldsRemaining
             });
           } else {
             // No shield - reset streak to 1 (today counts as first day)
@@ -391,11 +407,13 @@ serve(async (req) => {
     } else {
       // Late check-in - check for shield protection
       if ((happyPoints.streak_shields || 0) > 0) {
+        const shieldsRemaining = happyPoints.streak_shields - 1;
+        
         // Use shield to protect streak
         await supabase
           .from('happy_points')
           .update({ 
-            streak_shields: happyPoints.streak_shields - 1,
+            streak_shields: shieldsRemaining,
             last_shield_used_at: today
           })
           .eq('id', happyPoints.id);
@@ -416,7 +434,19 @@ serve(async (req) => {
         logger.info('Shield used to protect streak (late check-in)', { 
           employee_id, 
           streak: newStreak,
-          shields_remaining: happyPoints.streak_shields - 1
+          shields_remaining: shieldsRemaining
+        });
+        
+        // Send LINE notification for shield usage
+        await sendPointNotification(supabase, {
+          employeeId: employee_id,
+          messageTemplate: '🛡️ {name}! โล่ป้องกันช่วยรักษา streak {streak} วันของคุณไว้แล้ว! เหลือโล่อีก {shields_remaining} อัน',
+          notifyGroup: true,
+          notifyDm: true,
+          points: 0,
+          streak: newStreak,
+          newBalance: happyPoints.point_balance,
+          shieldsRemaining
         });
       } else {
         // No shield - reset streak to 0
