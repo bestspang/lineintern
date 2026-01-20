@@ -3539,6 +3539,7 @@ export type Database = {
           description_th: string | null
           id: string
           is_active: boolean | null
+          monthly_summary_enabled: boolean | null
           name: string
           name_th: string | null
           notify_dm: boolean | null
@@ -3547,6 +3548,7 @@ export type Database = {
           notify_message_template: string | null
           points: number
           rule_key: string
+          timing_mode: string | null
           updated_at: string | null
         }
         Insert: {
@@ -3557,6 +3559,7 @@ export type Database = {
           description_th?: string | null
           id?: string
           is_active?: boolean | null
+          monthly_summary_enabled?: boolean | null
           name: string
           name_th?: string | null
           notify_dm?: boolean | null
@@ -3565,6 +3568,7 @@ export type Database = {
           notify_message_template?: string | null
           points: number
           rule_key: string
+          timing_mode?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -3575,6 +3579,7 @@ export type Database = {
           description_th?: string | null
           id?: string
           is_active?: boolean | null
+          monthly_summary_enabled?: boolean | null
           name?: string
           name_th?: string | null
           notify_dm?: boolean | null
@@ -3583,6 +3588,7 @@ export type Database = {
           notify_message_template?: string | null
           points?: number
           rule_key?: string
+          timing_mode?: string | null
           updated_at?: string | null
         }
         Relationships: []

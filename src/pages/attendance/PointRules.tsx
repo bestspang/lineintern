@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Settings2, 
@@ -22,7 +23,10 @@ import {
   Bell,
   ChevronDown,
   Users,
-  User
+  User,
+  Timer,
+  Calendar,
+  CalendarDays
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +45,8 @@ interface PointRule {
   notify_message_template: string | null;
   notify_group: boolean;
   notify_dm: boolean;
+  timing_mode: 'immediate' | 'weekly_friday' | 'end_of_month';
+  monthly_summary_enabled: boolean;
 }
 
 const categoryConfig: Record<string, { icon: any; label: string; labelTh: string; color: string }> = {
@@ -51,11 +57,18 @@ const categoryConfig: Record<string, { icon: any; label: string; labelTh: string
   penalty: { icon: AlertTriangle, label: 'Penalty', labelTh: 'การหักแต้ม', color: 'bg-red-500' },
 };
 
+const timingModeConfig = [
+  { value: 'immediate', label: 'ทันที', description: 'ให้แต้มทันทีเมื่อเงื่อนไขครบ', icon: Timer },
+  { value: 'weekly_friday', label: 'ทุกวันศุกร์', description: 'สรุปและให้แต้มทุกวันศุกร์', icon: Calendar },
+  { value: 'end_of_month', label: 'สิ้นเดือน', description: 'ให้แต้มวันสุดท้ายของเดือน', icon: CalendarDays },
+];
+
 export default function PointRules() {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPoints, setEditPoints] = useState<number>(0);
   const [expandedNotify, setExpandedNotify] = useState<string | null>(null);
+  const [expandedTiming, setExpandedTiming] = useState<string | null>(null);
 
   const { data: rules, isLoading } = useQuery({
     queryKey: ['point-rules'],
@@ -118,6 +131,23 @@ export default function PointRules() {
       id: rule.id,
       updates,
     });
+  };
+
+  const handleTimingUpdate = (rule: PointRule, timingMode: string) => {
+    updateMutation.mutate({
+      id: rule.id,
+      updates: { timing_mode: timingMode as PointRule['timing_mode'] },
+    });
+  };
+
+  // Check if rule should show timing options (streak rules)
+  const shouldShowTiming = (rule: PointRule) => {
+    return rule.category === 'streak' && rule.rule_key !== 'monthly_summary';
+  };
+
+  // Check if this is the monthly summary rule
+  const isMonthlySummary = (rule: PointRule) => {
+    return rule.rule_key === 'monthly_summary';
   };
 
   // Group rules by category
@@ -193,12 +223,25 @@ export default function PointRules() {
                       {/* Main rule row */}
                       <div className="flex items-center justify-between p-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium truncate">{rule.name}</span>
                             {rule.name_th && (
                               <span className="text-muted-foreground text-sm truncate">
                                 ({rule.name_th})
                               </span>
+                            )}
+                            {/* Show timing badge for streak rules */}
+                            {shouldShowTiming(rule) && (
+                              <Badge variant="outline" className="text-xs">
+                                {rule.timing_mode === 'immediate' ? '⚡ ทันที' : 
+                                 rule.timing_mode === 'weekly_friday' ? '📅 ศุกร์' : 
+                                 '📆 สิ้นเดือน'}
+                              </Badge>
+                            )}
+                            {isMonthlySummary(rule) && (
+                              <Badge variant="secondary" className="text-xs">
+                                📊 สรุปอัตโนมัติ
+                              </Badge>
                             )}
                           </div>
                           {rule.description_th && (
@@ -218,38 +261,43 @@ export default function PointRules() {
                         </div>
 
                         <div className="flex items-center gap-3 ml-4">
-                          {editingId === rule.id ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                value={editPoints}
-                                onChange={(e) => setEditPoints(parseInt(e.target.value) || 0)}
-                                className="w-20 h-8"
-                              />
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleSaveEdit(rule)}
-                                disabled={updateMutation.isPending}
-                              >
-                                <Save className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={handleCancelEdit}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <Badge
-                              variant={rule.points >= 0 ? 'default' : 'destructive'}
-                              className="cursor-pointer hover:opacity-80 min-w-[60px] justify-center"
-                              onClick={() => handleStartEdit(rule)}
-                            >
-                              {rule.points > 0 ? '+' : ''}{rule.points} pts
-                            </Badge>
+                          {/* Don't show points editing for monthly_summary (0 points) */}
+                          {!isMonthlySummary(rule) && (
+                            <>
+                              {editingId === rule.id ? (
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    value={editPoints}
+                                    onChange={(e) => setEditPoints(parseInt(e.target.value) || 0)}
+                                    className="w-20 h-8"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleSaveEdit(rule)}
+                                    disabled={updateMutation.isPending}
+                                  >
+                                    <Save className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleCancelEdit}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Badge
+                                  variant={rule.points >= 0 ? 'default' : 'destructive'}
+                                  className="cursor-pointer hover:opacity-80 min-w-[60px] justify-center"
+                                  onClick={() => handleStartEdit(rule)}
+                                >
+                                  {rule.points > 0 ? '+' : ''}{rule.points} pts
+                                </Badge>
+                              )}
+                            </>
                           )}
 
                           <Switch
@@ -259,6 +307,68 @@ export default function PointRules() {
                           />
                         </div>
                       </div>
+
+                      {/* Timing mode settings for streak rules */}
+                      {shouldShowTiming(rule) && (
+                        <Collapsible
+                          open={expandedTiming === rule.id}
+                          onOpenChange={(open) => setExpandedTiming(open ? rule.id : null)}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <button className="w-full flex items-center justify-between px-3 py-2 border-t text-sm text-muted-foreground hover:bg-muted/50 transition-colors">
+                              <div className="flex items-center gap-2">
+                                <Timer className="h-4 w-4" />
+                                <span>เวลาให้แต้ม (Timing Mode)</span>
+                              </div>
+                              <ChevronDown className={`h-4 w-4 transition-transform ${expandedTiming === rule.id ? 'rotate-180' : ''}`} />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="p-3 border-t bg-muted/30">
+                              <RadioGroup
+                                value={rule.timing_mode || 'immediate'}
+                                onValueChange={(value) => handleTimingUpdate(rule, value)}
+                                className="space-y-2"
+                              >
+                                {timingModeConfig.map((mode) => {
+                                  const ModeIcon = mode.icon;
+                                  return (
+                                    <div
+                                      key={mode.value}
+                                      className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                        rule.timing_mode === mode.value ? 'bg-primary/10 border-primary' : 'bg-background hover:bg-muted/50'
+                                      }`}
+                                      onClick={() => handleTimingUpdate(rule, mode.value)}
+                                    >
+                                      <RadioGroupItem value={mode.value} id={`${rule.id}-${mode.value}`} />
+                                      <ModeIcon className="h-4 w-4 text-muted-foreground" />
+                                      <div className="flex-1">
+                                        <Label htmlFor={`${rule.id}-${mode.value}`} className="font-medium cursor-pointer">
+                                          {mode.label}
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground">{mode.description}</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </RadioGroup>
+                              
+                              {/* Timing mode explanation */}
+                              <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-xs text-muted-foreground">
+                                {rule.timing_mode === 'immediate' && (
+                                  <p>⚡ <strong>Weekly Streak:</strong> เมื่อ check-in ครบ 5 วันติด จะให้แต้มทันที (5, 10, 15... วัน)</p>
+                                )}
+                                {rule.timing_mode === 'weekly_friday' && (
+                                  <p>📅 <strong>Backup:</strong> ถ้าระบบทันทีพลาด จะให้แต้มทุกวันศุกร์ 18:00</p>
+                                )}
+                                {rule.timing_mode === 'end_of_month' && (
+                                  <p>📆 <strong>Monthly Streak:</strong> ถ้าครบ 20 วันในเดือน จะให้แต้มวันสุดท้ายของเดือนหลัง checkout</p>
+                                )}
+                              </div>
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
 
                       {/* Notification settings collapsible */}
                       <Collapsible
@@ -313,6 +423,9 @@ export default function PointRules() {
                                   />
                                   <p className="text-xs text-muted-foreground">
                                     Variables: <code className="bg-muted px-1 rounded">{'{name}'}</code> <code className="bg-muted px-1 rounded">{'{points}'}</code> <code className="bg-muted px-1 rounded">{'{streak}'}</code> <code className="bg-muted px-1 rounded">{'{balance}'}</code>
+                                    {isMonthlySummary(rule) && (
+                                      <> <code className="bg-muted px-1 rounded">{'{month}'}</code></>
+                                    )}
                                   </p>
                                 </div>
 
@@ -364,9 +477,10 @@ export default function PointRules() {
 
       <Card className="border-dashed">
         <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground text-center">
-            💡 คลิกที่แต้มเพื่อแก้ไขค่า • ใช้ Switch เพื่อเปิด/ปิด rule • กดที่ "Notification Settings" เพื่อตั้งค่าการแจ้งเตือน
-          </p>
+          <div className="text-sm text-muted-foreground text-center space-y-2">
+            <p>💡 คลิกที่แต้มเพื่อแก้ไขค่า • ใช้ Switch เพื่อเปิด/ปิด rule • กดที่ "Notification Settings" เพื่อตั้งค่าการแจ้งเตือน</p>
+            <p>⏱️ กดที่ "เวลาให้แต้ม" เพื่อเลือกว่าจะให้แต้มทันที, ทุกศุกร์, หรือสิ้นเดือน</p>
+          </div>
         </CardContent>
       </Card>
     </div>
