@@ -3541,6 +3541,10 @@ export type Database = {
           is_active: boolean | null
           name: string
           name_th: string | null
+          notify_dm: boolean | null
+          notify_enabled: boolean | null
+          notify_group: boolean | null
+          notify_message_template: string | null
           points: number
           rule_key: string
           updated_at: string | null
@@ -3555,6 +3559,10 @@ export type Database = {
           is_active?: boolean | null
           name: string
           name_th?: string | null
+          notify_dm?: boolean | null
+          notify_enabled?: boolean | null
+          notify_group?: boolean | null
+          notify_message_template?: string | null
           points: number
           rule_key: string
           updated_at?: string | null
@@ -3569,6 +3577,10 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           name_th?: string | null
+          notify_dm?: boolean | null
+          notify_enabled?: boolean | null
+          notify_group?: boolean | null
+          notify_message_template?: string | null
           points?: number
           rule_key?: string
           updated_at?: string | null
