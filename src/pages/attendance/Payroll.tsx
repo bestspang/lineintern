@@ -109,7 +109,7 @@ interface PayrollRecord {
 
 interface DailyAttendance {
   date: string;
-  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'holiday' | 'future';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'holiday' | 'future' | 'not_started' | 'skip_tracking';
   check_in?: string;
   check_out?: string;
   work_hours?: number;      // raw hours (รวม break)
@@ -117,6 +117,7 @@ interface DailyAttendance {
   billable_hours?: number;  // cap ตาม max + OT approved
   is_overtime?: boolean;
   has_approved_ot?: boolean;
+  has_adjustment?: boolean; // flag to indicate this day has admin adjustment
 }
 
 export default function Payroll() {
@@ -815,16 +816,42 @@ export default function Payroll() {
     const breakHours = selectedEmployeeDetails?.break_hours ?? 1;
     const maxWorkHours = selectedEmployeeDetails?.max_work_hours_per_day ?? 8;
     
+    // Get adjustments for selected employee
+    const selectedEmployeeAdjustments = selectedEmployee 
+      ? employeeAdjustmentsMap.get(selectedEmployee) 
+      : undefined;
+    
+    // Get employment start date for "not started" status
+    const employmentStartDate = selectedEmployeeDetails?.employment_start_date 
+      ? parseISO(selectedEmployeeDetails.employment_start_date) 
+      : null;
+    
     calendarDays.forEach(day => {
       const dateStr = format(day, "yyyy-MM-dd");
       const dayOfWeek = getDay(day);
       const isWorkingDay = workingDaysSet.has(dayOfWeek);
+      
+      // Check if before employment start date
+      if (employmentStartDate && day < employmentStartDate) {
+        map.set(dateStr, {
+          date: dateStr,
+          status: 'not_started',
+          check_in: undefined,
+          check_out: undefined,
+          work_hours: undefined,
+        });
+        return;
+      }
+      
       const dayLogs = attendanceData.filter(log => 
         formatBangkokISODate(log.server_time) === dateStr
       );
       
       const checkIn = dayLogs.find(log => log.event_type === "check_in");
       const checkOut = dayLogs.find(log => log.event_type === "check_out");
+      
+      // Check for adjustment override
+      const adjustment = selectedEmployeeAdjustments?.get(dateStr);
       
       let status: DailyAttendance['status'] = 'absent';
       
@@ -857,37 +884,66 @@ export default function Payroll() {
         }
       }
       
-      // Calculate work hours
-      const rawHours = checkIn && checkOut 
-        ? (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60)
-        : undefined;
+      // Apply adjustment override if exists
+      let finalStatus: DailyAttendance['status'] = status;
+      if (adjustment?.override_status) {
+        const statusMapping: Record<string, DailyAttendance['status']> = {
+          'present': 'present',
+          'within_grace': 'within_grace',
+          'late': 'late',
+          'day_off': 'day_off',
+          'vacation': 'leave',
+          'sick': 'leave',
+          'personal': 'leave',
+          'absent': 'absent',
+          'holiday': 'holiday',
+          'weekend': 'weekend',
+          'leave': 'leave',
+          'not_started': 'not_started',
+          'skip_tracking': 'skip_tracking',
+        };
+        finalStatus = statusMapping[adjustment.override_status] ?? status;
+      }
+      
+      // Calculate work hours - use adjustment times if available
+      const adjustedCheckIn = adjustment?.override_check_in 
+        ? `${dateStr}T${adjustment.override_check_in}` 
+        : checkIn?.server_time;
+      const adjustedCheckOut = adjustment?.override_check_out 
+        ? `${dateStr}T${adjustment.override_check_out}` 
+        : checkOut?.server_time;
+      
+      const rawHours = adjustedCheckIn && adjustedCheckOut 
+        ? (parseISO(adjustedCheckOut).getTime() - parseISO(adjustedCheckIn).getTime()) / (1000 * 60 * 60)
+        : (adjustment?.override_work_hours ?? undefined);
       
       // Net hours (หัก break)
       const netHours = rawHours ? Math.max(0, rawHours - breakHours) : undefined;
       
       // Billable hours (cap ตาม max ยกเว้นมี approved OT)
       const approvedOTHours = approvedOTDates.get(dateStr);
-      const hasApprovedOT = approvedOTHours !== undefined;
-      const effectiveMaxHours = hasApprovedOT ? maxWorkHours + approvedOTHours : maxWorkHours;
+      const hasApprovedOT = approvedOTHours !== undefined || (adjustment?.override_ot_hours ?? 0) > 0;
+      const effectiveMaxHours = hasApprovedOT ? maxWorkHours + (approvedOTHours ?? adjustment?.override_ot_hours ?? 0) : maxWorkHours;
       const billableHours = netHours
         ? Math.min(netHours, effectiveMaxHours)
         : undefined;
       
       map.set(dateStr, {
         date: dateStr,
-        status,
-        check_in: checkIn?.server_time,
-        check_out: checkOut?.server_time,
+        status: finalStatus,
+        check_in: adjustedCheckIn,
+        check_out: adjustedCheckOut,
         work_hours: rawHours,
         net_hours: netHours,
         billable_hours: billableHours,
         is_overtime: checkIn?.is_overtime || checkOut?.is_overtime || hasApprovedOT,
         has_approved_ot: hasApprovedOT,
+        has_adjustment: !!adjustment,
       });
     });
     
     return map;
-  }, [attendanceData, calendarDays, selectedEmployeeSchedules, approvedOTRequests, selectedEmployeeDetails, gracePeriodMinutes]);
+  }, [attendanceData, calendarDays, selectedEmployeeSchedules, approvedOTRequests, selectedEmployeeDetails, gracePeriodMinutes, selectedEmployee, employeeAdjustmentsMap]);
 
   // Create payroll period
   const createPeriodMutation = useMutation({
