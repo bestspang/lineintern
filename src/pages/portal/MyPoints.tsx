@@ -89,7 +89,8 @@ export default function MyPoints() {
     );
   }
 
-  const dailyProgress = ((happyPoints?.daily_response_score || 0) / 20) * 100;
+  // Daily response score is now a tier-based system (max 8 pts), not /20
+  const todayResponsePoints = happyPoints?.daily_response_score || 0;
 
   return (
     <div className="space-y-4">
@@ -195,25 +196,34 @@ export default function MyPoints() {
             </div>
           </div>
           
-          {/* Response Section */}
+          {/* Response Section - Daily Average Scoring */}
           <div>
             <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-blue-500" />
-              {locale === 'th' ? 'การตอบกลับ (สูงสุด 20/วัน)' : 'Responses (Max 20/day)'}
+              {locale === 'th' ? 'คะแนนการตอบรายวัน' : 'Daily Response Score'}
             </h4>
+            <p className="text-xs text-muted-foreground pl-6 mb-2">
+              {locale === 'th' 
+                ? 'คำนวณจากความเร็วเฉลี่ยในการตอบทั้งวัน (23:00)' 
+                : 'Based on avg response time for the day (23:00)'}
+            </p>
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
+              {/* SYNC: tiers from point_rules.response_daily_avg.conditions.tiers */}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">🏆 {locale === 'th' ? 'ตอบเร็ว + มีเนื้อหา' : 'Fast + detailed'}</span>
-                {/* SYNC: rule_key must match point_rules table - response_perfect, response_ack, response_late */}
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_perfect?.points || 8}</Badge>
+                <span className="text-muted-foreground">🏆 {locale === 'th' ? 'เฉลี่ย < 5 นาที' : 'Avg < 5 min'}</span>
+                <Badge variant="outline" className="text-green-600">+8</Badge>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">👍 {locale === 'th' ? 'ตอบเร็ว' : 'Fast response'}</span>
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_ack?.points || 3}</Badge>
+                <span className="text-muted-foreground">👍 {locale === 'th' ? 'เฉลี่ย < 10 นาที' : 'Avg < 10 min'}</span>
+                <Badge variant="outline" className="text-green-600">+5</Badge>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">⏰ {locale === 'th' ? 'ตอบช้าแต่ละเอียด' : 'Late but detailed'}</span>
-                <Badge variant="outline" className="text-green-600">+{pointRules?.response_late?.points || 2}</Badge>
+                <span className="text-muted-foreground">✅ {locale === 'th' ? 'เฉลี่ย < 30 นาที' : 'Avg < 30 min'}</span>
+                <Badge variant="outline" className="text-green-600">+3</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">⏰ {locale === 'th' ? 'เฉลี่ย > 30 นาที' : 'Avg > 30 min'}</span>
+                <Badge variant="outline" className="text-green-600">+1</Badge>
               </div>
             </div>
           </div>
@@ -261,26 +271,43 @@ export default function MyPoints() {
         </CardContent>
       </Card>
 
-      {/* Daily Progress */}
+      {/* Daily Response Info - Tier-based scoring */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            {locale === 'th' ? 'ความคืบหน้าวันนี้' : "Today's Progress"}
+            {locale === 'th' ? 'คะแนนการตอบวันนี้' : "Today's Response"}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>{locale === 'th' ? 'คะแนนตอบกลับ' : 'Response Score'}</span>
-              <span className="font-medium">{happyPoints?.daily_response_score || 0}/20</span>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {locale === 'th' ? 'แต้มที่ได้รับ' : 'Points earned'}
+              </span>
+              {todayResponsePoints > 0 ? (
+                <Badge className={
+                  todayResponsePoints >= 8 ? 'bg-green-500' :
+                  todayResponsePoints >= 5 ? 'bg-blue-500' :
+                  todayResponsePoints >= 3 ? 'bg-yellow-500' : 'bg-gray-500'
+                }>
+                  +{todayResponsePoints} {
+                    todayResponsePoints >= 8 ? '🏆' :
+                    todayResponsePoints >= 5 ? '👍' :
+                    todayResponsePoints >= 3 ? '✅' : '⏰'
+                  }
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  {locale === 'th' ? 'รอคำนวณ 23:00' : 'Calculated at 23:00'}
+                </span>
+              )}
             </div>
-            <Progress value={dailyProgress} className="h-3" />
-            {dailyProgress >= 100 && (
-              <Badge className="bg-green-500">
-                {locale === 'th' ? '🎉 เต็มแล้ว! Grade S' : '🎉 Full! Grade S'}
-              </Badge>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {locale === 'th' 
+                ? 'คำนวณอัตโนมัติจากความเร็วเฉลี่ยในการตอบทั้งวัน'
+                : 'Auto-calculated from your average response speed today'}
+            </p>
           </div>
         </CardContent>
       </Card>

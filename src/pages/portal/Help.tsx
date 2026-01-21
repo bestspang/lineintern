@@ -34,7 +34,7 @@ export default function Help() {
     },
     {
       question: 'ฉันได้แต้ม Happy Points จากอะไรบ้าง?',
-      answer: 'มาตรงเวลา (+10), ยืนยันตัวตนสำเร็จ (+5), ตอบกลับในแชท (สูงสุด +20/วัน), streak 5 วันติด (+50), และโบนัสสุขภาพต้นเดือน (+100)'
+      answer: 'มาตรงเวลา (+10), ยืนยันตัวตนสำเร็จ (+5), คะแนนการตอบรายวัน (คำนวณจากความเร็วเฉลี่ย สูงสุด +8), streak 5 วันติด (+50), และโบนัสสุขภาพต้นเดือน (+100)'
     },
     {
       question: 'Streak คืออะไร และนับอย่างไร?',
@@ -111,7 +111,7 @@ export default function Help() {
     },
     {
       question: 'How do I earn Happy Points?',
-      answer: 'On-time check-in (+10), identity verification (+5), chat responses (max +20/day), 5-day streak (+50), and monthly health bonus (+100).'
+      answer: 'On-time check-in (+10), identity verification (+5), daily response score (based on avg speed, max +8), 5-day streak (+50), and monthly health bonus (+100).'
     },
     {
       question: 'What is a Streak and how is it counted?',
