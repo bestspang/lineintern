@@ -6254,6 +6254,14 @@ export type Database = {
       }
       restore_branch: { Args: { p_branch_id: string }; Returns: Json }
       retry_cron_job: { Args: { job_id: number }; Returns: Json }
+      rollback_response_points_for_date: {
+        Args: { p_actor_user_id?: string; p_date: string; p_reason: string }
+        Returns: {
+          affected_employees: number
+          processed_count: number
+          total_reversed: number
+        }[]
+      }
       search_memories_by_keywords: {
         Args: {
           p_group_id?: string

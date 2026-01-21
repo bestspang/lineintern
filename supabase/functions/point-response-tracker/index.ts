@@ -72,6 +72,28 @@ serve(async (req) => {
     const lateRule = rulesMap.get('response_late') || { points: 2, is_active: true };
     const capRule = rulesMap.get('response_daily_cap') || { points: DEFAULT_DAILY_CAP, is_active: true };
 
+    // Hard gate: if response rules are disabled in DB, do not award or write anything.
+    // (User requirement: "ปิดทั้งหมดก่อน")
+    const scoringEnabled = Boolean(perfectRule?.is_active || ackRule?.is_active || lateRule?.is_active);
+    const rulesEnabled = scoringEnabled && Boolean(capRule?.is_active);
+    if (!rulesEnabled) {
+      logger.info('Response point rules disabled - skipping award', {
+        employee_id,
+        perfect_active: Boolean(perfectRule?.is_active),
+        ack_active: Boolean(ackRule?.is_active),
+        late_active: Boolean(lateRule?.is_active),
+        cap_active: Boolean(capRule?.is_active),
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          points_awarded: 0,
+          reason: 'rules_disabled',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const SCORE_PERFECT = perfectRule.points;
     const SCORE_HELPFUL_ACK = ackRule.points;
     const SCORE_LATE_BUT_SURE = lateRule.points;

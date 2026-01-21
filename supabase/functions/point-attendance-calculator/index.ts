@@ -370,7 +370,76 @@ serve(async (req) => {
       );
     }
 
-    logger.info('Processing attendance points', { employee_id, is_on_time, fraud_score });
+    // Guard: prevent invalid/fake reference IDs from awarding points
+    const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+    if (attendance_log_id === ZERO_UUID) {
+      logger.warn('Rejecting attendance points: invalid attendance_log_id (zero uuid)', { employee_id });
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'invalid_attendance_log_id' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate attendance log exists and belongs to the employee (prevents duplicate/forged awards)
+    const { data: attendanceLog, error: logError } = await supabase
+      .from('attendance_logs')
+      .select('id, employee_id, event_type, server_time')
+      .eq('id', attendance_log_id)
+      .maybeSingle();
+
+    if (logError || !attendanceLog) {
+      logger.warn('Rejecting attendance points: attendance log not found', { employee_id, attendance_log_id, logError });
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'attendance_log_not_found' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (attendanceLog.employee_id !== employee_id || attendanceLog.event_type !== 'check_in') {
+      logger.warn('Rejecting attendance points: attendance log mismatch', {
+        employee_id,
+        attendance_log_id,
+        log_employee_id: attendanceLog.employee_id,
+        log_event_type: attendanceLog.event_type,
+      });
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'attendance_log_mismatch' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Idempotency: if we've already awarded attendance points for this log, skip.
+    const { data: existingAwards, error: existingError } = await supabase
+      .from('point_transactions')
+      .select('id')
+      .eq('employee_id', employee_id)
+      .eq('category', 'attendance')
+      .eq('reference_id', attendance_log_id)
+      .eq('reference_type', 'attendance_log')
+      .limit(1);
+
+    if (existingError) {
+      logger.error('Error checking existing attendance awards', { employee_id, attendance_log_id, existingError });
+      // Fail closed: do not award if we cannot ensure idempotency.
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'idempotency_check_failed' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (existingAwards && existingAwards.length > 0) {
+      logger.info('Attendance points already awarded for this attendance_log_id - skipping', {
+        employee_id,
+        attendance_log_id,
+        existing_tx_id: existingAwards[0].id,
+      });
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'already_awarded_for_log' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    logger.info('Processing attendance points', { employee_id, is_on_time, fraud_score, attendance_log_id });
 
     // Fetch point rules from database (include notification settings)
     const { data: pointRules } = await supabase
