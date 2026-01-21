@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, Clock, AlertCircle, Calendar, TrendingUp, Banknote } from 'lucide-react';
+import { Wallet, Clock, AlertCircle, Calendar, TrendingUp, Banknote, Briefcase } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { format, startOfMonth, getDay, eachDayOfInterval } from 'date-fns';
@@ -195,6 +195,51 @@ export default function MyPayroll() {
   };
 
   const progress = payroll ? (payroll.workDays / payroll.expectedWorkDays) * 100 : 0;
+
+  // Check if employee is exempt from attendance tracking (executive)
+  const isExecutive = employee?.skip_attendance_tracking === true;
+
+  // Executive UI - show special message instead of payroll data
+  if (isExecutive) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold">
+            {locale === 'th' ? '💰 Payroll ของฉัน' : '💰 My Payroll'}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {format(new Date(), 'MMMM yyyy', { locale: locale === 'th' ? th : undefined })}
+          </p>
+        </div>
+
+        {/* Executive Card */}
+        <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+          <CardContent className="p-6 text-center">
+            <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-80" />
+            <h2 className="text-xl font-bold mb-2">
+              {locale === 'th' ? '👔 คุณไม่ต้อง Track Attendance' : '👔 You are exempt from attendance tracking'}
+            </h2>
+            <p className="opacity-90">
+              {locale === 'th' 
+                ? 'บัญชีของคุณถูกตั้งค่าเป็นผู้บริหาร ไม่จำเป็นต้องลงเวลาทำงาน'
+                : 'Your account is set as executive and does not require attendance tracking.'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-muted/50">
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground text-center">
+              {locale === 'th' 
+                ? '💡 หากต้องการข้อมูล Payroll โปรดติดต่อฝ่าย HR หรือ Admin'
+                : '💡 For payroll information, please contact HR or Admin.'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

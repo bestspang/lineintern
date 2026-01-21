@@ -50,11 +50,12 @@ export default function PayrollReport() {
     const endDate = format(endOfMonth(new Date(year, month - 1)), 'yyyy-MM-dd');
 
     try {
-      // Base employee query
+      // Base employee query - exclude executives from attendance tracking
       let employeeQuery = supabase
         .from('employees')
         .select('id', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .or('skip_attendance_tracking.is.null,skip_attendance_tracking.eq.false');
 
       if (!isAdmin && employee.branch_id) {
         employeeQuery = employeeQuery.eq('branch_id', employee.branch_id);

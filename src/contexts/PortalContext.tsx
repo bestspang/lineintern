@@ -24,6 +24,8 @@ interface Employee {
   role_id: string | null;
   branch: EmployeeBranch | null;
   branch_id: string | null;
+  skip_attendance_tracking?: boolean;
+  exclude_from_points?: boolean;
 }
 
 interface MenuItem {

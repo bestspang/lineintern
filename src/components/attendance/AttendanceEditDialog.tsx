@@ -242,14 +242,18 @@ export function AttendanceEditDialog({
         });
       }
     },
-    onSuccess: () => {
-      toast.success('บันทึกการแก้ไขสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['attendance-adjustment'] });
-      queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
-      queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
-      onSaved?.();
-      onOpenChange(false);
-    },
+      onSuccess: () => {
+        toast.success('บันทึกการแก้ไขสำเร็จ');
+        // Invalidate all related queries for immediate UI refresh
+        queryClient.invalidateQueries({ queryKey: ['attendance-adjustment'] });
+        queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
+        queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
+        queryClient.invalidateQueries({ queryKey: ['employees-payroll'] });
+        queryClient.invalidateQueries({ queryKey: ['attendance'] });
+        queryClient.invalidateQueries({ queryKey: ['calendar-data'] });
+        onSaved?.();
+        onOpenChange(false);
+      },
     onError: (error) => {
       toast.error(error.message || 'เกิดข้อผิดพลาดในการบันทึก');
     },
@@ -283,14 +287,18 @@ export function AttendanceEditDialog({
         },
       });
     },
-    onSuccess: () => {
-      toast.success('คืนค่าเดิมสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['attendance-adjustment'] });
-      queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
-      queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
-      onSaved?.();
-      onOpenChange(false);
-    },
+      onSuccess: () => {
+        toast.success('คืนค่าเดิมสำเร็จ');
+        // Invalidate all related queries for immediate UI refresh
+        queryClient.invalidateQueries({ queryKey: ['attendance-adjustment'] });
+        queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
+        queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
+        queryClient.invalidateQueries({ queryKey: ['employees-payroll'] });
+        queryClient.invalidateQueries({ queryKey: ['attendance'] });
+        queryClient.invalidateQueries({ queryKey: ['calendar-data'] });
+        onSaved?.();
+        onOpenChange(false);
+      },
     onError: (error) => {
       toast.error(error.message || 'เกิดข้อผิดพลาด');
     },

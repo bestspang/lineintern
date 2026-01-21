@@ -37,13 +37,19 @@ export default function HappyPoints() {
           employees!inner (
             full_name,
             code,
+            exclude_from_points,
             branch:branches!branch_id(name)
           )
         `)
         .order('point_balance', { ascending: false });
       
       if (error) throw error;
-      return data as unknown as HappyPointsData[];
+      
+      // Filter out employees who are excluded from points
+      const filteredData = (data || []).filter(
+        (p: any) => !p.employees?.exclude_from_points
+      );
+      return filteredData as unknown as HappyPointsData[];
     },
   });
 
@@ -52,16 +58,27 @@ export default function HappyPoints() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('happy_points')
-        .select('point_balance, total_earned, total_spent, current_punctuality_streak');
+        .select(`
+          point_balance, 
+          total_earned, 
+          total_spent, 
+          current_punctuality_streak,
+          employees!inner(exclude_from_points)
+        `);
       
       if (error) throw error;
       
-      const totalBalance = data?.reduce((sum, p) => sum + (p.point_balance || 0), 0) || 0;
-      const totalEarned = data?.reduce((sum, p) => sum + (p.total_earned || 0), 0) || 0;
-      const totalSpent = data?.reduce((sum, p) => sum + (p.total_spent || 0), 0) || 0;
-      const avgStreak = data?.length ? Math.round(data.reduce((sum, p) => sum + (p.current_punctuality_streak || 0), 0) / data.length) : 0;
+      // Filter out excluded employees for stats calculation
+      const filteredData = (data || []).filter(
+        (p: any) => !p.employees?.exclude_from_points
+      );
       
-      return { totalBalance, totalEarned, totalSpent, avgStreak, employeeCount: data?.length || 0 };
+      const totalBalance = filteredData.reduce((sum, p) => sum + (p.point_balance || 0), 0);
+      const totalEarned = filteredData.reduce((sum, p) => sum + (p.total_earned || 0), 0);
+      const totalSpent = filteredData.reduce((sum, p) => sum + (p.total_spent || 0), 0);
+      const avgStreak = filteredData.length ? Math.round(filteredData.reduce((sum, p) => sum + (p.current_punctuality_streak || 0), 0) / filteredData.length) : 0;
+      
+      return { totalBalance, totalEarned, totalSpent, avgStreak, employeeCount: filteredData.length };
     },
   });
 
