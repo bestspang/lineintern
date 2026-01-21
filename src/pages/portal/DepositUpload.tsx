@@ -51,7 +51,7 @@ export default function DepositUpload() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [todayDeposit, setTodayDeposit] = useState<any>(null);
   const [checkingDeposit, setCheckingDeposit] = useState(true);
-  
+  const [todayHolidayIds, setTodayHolidayIds] = useState<string[]>([]);
   const slipInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -82,6 +82,26 @@ export default function DepositUpload() {
 
     checkTodayDeposit();
   }, [employee?.id]);
+
+  // Fetch today's holidays for special day quotes
+  useEffect(() => {
+    const fetchTodayHolidays = async () => {
+      try {
+        const { data } = await supabase
+          .from('holidays')
+          .select('id')
+          .eq('date', today);
+        
+        if (data) {
+          setTodayHolidayIds(data.map(h => h.id));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch holidays:', err);
+      }
+    };
+    
+    fetchTodayHolidays();
+  }, [today]);
 
   // Handle face verification complete - receives Blob from LivenessCamera
   const handleFaceVerified = useCallback((blob: Blob, liveness: LivenessData) => {
@@ -306,6 +326,8 @@ export default function DepositUpload() {
           onCapture={handleFaceVerified}
           onCancel={() => window.history.back()}
           eventType="deposit"
+          employeeBirthDate={employee?.birth_date?.slice(5)}
+          todayHolidayIds={todayHolidayIds}
         />
       )}
 

@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
         line_user_id,
         role_id,
         branch_id,
+        birth_date,
         skip_attendance_tracking,
         exclude_from_points,
         branches:branches!employees_branch_id_fkey (
@@ -155,6 +156,7 @@ Deno.serve(async (req) => {
           line_user_id: employee.line_user_id,
           role: employee.employee_roles || null,
           branch: employee.branches || null,
+          birth_date: employee.birth_date || null,
           skip_attendance_tracking: employee.skip_attendance_tracking || false,
           exclude_from_points: employee.exclude_from_points || false
         },
