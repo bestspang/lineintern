@@ -268,6 +268,7 @@ const App = () => (
                       <Route path="/attendance/early-leave-requests" element={<EarlyLeaveRequests />} />
                       <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
                       
+                      <Route path="/attendance/work-history" element={<WorkHistory />} />
                       <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
                       <Route path="/attendance/leave-balance" element={<LeaveBalance />} />
                       <Route path="/attendance/roles" element={<AttendanceRoles />} />
