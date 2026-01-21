@@ -64,16 +64,43 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Generate MM-DD strings for the next 7 days
+    // Get birthday reminder settings
+    const { data: settings } = await supabase
+      .from("attendance_settings")
+      .select(`
+        birthday_reminder_enabled,
+        birthday_reminder_days_ahead,
+        birthday_reminder_line_group_id,
+        admin_line_group_id
+      `)
+      .eq("scope", "global")
+      .single();
+
+    // Check if birthday reminder is enabled
+    if (settings?.birthday_reminder_enabled === false) {
+      console.log("[birthday-reminder] Feature disabled, skipping");
+      return new Response(
+        JSON.stringify({ success: true, message: "Birthday reminder disabled", skipped: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get days ahead from settings (default 7)
+    const daysAhead = settings?.birthday_reminder_days_ahead ?? 7;
+
+    // Determine target LINE group
+    const targetGroupId = settings?.birthday_reminder_line_group_id || settings?.admin_line_group_id;
+
+    // Generate MM-DD strings for the next N days
     const dateStrings: string[] = [];
-    for (let i = 0; i <= 7; i++) {
+    for (let i = 0; i <= daysAhead; i++) {
       const futureDate = new Date(bangkokNow.getTime() + i * 24 * 60 * 60 * 1000);
       const mm = String(futureDate.getMonth() + 1).padStart(2, "0");
       const dd = String(futureDate.getDate()).padStart(2, "0");
       dateStrings.push(`${mm}-${dd}`);
     }
 
-    console.log(`[birthday-reminder] Checking dates: ${dateStrings.join(", ")}`);
+    console.log(`[birthday-reminder] Checking dates (${daysAhead} days ahead): ${dateStrings.join(", ")}`);
 
     // Query employees with birthdays in the next 7 days
     const { data: employees, error: empError } = await supabase
@@ -197,16 +224,7 @@ Deno.serve(async (req) => {
 
     console.log("[birthday-reminder] Message prepared:", messageText.substring(0, 100) + "...");
 
-    // Get admin LINE group from attendance_settings
-    const { data: settings } = await supabase
-      .from("attendance_settings")
-      .select("admin_line_group_id")
-      .eq("scope", "global")
-      .single();
-
-    const adminGroupId = settings?.admin_line_group_id;
-
-    if (!adminGroupId) {
+    if (!targetGroupId) {
       console.log("[birthday-reminder] No admin LINE group configured, skipping");
       return new Response(
         JSON.stringify({ 
@@ -226,7 +244,7 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${lineAccessToken}`,
       },
       body: JSON.stringify({
-        to: adminGroupId,
+        to: targetGroupId,
         messages: [{ type: "text", text: messageText }],
       }),
     });
@@ -242,7 +260,7 @@ Deno.serve(async (req) => {
       messageType: "reminder",
       messageText: messageText,
       destinationType: "group",
-      destinationId: adminGroupId,
+      destinationId: targetGroupId,
       destinationName: "Admin Group",
       deliveryStatus: deliveryStatus,
       errorMessage: lineResponse.ok ? undefined : lineResult,
