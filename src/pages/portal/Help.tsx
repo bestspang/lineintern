@@ -41,6 +41,14 @@ export default function Help() {
       answer: 'Streak คือจำนวนวันที่มาตรงเวลาติดต่อกัน ระบบข้ามวันหยุดและวันลาอัตโนมัติ ถ้าสาย 1 วัน streak จะรีเซ็ตเป็น 0 ครบ 5 วันติดได้โบนัส +50 แต้ม'
     },
     {
+      question: 'ถ้ามาตรงเวลาทั้งเดือนได้โบนัสไหม?',
+      answer: 'ได้ครับ! ถ้า streak ถึง 20 วันขึ้นไปในเดือนนั้น จะได้โบนัส Monthly Streak +100 แต้ม เพิ่มจากโบนัส 5 วันติดอีกด้วย'
+    },
+    {
+      question: 'Streak Shield (โล่ป้องกัน) คืออะไร?',
+      answer: 'โล่ป้องกันที่ใช้อัตโนมัติเมื่อคุณมาสายหรือขาดงาน เพื่อรักษา streak ของคุณไว้ ซื้อได้ในร้านแลกรางวัลด้วย 200 แต้ม'
+    },
+    {
       question: 'แต้มถูกหักได้ไหม?',
       answer: 'ได้ จากโบนัสสุขภาพ 100 แต้มที่ได้ต้นเดือน หากลาป่วยไม่มีใบรับรองแพทย์หัก -30 หรือมีใบรับรองหัก -5'
     },
@@ -116,6 +124,14 @@ export default function Help() {
     {
       question: 'What is a Streak and how is it counted?',
       answer: 'Streak is consecutive on-time days. System skips holidays and approved leaves. Being late once resets streak to 0. Every 5 days gives +50 bonus.'
+    },
+    {
+      question: 'Do I get a bonus for being on-time all month?',
+      answer: 'Yes! If your streak reaches 20+ days in a month, you get a Monthly Streak Bonus of +100 points, on top of the 5-day bonuses.'
+    },
+    {
+      question: 'What is a Streak Shield?',
+      answer: 'A protection item that automatically saves your streak if you are late or miss a day. Purchase in the Reward Shop for 200 points.'
     },
     {
       question: 'Can points be deducted?',

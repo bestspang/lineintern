@@ -9,7 +9,7 @@ import {
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
   Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText
+  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
@@ -102,6 +102,15 @@ const quickActions: QuickAction[] = [
     descriptionEn: 'Team point rankings',
     path: '/portal/leaderboard',
     color: 'from-amber-500 to-amber-600',
+  },
+  {
+    icon: Activity,
+    label: 'สถานะวันนี้',
+    labelEn: 'Today Status',
+    description: 'ดูสถานะการทำงานวันนี้',
+    descriptionEn: 'View today work status',
+    path: '/portal/status',
+    color: 'from-green-500 to-green-600',
   },
   {
     icon: Gift,
