@@ -59,6 +59,8 @@ const STATUS_OPTIONS = [
   { value: 'vacation', label: 'ลาพักร้อน', color: 'bg-sky-500' },
   { value: 'sick', label: 'ลาป่วย', color: 'bg-amber-500' },
   { value: 'personal', label: 'ลากิจ', color: 'bg-violet-500' },
+  { value: 'unpaid_leave', label: 'ลาไม่รับค่าจ้าง', color: 'bg-rose-400' },
+  { value: 'not_started', label: 'ยังไม่เริ่มงาน', color: 'bg-slate-400' },
   { value: 'absent', label: 'ขาดงาน', color: 'bg-red-500' },
 ];
 
