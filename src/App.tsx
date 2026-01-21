@@ -116,6 +116,7 @@ import ReceiptAnalytics from "./pages/receipts/ReceiptAnalytics";
 import ReceiptSettings from "./pages/receipts/ReceiptSettings";
 import ReceiptApprovalLogs from "./pages/receipts/ReceiptApprovalLogs";
 import ReceiptQuota from "./pages/receipts/ReceiptQuota";
+import PortalFaqAdmin from "./pages/PortalFaqAdmin";
 
 // LIFF pages
 import { LiffProvider } from "./contexts/LiffContext";
@@ -238,6 +239,7 @@ const App = () => (
                       <Route path="/users/:id" element={<UserDetail />} />
                       <Route path="/knowledge" element={<KnowledgeBase />} />
                       <Route path="/faq-logs" element={<FaqLogs />} />
+                      <Route path="/portal-faq-admin" element={<PortalFaqAdmin />} />
                       <Route path="/training" element={<Training />} />
                       <Route path="/tasks" element={<Tasks />} />
                       <Route path="/cron-jobs" element={<CronJobs />} />
