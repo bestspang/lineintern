@@ -9756,22 +9756,14 @@ async function handleMessageEvent(event: LineEvent) {
     })
     .catch(err => console.error("[Memory Writer] Passive invoke error:", err));
 
-  // HAPPY POINTS: Track response for point-response-tracker (fire-and-forget)
-  // Use data from replyContext (response_time_seconds) and employee
-  // Note: This handler only processes text messages, so is_sticker/is_file_upload are always false
-  supabase.functions
-    .invoke("point-response-tracker", {
-      body: {
-        employee_id: employee.id,
-        message_id: insertedMessage?.id || null,
-        response_time_seconds: replyContext?.responseTimeSeconds || null,
-        message_length: event.message.text?.length || 0,
-        is_sticker: false,  // This handler only processes text messages
-        is_file_upload: false,  // Stickers/files are handled separately
-        trigger_source: isDM ? 'dm' : 'group',
-      },
-    })
-    .catch(err => console.error("[Point Response Tracker] Passive invoke error:", err));
+  // HAPPY POINTS: Real-time response tracking DISABLED
+  // Response points are now calculated daily via point-daily-response-scorer cron job
+  // The cron runs at 23:00 Bangkok time and calculates average response time for the day
+  // This provides more accurate and fair scoring based on daily performance
+  // 
+  // Old code removed: supabase.functions.invoke("point-response-tracker", ...)
+  // See: point-daily-response-scorer for new daily scoring logic
+  console.log("[handleMessageEvent] Response tracking: using daily scorer (realtime disabled)");
 
   // PHASE 2: Cognitive Processing - Analyze social interactions and update profiles
   // Run in background to avoid blocking message processing
