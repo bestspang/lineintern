@@ -85,6 +85,11 @@ export default function CuteQuotesSettings() {
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<CuteQuote | null>(null);
+  
+  // Preview mode states
+  const [previewDayType, setPreviewDayType] = useState<'normal' | 'birthday' | 'holiday'>('normal');
+  const [previewEventType, setPreviewEventType] = useState<'check_in' | 'check_out'>('check_in');
+  const [previewResult, setPreviewResult] = useState<CuteQuote | null>(null);
   const [previewQuote, setPreviewQuote] = useState<CuteQuote | null>(null);
   
   // Form states
@@ -224,6 +229,50 @@ export default function CuteQuotesSettings() {
     if (showTime === 'check_in') return '🌅';
     if (showTime === 'check_out') return '🌆';
     return '🌗';
+  };
+
+  // Preview mode: simulate random quote selection
+  const handleRandomPreview = () => {
+    if (!quotes || quotes.length === 0) {
+      setPreviewResult(null);
+      return;
+    }
+
+    const today = new Date();
+    const todayMMDD = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayISO = today.toISOString().split('T')[0];
+
+    // Filter by show_time first
+    const timeFiltered = quotes.filter(q => 
+      q.is_active && (q.show_time === 'both' || q.show_time === previewEventType)
+    );
+
+    let candidates: CuteQuote[] = [];
+
+    if (previewDayType === 'birthday') {
+      // Simulate birthday match
+      candidates = timeFiltered.filter(q => q.special_day_type === 'birthday');
+    } else if (previewDayType === 'holiday') {
+      // Simulate holiday match (use any holiday quote)
+      candidates = timeFiltered.filter(q => q.special_day_type === 'holiday');
+    } else {
+      // Normal day - only regular quotes
+      candidates = timeFiltered.filter(q => q.special_day_type === null);
+    }
+
+    if (candidates.length === 0) {
+      // Fallback to regular quotes
+      candidates = timeFiltered.filter(q => q.special_day_type === null);
+    }
+
+    if (candidates.length === 0) {
+      setPreviewResult(null);
+      return;
+    }
+
+    // Random select
+    const randomIndex = Math.floor(Math.random() * candidates.length);
+    setPreviewResult(candidates[randomIndex]);
   };
 
   if (isLoading) {
@@ -366,6 +415,100 @@ export default function CuteQuotesSettings() {
           <div className="text-sm text-muted-foreground">ปิดใช้งาน</div>
         </Card>
       </div>
+
+      {/* Preview Mode Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Eye className="h-5 w-5" />
+            ทดสอบ Quote
+          </CardTitle>
+          <CardDescription>จำลองการสุ่ม Quote ตามสถานการณ์ต่างๆ</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Day Type Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">ประเภทวัน</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 'normal', label: 'วันปกติ', icon: CalendarDays },
+                  { value: 'birthday', label: 'วันเกิด', icon: Cake },
+                  { value: 'holiday', label: 'วันหยุด', icon: Calendar },
+                ].map(opt => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPreviewDayType(opt.value as typeof previewDayType)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm transition-all ${
+                        previewDayType === opt.value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-muted hover:border-primary/50'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Event Type Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">เวลาลงเวลา</Label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'check_in', label: 'เข้างาน', icon: LogIn },
+                  { value: 'check_out', label: 'ออกงาน', icon: LogOut },
+                ].map(opt => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPreviewEventType(opt.value as typeof previewEventType)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm transition-all ${
+                        previewEventType === opt.value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-muted hover:border-primary/50'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <Button onClick={handleRandomPreview} className="w-full">
+            🎲 สุ่ม Quote
+          </Button>
+
+          {/* Preview Result */}
+          {previewResult && (
+            <div className="space-y-3">
+              <div className={`p-6 rounded-xl bg-gradient-to-br ${getBgColorClass(previewResult.bg_color)} text-white text-center`}>
+                <div className="text-4xl mb-2">{previewResult.emoji}</div>
+                <div className="text-lg font-medium">{previewResult.text}</div>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="outline">{getCategoryInfo(previewResult.category).label}</Badge>
+                <span>{getShowTimeLabel(previewResult.show_time)}</span>
+                {getSpecialDayBadge(previewResult)}
+              </div>
+            </div>
+          )}
+
+          {previewResult === null && quotes.length > 0 && (
+            <div className="text-center text-sm text-muted-foreground py-4">
+              กดปุ่ม "สุ่ม Quote" เพื่อดูตัวอย่าง
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quotes List */}
       <Card>

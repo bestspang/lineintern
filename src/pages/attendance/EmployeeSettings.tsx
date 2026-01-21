@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard, AlertTriangle, Calendar } from "lucide-react";
+import { ArrowLeft, Save, Clock, Bell, MapPin, DollarSign, FlaskConical, Wallet, Plus, Trash2, CalendarDays, Building2, CreditCard, AlertTriangle, Calendar, Cake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -198,6 +198,9 @@ export default function EmployeeSettings() {
     skip_attendance_tracking: false,
     exclude_from_points: false,
     employment_start_date: "",
+    
+    // === Personal Info ===
+    birth_date: "",
   });
 
   // Payroll settings state (separate for clarity)
@@ -344,6 +347,9 @@ export default function EmployeeSettings() {
         skip_attendance_tracking: (employee as any).skip_attendance_tracking || false,
         exclude_from_points: (employee as any).exclude_from_points || false,
         employment_start_date: (employee as any).employment_start_date || "",
+        
+        // Personal Info
+        birth_date: (employee as any).birth_date || "",
       });
     }
   }, [employee]);
@@ -411,6 +417,9 @@ export default function EmployeeSettings() {
         skip_attendance_tracking: data.skip_attendance_tracking,
         exclude_from_points: data.exclude_from_points,
         employment_start_date: data.employment_start_date || null,
+        
+        // Personal Info
+        birth_date: data.birth_date || null,
       };
 
       // Handle fields based on working_time_type
@@ -1811,7 +1820,41 @@ export default function EmployeeSettings() {
           </Card>
         )}
 
-        {/* 10. Bank Account Info Card */}
+        {/* 10. Personal Info Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cake className="h-5 w-5" />
+              ข้อมูลส่วนตัว
+            </CardTitle>
+            <CardDescription>
+              ข้อมูลสำหรับแจ้งเตือนวันเกิดและ Quote พิเศษ
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="birth_date">วันเกิด</Label>
+              <Input
+                id="birth_date"
+                type="date"
+                value={formData.birth_date}
+                onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                ใช้สำหรับแสดง Quote วันเกิดใน Liveness Camera และแจ้งเตือนวันเกิดให้ Admin
+              </p>
+            </div>
+            {formData.birth_date && (
+              <div className="p-3 rounded-lg bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800">
+                <p className="text-sm text-pink-700 dark:text-pink-400 flex items-center gap-2">
+                  🎂 วันเกิด: {new Date(formData.birth_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long' })}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 11. Bank Account Info Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
