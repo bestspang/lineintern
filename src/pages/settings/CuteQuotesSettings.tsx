@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,6 +52,7 @@ const SPECIAL_DAY_OPTIONS = [
 
 export default function CuteQuotesSettings() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { quotes, isLoading, createQuote, updateQuote, deleteQuote, toggleQuote } = useCuteQuotesAdmin();
   const { isEnabled: featureEnabled, flag } = useFeatureFlag('cute_quotes_liveness');
   const { toggleFlag, isToggling } = useFeatureFlagsAdmin();
@@ -405,6 +406,11 @@ export default function CuteQuotesSettings() {
                   .eq('flag_key', 'cute_quotes_liveness');
                 
                 if (error) throw error;
+
+                // Ensure all pages (portal + admin) pick up the new settings immediately
+                queryClient.invalidateQueries({ queryKey: ['feature-flag', 'cute_quotes_liveness'] });
+                queryClient.invalidateQueries({ queryKey: ['feature-flags'] });
+
                 toast({ title: 'บันทึกการตั้งค่าสำเร็จ' });
               } catch (error) {
                 toast({ title: 'เกิดข้อผิดพลาด', description: String(error), variant: 'destructive' });
