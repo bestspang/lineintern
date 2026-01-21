@@ -60,7 +60,8 @@ import {
   PieChart,
   Flag,
   Settings2,
-  HelpCircle
+  HelpCircle,
+  Cake
 } from 'lucide-react';
 import {
   Sidebar,
@@ -164,6 +165,7 @@ const navigationGroups = [
       { title: 'Shift Templates', titleTh: 'รูปแบบกะ', url: '/attendance/shift-templates', icon: Clock },
       { title: 'Weekly Schedules', titleTh: 'ตารางรายสัปดาห์', url: '/attendance/schedules', icon: Calendar },
       { title: 'Holidays', titleTh: 'วันหยุด', url: '/attendance/holidays', icon: PartyPopper },
+      { title: 'Birthdays', titleTh: 'วันเกิด', url: '/attendance/birthdays', icon: Cake },
       { title: 'Leave Balance', titleTh: 'วันลาคงเหลือ', url: '/attendance/leave-balance', icon: CalendarDays },
       { title: 'Early Leave Requests', titleTh: 'คำขอกลับก่อน', url: '/attendance/early-leave-requests', icon: AlertTriangle },
       { title: 'Flexible Day-Off', titleTh: 'วันหยุดยืดหยุ่น', url: '/attendance/flexible-day-off-requests', icon: CalendarDays },
