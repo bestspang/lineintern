@@ -69,7 +69,8 @@ import {
   ChevronUp,
   Home,
   Ban,
-  Star
+  Star,
+  CalendarClock
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
@@ -143,6 +144,11 @@ export default function Payroll() {
   const [attendanceEditDialogOpen, setAttendanceEditDialogOpen] = useState(false);
   const [editingDate, setEditingDate] = useState<string>('');
   const [editingEmployeeId, setEditingEmployeeId] = useState<string>('');
+  
+  // Start date dialog state
+  const [startDateDialogOpen, setStartDateDialogOpen] = useState(false);
+  const [editingStartDateEmployee, setEditingStartDateEmployee] = useState<{ id: string; name: string; currentDate: string | null } | null>(null);
+  const [newStartDate, setNewStartDate] = useState<string>('');
   
   // Toggle row expansion
   const toggleRowExpansion = (employeeId: string) => {
@@ -748,10 +754,20 @@ export default function Payroll() {
     };
   }, [payrollRecords, employees]);
 
-  // Get warnings for a specific employee
-  const getEmployeeWarnings = (record: PayrollRecord | undefined) => {
-    if (!record) return [];
+  // Get warnings for a specific employee (including missing start date)
+  const getEmployeeWarnings = (record: PayrollRecord | undefined, emp?: any) => {
     const warnings: { type: string; message: string; severity: 'warning' | 'error' }[] = [];
+    
+    // Check for missing employment_start_date
+    if (emp && !emp.employment_start_date && !emp.skip_attendance_tracking) {
+      warnings.push({ 
+        type: 'no_start_date', 
+        message: 'ยังไม่ตั้งวันเริ่มงาน - อาจทำให้การคำนวณขาดงานผิดพลาด', 
+        severity: 'warning' 
+      });
+    }
+    
+    if (!record) return warnings;
     
     if ((record.absent_days || 0) > 5) {
       warnings.push({ 
@@ -1700,6 +1716,29 @@ export default function Payroll() {
     }
   };
 
+  // Update employment start date mutation
+  const updateStartDateMutation = useMutation({
+    mutationFn: async ({ employeeId, startDate }: { employeeId: string; startDate: string }) => {
+      const { error } = await supabase
+        .from("employees")
+        .update({ employment_start_date: startDate })
+        .eq("id", employeeId);
+      
+      if (error) throw error;
+      return { employeeId, startDate };
+    },
+    onSuccess: (data) => {
+      toast.success(`ตั้งวันเริ่มงานสำเร็จ: ${format(parseISO(data.startDate), "d MMM yyyy", { locale: th })}`);
+      queryClient.invalidateQueries({ queryKey: ["employees-payroll"] });
+      setStartDateDialogOpen(false);
+      setEditingStartDateEmployee(null);
+      setNewStartDate('');
+    },
+    onError: (error: any) => {
+      toast.error("เกิดข้อผิดพลาด: " + error.message);
+    },
+  });
+
   const getStatusIcon = (status: DailyAttendance['status']) => {
     switch (status) {
       case 'present': return <CheckCircle className="h-3 w-3 text-green-500" />;
@@ -2144,18 +2183,39 @@ export default function Payroll() {
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-medium text-sm truncate">{emp.full_name}</span>
                                     {/* Warning badges */}
-                                    {getEmployeeWarnings(record).map((w, i) => (
+                                    {getEmployeeWarnings(record, emp).map((w, i) => (
                                       <TooltipProvider key={i}>
                                         <Tooltip>
                                           <TooltipTrigger>
-                                            <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${
-                                              w.severity === 'error' ? 'bg-red-500' : 'bg-amber-500'
-                                            }`}>
-                                              <AlertTriangle className="h-2.5 w-2.5 text-white" />
+                                            <span 
+                                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full cursor-pointer ${
+                                                w.severity === 'error' ? 'bg-red-500' : 'bg-amber-500'
+                                              }`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                // If it's a no_start_date warning, open the start date dialog
+                                                if (w.type === 'no_start_date') {
+                                                  setEditingStartDateEmployee({
+                                                    id: emp.id,
+                                                    name: emp.full_name,
+                                                    currentDate: emp.employment_start_date
+                                                  });
+                                                  setNewStartDate(emp.employment_start_date || format(startOfMonth(currentMonth), 'yyyy-MM-dd'));
+                                                  setStartDateDialogOpen(true);
+                                                }
+                                              }}
+                                            >
+                                              {w.type === 'no_start_date' 
+                                                ? <CalendarClock className="h-2.5 w-2.5 text-white" />
+                                                : <AlertTriangle className="h-2.5 w-2.5 text-white" />
+                                              }
                                             </span>
                                           </TooltipTrigger>
                                           <TooltipContent>
                                             <p className="text-xs">{w.message}</p>
+                                            {w.type === 'no_start_date' && (
+                                              <p className="text-xs text-primary mt-1">คลิกเพื่อตั้งวันเริ่มงาน</p>
+                                            )}
                                           </TooltipContent>
                                         </Tooltip>
                                       </TooltipProvider>
@@ -2735,6 +2795,63 @@ export default function Payroll() {
           queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
         }}
       />
+      
+      {/* Start Date Quick-Set Dialog */}
+      <Dialog open={startDateDialogOpen} onOpenChange={setStartDateDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              ตั้งวันเริ่มงาน
+            </DialogTitle>
+            <DialogDescription>
+              {editingStartDateEmployee?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="start-date">วันเริ่มงาน</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={newStartDate}
+                onChange={(e) => setNewStartDate(e.target.value)}
+                max={format(new Date(), 'yyyy-MM-dd')}
+              />
+              <p className="text-xs text-muted-foreground">
+                วันก่อนหน้านี้จะถูกนับเป็น "ยังไม่เริ่มงาน" และไม่นับเป็นขาด
+              </p>
+            </div>
+            
+            {editingStartDateEmployee?.currentDate && (
+              <p className="text-sm">
+                <span className="text-muted-foreground">วันปัจจุบัน: </span>
+                <span className="font-medium">
+                  {format(parseISO(editingStartDateEmployee.currentDate), 'd MMM yyyy', { locale: th })}
+                </span>
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setStartDateDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button 
+              onClick={() => {
+                if (editingStartDateEmployee && newStartDate) {
+                  updateStartDateMutation.mutate({
+                    employeeId: editingStartDateEmployee.id,
+                    startDate: newStartDate
+                  });
+                }
+              }}
+              disabled={!newStartDate || updateStartDateMutation.isPending}
+            >
+              {updateStartDateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
