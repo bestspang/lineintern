@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollText, Search, ArrowUpCircle, ArrowDownCircle, Gift, Clock, Heart, Flame } from 'lucide-react';
 import { format } from 'date-fns';
+import { PointTransactionSendStreakButton } from '@/components/attendance/PointTransactionSendStreakButton';
 
 interface PointTransaction {
   id: string;
@@ -152,6 +153,7 @@ export default function PointTransactions() {
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -191,11 +193,14 @@ export default function PointTransactions() {
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                         {t.description || '-'}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <PointTransactionSendStreakButton tx={t} />
+                      </TableCell>
                     </TableRow>
                   ))}
                   {filteredTransactions?.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         No transactions found
                       </TableCell>
                     </TableRow>
