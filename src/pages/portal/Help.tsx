@@ -5,7 +5,8 @@ import { usePortal } from '@/contexts/PortalContext';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
-  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus
+  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
+  Activity, Package
 } from 'lucide-react';
 
 export default function Help() {
@@ -267,6 +268,18 @@ export default function Help() {
       title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
       description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
       path: '/portal/approvals'
+    },
+    {
+      icon: Activity,
+      title: locale === 'th' ? 'สถานะวันนี้' : 'Today Status',
+      description: locale === 'th' ? 'ดูสถานะการทำงานวันนี้' : 'View today\'s work status',
+      path: '/portal/status'
+    },
+    {
+      icon: Package,
+      title: locale === 'th' ? 'ประวัติการแลก' : 'My Redemptions',
+      description: locale === 'th' ? 'ดูประวัติการแลกของรางวัล' : 'View redemption history',
+      path: '/portal/my-redemptions'
     }
   ];
 
