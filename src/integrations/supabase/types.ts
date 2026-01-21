@@ -2072,8 +2072,10 @@ export type Database = {
           created_at: string | null
           earliest_checkin_time: string | null
           employee_type: string | null
+          employment_start_date: string | null
           enable_pattern_learning: boolean | null
           enable_second_checkin_reminder: boolean | null
+          exclude_from_points: boolean | null
           flexible_advance_days_required: number | null
           flexible_auto_approve: boolean | null
           flexible_day_off_enabled: boolean | null
@@ -2099,6 +2101,7 @@ export type Database = {
           salary_per_month: number | null
           shift_end_time: string | null
           shift_start_time: string | null
+          skip_attendance_tracking: boolean | null
           status: string | null
           updated_at: string | null
           working_time_type: string | null
@@ -2119,8 +2122,10 @@ export type Database = {
           created_at?: string | null
           earliest_checkin_time?: string | null
           employee_type?: string | null
+          employment_start_date?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
+          exclude_from_points?: boolean | null
           flexible_advance_days_required?: number | null
           flexible_auto_approve?: boolean | null
           flexible_day_off_enabled?: boolean | null
@@ -2146,6 +2151,7 @@ export type Database = {
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
+          skip_attendance_tracking?: boolean | null
           status?: string | null
           updated_at?: string | null
           working_time_type?: string | null
@@ -2166,8 +2172,10 @@ export type Database = {
           created_at?: string | null
           earliest_checkin_time?: string | null
           employee_type?: string | null
+          employment_start_date?: string | null
           enable_pattern_learning?: boolean | null
           enable_second_checkin_reminder?: boolean | null
+          exclude_from_points?: boolean | null
           flexible_advance_days_required?: number | null
           flexible_auto_approve?: boolean | null
           flexible_day_off_enabled?: boolean | null
@@ -2193,6 +2201,7 @@ export type Database = {
           salary_per_month?: number | null
           shift_end_time?: string | null
           shift_start_time?: string | null
+          skip_attendance_tracking?: boolean | null
           status?: string | null
           updated_at?: string | null
           working_time_type?: string | null

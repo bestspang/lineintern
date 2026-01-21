@@ -528,8 +528,21 @@ export default function Payroll() {
       const empLogs = allAttendanceData.filter(l => l.employee_id === emp.id);
       const empLeaves = employeeLeaveMap.get(emp.id) || [];
       
+      // Check for skip_attendance_tracking and employment_start_date
+      const skipTracking = (emp as any).skip_attendance_tracking === true;
+      const employmentStartDate = (emp as any).employment_start_date ? parseISO((emp as any).employment_start_date) : null;
+      
       const dailyStatuses: DayStatus[] = calDays.map(day => {
         const dateStr = format(day, "yyyy-MM-dd");
+        
+        // Check if employee has NOT started yet
+        if (employmentStartDate && day < employmentStartDate) {
+          return {
+            date: dateStr,
+            status: 'not_started' as DayStatus['status'],
+            schedule_source: undefined,
+          };
+        }
         
         // Get effective schedule for this day using priority: shift > work_schedule > default
         const effectiveSchedule = getEffectiveSchedule({
@@ -570,6 +583,9 @@ export default function Payroll() {
           status = 'future';
         } else if (isHoliday) {
           status = 'holiday';
+        } else if (skipTracking && effectiveSchedule.isWorkingDay && !effectiveSchedule.isDayOff) {
+          // Skip tracking: treat as present/on-time
+          status = 'present';
         } else if (isOnLeave && !checkIn) {
           status = 'leave';
         } else if (effectiveSchedule.isDayOff || !effectiveSchedule.isWorkingDay) {

@@ -441,6 +441,21 @@ serve(async (req) => {
 
     logger.info('Processing attendance points', { employee_id, is_on_time, fraud_score, attendance_log_id });
 
+    // Check if employee is excluded from points
+    const { data: employeeData } = await supabase
+      .from('employees')
+      .select('exclude_from_points')
+      .eq('id', employee_id)
+      .maybeSingle();
+
+    if (employeeData?.exclude_from_points === true) {
+      logger.info('Skipping attendance points - employee excluded from points system', { employee_id });
+      return new Response(
+        JSON.stringify({ success: true, points_awarded: 0, reason: 'excluded_from_points' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Fetch point rules from database (include notification settings)
     const { data: pointRules } = await supabase
       .from('point_rules')

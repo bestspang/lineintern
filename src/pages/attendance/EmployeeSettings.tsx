@@ -193,6 +193,11 @@ export default function EmployeeSettings() {
     flexible_days_per_week: 1,
     flexible_advance_days_required: 1,
     flexible_auto_approve: false,
+    
+    // === Executive/Owner Settings (Skip Tracking) ===
+    skip_attendance_tracking: false,
+    exclude_from_points: false,
+    employment_start_date: "",
   });
 
   // Payroll settings state (separate for clarity)
@@ -334,6 +339,11 @@ export default function EmployeeSettings() {
         flexible_days_per_week: (employee as any).flexible_days_per_week || 1,
         flexible_advance_days_required: (employee as any).flexible_advance_days_required || 1,
         flexible_auto_approve: (employee as any).flexible_auto_approve || false,
+        
+        // Executive/Owner Settings
+        skip_attendance_tracking: (employee as any).skip_attendance_tracking || false,
+        exclude_from_points: (employee as any).exclude_from_points || false,
+        employment_start_date: (employee as any).employment_start_date || "",
       });
     }
   }, [employee]);
@@ -396,6 +406,11 @@ export default function EmployeeSettings() {
         flexible_days_per_week: data.flexible_days_per_week,
         flexible_advance_days_required: data.flexible_advance_days_required,
         flexible_auto_approve: data.flexible_auto_approve,
+        
+        // Executive/Owner Settings
+        skip_attendance_tracking: data.skip_attendance_tracking,
+        exclude_from_points: data.exclude_from_points,
+        employment_start_date: data.employment_start_date || null,
       };
 
       // Handle fields based on working_time_type
@@ -1022,6 +1037,98 @@ export default function EmployeeSettings() {
             )}
           </CardContent>
         </Card>
+
+        {/* Executive/Owner Settings Card */}
+        {hasFullAccess && (
+          <Card className="border-purple-500/30 bg-purple-500/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                <Building2 className="h-5 w-5" />
+                ตั้งค่าสำหรับเจ้าของ/ผู้บริหาร
+              </CardTitle>
+              <CardDescription>
+                สำหรับบุคคลที่ไม่ต้อง track attendance หรือ point
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Employment Start Date */}
+              <div className="space-y-2">
+                <Label htmlFor="employment_start_date" className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  วันที่เริ่มงาน
+                </Label>
+                <Input
+                  id="employment_start_date"
+                  type="date"
+                  value={formData.employment_start_date}
+                  onChange={(e) => setFormData({ ...formData, employment_start_date: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  วันก่อนวันนี้จะแสดงเป็น "ยังไม่เริ่มงาน" ในปฏิทิน Payroll
+                </p>
+              </div>
+
+              <div className="border-t pt-4 space-y-4">
+                {/* Skip Attendance Tracking */}
+                <div className="flex items-center justify-between p-4 rounded-lg bg-purple-500/10 border border-purple-500/30">
+                  <div className="flex items-start gap-3">
+                    <Clock className="h-5 w-5 text-purple-500 mt-0.5" />
+                    <div>
+                      <Label className="text-purple-600 dark:text-purple-400 font-medium">
+                        ไม่ต้อง Track Attendance
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ใน Payroll จะถือว่ามาตรงเวลาทุกวัน (เหมาะสำหรับเจ้าของ/ผู้บริหาร)
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="skip_attendance_tracking"
+                    checked={formData.skip_attendance_tracking}
+                    onCheckedChange={(checked) => setFormData({ ...formData, skip_attendance_tracking: checked })}
+                  />
+                </div>
+
+                {/* Exclude from Points */}
+                <div className="flex items-center justify-between p-4 rounded-lg bg-purple-500/10 border border-purple-500/30">
+                  <div className="flex items-start gap-3">
+                    <Wallet className="h-5 w-5 text-purple-500 mt-0.5" />
+                    <div>
+                      <Label className="text-purple-600 dark:text-purple-400 font-medium">
+                        ไม่เข้าร่วมระบบสะสม Point
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        พนักงานจะไม่ได้รับ Point และไม่แสดงบน Leaderboard
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="exclude_from_points"
+                    checked={formData.exclude_from_points}
+                    onCheckedChange={(checked) => setFormData({ ...formData, exclude_from_points: checked })}
+                  />
+                </div>
+              </div>
+
+              {(formData.skip_attendance_tracking || formData.exclude_from_points) && (
+                <Alert className="bg-purple-100 dark:bg-purple-950/30 border-purple-300 dark:border-purple-800">
+                  <AlertTriangle className="h-4 w-4 text-purple-600" />
+                  <AlertDescription className="text-purple-800 dark:text-purple-200">
+                    {formData.skip_attendance_tracking && formData.exclude_from_points && (
+                      <>พนักงานนี้จะถูกนับเป็น "มาตรงเวลา" ทุกวัน และไม่ปรากฏบน Leaderboard</>
+                    )}
+                    {formData.skip_attendance_tracking && !formData.exclude_from_points && (
+                      <>พนักงานนี้จะถูกนับเป็น "มาตรงเวลา" ทุกวัน แต่ยังเข้าร่วมระบบ Point ได้</>
+                    )}
+                    {!formData.skip_attendance_tracking && formData.exclude_from_points && (
+                      <>พนักงานนี้จะไม่ได้รับ Point และไม่ปรากฏบน Leaderboard</>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* 6. OT Settings Card */}
         <Card>

@@ -167,10 +167,15 @@ serve(async (req) => {
       ? '🏆 Monthly Perfect Attendance - Full month on time!'
       : '🔥 Weekly Streak Bonus - 5 consecutive on-time days!';
 
+    // Get qualifying employees (exclude those with exclude_from_points)
     const { data: qualifyingEmployees, error: fetchError } = await supabase
       .from('happy_points')
-      .select('id, employee_id, point_balance, total_earned, current_punctuality_streak')
-      .gte('current_punctuality_streak', minStreak);
+      .select(`
+        id, employee_id, point_balance, total_earned, current_punctuality_streak,
+        employee:employees!inner(id, exclude_from_points)
+      `)
+      .gte('current_punctuality_streak', minStreak)
+      .eq('employee.exclude_from_points', false);
 
     if (fetchError) {
       throw fetchError;
