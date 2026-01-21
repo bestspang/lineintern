@@ -674,6 +674,16 @@ export default function PointRules() {
                                       />
                                     </div>
                                   </div>
+
+                                  {/* Guard: notification enabled but no destination selected */}
+                                  {rule.notify_enabled && !rule.notify_group && !rule.notify_dm && (
+                                    <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
+                                      <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                      <p className="text-muted-foreground">
+                                        เปิดส่ง Notification แล้ว แต่ยังไม่ได้เลือกปลายทาง (กลุ่ม/DM) — ระบบจะไม่สามารถส่งข้อความได้
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               </>
                             )}
