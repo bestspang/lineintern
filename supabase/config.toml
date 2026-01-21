@@ -222,3 +222,6 @@ verify_jwt = false
 
 [functions.point-daily-response-scorer]
 verify_jwt = false
+
+[functions.birthday-reminder]
+verify_jwt = false
