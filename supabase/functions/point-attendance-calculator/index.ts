@@ -120,6 +120,11 @@ async function sendPointNotification(
     newBalance: number;
     shieldsRemaining?: number;
     commandType?: string;
+    /**
+     * Optional idempotency key / reference id.
+     * We store it into bot_message_logs.trigger_message_id so we can backfill safely.
+     */
+    triggerMessageId?: string;
   }
 ): Promise<void> {
   if (!options.messageTemplate) {
@@ -162,6 +167,7 @@ async function sendPointNotification(
         messageText: message,
         messageType: 'notification',
         triggeredBy: 'webhook',
+        triggerMessageId: options.triggerMessageId,
         commandType: options.commandType,
         edgeFunctionName: 'point-attendance-calculator',
         deliveryStatus: 'failed',
@@ -200,6 +206,7 @@ async function sendPointNotification(
             messageText: message,
             messageType: 'notification',
             triggeredBy: 'webhook',
+            triggerMessageId: options.triggerMessageId,
             commandType: options.commandType,
             edgeFunctionName: 'point-attendance-calculator',
             deliveryStatus: 'failed',
@@ -218,6 +225,7 @@ async function sendPointNotification(
             messageText: message,
             messageType: 'notification',
             triggeredBy: 'webhook',
+            triggerMessageId: options.triggerMessageId,
             commandType: options.commandType,
             edgeFunctionName: 'point-attendance-calculator',
             deliveryStatus: 'sent',
@@ -235,6 +243,7 @@ async function sendPointNotification(
           messageText: message,
           messageType: 'notification',
           triggeredBy: 'webhook',
+          triggerMessageId: options.triggerMessageId,
           commandType: options.commandType,
           edgeFunctionName: 'point-attendance-calculator',
           deliveryStatus: 'failed',
@@ -271,6 +280,7 @@ async function sendPointNotification(
           messageText: message,
           messageType: 'notification',
           triggeredBy: 'webhook',
+          triggerMessageId: options.triggerMessageId,
           commandType: options.commandType,
           edgeFunctionName: 'point-attendance-calculator',
           deliveryStatus: 'failed',
@@ -289,6 +299,7 @@ async function sendPointNotification(
           messageText: message,
           messageType: 'notification',
           triggeredBy: 'webhook',
+          triggerMessageId: options.triggerMessageId,
           commandType: options.commandType,
           edgeFunctionName: 'point-attendance-calculator',
           deliveryStatus: 'sent',
@@ -303,6 +314,7 @@ async function sendPointNotification(
         messageText: message,
         messageType: 'notification',
         triggeredBy: 'webhook',
+        triggerMessageId: options.triggerMessageId,
         commandType: options.commandType,
         edgeFunctionName: 'point-attendance-calculator',
         deliveryStatus: 'failed',
@@ -321,6 +333,7 @@ async function sendPointNotification(
         messageText: options.messageTemplate || '',
         messageType: 'notification',
         triggeredBy: 'webhook',
+        triggerMessageId: options.triggerMessageId,
         commandType: options.commandType,
         edgeFunctionName: 'point-attendance-calculator',
         deliveryStatus: 'failed',
@@ -628,37 +641,58 @@ serve(async (req) => {
     let streakBonusAwarded = 0;
     const weeklyMinStreak = weeklyStreakRule.conditions?.min_streak || 5;
 
-    // Check if streak just reached a milestone (5, 10, 15, 20...)
-    if (is_on_time && newStreak >= weeklyMinStreak && newStreak % weeklyMinStreak === 0) {
+    // Weekly milestone logic:
+    // - Award bonus immediately when hitting exact milestone
+    // - Backfill notification later if bonus exists but message was never delivered
+    //   (e.g., admin enabled notifications after the bonus was already granted)
+    if (is_on_time && newStreak >= weeklyMinStreak) {
+      const targetMilestone = newStreak - (newStreak % weeklyMinStreak); // e.g. 6 -> 5, 10 -> 10
+      if (targetMilestone < weeklyMinStreak) {
+        // nothing to do
+      } else {
       logger.info('Streak milestone reached, checking for bonus', { 
         employee_id, 
-        newStreak, 
+        newStreak,
+        targetMilestone,
         weeklyMinStreak 
       });
 
-      // Check if not already awarded today for this streak count
+      const lookback = new Date();
+      lookback.setDate(lookback.getDate() - 14);
+
+      // Check if bonus already exists for THIS weekly milestone
       const { data: existingBonus } = await supabase
         .from('point_transactions')
-        .select('id')
+        .select('id, amount, balance_after')
         .eq('employee_id', employee_id)
         .eq('category', 'streak')
-        .gte('created_at', today + 'T00:00:00')
+        .eq('transaction_type', 'bonus')
+        .gte('created_at', lookback.toISOString())
+        .contains('metadata', { streak_type: 'weekly', streak_count: targetMilestone })
+        .order('created_at', { ascending: false })
         .maybeSingle();
 
-      if (!existingBonus && weeklyStreakRule.is_active) {
+      // Award only when we just hit the exact milestone (e.g. 5, 10, 15...)
+      const isExactMilestoneToday = newStreak % weeklyMinStreak === 0;
+
+      if (!existingBonus && isExactMilestoneToday && weeklyStreakRule.is_active) {
         const bonusAmount = weeklyStreakRule.points || 50;
         const newBalance = happyPoints.point_balance + totalPointsAwarded + bonusAmount;
 
         // Insert streak bonus transaction
-        const { error: streakTxError } = await supabase.from('point_transactions').insert({
-          employee_id,
-          transaction_type: 'bonus',
-          category: 'streak',
-          amount: bonusAmount,
-          balance_after: newBalance,
-          description: `🔥 Weekly Streak Bonus - ตรงเวลาติดต่อกัน ${newStreak} วัน!`,
-          metadata: { streak_type: 'weekly', streak_count: newStreak }
-        });
+        const { data: streakTx, error: streakTxError } = await supabase
+          .from('point_transactions')
+          .insert({
+            employee_id,
+            transaction_type: 'bonus',
+            category: 'streak',
+            amount: bonusAmount,
+            balance_after: newBalance,
+            description: `🔥 Weekly Streak Bonus - ตรงเวลาติดต่อกัน ${newStreak} วัน!`,
+            metadata: { streak_type: 'weekly', streak_count: newStreak },
+          })
+          .select('id, amount, balance_after')
+          .single();
 
         if (streakTxError) {
           logger.error('Error inserting streak bonus transaction', { error: streakTxError });
@@ -696,13 +730,44 @@ serve(async (req) => {
                 points: bonusAmount,
                 streak: newStreak,
                 newBalance,
-                commandType: 'streak_weekly'
+                commandType: 'streak_weekly',
+                triggerMessageId: streakTx?.id,
               });
             }
           }
         }
       } else if (existingBonus) {
-        logger.info('Streak bonus already awarded today', { employee_id, newStreak });
+        // Backfill: if bonus already exists but notification was never sent (or failed)
+        logger.info('Streak bonus already exists', { employee_id, targetMilestone, tx_id: existingBonus.id });
+
+        if (weeklyStreakRule.notify_enabled) {
+          const { data: alreadySent } = await supabase
+            .from('bot_message_logs')
+            .select('id')
+            .eq('trigger_message_id', existingBonus.id)
+            .eq('edge_function_name', 'point-attendance-calculator')
+            .eq('command_type', 'streak_weekly')
+            .eq('message_type', 'notification')
+            .eq('delivery_status', 'sent')
+            .limit(1)
+            .maybeSingle();
+
+          if (!alreadySent) {
+            logger.info('Backfill streak notification (not previously sent)', { employee_id, tx_id: existingBonus.id });
+            await sendPointNotification(supabase, {
+              employeeId: employee_id,
+              messageTemplate: weeklyStreakRule.notify_message_template,
+              notifyGroup: weeklyStreakRule.notify_group || false,
+              notifyDm: weeklyStreakRule.notify_dm || false,
+              points: Number(existingBonus.amount || weeklyStreakRule.points || 50),
+              streak: targetMilestone,
+              newBalance: Number(existingBonus.balance_after || happyPoints.point_balance + totalPointsAwarded),
+              commandType: 'streak_weekly',
+              triggerMessageId: existingBonus.id,
+            });
+          }
+        }
+      }
       }
     }
 
