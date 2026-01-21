@@ -50,6 +50,10 @@ export default function Attendance() {
   const [estimatedEndTime, setEstimatedEndTime] = useState<string>('');
   const [otRequestSubmitting, setOTRequestSubmitting] = useState(false);
 
+  // Today's holidays for cute quotes context
+  const [todayHolidayIds, setTodayHolidayIds] = useState<string[]>([]);
+
+
   useEffect(() => {
     const token = searchParams.get('t');
     if (!token) {
@@ -59,6 +63,29 @@ export default function Attendance() {
     }
     
     validateToken(token);
+
+    // Fetch today's holidays for cute quotes
+    const fetchTodayHolidays = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/holidays?date=eq.${today}&select=id`,
+          {
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            }
+          }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setTodayHolidayIds(data.map((h: { id: string }) => h.id));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch holidays:', err);
+      }
+    };
+    fetchTodayHolidays();
 
     // Listen for online/offline events
     const handleOnline = () => {
@@ -901,6 +928,8 @@ export default function Attendance() {
           onCapture={handleLivenessCapture}
           onCancel={handleLivenessCancel}
           eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
+          employeeBirthDate={tokenData?.employee?.birth_date?.slice(5)} // 'MM-DD' format
+          todayHolidayIds={todayHolidayIds}
         />
       )}
 
