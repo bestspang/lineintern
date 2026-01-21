@@ -191,6 +191,9 @@ export default function Payroll() {
           ot_rate_multiplier,
           max_work_hours_per_day,
           break_hours,
+          skip_attendance_tracking,
+          exclude_from_points,
+          employment_start_date,
           branches:branches!branch_id(name),
           employee_payroll_settings (*)
         `)
@@ -998,39 +1001,48 @@ export default function Payroll() {
         const checkIns = logs?.filter(l => l.event_type === "check_in") || [];
         const checkOuts = logs?.filter(l => l.event_type === "check_out") || [];
         
-        const actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
+        // Check if employee has skip_attendance_tracking enabled
+        const skipTracking = emp.skip_attendance_tracking === true;
+        const employmentStartDate = emp.employment_start_date ? parseISO(emp.employment_start_date) : null;
+        
+        // For skip_attendance_tracking, we'll override metrics later after scheduledWorkDaysToDate is calculated
+        let actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
         const totalOTHours = logs?.reduce((sum, l) => sum + (l.overtime_hours || 0), 0) || 0;
         
         // Late detection using effective schedule start_time + calculate late_minutes
         let lateCount = 0;
         let totalLateMinutes = 0;
-        checkIns.forEach(l => {
-          const checkInDate = parseISO(l.server_time);
-          const dateStr = format(checkInDate, "yyyy-MM-dd");
-          const schedule = effectiveScheduleMap.get(dateStr);
-          
-          // Skip if day off or not working day
-          if (!schedule || schedule.isDayOff || !schedule.isWorkingDay) return;
-          
-          const startTime = schedule.startTime || '09:00';
-          const [startHour, startMinute] = startTime.split(':').map(Number);
-          
-          const checkInHour = checkInDate.getHours();
-          const checkInMinute = checkInDate.getMinutes();
-          
-          // Calculate expected minutes from midnight
-          const expectedMinutes = startHour * 60 + startMinute;
-          const actualMinutes = checkInHour * 60 + checkInMinute;
-          
-          // Use grace period - only count as late if exceeds grace threshold
-          const graceThreshold = expectedMinutes + gracePeriodMinutes;
-          
-          if (actualMinutes > graceThreshold) {
-            lateCount++;
-            // Total late minutes = actual - expected (full duration)
-            totalLateMinutes += (actualMinutes - expectedMinutes);
-          }
-        });
+        
+        // Only calculate late if NOT skip_attendance_tracking
+        if (!skipTracking) {
+          checkIns.forEach(l => {
+            const checkInDate = parseISO(l.server_time);
+            const dateStr = format(checkInDate, "yyyy-MM-dd");
+            const schedule = effectiveScheduleMap.get(dateStr);
+            
+            // Skip if day off or not working day
+            if (!schedule || schedule.isDayOff || !schedule.isWorkingDay) return;
+            
+            const startTime = schedule.startTime || '09:00';
+            const [startHour, startMinute] = startTime.split(':').map(Number);
+            
+            const checkInHour = checkInDate.getHours();
+            const checkInMinute = checkInDate.getMinutes();
+            
+            // Calculate expected minutes from midnight
+            const expectedMinutes = startHour * 60 + startMinute;
+            const actualMinutes = checkInHour * 60 + checkInMinute;
+            
+            // Use grace period - only count as late if exceeds grace threshold
+            const graceThreshold = expectedMinutes + gracePeriodMinutes;
+            
+            if (actualMinutes > graceThreshold) {
+              lateCount++;
+              // Total late minutes = actual - expected (full duration)
+              totalLateMinutes += (actualMinutes - expectedMinutes);
+            }
+          });
+        }
         
         // Fetch approved leave requests for this employee in period
         const { data: leaveRequests } = await supabase
@@ -1125,6 +1137,12 @@ export default function Payroll() {
           return schedule && schedule.isWorkingDay && !schedule.isDayOff;
         }).length;
         
+        // Override metrics for executives/owners with skip_attendance_tracking - BEFORE grossPay calculation
+        if (skipTracking) {
+          actualWorkDays = scheduledWorkDaysToDate;
+          // lateCount and totalLateMinutes already 0 from initialization
+        }
+        
         // Calculate pay
         let grossPay = 0;
         let leaveDeduction = 0;
@@ -1194,7 +1212,7 @@ export default function Payroll() {
         const netPay = Math.max(0, grossPay + totalAllowances - totalDeductions);
         
         // Calculate absent days (scheduled days TO DATE - actual - leave)
-        const absentDays = Math.max(0, scheduledWorkDaysToDate - actualWorkDays - leaveDays);
+        const absentDays = skipTracking ? 0 : Math.max(0, scheduledWorkDaysToDate - actualWorkDays - leaveDays);
         
         // Upsert payroll record
         await supabase
