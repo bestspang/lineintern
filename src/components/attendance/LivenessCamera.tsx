@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Camera, Check, X, Eye, MoveHorizontal } from "lucide-react";
+import { useCuteQuotes } from "@/hooks/useCuteQuotes";
 
 interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
@@ -63,6 +64,10 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     challenge: "",
     timestamp: Date.now(),
   });
+  
+  // ✅ Cute Quotes feature
+  const { getRandomQuote, isEnabled: cuteQuotesEnabled } = useCuteQuotes();
+  const [cuteQuote, setCuteQuote] = useState<{ text: string; emoji: string } | null>(null);
   
   // ✅ Refs for accessing latest state in animation frame (avoid stale closure)
   const waitingForCenterAfterStep1Ref = useRef(false);
@@ -186,12 +191,19 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
     };
   }, []);
 
-  // Switch to center face phase after challenge
+  // Switch to center face phase after challenge + show cute quote
   useEffect(() => {
     if (challengeCompleted && !waitingForCenter) {
       setWaitingForCenter(true);
+      // ✅ Show cute quote when entering center hold phase
+      if (cuteQuotesEnabled) {
+        const quote = getRandomQuote();
+        if (quote) {
+          setCuteQuote({ text: quote.text, emoji: quote.emoji });
+        }
+      }
     }
-  }, [challengeCompleted, waitingForCenter]);
+  }, [challengeCompleted, waitingForCenter, cuteQuotesEnabled, getRandomQuote]);
 
   // ✅ MERGED: Single render loop for both liveness detection AND center hold check
   // This prevents double GPU/CPU load from running detectForVideo() twice per frame
@@ -623,6 +635,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
                     <Badge variant="default" className="bg-green-600">
                       ✓ ตรวจพบใบหน้า
                     </Badge>
+                  </div>
+                )}
+                
+                {/* 😊 Cute Quote - Show only during center hold phase */}
+                {waitingForCenter && cuteQuote && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 max-w-[80%]">
+                    <div className="bg-gradient-to-r from-pink-500/90 to-purple-500/90 
+                                    text-white px-4 py-2 rounded-full shadow-lg
+                                    text-sm font-medium text-center animate-bounce">
+                      {cuteQuote.emoji} {cuteQuote.text}
+                    </div>
                   </div>
                 )}
               </div>
