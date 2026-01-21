@@ -109,7 +109,7 @@ interface PayrollRecord {
 
 interface DailyAttendance {
   date: string;
-  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'holiday' | 'future' | 'not_started' | 'skip_tracking';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'holiday' | 'future' | 'not_started' | 'skip_tracking' | 'unpaid_leave';
   check_in?: string;
   check_out?: string;
   work_hours?: number;      // raw hours (รวม break)
@@ -534,7 +534,21 @@ export default function Payroll() {
       
       // Check for skip_attendance_tracking and employment_start_date
       const skipTracking = (emp as any).skip_attendance_tracking === true;
-      const employmentStartDate = (emp as any).employment_start_date ? parseISO((emp as any).employment_start_date) : null;
+      
+      // Determine effective employment start date
+      // Fallback: use first check-in date if employment_start_date is not set
+      let employmentStartDate = (emp as any).employment_start_date ? parseISO((emp as any).employment_start_date) : null;
+      if (!employmentStartDate && empLogs.length > 0) {
+        // Find earliest check-in for this employee
+        const checkInLogs = empLogs.filter(l => l.event_type === 'check_in');
+        if (checkInLogs.length > 0) {
+          const sortedLogs = [...checkInLogs].sort((a, b) => 
+            parseISO(a.server_time).getTime() - parseISO(b.server_time).getTime()
+          );
+          const firstCheckInDateStr = formatBangkokISODate(sortedLogs[0].server_time);
+          employmentStartDate = parseISO(firstCheckInDateStr);
+        }
+      }
       
       const dailyStatuses: DayStatus[] = calDays.map(day => {
         const dateStr = format(day, "yyyy-MM-dd");
@@ -1059,7 +1073,18 @@ export default function Payroll() {
         
         // Check if employee has skip_attendance_tracking enabled
         const skipTracking = emp.skip_attendance_tracking === true;
-        const employmentStartDate = emp.employment_start_date ? parseISO(emp.employment_start_date) : null;
+        
+        // Determine effective employment start date
+        // Fallback: use first check-in date if employment_start_date is not set
+        let employmentStartDate = emp.employment_start_date ? parseISO(emp.employment_start_date) : null;
+        if (!employmentStartDate && checkIns.length > 0) {
+          // Sort check-ins by date and use the earliest as fallback
+          const sortedCheckIns = [...checkIns].sort((a, b) => 
+            parseISO(a.server_time).getTime() - parseISO(b.server_time).getTime()
+          );
+          const firstCheckInDateStr = format(parseISO(sortedCheckIns[0].server_time), "yyyy-MM-dd");
+          employmentStartDate = parseISO(firstCheckInDateStr);
+        }
         
         // For skip_attendance_tracking, we'll override metrics later after scheduledWorkDaysToDate is calculated
         let actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
@@ -1196,6 +1221,9 @@ export default function Payroll() {
         // Override metrics for executives/owners with skip_attendance_tracking - BEFORE grossPay calculation
         if (skipTracking) {
           actualWorkDays = scheduledWorkDaysToDate;
+          // Override totalWorkHours: scheduledWorkDays × hoursPerDay
+          const hoursPerDay = emp.hours_per_day ?? 8;
+          totalWorkHours = scheduledWorkDaysToDate * hoursPerDay;
           // lateCount and totalLateMinutes already 0 from initialization
         }
         
