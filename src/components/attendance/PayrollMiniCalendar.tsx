@@ -11,7 +11,7 @@ import { getBangkokNow, formatBangkokISODate } from "@/lib/timezone";
 
 export interface DayStatus {
   date: string;
-  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'future' | 'holiday';
+  status: 'present' | 'within_grace' | 'late' | 'absent' | 'leave' | 'weekend' | 'regular_weekend' | 'day_off' | 'future' | 'holiday' | 'not_started' | 'skip_tracking';
   check_in?: string;
   check_out?: string;
   work_hours?: number;
@@ -41,6 +41,8 @@ const statusColors: Record<DayStatus['status'], string> = {
   day_off: 'bg-indigo-400',
   future: 'bg-muted/30',
   holiday: 'bg-violet-500',
+  not_started: 'bg-slate-400',
+  skip_tracking: 'bg-emerald-600',
 };
 
 const statusLabels: Record<DayStatus['status'], string> = {
@@ -54,6 +56,8 @@ const statusLabels: Record<DayStatus['status'], string> = {
   day_off: 'วันหยุด (ตารางกะ)',
   future: 'ยังไม่ถึง',
   holiday: 'วันหยุดนักขัตฤกษ์',
+  not_started: 'ยังไม่เริ่มงาน',
+  skip_tracking: 'ไม่ track (ตรงเวลาอัตโนมัติ)',
 };
 
 export function PayrollMiniCalendar({ 
@@ -170,6 +174,7 @@ const legendItems = [
     { status: 'leave', label: 'ลา' },
     { status: 'holiday', label: 'นักขัตฤกษ์' },
     { status: 'weekend', label: 'หยุด' },
+    { status: 'not_started', label: 'ยังไม่เริ่มงาน' },
   ] as const;
 
   return (

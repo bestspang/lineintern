@@ -112,11 +112,12 @@ serve(async (req) => {
 
     console.log(`[DailyResponseScorer] Date range: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`);
 
-    // Step 3: Fetch all active employees with their user IDs
+    // Step 3: Fetch all active employees with their user IDs (exclude those with exclude_from_points)
     const { data: employees, error: empError } = await supabase
       .from("employees")
-      .select("id, full_name, code, line_user_id")
-      .eq("is_active", true);
+      .select("id, full_name, code, line_user_id, exclude_from_points")
+      .eq("is_active", true)
+      .neq("exclude_from_points", true);
 
     if (empError || !employees) {
       console.error("[DailyResponseScorer] Error fetching employees:", empError?.message);

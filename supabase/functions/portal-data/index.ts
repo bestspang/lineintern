@@ -885,9 +885,11 @@ serve(async (req) => {
               id,
               full_name,
               nickname,
-              branch_id
+              branch_id,
+              exclude_from_points
             )
           `)
+          .eq('employee.exclude_from_points', false)
           .order('point_balance', { ascending: false })
           .limit(limit);
 
