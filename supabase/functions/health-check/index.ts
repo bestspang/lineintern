@@ -10,6 +10,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -161,7 +162,8 @@ serve(async (req) => {
     // 5. Attendance System Check
     const attendanceStart = Date.now();
     try {
-      const today = new Date().toISOString().split('T')[0];
+      // ⚠️ TIMEZONE: Use Bangkok date, not UTC
+      const today = getBangkokDateString();
       const { count: checkInCount } = await supabase
         .from("attendance_logs")
         .select("id", { count: "exact", head: true })

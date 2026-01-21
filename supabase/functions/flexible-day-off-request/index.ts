@@ -70,18 +70,21 @@ serve(async (req) => {
     const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is start
     const weekStart = new Date(dayOffDate);
     weekStart.setDate(dayOffDate.getDate() + diff);
-    const weekStartDate = weekStart.toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date string format
+    const weekStartDate = getBangkokDateString(weekStart);
 
     // Check existing requests this week
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
+    // ⚠️ TIMEZONE: Use Bangkok date string format
+    const weekEndDate = getBangkokDateString(weekEnd);
     
     const { data: existingRequests } = await supabase
       .from('flexible_day_off_requests')
       .select('id')
       .eq('employee_id', body.employee_id)
       .gte('day_off_date', weekStartDate)
-      .lte('day_off_date', weekEnd.toISOString().split('T')[0])
+      .lte('day_off_date', weekEndDate)
       .in('status', ['pending', 'approved']);
 
     const usedDays = existingRequests?.length || 0;

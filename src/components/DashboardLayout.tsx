@@ -216,6 +216,7 @@ const navigationGroups = [
     icon: Receipt,
     items: [
       { title: 'All Receipts', titleTh: 'ใบเสร็จทั้งหมด', url: '/receipts', icon: Receipt },
+      { title: 'Approval Logs', titleTh: 'บันทึกการอนุมัติ', url: '/receipts/approval-logs', icon: FileText },
       { title: 'Quota Management', titleTh: 'จัดการโควต้า', url: '/receipts/quota', icon: Gauge },
       { title: 'Analytics', titleTh: 'วิเคราะห์', url: '/receipts/analytics', icon: PieChart },
       { title: 'Businesses', titleTh: 'ธุรกิจ', url: '/receipts/businesses', icon: Building },

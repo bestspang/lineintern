@@ -35,7 +35,8 @@ async function findPreviousWorkDay(
   // Get shift assignments for the last 7 days
   const sevenDaysAgo = new Date(fromDate);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+  // ⚠️ TIMEZONE: Use Bangkok date string format
+  const sevenDaysAgoStr = getBangkokDateString(sevenDaysAgo);
 
   const { data: shiftAssignments } = await supabase
     .from('shift_assignments')
@@ -69,7 +70,8 @@ async function findPreviousWorkDay(
   const currentDate = new Date(fromDate);
   for (let i = 1; i <= 7; i++) {
     currentDate.setDate(currentDate.getDate() - 1);
-    const dateStr = currentDate.toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date string format
+    const dateStr = getBangkokDateString(currentDate);
     const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
 
     // Priority 1: Check shift_assignments (day off override)

@@ -32,7 +32,8 @@ function isWithinWorkingHours(
   }
   
   // Check holiday
-  const dateStr = bangkokTime.toISOString().split("T")[0];
+  // ⚠️ TIMEZONE: Use Bangkok date string format
+  const dateStr = getBangkokDateString(bangkokTime);
   if (holidays.has(dateStr)) {
     return false;
   }
@@ -280,7 +281,8 @@ serve(async (req) => {
       for (const msg of allUpdatedMessages) {
         if (!msg.user_id || !msg.group_id) continue;
         
-        const dateStr = new Date(msg.sent_at).toISOString().split("T")[0];
+        // ⚠️ TIMEZONE: Use Bangkok date string format
+        const dateStr = getBangkokDateString(new Date(msg.sent_at));
         const key = `${msg.user_id}|${msg.group_id}|${dateStr}`;
 
         if (!aggregations[key]) {

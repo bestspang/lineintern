@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokNow, getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,7 +26,8 @@ serve(async (req) => {
       );
     }
 
-    const now = new Date();
+    // ⚠️ TIMEZONE: Use Bangkok time for period calculation
+    const now = getBangkokNow();
     const periodYYYYMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     switch (action) {
@@ -41,12 +43,14 @@ serve(async (req) => {
         if (usageError) throw usageError;
 
         // Get subscription and plan (check if subscription is within current period)
+        // ⚠️ TIMEZONE: Use Bangkok date for date comparisons
+        const todayStr = getBangkokDateString();
         const { data: subscription } = await supabase
           .from('receipt_subscriptions')
           .select('plan_id, current_period_start, current_period_end')
           .eq('line_user_id', line_user_id)
-          .lte('current_period_start', now.toISOString().split('T')[0])
-          .gte('current_period_end', now.toISOString().split('T')[0])
+          .lte('current_period_start', todayStr)
+          .gte('current_period_end', todayStr)
           .maybeSingle();
 
         // Get plan details
