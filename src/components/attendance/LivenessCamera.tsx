@@ -662,11 +662,12 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 
                 {/* 😊 Cute Quote - Show only during center hold phase */}
                 {waitingForCenter && cuteQuote && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 max-w-[80%]">
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 max-w-[90%]">
                     <div className={`bg-gradient-to-r ${getBgGradientClass(cuteQuote.bgColor)} 
-                                    text-white px-4 py-2 rounded-full shadow-lg
-                                    text-sm font-medium text-center animate-bounce`}>
-                      {cuteQuote.emoji} {cuteQuote.text}
+                                    text-white px-6 py-3 rounded-2xl shadow-xl
+                                    text-xl font-bold text-center animate-bounce`}>
+                      <span className="text-2xl mr-2">{cuteQuote.emoji}</span>
+                      {cuteQuote.text}
                     </div>
                   </div>
                 )}
