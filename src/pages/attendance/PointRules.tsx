@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
   Settings2, 
   Clock, 
@@ -28,7 +29,10 @@ import {
   Timer,
   Calendar,
   CalendarDays,
-  BarChart3
+  BarChart3,
+  RotateCcw,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,6 +82,11 @@ export default function PointRules() {
   const [editPoints, setEditPoints] = useState<number>(0);
   const [expandedNotify, setExpandedNotify] = useState<string | null>(null);
   const [expandedTiming, setExpandedTiming] = useState<string | null>(null);
+  const [rollbackResult, setRollbackResult] = useState<{
+    processed_count: number;
+    total_reversed: number;
+    affected_employees: string[];
+  } | null>(null);
 
   const { data: rules, isLoading } = useQuery({
     queryKey: ['point-rules'],
@@ -109,6 +118,28 @@ export default function PointRules() {
     },
     onError: (error: any) => {
       toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    },
+  });
+
+  // Mutation for rollback response points
+  const rollbackMutation = useMutation({
+    mutationFn: async ({ date, reason }: { date?: string; reason: string }) => {
+      const { data, error } = await supabase.functions.invoke('admin-response-points-rollback', {
+        body: { date, reason }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      setRollbackResult({
+        processed_count: data.processed_count || 0,
+        total_reversed: data.total_reversed || 0,
+        affected_employees: data.affected_employees || []
+      });
+      toast.success(`Rollback สำเร็จ: ${data.processed_count || 0} รายการ (${data.total_reversed || 0} แต้ม)`);
+    },
+    onError: (error: any) => {
+      toast.error(`Rollback ล้มเหลว: ${error.message}`);
     },
   });
 
@@ -164,6 +195,20 @@ export default function PointRules() {
         } 
       },
     });
+  };
+
+  const handleRollbackResponsePoints = () => {
+    const today = new Date().toISOString().split('T')[0];
+    rollbackMutation.mutate({
+      date: today,
+      reason: 'Response rules disabled but points awarded - admin manual rollback'
+    });
+  };
+
+  // Check if all response rules are disabled
+  const isResponseDisabled = () => {
+    const responseRules = rules?.filter(r => r.category === 'response') || [];
+    return responseRules.length > 0 && responseRules.every(r => !r.is_active);
   };
 
   // Check if rule should show timing options (streak rules, not summary)
@@ -439,6 +484,47 @@ export default function PointRules() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Admin rollback tool for Response category */}
+                {category === 'response' && isResponseDisabled() && (
+                  <Alert className="mb-4 border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertTitle className="text-amber-800 dark:text-amber-200">Response Points ปิดอยู่</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        หากมี response points ที่ถูกแจกไปก่อนหน้าโดยไม่ควรได้รับ สามารถ rollback ได้ที่นี่
+                      </p>
+                      
+                      {rollbackResult && (
+                        <div className="flex items-center gap-2 p-2 bg-background rounded-lg border">
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <span className="text-sm">
+                            Rolled back {rollbackResult.processed_count} รายการ ({rollbackResult.total_reversed} แต้ม)
+                          </span>
+                        </div>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRollbackResponsePoints}
+                        disabled={rollbackMutation.isPending}
+                        className="border-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                      >
+                        {rollbackMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            กำลัง Rollback...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            Rollback Response Points (วันนี้)
+                          </>
+                        )}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-4">
                   {categoryRules.map((rule) => (
                     <div
