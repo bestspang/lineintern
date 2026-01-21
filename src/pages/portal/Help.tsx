@@ -152,7 +152,7 @@ export default function Help() {
       icon: Camera,
       title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
       description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
-      path: '/portal/today-photos'
+      path: '/portal/photos'
     },
     {
       icon: FileText,
