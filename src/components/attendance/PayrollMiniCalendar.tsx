@@ -1,6 +1,7 @@
 /**
  * Payroll Mini Calendar Component
  * Displays a compact inline calendar showing attendance status for each day of the month
+ * Supports bulk selection mode for multi-day attendance adjustments
  */
 
 import { useMemo } from "react";
@@ -8,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
 import { th } from "date-fns/locale";
 import { getBangkokNow, formatBangkokISODate } from "@/lib/timezone";
+import { Check } from "lucide-react";
 
 export interface DayStatus {
   date: string;
@@ -28,6 +30,10 @@ interface PayrollMiniCalendarProps {
   attendanceData: DayStatus[];
   className?: string;
   onDayClick?: (date: string, data?: DayStatus) => void;
+  // Bulk selection props
+  bulkSelectMode?: boolean;
+  selectedDates?: Set<string>;
+  onDateSelect?: (date: string, selected: boolean) => void;
 }
 
 const statusColors: Record<DayStatus['status'], string> = {
@@ -67,6 +73,9 @@ export function PayrollMiniCalendar({
   attendanceData,
   className = "",
   onDayClick,
+  bulkSelectMode = false,
+  selectedDates,
+  onDateSelect,
 }: PayrollMiniCalendarProps) {
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -107,17 +116,32 @@ export function PayrollMiniCalendar({
           // Determine final status
           const finalStatus = dayData?.status || (isWeekend ? 'weekend' : 'future');
           
+          const isSelected = selectedDates?.has(dateStr) || false;
+          
           return (
             <Tooltip key={dateStr}>
               <TooltipTrigger asChild>
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDayClick?.(dateStr, dayData);
+                    if (bulkSelectMode) {
+                      // In bulk mode, toggle selection
+                      onDateSelect?.(dateStr, !isSelected);
+                    } else {
+                      // Normal mode - open single-day edit
+                      onDayClick?.(dateStr, dayData);
+                    }
                   }}
-                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 relative ${statusColors[finalStatus]} ${dateStr === todayStr ? 'ring-2 ring-offset-1 ring-primary' : ''}`}
+                  className={`w-2 h-4 rounded-sm cursor-pointer transition-all hover:scale-150 hover:z-10 relative ${statusColors[finalStatus]} ${dateStr === todayStr ? 'ring-2 ring-offset-1 ring-primary' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-green-500' : ''}`}
                 >
-                  {dayData?.has_adjustment && (
+                  {/* Bulk selection indicator */}
+                  {bulkSelectMode && isSelected && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <Check className="h-2 w-2 text-white drop-shadow-md" />
+                    </span>
+                  )}
+                  {/* Adjustment indicator */}
+                  {dayData?.has_adjustment && !isSelected && (
                     <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-background" />
                   )}
                 </div>
