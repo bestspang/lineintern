@@ -59,7 +59,8 @@ import {
   Receipt,
   PieChart,
   Flag,
-  Settings2
+  Settings2,
+  HelpCircle
 } from 'lucide-react';
 import {
   Sidebar,
@@ -107,6 +108,7 @@ const navigationGroups = [
     icon: BookOpen,
     items: [
       { title: 'Knowledge Base', titleTh: 'ฐานความรู้', url: '/knowledge', icon: BookOpen },
+      { title: 'Portal FAQs', titleTh: 'FAQ พอร์ทัล', url: '/portal-faq-admin', icon: HelpCircle },
       { title: 'FAQ Logs', titleTh: 'บันทึก FAQ', url: '/faq-logs', icon: MessageSquare },
       { title: 'Training Queue', titleTh: 'คิวการฝึก', url: '/training', icon: GraduationCap },
       { title: 'Chat Summaries', titleTh: 'สรุปแชท', url: '/summaries', icon: FileText },

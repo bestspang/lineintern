@@ -3667,6 +3667,45 @@ export type Database = {
           },
         ]
       }
+      portal_faqs: {
+        Row: {
+          answer_en: string
+          answer_th: string
+          category: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          question_en: string
+          question_th: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          answer_en: string
+          answer_th: string
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          question_en: string
+          question_th: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          answer_en?: string
+          answer_th?: string
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          question_en?: string
+          question_th?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       portal_favorites: {
         Row: {
           created_at: string | null
