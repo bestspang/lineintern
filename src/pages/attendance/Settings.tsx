@@ -10,9 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare, Cake, Send } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
 
 // Query options for caching
 const queryOptions = {
@@ -33,8 +34,14 @@ export default function AttendanceSettings() {
     time_zone: 'Asia/Bangkok',
     token_validity_minutes: 10,
     grace_period_minutes: 15,
-    admin_line_group_id: '' as string | null
+    admin_line_group_id: '' as string | null,
+    // Birthday Reminder Settings
+    birthday_reminder_enabled: true,
+    birthday_reminder_days_ahead: 7,
+    birthday_reminder_time: '08:00',
+    birthday_reminder_line_group_id: '' as string | null
   });
+  const [isTestingBirthday, setIsTestingBirthday] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['attendance-settings-global'],
@@ -112,7 +119,12 @@ export default function AttendanceSettings() {
         time_zone: settings.time_zone || 'Asia/Bangkok',
         token_validity_minutes: settings.token_validity_minutes || 10,
         grace_period_minutes: settings.grace_period_minutes || 15,
-        admin_line_group_id: settings.admin_line_group_id || null
+        admin_line_group_id: settings.admin_line_group_id || null,
+        // Birthday Reminder Settings - cast to any to handle new fields
+        birthday_reminder_enabled: (settings as any).birthday_reminder_enabled ?? true,
+        birthday_reminder_days_ahead: (settings as any).birthday_reminder_days_ahead ?? 7,
+        birthday_reminder_time: (settings as any).birthday_reminder_time?.substring(0, 5) || '08:00',
+        birthday_reminder_line_group_id: (settings as any).birthday_reminder_line_group_id || null
       });
     }
   }, [settings]);
@@ -208,6 +220,45 @@ export default function AttendanceSettings() {
   const getBranchPhotoRequirement = (branchId: string) => {
     const setting = branchSettings?.find(s => s.branch_id === branchId);
     return setting?.require_photo ?? false;
+  };
+
+  // Test birthday reminder
+  const handleTestBirthdayReminder = async () => {
+    setIsTestingBirthday(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/birthday-reminder`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-cron-secret': 'test-from-ui', // Will be overridden in the function for testing
+          },
+        }
+      );
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: 'ส่งทดสอบสำเร็จ',
+          description: result.message || `พบวันเกิด ${result.birthdays_found || 0} คน`,
+        });
+      } else {
+        toast({
+          title: 'ไม่สามารถส่งได้',
+          description: result.message || result.error || 'Unknown error',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTestingBirthday(false);
+    }
   };
 
   // Skeleton Loading UI
@@ -455,6 +506,122 @@ export default function AttendanceSettings() {
               <li>Employees in enabled branches must take a selfie when checking in/out</li>
               <li>Other branches follow global settings</li>
             </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Birthday Reminder Settings */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Cake className="h-4 w-4 sm:h-5 sm:w-5" />
+            Birthday Reminder Settings
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            ส่งแจ้งเตือนวันเกิดพนักงานให้ผู้จัดการ
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Enable Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="birthday_reminder_enabled">เปิดใช้งาน Birthday Reminder</Label>
+              <p className="text-sm text-muted-foreground">
+                ส่งแจ้งเตือนวันเกิดพนักงานทุกเช้า
+              </p>
+            </div>
+            <Switch
+              id="birthday_reminder_enabled"
+              checked={formData.birthday_reminder_enabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, birthday_reminder_enabled: checked })}
+            />
+          </div>
+
+          {formData.birthday_reminder_enabled && (
+            <>
+              {/* Days Ahead Slider */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>จำนวนวันล่วงหน้า</Label>
+                  <Badge variant="secondary">{formData.birthday_reminder_days_ahead} วัน</Badge>
+                </div>
+                <Slider
+                  value={[formData.birthday_reminder_days_ahead]}
+                  onValueChange={(value) => setFormData({ ...formData, birthday_reminder_days_ahead: value[0] })}
+                  min={1}
+                  max={14}
+                  step={1}
+                  className="w-full"
+                />
+                <p className="text-sm text-muted-foreground">
+                  แจ้งเตือนพนักงานที่มีวันเกิดใน 1-14 วันข้างหน้า
+                </p>
+              </div>
+
+              {/* Time Picker */}
+              <div className="space-y-2">
+                <Label>เวลาส่งแจ้งเตือน</Label>
+                <Select 
+                  value={formData.birthday_reminder_time} 
+                  onValueChange={(value) => setFormData({ ...formData, birthday_reminder_time: value })}
+                >
+                  <SelectTrigger className="max-w-[180px]">
+                    <SelectValue placeholder="เลือกเวลา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="07:00">07:00</SelectItem>
+                    <SelectItem value="08:00">08:00</SelectItem>
+                    <SelectItem value="09:00">09:00</SelectItem>
+                    <SelectItem value="10:00">10:00</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  เวลากรุงเทพ (Bangkok time)
+                </p>
+              </div>
+
+              {/* LINE Group Selector */}
+              <div className="space-y-2">
+                <Label>LINE Group รับแจ้งเตือน</Label>
+                <Select 
+                  value={formData.birthday_reminder_line_group_id || 'default'} 
+                  onValueChange={(value) => setFormData({ 
+                    ...formData, 
+                    birthday_reminder_line_group_id: value === 'default' ? null : value 
+                  })}
+                >
+                  <SelectTrigger className="max-w-md">
+                    <SelectValue placeholder="เลือก LINE Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">ใช้ Admin LINE Group (ค่าเริ่มต้น)</SelectItem>
+                    {lineGroups?.map((group) => (
+                      <SelectItem key={group.id} value={group.line_group_id}>
+                        {group.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  ถ้าไม่เลือก จะใช้ Admin LINE Group ที่ตั้งค่าไว้ด้านล่าง
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+              <Save className="h-4 w-4 mr-2" />
+              {saveMutation.isPending ? 'Saving...' : 'บันทึกการตั้งค่า'}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleTestBirthdayReminder}
+              disabled={isTestingBirthday || !formData.birthday_reminder_enabled}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {isTestingBirthday ? 'กำลังส่ง...' : 'ทดสอบส่ง'}
+            </Button>
           </div>
         </CardContent>
       </Card>

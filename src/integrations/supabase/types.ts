@@ -441,6 +441,10 @@ export type Database = {
       attendance_settings: {
         Row: {
           admin_line_group_id: string | null
+          birthday_reminder_days_ahead: number | null
+          birthday_reminder_enabled: boolean | null
+          birthday_reminder_line_group_id: string | null
+          birthday_reminder_time: string | null
           branch_id: string | null
           created_at: string | null
           daily_summary_enabled: boolean | null
@@ -459,6 +463,10 @@ export type Database = {
         }
         Insert: {
           admin_line_group_id?: string | null
+          birthday_reminder_days_ahead?: number | null
+          birthday_reminder_enabled?: boolean | null
+          birthday_reminder_line_group_id?: string | null
+          birthday_reminder_time?: string | null
           branch_id?: string | null
           created_at?: string | null
           daily_summary_enabled?: boolean | null
@@ -477,6 +485,10 @@ export type Database = {
         }
         Update: {
           admin_line_group_id?: string | null
+          birthday_reminder_days_ahead?: number | null
+          birthday_reminder_enabled?: boolean | null
+          birthday_reminder_line_group_id?: string | null
+          birthday_reminder_time?: string | null
           branch_id?: string | null
           created_at?: string | null
           daily_summary_enabled?: boolean | null
