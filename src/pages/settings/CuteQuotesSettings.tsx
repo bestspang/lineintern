@@ -535,7 +535,7 @@ export default function CuteQuotesSettings() {
                     เพิ่มใหม่
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>เพิ่มข้อความใหม่</DialogTitle>
                     <DialogDescription>สร้างข้อความน่ารักสำหรับแสดงใน Liveness Camera</DialogDescription>
