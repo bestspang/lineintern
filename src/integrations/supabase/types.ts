@@ -1345,6 +1345,42 @@ export type Database = {
           },
         ]
       }
+      cute_quotes: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          display_order: number | null
+          emoji: string | null
+          id: string
+          is_active: boolean | null
+          text: string
+          text_en: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          text: string
+          text_en?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          text?: string
+          text_en?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       daily_attendance_summaries: {
         Row: {
           absent_count: number | null
