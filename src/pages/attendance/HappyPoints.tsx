@@ -186,7 +186,7 @@ export default function HappyPoints() {
                     <TableHead className="text-right">Earned</TableHead>
                     <TableHead className="text-right">Spent</TableHead>
                     <TableHead className="text-center">Streak</TableHead>
-                    <TableHead className="text-center">Today</TableHead>
+                    <TableHead className="text-center">Daily Resp</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -210,8 +210,8 @@ export default function HappyPoints() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={p.daily_response_score >= 20 ? 'default' : 'secondary'}>
-                          {p.daily_response_score}/20
+                        <Badge variant={p.daily_response_score >= 5 ? 'default' : 'secondary'}>
+                          {p.daily_response_score > 0 ? `+${p.daily_response_score}` : '-'}
                         </Badge>
                       </TableCell>
                     </TableRow>
