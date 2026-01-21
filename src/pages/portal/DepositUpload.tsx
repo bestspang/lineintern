@@ -305,6 +305,7 @@ export default function DepositUpload() {
         <LivenessCamera
           onCapture={handleFaceVerified}
           onCancel={() => window.history.back()}
+          eventType="deposit"
         />
       )}
 
