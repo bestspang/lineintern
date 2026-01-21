@@ -15,6 +15,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { getBangkokDateString, getBangkokNow } from '../_shared/timezone.ts';
+import { logBotMessage } from '../_shared/bot-logger.ts';
 
 /**
  * Find the previous work day for an employee (skip non-working days)
@@ -118,6 +119,7 @@ async function sendPointNotification(
     streak: number;
     newBalance: number;
     shieldsRemaining?: number;
+    commandType?: string;
   }
 ): Promise<void> {
   if (!options.messageTemplate) {
@@ -149,6 +151,22 @@ async function sendPointNotification(
     const accessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     if (!accessToken) {
       logger.error('LINE_CHANNEL_ACCESS_TOKEN not configured');
+
+      await logBotMessage({
+        destinationType: options.notifyGroup ? 'group' : 'dm',
+        destinationId: options.employeeId,
+        destinationName: employee.full_name || undefined,
+        recipientEmployeeId: options.employeeId,
+        recipientUserId: employee.line_user_id || undefined,
+        groupId: employee.announcement_group_line_id || employee.branch?.line_group_id || undefined,
+        messageText: message,
+        messageType: 'notification',
+        triggeredBy: 'webhook',
+        commandType: options.commandType,
+        edgeFunctionName: 'point-attendance-calculator',
+        deliveryStatus: 'failed',
+        errorMessage: 'LINE_CHANNEL_ACCESS_TOKEN not configured',
+      });
       return;
     }
 
@@ -171,11 +189,57 @@ async function sendPointNotification(
         if (!response.ok) {
           const errorText = await response.text();
           logger.error('Failed to send group notification', { error: errorText, groupId });
+
+          await logBotMessage({
+            destinationType: 'group',
+            destinationId: groupId,
+            destinationName: employee.full_name || undefined,
+            groupId,
+            recipientEmployeeId: options.employeeId,
+            recipientUserId: employee.line_user_id || undefined,
+            messageText: message,
+            messageType: 'notification',
+            triggeredBy: 'webhook',
+            commandType: options.commandType,
+            edgeFunctionName: 'point-attendance-calculator',
+            deliveryStatus: 'failed',
+            errorMessage: errorText,
+          });
         } else {
           logger.info('Point notification sent to group', { groupId });
+
+          await logBotMessage({
+            destinationType: 'group',
+            destinationId: groupId,
+            destinationName: employee.full_name || undefined,
+            groupId,
+            recipientEmployeeId: options.employeeId,
+            recipientUserId: employee.line_user_id || undefined,
+            messageText: message,
+            messageType: 'notification',
+            triggeredBy: 'webhook',
+            commandType: options.commandType,
+            edgeFunctionName: 'point-attendance-calculator',
+            deliveryStatus: 'sent',
+          });
         }
       } else {
         logger.warn('No group ID found for notification', { employeeId: options.employeeId });
+
+        await logBotMessage({
+          destinationType: 'group',
+          destinationId: options.employeeId,
+          destinationName: employee.full_name || undefined,
+          recipientEmployeeId: options.employeeId,
+          recipientUserId: employee.line_user_id || undefined,
+          messageText: message,
+          messageType: 'notification',
+          triggeredBy: 'webhook',
+          commandType: options.commandType,
+          edgeFunctionName: 'point-attendance-calculator',
+          deliveryStatus: 'failed',
+          errorMessage: 'No group ID found for notification',
+        });
       }
     }
 
@@ -196,12 +260,75 @@ async function sendPointNotification(
       if (!response.ok) {
         const errorText = await response.text();
         logger.error('Failed to send DM notification', { error: errorText });
+
+        await logBotMessage({
+          destinationType: 'dm',
+          destinationId: employee.line_user_id,
+          destinationName: employee.full_name || undefined,
+          recipientEmployeeId: options.employeeId,
+          recipientUserId: employee.line_user_id,
+          groupId: employee.announcement_group_line_id || employee.branch?.line_group_id || undefined,
+          messageText: message,
+          messageType: 'notification',
+          triggeredBy: 'webhook',
+          commandType: options.commandType,
+          edgeFunctionName: 'point-attendance-calculator',
+          deliveryStatus: 'failed',
+          errorMessage: errorText,
+        });
       } else {
         logger.info('Point notification sent to DM', { lineUserId: employee.line_user_id });
+
+        await logBotMessage({
+          destinationType: 'dm',
+          destinationId: employee.line_user_id,
+          destinationName: employee.full_name || undefined,
+          recipientEmployeeId: options.employeeId,
+          recipientUserId: employee.line_user_id,
+          groupId: employee.announcement_group_line_id || employee.branch?.line_group_id || undefined,
+          messageText: message,
+          messageType: 'notification',
+          triggeredBy: 'webhook',
+          commandType: options.commandType,
+          edgeFunctionName: 'point-attendance-calculator',
+          deliveryStatus: 'sent',
+        });
       }
+    } else if (options.notifyDm && !employee.line_user_id) {
+      await logBotMessage({
+        destinationType: 'dm',
+        destinationId: options.employeeId,
+        destinationName: employee.full_name || undefined,
+        recipientEmployeeId: options.employeeId,
+        messageText: message,
+        messageType: 'notification',
+        triggeredBy: 'webhook',
+        commandType: options.commandType,
+        edgeFunctionName: 'point-attendance-calculator',
+        deliveryStatus: 'failed',
+        errorMessage: 'notifyDm=true but employee.line_user_id is null',
+      });
     }
   } catch (error: any) {
     logger.error('Error sending point notification', { error: error?.message });
+
+    // Best-effort logging; do not throw.
+    try {
+      await logBotMessage({
+        destinationType: options.notifyGroup ? 'group' : 'dm',
+        destinationId: options.employeeId,
+        recipientEmployeeId: options.employeeId,
+        messageText: options.messageTemplate || '',
+        messageType: 'notification',
+        triggeredBy: 'webhook',
+        commandType: options.commandType,
+        edgeFunctionName: 'point-attendance-calculator',
+        deliveryStatus: 'failed',
+        errorMessage: error?.message || 'Unknown error',
+      });
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -385,7 +512,8 @@ serve(async (req) => {
               points: 0,
               streak: newStreak,
               newBalance: happyPoints.point_balance,
-              shieldsRemaining
+              shieldsRemaining,
+              commandType: 'streak_shield'
             });
           } else {
             // No shield - reset streak to 1 (today counts as first day)
@@ -446,7 +574,8 @@ serve(async (req) => {
           points: 0,
           streak: newStreak,
           newBalance: happyPoints.point_balance,
-          shieldsRemaining
+          shieldsRemaining,
+          commandType: 'streak_shield'
         });
       } else {
         // No shield - reset streak to 0
@@ -566,7 +695,8 @@ serve(async (req) => {
                 notifyDm: weeklyStreakRule.notify_dm || false,
                 points: bonusAmount,
                 streak: newStreak,
-                newBalance
+                newBalance,
+                commandType: 'streak_weekly'
               });
             }
           }
