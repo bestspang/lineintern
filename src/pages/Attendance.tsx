@@ -900,6 +900,7 @@ export default function Attendance() {
         <LivenessCamera
           onCapture={handleLivenessCapture}
           onCancel={handleLivenessCancel}
+          eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
         />
       )}
 

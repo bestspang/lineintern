@@ -2353,6 +2353,7 @@ export type Database = {
           id: string
           is_enabled: boolean | null
           rollout_percentage: number | null
+          settings: Json | null
           updated_at: string | null
         }
         Insert: {
@@ -2367,6 +2368,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean | null
           rollout_percentage?: number | null
+          settings?: Json | null
           updated_at?: string | null
         }
         Update: {
@@ -2381,6 +2383,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean | null
           rollout_percentage?: number | null
+          settings?: Json | null
           updated_at?: string | null
         }
         Relationships: []
