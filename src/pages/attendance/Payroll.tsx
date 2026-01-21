@@ -1048,6 +1048,20 @@ export default function Payroll() {
           .select("*")
           .eq("employee_id", emp.id);
         
+        // Fetch attendance adjustments for this employee in the period
+        const { data: adjustments } = await supabase
+          .from("attendance_adjustments")
+          .select("*")
+          .eq("employee_id", emp.id)
+          .gte("adjustment_date", startDate)
+          .lte("adjustment_date", endDate);
+        
+        // Build adjustments map for quick lookup
+        const adjustmentsMap = new Map<string, any>();
+        adjustments?.forEach(adj => {
+          adjustmentsMap.set(adj.adjustment_date, adj);
+        });
+        
         // Build effective schedule map for this employee for the period
         const effectiveScheduleMap = new Map<string, EffectiveSchedule>();
         periodDays.forEach(day => {
@@ -1087,7 +1101,17 @@ export default function Payroll() {
         }
         
         // For skip_attendance_tracking, we'll override metrics later after scheduledWorkDaysToDate is calculated
-        let actualWorkDays = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd"))).size;
+        // Count actual work days from check-ins PLUS adjustments with override_status = 'present'
+        const checkInDates = new Set(checkIns.map(l => format(parseISO(l.server_time), "yyyy-MM-dd")));
+        
+        // Add days with present override from adjustments (that don't already have check-ins)
+        adjustments?.forEach(adj => {
+          if (adj.override_status === 'present' && !checkInDates.has(adj.adjustment_date)) {
+            checkInDates.add(adj.adjustment_date);
+          }
+        });
+        
+        let actualWorkDays = checkInDates.size;
         const totalOTHours = logs?.reduce((sum, l) => sum + (l.overtime_hours || 0), 0) || 0;
         
         // Late detection using effective schedule start_time + calculate late_minutes
@@ -1177,16 +1201,41 @@ export default function Payroll() {
         
         const earlyLeaveCount = earlyLeaveRequests?.length || 0;
         
-        // Calculate total work hours
+        // Calculate total work hours from logs
         let totalWorkHours = 0;
+        const processedDates = new Set<string>();
+        
         checkIns.forEach(checkIn => {
           const checkInDate = format(parseISO(checkIn.server_time), "yyyy-MM-dd");
+          processedDates.add(checkInDate);
           const matchingCheckOut = checkOuts.find(co => 
             format(parseISO(co.server_time), "yyyy-MM-dd") === checkInDate
           );
           if (matchingCheckOut) {
             const hours = (parseISO(matchingCheckOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / (1000 * 60 * 60);
             totalWorkHours += Math.min(hours, 12); // Cap at 12 hours
+          }
+        });
+        
+        // Add work hours from adjustments (for days without logs but marked as present)
+        adjustments?.forEach(adj => {
+          const adjDate = adj.adjustment_date;
+          // Skip if already counted from logs
+          if (processedDates.has(adjDate)) return;
+          
+          if (adj.override_status === 'present') {
+            // Calculate hours from override times or use default
+            if (adj.override_check_in && adj.override_check_out) {
+              const [inH, inM] = adj.override_check_in.split(':').map(Number);
+              const [outH, outM] = adj.override_check_out.split(':').map(Number);
+              const hours = (outH * 60 + outM - inH * 60 - inM) / 60;
+              totalWorkHours += Math.max(0, Math.min(hours, 12));
+            } else if (adj.override_work_hours) {
+              totalWorkHours += adj.override_work_hours;
+            } else {
+              // Default 8 hours for present days without specific times
+              totalWorkHours += 8;
+            }
           }
         });
         
@@ -1296,7 +1345,23 @@ export default function Payroll() {
         const netPay = Math.max(0, grossPay + totalAllowances - totalDeductions);
         
         // Calculate absent days (scheduled days TO DATE - actual - leave)
-        const absentDays = skipTracking ? 0 : Math.max(0, scheduledWorkDaysToDate - actualWorkDays - leaveDays);
+        // Also subtract days that are marked as not_started or day_off via adjustments
+        let adjustedScheduledDays = scheduledWorkDaysToDate;
+        
+        adjustments?.forEach(adj => {
+          const isNotStartedOrDayOff = ['day_off', 'not_started'].includes(adj.override_status || '');
+          if (isNotStartedOrDayOff) {
+            const adjDate = parseISO(adj.adjustment_date);
+            const dateStr = adj.adjustment_date;
+            const schedule = effectiveScheduleMap.get(dateStr);
+            // Only subtract if it was originally a scheduled work day and within "to date" range
+            if (schedule && schedule.isWorkingDay && !schedule.isDayOff && adjDate <= today) {
+              adjustedScheduledDays = Math.max(0, adjustedScheduledDays - 1);
+            }
+          }
+        });
+        
+        const absentDays = skipTracking ? 0 : Math.max(0, adjustedScheduledDays - actualWorkDays - leaveDays);
         
         // Upsert payroll record
         await supabase
