@@ -56,6 +56,18 @@ function hasServiceRoleKey(): boolean {
   return k.trim().length > 20;
 }
 
+function isUuid(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  // RFC4122-ish UUID v1-v5
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function normalizeUuid(value: unknown): string | null {
+  return isUuid(value) ? value : null;
+}
+
 function createAuthedSupabaseClient(req: Request) {
   // Uses caller JWT (admin/owner) so RLS can still allow access where appropriate.
   // NOTE: Some clients might not send Authorization; we guard before using it.
@@ -86,8 +98,10 @@ async function insertBotLogViaClient(
     destination_type: entry.destinationType,
     destination_id: entry.destinationId,
     destination_name: entry.destinationName,
-    group_id: entry.groupId,
-    recipient_user_id: entry.recipientUserId,
+    // IMPORTANT: These columns are UUID in DB. LINE ids are NOT UUID.
+    // Only write UUIDs; otherwise write null to avoid 22P02 and ensure idempotency marker exists.
+    group_id: normalizeUuid((entry as any).groupId),
+    recipient_user_id: normalizeUuid((entry as any).recipientUserId),
     recipient_employee_id: entry.recipientEmployeeId,
     message_text: entry.messageText,
     message_type: entry.messageType,
@@ -367,9 +381,11 @@ serve(async (req) => {
         destinationType,
         destinationId: r.channel === "group" ? (groupId || tx.employee_id) : (employee.line_user_id || tx.employee_id),
         destinationName: employee.full_name || undefined,
-        groupId: groupId || undefined,
+      // group_id / recipient_user_id are UUID columns in bot_message_logs.
+      // We don't have internal UUIDs here; store LINE ids in destination_id instead.
+      groupId: undefined,
         recipientEmployeeId: tx.employee_id,
-        recipientUserId: employee.line_user_id || undefined,
+      recipientUserId: undefined,
         messageText: message,
         messageType: "notification" as const,
         triggeredBy: "manual" as const,
@@ -384,8 +400,14 @@ serve(async (req) => {
       await insertBotLogViaClient(supabase, entry);
 
       // 2) Also try the shared logger (service-role) for compatibility/centralization.
-      //    (If service role is unavailable, bot-logger will fail silently.)
-      await logBotMessage(entry);
+      //    Never let logging failures break the notification flow.
+      try {
+        await logBotMessage(entry);
+      } catch (e) {
+        logger.error("[manual-streak-notify] shared bot-logger failed", {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
 
     const anySent = results.some((r) => r.status === "sent");

@@ -23,10 +23,17 @@ type Tx = {
   employees?: { full_name?: string; code?: string };
 };
 
-export function PointTransactionSendStreakButton({ tx }: { tx: Tx }) {
+export function PointTransactionSendStreakButton({
+  tx,
+  alreadySent,
+}: {
+  tx: Tx;
+  alreadySent?: boolean;
+}) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
 
   const isEligible = useMemo(() => {
     return tx.category === "streak" && tx.transaction_type === "bonus";
@@ -50,6 +57,7 @@ export function PointTransactionSendStreakButton({ tx }: { tx: Tx }) {
       } else {
         toast({ title: "ส่งประกาศแล้ว", description: "ระบบบันทึก log ให้เรียบร้อยเพื่อกันส่งซ้ำ" });
       }
+      setDone(true);
       qc.invalidateQueries({ queryKey: ["point-transactions"] });
       setOpen(false);
     },
@@ -63,6 +71,14 @@ export function PointTransactionSendStreakButton({ tx }: { tx: Tx }) {
   });
 
   if (!isEligible) return null;
+
+  if (alreadySent || done) {
+    return (
+      <Button variant="secondary" size="sm" disabled>
+        สำเร็จแล้ว
+      </Button>
+    );
+  }
 
   const employeeLabel = tx.employees?.full_name
     ? `${tx.employees.full_name}${tx.employees.code ? ` (${tx.employees.code})` : ""}`
