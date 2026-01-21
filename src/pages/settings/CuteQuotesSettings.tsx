@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useCuteQuotesAdmin, CuteQuote } from '@/hooks/useCuteQuotes';
 import { useFeatureFlag, useFeatureFlagsAdmin } from '@/hooks/useFeatureFlags';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut, Sunrise, Sunset, Sun } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut, Sunrise, Sunset, Sun, Cake, Calendar, CalendarDays } from 'lucide-react';
+import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 
 const CATEGORIES = [
   { value: 'general', label: 'ทั่วไป', color: 'bg-gray-500' },
@@ -21,7 +24,7 @@ const CATEGORIES = [
   { value: 'motivational', label: 'ให้กำลังใจ', color: 'bg-green-500' },
 ];
 
-const EMOJI_OPTIONS = ['😊', '😁', '😅', '🌟', '📸', '💪', '🤩', '🧊', '⏱️', '✊', '👏', '🎉', '❤️', '🔥', '✨'];
+const EMOJI_OPTIONS = ['😊', '😁', '😅', '🌟', '📸', '💪', '🤩', '🧊', '⏱️', '✊', '👏', '🎉', '❤️', '🔥', '✨', '🎂', '🎊', '🎁'];
 
 const SHOW_TIME_OPTIONS = [
   { value: 'both', label: 'ทั้งเช้าและเย็น', icon: Sun },
@@ -39,11 +42,31 @@ const BG_COLOR_OPTIONS = [
   { value: 'gray', label: 'เทา', class: 'from-gray-600/90 to-gray-500/90' },
 ];
 
+const SPECIAL_DAY_OPTIONS = [
+  { value: 'none', label: 'ไม่จำกัด (แสดงทุกวัน)', icon: CalendarDays },
+  { value: 'birthday', label: 'วันเกิดพนักงาน', icon: Cake },
+  { value: 'holiday', label: 'วันหยุด', icon: Calendar },
+  { value: 'custom', label: 'วันที่กำหนดเอง', icon: CalendarDays },
+];
+
 export default function CuteQuotesSettings() {
   const { toast } = useToast();
   const { quotes, isLoading, createQuote, updateQuote, deleteQuote, toggleQuote } = useCuteQuotesAdmin();
   const { isEnabled: featureEnabled, flag } = useFeatureFlag('cute_quotes_liveness');
   const { toggleFlag, isToggling } = useFeatureFlagsAdmin();
+  
+  // Fetch holidays for selection
+  const { data: holidays } = useQuery({
+    queryKey: ['holidays-for-quotes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('holidays')
+        .select('id, name, date')
+        .order('date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
   
   // % Chance settings
   const [checkInChance, setCheckInChance] = useState(100);
@@ -70,6 +93,9 @@ export default function CuteQuotesSettings() {
   const [newCategory, setNewCategory] = useState('general');
   const [newShowTime, setNewShowTime] = useState<'check_in' | 'check_out' | 'both'>('both');
   const [newBgColor, setNewBgColor] = useState('pink-purple');
+  const [newSpecialDayType, setNewSpecialDayType] = useState<'none' | 'birthday' | 'holiday' | 'custom'>('none');
+  const [newHolidayId, setNewHolidayId] = useState<string>('');
+  const [newSpecialDayDate, setNewSpecialDayDate] = useState<string>('');
   
   // Filter
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -91,13 +117,20 @@ export default function CuteQuotesSettings() {
         category: newCategory,
         show_time: newShowTime,
         bg_color: newBgColor,
+        special_day_type: newSpecialDayType === 'none' ? null : newSpecialDayType,
+        special_day_date: newSpecialDayType === 'custom' ? newSpecialDayDate : null,
+        holiday_id: newSpecialDayType === 'holiday' ? newHolidayId : null,
       });
       
+      // Reset form
       setNewText('');
       setNewEmoji('😊');
       setNewCategory('general');
       setNewShowTime('both');
       setNewBgColor('pink-purple');
+      setNewSpecialDayType('none');
+      setNewHolidayId('');
+      setNewSpecialDayDate('');
       setIsCreateOpen(false);
       
       toast({ title: 'เพิ่มข้อความสำเร็จ' });
@@ -116,12 +149,37 @@ export default function CuteQuotesSettings() {
         category: editingQuote.category,
         show_time: editingQuote.show_time,
         bg_color: editingQuote.bg_color,
+        special_day_type: editingQuote.special_day_type,
+        special_day_date: editingQuote.special_day_date,
+        holiday_id: editingQuote.holiday_id,
       });
       
       setEditingQuote(null);
       toast({ title: 'แก้ไขสำเร็จ' });
     } catch (error) {
       toast({ title: 'เกิดข้อผิดพลาด', description: String(error), variant: 'destructive' });
+    }
+  };
+
+  const getHolidayName = (holidayId: string | null) => {
+    if (!holidayId || !holidays) return null;
+    return holidays.find(h => h.id === holidayId)?.name || null;
+  };
+
+  const getSpecialDayBadge = (quote: CuteQuote) => {
+    if (!quote.special_day_type) return null;
+    
+    switch (quote.special_day_type) {
+      case 'birthday':
+        return <Badge variant="secondary" className="text-xs bg-pink-100 text-pink-700">🎂 วันเกิด</Badge>;
+      case 'holiday':
+        const holidayName = getHolidayName(quote.holiday_id);
+        return <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">📅 {holidayName || 'วันหยุด'}</Badge>;
+      case 'custom':
+        const dateStr = quote.special_day_date ? format(new Date(quote.special_day_date), 'd MMM', { locale: th }) : '';
+        return <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700">🗓️ {dateStr}</Badge>;
+      default:
+        return null;
     }
   };
 
@@ -428,6 +486,56 @@ export default function CuteQuotesSettings() {
                       </div>
                     </div>
                     
+                    {/* Special Day Selection */}
+                    <div className="space-y-2">
+                      <Label>📅 แสดงเฉพาะวันพิเศษ</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {SPECIAL_DAY_OPTIONS.map(opt => {
+                          const Icon = opt.icon;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setNewSpecialDayType(opt.value as typeof newSpecialDayType)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm ${
+                                newSpecialDayType === opt.value 
+                                  ? 'border-primary bg-primary/10' 
+                                  : 'border-transparent bg-muted hover:border-muted-foreground/30'
+                              }`}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* Holiday selector */}
+                      {newSpecialDayType === 'holiday' && (
+                        <Select value={newHolidayId} onValueChange={setNewHolidayId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="เลือกวันหยุด..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {holidays?.map(h => (
+                              <SelectItem key={h.id} value={h.id}>
+                                {h.name} ({format(new Date(h.date), 'd MMM yyyy', { locale: th })})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      
+                      {/* Custom date picker */}
+                      {newSpecialDayType === 'custom' && (
+                        <Input
+                          type="date"
+                          value={newSpecialDayDate}
+                          onChange={(e) => setNewSpecialDayDate(e.target.value)}
+                        />
+                      )}
+                    </div>
+                    
                     {/* Preview */}
                     <div className="space-y-2">
                       <Label>ตัวอย่าง</Label>
@@ -464,7 +572,7 @@ export default function CuteQuotesSettings() {
                   
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{quote.text}</div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
                       <Badge variant="outline" className="text-xs">
                         {getCategoryInfo(quote.category).label}
                       </Badge>
@@ -475,6 +583,7 @@ export default function CuteQuotesSettings() {
                         className={`w-4 h-4 rounded-full bg-gradient-to-r ${getBgColorClass(quote.bg_color)}`}
                         title={BG_COLOR_OPTIONS.find(c => c.value === quote.bg_color)?.label || 'ชมพู-ม่วง'}
                       />
+                      {getSpecialDayBadge(quote)}
                     </div>
                   </div>
                   
@@ -643,6 +752,66 @@ export default function CuteQuotesSettings() {
                     />
                   ))}
                 </div>
+              </div>
+              
+              {/* Special Day Selection */}
+              <div className="space-y-2">
+                <Label>📅 แสดงเฉพาะวันพิเศษ</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SPECIAL_DAY_OPTIONS.map(opt => {
+                    const Icon = opt.icon;
+                    const currentValue = editingQuote.special_day_type || 'none';
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setEditingQuote({ 
+                          ...editingQuote, 
+                          special_day_type: opt.value === 'none' ? null : opt.value as 'birthday' | 'holiday' | 'custom',
+                          // Reset related fields when changing type
+                          holiday_id: opt.value === 'holiday' ? editingQuote.holiday_id : null,
+                          special_day_date: opt.value === 'custom' ? editingQuote.special_day_date : null,
+                        })}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm ${
+                          currentValue === opt.value 
+                            ? 'border-primary bg-primary/10' 
+                            : 'border-transparent bg-muted hover:border-muted-foreground/30'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* Holiday selector */}
+                {editingQuote.special_day_type === 'holiday' && (
+                  <Select 
+                    value={editingQuote.holiday_id || ''} 
+                    onValueChange={(value) => setEditingQuote({ ...editingQuote, holiday_id: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="เลือกวันหยุด..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {holidays?.map(h => (
+                        <SelectItem key={h.id} value={h.id}>
+                          {h.name} ({format(new Date(h.date), 'd MMM yyyy', { locale: th })})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                
+                {/* Custom date picker */}
+                {editingQuote.special_day_type === 'custom' && (
+                  <Input
+                    type="date"
+                    value={editingQuote.special_day_date || ''}
+                    onChange={(e) => setEditingQuote({ ...editingQuote, special_day_date: e.target.value })}
+                  />
+                )}
               </div>
               
               {/* Preview */}

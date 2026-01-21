@@ -10,6 +10,8 @@ interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
   onCancel: () => void;
   eventType?: 'check_in' | 'check_out';
+  employeeBirthDate?: string;  // 'MM-DD' format
+  todayHolidayIds?: string[];
 }
 
 export interface LivenessData {
@@ -27,7 +29,7 @@ const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
   { type: "turn_right", text: "หันหน้าไปทางขวา", icon: MoveHorizontal },
 ];
 
-export default function LivenessCamera({ onCapture, onCancel, eventType = 'check_in' }: LivenessCameraProps) {
+export default function LivenessCamera({ onCapture, onCancel, eventType = 'check_in', employeeBirthDate, todayHolidayIds }: LivenessCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -198,7 +200,10 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       setWaitingForCenter(true);
       // ✅ Show cute quote when entering center hold phase (based on % chance)
       if (cuteQuotesEnabled && shouldShowQuote(eventType)) {
-        const quote = getRandomQuote(eventType);
+        const quote = getRandomQuote(eventType, {
+          employeeBirthDate,
+          todayHolidayIds,
+        });
         if (quote) {
           setCuteQuote({ text: quote.text, emoji: quote.emoji, bgColor: quote.bg_color });
         }
@@ -206,7 +211,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         setCuteQuote(null);
       }
     }
-  }, [challengeCompleted, waitingForCenter, cuteQuotesEnabled, shouldShowQuote, eventType, getRandomQuote]);
+  }, [challengeCompleted, waitingForCenter, cuteQuotesEnabled, shouldShowQuote, eventType, getRandomQuote, employeeBirthDate, todayHolidayIds]);
 
   // ✅ MERGED: Single render loop for both liveness detection AND center hold check
   // This prevents double GPU/CPU load from running detectForVideo() twice per frame

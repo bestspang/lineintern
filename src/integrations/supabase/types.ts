@@ -1352,9 +1352,12 @@ export type Database = {
           created_at: string | null
           display_order: number | null
           emoji: string | null
+          holiday_id: string | null
           id: string
           is_active: boolean | null
           show_time: string | null
+          special_day_date: string | null
+          special_day_type: string | null
           text: string
           text_en: string | null
           updated_at: string | null
@@ -1365,9 +1368,12 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           emoji?: string | null
+          holiday_id?: string | null
           id?: string
           is_active?: boolean | null
           show_time?: string | null
+          special_day_date?: string | null
+          special_day_type?: string | null
           text: string
           text_en?: string | null
           updated_at?: string | null
@@ -1378,14 +1384,25 @@ export type Database = {
           created_at?: string | null
           display_order?: number | null
           emoji?: string | null
+          holiday_id?: string | null
           id?: string
           is_active?: boolean | null
           show_time?: string | null
+          special_day_date?: string | null
+          special_day_type?: string | null
           text?: string
           text_en?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cute_quotes_holiday_id_fkey"
+            columns: ["holiday_id"]
+            isOneToOne: false
+            referencedRelation: "holidays"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       daily_attendance_summaries: {
         Row: {
@@ -2108,6 +2125,7 @@ export type Database = {
           bank_account_number: string | null
           bank_branch: string | null
           bank_name: string | null
+          birth_date: string | null
           branch_id: string | null
           break_hours: number | null
           code: string
@@ -2158,6 +2176,7 @@ export type Database = {
           bank_account_number?: string | null
           bank_branch?: string | null
           bank_name?: string | null
+          birth_date?: string | null
           branch_id?: string | null
           break_hours?: number | null
           code: string
@@ -2208,6 +2227,7 @@ export type Database = {
           bank_account_number?: string | null
           bank_branch?: string | null
           bank_name?: string | null
+          birth_date?: string | null
           branch_id?: string | null
           break_hours?: number | null
           code?: string
