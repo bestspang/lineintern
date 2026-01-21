@@ -9,7 +9,7 @@ import {
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
   CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package
+  Activity, Package, Camera
 } from 'lucide-react';
 
 // Static fallback FAQs (used when database is empty or has errors)
@@ -147,6 +147,18 @@ export default function Help() {
       title: locale === 'th' ? 'ประวัติการแลก' : 'My Redemptions',
       description: locale === 'th' ? 'ดูประวัติการแลกของรางวัล' : 'View redemption history',
       path: '/portal/my-redemptions'
+    },
+    {
+      icon: Camera,
+      title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
+      description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
+      path: '/portal/today-photos'
+    },
+    {
+      icon: FileText,
+      title: locale === 'th' ? 'สรุปประจำวัน' : 'Daily Summary',
+      description: locale === 'th' ? 'ดูสรุปการทำงานประจำวัน' : 'View daily work summary',
+      path: '/portal/daily-summary'
     }
   ];
 
