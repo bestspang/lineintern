@@ -11,6 +11,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getBangkokDateString } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,8 +41,10 @@ Deno.serve(async (req) => {
     // Get date range from request or default to current month
     const { start_date, end_date } = await req.json().catch(() => ({}));
     
-    const startDate = start_date || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    const endDate = end_date || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date for date range calculation
+    const now = new Date();
+    const startDate = start_date || getBangkokDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endDate = end_date || getBangkokDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     console.log(`Backfilling work_sessions from ${startDate} to ${endDate}`);
 

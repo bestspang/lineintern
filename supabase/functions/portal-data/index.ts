@@ -7,7 +7,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay } from '../_shared/timezone.ts';
+import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay, getBangkokNow } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,11 +61,12 @@ serve(async (req) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
         
+        // ⚠️ TIMEZONE: Use Bangkok date
         const result = await supabase
           .from('work_sessions')
           .select('*')
           .eq('employee_id', employee_id)
-          .gte('work_date', startDate.toISOString().split('T')[0])
+          .gte('work_date', getBangkokDateString(startDate))
           .order('work_date', { ascending: false });
         
         data = result.data;
@@ -161,16 +162,19 @@ serve(async (req) => {
           .maybeSingle();
 
         // Get current month work sessions (use Bangkok timezone for month boundaries)
-        const now = new Date();
+        // ⚠️ TIMEZONE: Use Bangkok date for month boundaries
+        const now = getBangkokNow();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const monthStartStr = getBangkokDateString(monthStart);
+        const monthEndStr = getBangkokDateString(monthEnd);
 
         const sessionsResult = await supabase
           .from('work_sessions')
           .select('*')
           .eq('employee_id', employee_id)
-          .gte('work_date', monthStart.toISOString().split('T')[0])
-          .lte('work_date', monthEnd.toISOString().split('T')[0]);
+          .gte('work_date', monthStartStr)
+          .lte('work_date', monthEndStr);
 
         // Get approved overtime
         const otResult = await supabase
@@ -178,8 +182,8 @@ serve(async (req) => {
           .select('*')
           .eq('employee_id', employee_id)
           .eq('status', 'approved')
-          .gte('request_date', monthStart.toISOString().split('T')[0])
-          .lte('request_date', monthEnd.toISOString().split('T')[0]);
+          .gte('request_date', monthStartStr)
+          .lte('request_date', monthEndStr);
 
         // Get leave requests (include leave_type for paid/unpaid distinction)
         const leaveResult = await supabase
@@ -187,8 +191,8 @@ serve(async (req) => {
           .select('*')
           .eq('employee_id', employee_id)
           .eq('status', 'approved')
-          .gte('start_date', monthStart.toISOString().split('T')[0])
-          .lte('end_date', monthEnd.toISOString().split('T')[0]);
+          .gte('start_date', monthStartStr)
+          .lte('end_date', monthEndStr);
         
         // Get attendance logs for late detection
         const logsResult = await supabase

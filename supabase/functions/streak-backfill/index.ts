@@ -25,7 +25,8 @@ async function findPreviousWorkDay(
   // Get shift assignments for the last 7 days
   const sevenDaysAgo = new Date(fromDate);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+  // ⚠️ TIMEZONE: Use Bangkok date string format
+  const sevenDaysAgoStr = getBangkokDateString(sevenDaysAgo);
 
   const { data: shiftAssignments } = await supabase
     .from('shift_assignments')
@@ -59,7 +60,8 @@ async function findPreviousWorkDay(
   const currentDate = new Date(fromDate);
   for (let i = 1; i <= 7; i++) {
     currentDate.setDate(currentDate.getDate() - 1);
-    const dateStr = currentDate.toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date string format
+    const dateStr = getBangkokDateString(currentDate);
     const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
 
     // Priority 1: Check shift_assignments (day off override)
@@ -158,7 +160,8 @@ async function recalculateStreak(
   const today = getBangkokDateString();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+  // ⚠️ TIMEZONE: Use Bangkok date string format
+  const thirtyDaysAgoStr = getBangkokDateString(thirtyDaysAgo);
 
   // Get check-in logs for last 30 days, ordered by date descending
   const { data: logs, error } = await supabase
