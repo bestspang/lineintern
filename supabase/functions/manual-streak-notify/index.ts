@@ -17,6 +17,8 @@ interface ManualStreakNotifyRequest {
   notify_group?: boolean;
   /** Default false */
   notify_dm?: boolean;
+  /** If true: do NOT send to LINE, only write bot_message_logs marker(s) as sent */
+  mark_only?: boolean;
 }
 
 function replaceTemplateVariables(
@@ -255,6 +257,7 @@ serve(async (req) => {
 
     const notifyGroup = body.notify_group ?? true;
     const notifyDm = body.notify_dm ?? false;
+    const markOnly = body.mark_only ?? false;
 
     // Idempotency: do nothing if already sent successfully for this transaction
     const { data: alreadySent } = await supabase
@@ -351,7 +354,9 @@ serve(async (req) => {
         results.push({ channel: "group", status: "failed", error: "No group id" });
       } else {
         try {
-          await pushText(accessToken, groupId, message);
+          if (!markOnly) {
+            await pushText(accessToken, groupId, message);
+          }
           results.push({ channel: "group", status: "sent" });
         } catch (e) {
           results.push({ channel: "group", status: "failed", error: e instanceof Error ? e.message : String(e) });
@@ -365,7 +370,9 @@ serve(async (req) => {
         results.push({ channel: "dm", status: "failed", error: "Employee has no line_user_id" });
       } else {
         try {
-          await pushText(accessToken, employee.line_user_id, message);
+          if (!markOnly) {
+            await pushText(accessToken, employee.line_user_id, message);
+          }
           results.push({ channel: "dm", status: "sent" });
         } catch (e) {
           results.push({ channel: "dm", status: "failed", error: e instanceof Error ? e.message : String(e) });
@@ -418,7 +425,8 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true, status: "sent", results }), {
+    const status = markOnly ? "marked_sent" : "sent";
+    return new Response(JSON.stringify({ success: true, status, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

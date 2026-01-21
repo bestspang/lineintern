@@ -40,12 +40,13 @@ export function PointTransactionSendStreakButton({
   }, [tx.category, tx.transaction_type]);
 
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { markOnly?: boolean }) => {
       const { data, error } = await supabase.functions.invoke("manual-streak-notify", {
         body: {
           transaction_id: tx.id,
           notify_group: true,
           notify_dm: false,
+          mark_only: Boolean(vars?.markOnly),
         },
       });
       if (error) throw error;
@@ -54,16 +55,22 @@ export function PointTransactionSendStreakButton({
     onSuccess: (data) => {
       if (data?.status === "already_sent") {
         toast({ title: "ส่งไปแล้ว", description: "รายการนี้มี log ว่าส่งสำเร็จแล้ว (จะไม่ backfill ซ้ำ)" });
+      } else if (data?.status === "marked_sent") {
+        toast({
+          title: "บันทึกว่าส่งแล้ว",
+          description: "โหมดไม่ส่งซ้ำ: ระบบสร้าง log กัน backfill เรียบร้อย",
+        });
       } else {
         toast({ title: "ส่งประกาศแล้ว", description: "ระบบบันทึก log ให้เรียบร้อยเพื่อกันส่งซ้ำ" });
       }
       setDone(true);
       qc.invalidateQueries({ queryKey: ["point-transactions"] });
+      qc.invalidateQueries({ queryKey: ["streak-weekly-notify-markers"] });
       setOpen(false);
     },
     onError: (err: any) => {
       toast({
-        title: "ส่งไม่สำเร็จ",
+        title: "ทำรายการไม่สำเร็จ",
         description: err?.message || "Unknown error",
         variant: "destructive",
       });
@@ -101,10 +108,19 @@ export function PointTransactionSendStreakButton({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={mutation.isPending}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                mutation.mutate({ markOnly: true });
+              }}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? "กำลังบันทึก..." : "ยืนยันว่าได้ส่งแล้ว (ไม่ส่งซ้ำ)"}
+            </AlertDialogAction>
           <AlertDialogAction
             onClick={(e) => {
               e.preventDefault();
-              mutation.mutate();
+                mutation.mutate({ markOnly: false });
             }}
             disabled={mutation.isPending}
           >
