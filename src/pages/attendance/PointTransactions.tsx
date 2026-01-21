@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollText, Search, ArrowUpCircle, ArrowDownCircle, Gift, Clock, Heart, Flame } from 'lucide-react';
 import { format } from 'date-fns';
 import { PointTransactionSendStreakButton } from '@/components/attendance/PointTransactionSendStreakButton';
+import { useStreakWeeklyNotifyMarkers } from '@/hooks/useStreakWeeklyNotifyMarkers';
 
 interface PointTransaction {
   id: string;
@@ -57,6 +58,9 @@ export default function PointTransactions() {
     const matchesType = typeFilter === 'all' || t.transaction_type === typeFilter;
     return matchesSearch && matchesCategory && matchesType;
   });
+
+  const txIds = transactions?.map((t) => t.id);
+  const { data: sentSet } = useStreakWeeklyNotifyMarkers(txIds);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -194,7 +198,7 @@ export default function PointTransactions() {
                         {t.description || '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        <PointTransactionSendStreakButton tx={t} />
+                        <PointTransactionSendStreakButton tx={t} alreadySent={sentSet?.has(t.id)} />
                       </TableCell>
                     </TableRow>
                   ))}
