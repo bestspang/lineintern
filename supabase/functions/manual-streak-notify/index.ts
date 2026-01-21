@@ -50,6 +50,60 @@ async function pushText(accessToken: string, to: string, text: string) {
   }
 }
 
+function hasServiceRoleKey(): boolean {
+  const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // basic sanity check to avoid creating a "service" client with an empty key
+  return k.trim().length > 20;
+}
+
+function createAuthedSupabaseClient(req: Request) {
+  // Uses caller JWT (admin/owner) so RLS can still allow access where appropriate.
+  // NOTE: Some clients might not send Authorization; we guard before using it.
+  const authHeader = req.headers.get("Authorization") ?? "";
+  return createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    {
+      global: authHeader ? { headers: { Authorization: authHeader } } : undefined,
+    }
+  );
+}
+
+function createServiceSupabaseClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+}
+
+async function insertBotLogViaClient(
+  supabase: any,
+  entry: Parameters<typeof logBotMessage>[0]
+) {
+  // Prefer writing directly with the provided client so idempotency/backfill works
+  // even if the shared bot-logger (service-role) isn't available.
+  const { error } = await supabase.from("bot_message_logs").insert({
+    destination_type: entry.destinationType,
+    destination_id: entry.destinationId,
+    destination_name: entry.destinationName,
+    group_id: entry.groupId,
+    recipient_user_id: entry.recipientUserId,
+    recipient_employee_id: entry.recipientEmployeeId,
+    message_text: entry.messageText,
+    message_type: entry.messageType,
+    triggered_by: entry.triggeredBy,
+    trigger_message_id: entry.triggerMessageId,
+    command_type: entry.commandType,
+    edge_function_name: entry.edgeFunctionName,
+    line_message_id: entry.lineMessageId,
+    delivery_status: entry.deliveryStatus || "sent",
+    error_message: entry.errorMessage,
+  });
+  if (error) {
+    logger.error("[manual-streak-notify] Failed to insert bot_message_logs", error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -65,21 +119,11 @@ serve(async (req) => {
     }
 
     // Authenticated client (uses caller JWT)
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
-    );
+    const supabaseClient = createAuthedSupabaseClient(req);
 
-    // Service role client for DB operations
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    // DB client: use service role if configured; otherwise fall back to admin JWT client.
+    // This makes the function resilient if the environment is missing the service key.
+    const supabase = hasServiceRoleKey() ? createServiceSupabaseClient() : supabaseClient;
 
     const { data: auth, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !auth?.user) {
@@ -181,14 +225,22 @@ serve(async (req) => {
     }
 
     // Load employee + branch group
-    const { data: employee } = await supabase
+    const { data: employee, error: employeeError } = await supabase
       .from("employees")
       .select("id, full_name, line_user_id, announcement_group_line_id, branch:branches(line_group_id)")
       .eq("id", tx.employee_id)
       .maybeSingle();
 
+    if (employeeError) {
+      logger.error("[manual-streak-notify] employee query error", {
+        employee_id: tx.employee_id,
+        error: employeeError,
+        using_service_role: hasServiceRoleKey(),
+      });
+    }
+
     if (!employee) {
-      return new Response(JSON.stringify({ success: false, error: "Employee not found" }), {
+      return new Response(JSON.stringify({ success: false, error: "Employee not found", employee_id: tx.employee_id }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -237,22 +289,31 @@ serve(async (req) => {
 
     // Log each attempt so backfill/idempotency works
     for (const r of results) {
-      await logBotMessage({
-        destinationType: r.channel === "group" ? "group" : "dm",
+      const destinationType: "group" | "dm" = r.channel === "group" ? "group" : "dm";
+      const deliveryStatus: "sent" | "failed" | "pending" = r.status;
+      const entry = {
+        destinationType,
         destinationId: r.channel === "group" ? (groupId || tx.employee_id) : (employee.line_user_id || tx.employee_id),
         destinationName: employee.full_name || undefined,
         groupId: groupId || undefined,
         recipientEmployeeId: tx.employee_id,
         recipientUserId: employee.line_user_id || undefined,
         messageText: message,
-        messageType: "notification",
-        triggeredBy: "manual",
+        messageType: "notification" as const,
+        triggeredBy: "manual" as const,
         triggerMessageId: transactionId,
         commandType: "streak_weekly",
         edgeFunctionName: "manual-streak-notify",
-        deliveryStatus: r.status,
+        deliveryStatus,
         errorMessage: r.error,
-      });
+      };
+
+      // 1) Write via the same client we used for DB reads (ensures idempotency marker exists)
+      await insertBotLogViaClient(supabase, entry);
+
+      // 2) Also try the shared logger (service-role) for compatibility/centralization.
+      //    (If service role is unavailable, bot-logger will fail silently.)
+      await logBotMessage(entry);
     }
 
     const anySent = results.some((r) => r.status === "sent");
