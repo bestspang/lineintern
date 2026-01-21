@@ -68,6 +68,7 @@ import OvertimeRequests from "./pages/attendance/OvertimeRequests";
 import EarlyLeaveRequests from "./pages/attendance/EarlyLeaveRequests";
 import FlexibleDayOff from "./pages/attendance/FlexibleDayOff";
 import FlexibleDayOffRequests from "./pages/attendance/FlexibleDayOffRequests";
+import AttendanceBirthdays from "./pages/attendance/Birthdays";
 
 import WorkHistory from "./pages/attendance/WorkHistory";
 import LeaveBalance from "./pages/attendance/LeaveBalance";
@@ -270,6 +271,7 @@ const App = () => (
                       <Route path="/attendance/overtime-requests" element={<OvertimeRequests />} />
                       <Route path="/attendance/early-leave-requests" element={<EarlyLeaveRequests />} />
                       <Route path="/attendance/flexible-day-off-requests" element={<FlexibleDayOffRequests />} />
+                      <Route path="/attendance/birthdays" element={<AttendanceBirthdays />} />
                       
                       <Route path="/attendance/work-history" element={<WorkHistory />} />
                       <Route path="/attendance/work-history/:id" element={<WorkHistory />} />
