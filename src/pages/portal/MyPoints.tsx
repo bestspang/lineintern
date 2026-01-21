@@ -89,6 +89,32 @@ export default function MyPoints() {
     );
   }
 
+  // Executive: Excluded from points system
+  if (employee?.exclude_from_points) {
+    return (
+      <div className="space-y-4">
+        <Card className="bg-gradient-to-br from-slate-500 to-slate-600 text-white">
+          <CardContent className="p-6 text-center">
+            <Trophy className="h-12 w-12 mx-auto mb-4 opacity-80" />
+            <h2 className="text-xl font-bold mb-2">
+              {locale === 'th' ? '🎯 คุณไม่อยู่ในระบบ Happy Points' : '🎯 You are not in the Happy Points system'}
+            </h2>
+            <p className="opacity-90 text-sm">
+              {locale === 'th' 
+                ? 'บัญชีของคุณถูกยกเว้นจากระบบแต้ม'
+                : 'Your account is excluded from the points system.'}
+            </p>
+          </CardContent>
+        </Card>
+        <p className="text-center text-xs text-muted-foreground">
+          {locale === 'th' 
+            ? 'หากต้องการเข้าร่วมระบบ Happy Points กรุณาติดต่อผู้ดูแลระบบ'
+            : 'Contact your administrator if you want to join the Happy Points system.'}
+        </p>
+      </div>
+    );
+  }
+
   // Daily response score is now a tier-based system (max 8 pts), not /20
   const todayResponsePoints = happyPoints?.daily_response_score || 0;
 

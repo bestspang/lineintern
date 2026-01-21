@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Clock, MapPin, History, AlertCircle, CheckCircle2, 
-  LogIn, LogOut, Coffee, Calendar, Timer
+  LogIn, LogOut, Coffee, Calendar, Timer, Briefcase
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
@@ -147,6 +147,69 @@ export default function CheckInOut() {
         <Skeleton className="h-48 w-full rounded-xl" />
         <Skeleton className="h-32 w-full rounded-xl" />
         <Skeleton className="h-24 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // Executive: Skip attendance tracking
+  if (employee?.skip_attendance_tracking) {
+    return (
+      <div className="space-y-4">
+        <Card className="overflow-hidden">
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6">
+            <div className="text-center space-y-2">
+              <Briefcase className="h-12 w-12 mx-auto mb-2 opacity-80" />
+              <h2 className="text-xl font-bold">
+                {locale === 'th' ? '👔 คุณไม่ต้อง Track Attendance' : '👔 You are exempt from attendance tracking'}
+              </h2>
+              <p className="opacity-90 text-sm">
+                {locale === 'th' 
+                  ? 'บัญชีของคุณถูกตั้งค่าเป็นผู้บริหาร ไม่จำเป็นต้องลงเวลาทำงาน'
+                  : 'Your account is set as executive and does not require attendance tracking.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+        
+        {/* Quick Actions for executives */}
+        <div className="grid grid-cols-2 gap-3">
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => navigate('/portal/request-ot')}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                <Timer className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">
+                  {locale === 'th' ? 'ขอ OT' : 'Request OT'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {locale === 'th' ? 'ทำงานล่วงเวลา' : 'Overtime work'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => navigate('/portal/request-leave')}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                <Calendar className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">
+                  {locale === 'th' ? 'ลางาน' : 'Request Leave'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {locale === 'th' ? 'ยื่นคำขอลา' : 'Submit request'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }

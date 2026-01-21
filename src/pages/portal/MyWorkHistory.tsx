@@ -98,6 +98,32 @@ export default function MyWorkHistory() {
     );
   }
 
+  // Executive: Skip attendance tracking
+  if (employee?.skip_attendance_tracking) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {locale === 'th' ? '📋 ประวัติการทำงาน' : '📋 Work History'}
+          </h1>
+        </div>
+        <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+          <CardContent className="p-6 text-center">
+            <Clock className="h-12 w-12 mx-auto mb-4 opacity-80" />
+            <h2 className="text-xl font-bold mb-2">
+              {locale === 'th' ? '👔 คุณไม่ต้อง Track Attendance' : '👔 You are exempt from attendance tracking'}
+            </h2>
+            <p className="opacity-90 text-sm">
+              {locale === 'th' 
+                ? 'บัญชีของคุณถูกตั้งค่าเป็นผู้บริหาร ไม่จำเป็นต้องลงเวลาทำงาน'
+                : 'Your account is set as executive and does not require attendance tracking.'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const dateLocale = locale === 'th' ? th : enUS;
 
   return (
