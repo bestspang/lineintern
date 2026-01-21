@@ -131,11 +131,33 @@ serve(async (req) => {
       }
 
       case 'payroll': {
-        // Get employee settings
+        // Get employee payroll settings
         const settingsResult = await supabase
           .from('employee_payroll_settings')
           .select('*')
           .eq('employee_id', employee_id)
+          .maybeSingle();
+        
+        // Get employee base info for salary
+        const empInfoResult = await supabase
+          .from('employees')
+          .select('salary_per_month, hours_per_day, ot_rate_multiplier')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        // Get work schedules for proper late detection
+        const schedulesResult = await supabase
+          .from('work_schedules')
+          .select('day_of_week, is_working_day, start_time, end_time')
+          .eq('employee_id', employee_id);
+        
+        // Get global grace period
+        const graceResult = await supabase
+          .from('attendance_settings')
+          .select('grace_period_minutes')
+          .eq('scope', 'global')
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         // Get current month work sessions (use Bangkok timezone for month boundaries)
@@ -159,7 +181,7 @@ serve(async (req) => {
           .gte('request_date', monthStart.toISOString().split('T')[0])
           .lte('request_date', monthEnd.toISOString().split('T')[0]);
 
-        // Get leave requests
+        // Get leave requests (include leave_type for paid/unpaid distinction)
         const leaveResult = await supabase
           .from('leave_requests')
           .select('*')
@@ -177,12 +199,22 @@ serve(async (req) => {
           .gte('server_time', monthStart.toISOString())
           .lte('server_time', now.toISOString());
 
+        // Merge settings with employee info
+        const mergedSettings = {
+          ...(settingsResult.data || {}),
+          salary_per_month: settingsResult.data?.salary_per_month || empInfoResult.data?.salary_per_month || 0,
+          hours_per_day: empInfoResult.data?.hours_per_day || 8,
+          ot_rate_multiplier: empInfoResult.data?.ot_rate_multiplier || 1.5,
+        };
+
         data = {
-          settings: settingsResult.data,
+          settings: mergedSettings,
           sessions: sessionsResult.data || [],
           overtime: otResult.data || [],
           leaves: leaveResult.data || [],
-          checkInLogs: logsResult.data || []
+          checkInLogs: logsResult.data || [],
+          workSchedules: schedulesResult.data || [],
+          gracePeriodMinutes: graceResult.data?.grace_period_minutes || 15
         };
         error = settingsResult.error || sessionsResult.error;
         break;

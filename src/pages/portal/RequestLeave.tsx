@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Send, CheckCircle, XCircle, Clock3 } from 'lucide-react';
+import { Calendar, Send, CheckCircle, XCircle, Clock3, AlertCircle } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { format, parseISO, differenceInDays } from 'date-fns';
@@ -27,10 +27,11 @@ interface LeaveRequest {
 }
 
 const leaveTypes = [
-  { value: 'vacation', labelTh: 'ลาพักร้อน', labelEn: 'Vacation' },
-  { value: 'sick', labelTh: 'ลาป่วย', labelEn: 'Sick Leave' },
-  { value: 'personal', labelTh: 'ลากิจ', labelEn: 'Personal' },
-  { value: 'other', labelTh: 'อื่นๆ', labelEn: 'Other' },
+  { value: 'vacation', labelTh: 'ลาพักร้อน', labelEn: 'Vacation', isPaid: true },
+  { value: 'sick', labelTh: 'ลาป่วย', labelEn: 'Sick Leave', isPaid: true },
+  { value: 'personal', labelTh: 'ลากิจ', labelEn: 'Personal', isPaid: true },
+  { value: 'unpaid', labelTh: 'ลาไม่รับค่าจ้าง', labelEn: 'Unpaid Leave', isPaid: false },
+  { value: 'other', labelTh: 'อื่นๆ', labelEn: 'Other', isPaid: true },
 ];
 
 export default function RequestLeave() {
@@ -225,6 +226,18 @@ export default function RequestLeave() {
               <span className="font-bold text-lg">{calculateDays()}</span>
               <span className="text-sm text-muted-foreground"> {locale === 'th' ? 'วัน' : 'days'}</span>
             </div>
+
+            {/* Warning for unpaid leave */}
+            {formData.leave_type === 'unpaid' && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {locale === 'th' 
+                    ? 'ลาประเภทนี้จะถูกหักเงินเดือนตามจำนวนวันที่ลา'
+                    : 'This leave type will result in salary deduction for the days taken'}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>{locale === 'th' ? 'เหตุผล' : 'Reason'}</Label>

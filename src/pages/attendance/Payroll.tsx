@@ -1026,7 +1026,9 @@ export default function Payroll() {
         
         // Calculate total leave days (overlap with current period)
         // Using effective schedule to count only actual working days
-        let leaveDays = 0;
+        // Separate paid and unpaid leave
+        let paidLeaveDays = 0;
+        let unpaidLeaveDays = 0;
         (leaveRequests || []).forEach(lr => {
           const leaveStart = parseISO(lr.start_date);
           const leaveEnd = parseISO(lr.end_date);
@@ -1043,9 +1045,17 @@ export default function Payroll() {
               const schedule = effectiveScheduleMap.get(dateStr);
               return schedule && schedule.isWorkingDay && !schedule.isDayOff;
             }).length;
-            leaveDays += workingLeaveDays;
+            
+            // Separate by leave type
+            if (lr.leave_type === 'unpaid') {
+              unpaidLeaveDays += workingLeaveDays;
+            } else {
+              paidLeaveDays += workingLeaveDays;
+            }
           }
         });
+        
+        const leaveDays = paidLeaveDays + unpaidLeaveDays;
         
         // Fetch approved early leave requests
         const { data: earlyLeaveRequests } = await supabase
@@ -1101,16 +1111,22 @@ export default function Payroll() {
         
         // Calculate pay
         let grossPay = 0;
+        let leaveDeduction = 0;
+        const dailyRate = scheduledWorkDays > 0 ? baseSalary / scheduledWorkDays : 0;
+        
         if (payType === 'salary') {
-          const dailyRate = baseSalary / scheduledWorkDays;
-          grossPay = dailyRate * actualWorkDays;
+          // For salary: base salary, then deduct unpaid leave
+          grossPay = dailyRate * (actualWorkDays + paidLeaveDays);
+          // Deduct for unpaid leave days
+          leaveDeduction = dailyRate * unpaidLeaveDays;
         } else {
           grossPay = hourlyRate * totalWorkHours;
+          // For hourly workers, unpaid leave doesn't add to deduction since they're not paid for that day anyway
         }
         
         // Calculate OT pay
         const otRate = emp.ot_rate_multiplier || 1.5;
-        const hourlyPay = baseSalary / scheduledWorkDays / 8;
+        const hourlyPay = scheduledWorkDays > 0 ? baseSalary / scheduledWorkDays / 8 : 0;
         const otPay = totalOTHours * hourlyPay * otRate;
         grossPay += otPay;
         
@@ -1153,7 +1169,13 @@ export default function Payroll() {
           totalAllowances += amount;
         });
         
-        const netPay = grossPay + totalAllowances - totalDeductions;
+        // Add leave deduction to total deductions
+        totalDeductions += leaveDeduction;
+        if (leaveDeduction > 0) {
+          deductions.push({ name: 'หักลาไม่รับค่าจ้าง', amount: leaveDeduction, type: 'leave_deduction' });
+        }
+        
+        const netPay = Math.max(0, grossPay + totalAllowances - totalDeductions);
         
         // Calculate absent days (scheduled days TO DATE - actual - leave)
         const absentDays = Math.max(0, scheduledWorkDaysToDate - actualWorkDays - leaveDays);
@@ -1172,6 +1194,9 @@ export default function Payroll() {
             late_minutes: totalLateMinutes,
             absent_days: absentDays,
             leave_days: leaveDays,
+            paid_leave_days: paidLeaveDays,
+            unpaid_leave_days: unpaidLeaveDays,
+            leave_deduction: leaveDeduction,
             early_leave_count: earlyLeaveCount,
             ot_hours: totalOTHours,
             ot_pay: otPay,

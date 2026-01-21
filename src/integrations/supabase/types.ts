@@ -3276,10 +3276,12 @@ export type Database = {
           late_count: number | null
           late_minutes: number | null
           leave_days: number | null
+          leave_deduction: number | null
           net_pay: number | null
           notes: string | null
           ot_hours: number | null
           ot_pay: number | null
+          paid_leave_days: number | null
           pay_type: string
           period_id: string
           scheduled_work_days: number | null
@@ -3287,6 +3289,7 @@ export type Database = {
           total_allowances: number | null
           total_deductions: number | null
           total_work_hours: number | null
+          unpaid_leave_days: number | null
           updated_at: string | null
         }
         Insert: {
@@ -3303,10 +3306,12 @@ export type Database = {
           late_count?: number | null
           late_minutes?: number | null
           leave_days?: number | null
+          leave_deduction?: number | null
           net_pay?: number | null
           notes?: string | null
           ot_hours?: number | null
           ot_pay?: number | null
+          paid_leave_days?: number | null
           pay_type?: string
           period_id: string
           scheduled_work_days?: number | null
@@ -3314,6 +3319,7 @@ export type Database = {
           total_allowances?: number | null
           total_deductions?: number | null
           total_work_hours?: number | null
+          unpaid_leave_days?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -3330,10 +3336,12 @@ export type Database = {
           late_count?: number | null
           late_minutes?: number | null
           leave_days?: number | null
+          leave_deduction?: number | null
           net_pay?: number | null
           notes?: string | null
           ot_hours?: number | null
           ot_pay?: number | null
+          paid_leave_days?: number | null
           pay_type?: string
           period_id?: string
           scheduled_work_days?: number | null
@@ -3341,6 +3349,7 @@ export type Database = {
           total_allowances?: number | null
           total_deductions?: number | null
           total_work_hours?: number | null
+          unpaid_leave_days?: number | null
           updated_at?: string | null
         }
         Relationships: [
