@@ -22,6 +22,7 @@ export interface FeatureFlag {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  settings: Record<string, unknown> | null;
 }
 
 /**

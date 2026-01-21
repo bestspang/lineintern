@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useCuteQuotesAdmin, CuteQuote } from '@/hooks/useCuteQuotes';
 import { useFeatureFlag, useFeatureFlagsAdmin } from '@/hooks/useFeatureFlags';
-import { Plus, Pencil, Trash2, Smile, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut } from 'lucide-react';
 
 const CATEGORIES = [
   { value: 'general', label: 'ทั่วไป', color: 'bg-gray-500' },
@@ -26,6 +28,20 @@ export default function CuteQuotesSettings() {
   const { quotes, isLoading, createQuote, updateQuote, deleteQuote, toggleQuote } = useCuteQuotesAdmin();
   const { isEnabled: featureEnabled, flag } = useFeatureFlag('cute_quotes_liveness');
   const { toggleFlag, isToggling } = useFeatureFlagsAdmin();
+  
+  // % Chance settings
+  const [checkInChance, setCheckInChance] = useState(100);
+  const [checkOutChance, setCheckOutChance] = useState(100);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  
+  // Load settings from flag
+  useEffect(() => {
+    if (flag?.settings) {
+      const s = flag.settings as { check_in_chance?: number; check_out_chance?: number };
+      setCheckInChance(s.check_in_chance ?? 100);
+      setCheckOutChance(s.check_out_chance ?? 100);
+    }
+  }, [flag?.settings]);
   
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -155,6 +171,84 @@ export default function CuteQuotesSettings() {
         </CardContent>
       </Card>
 
+      {/* % Chance Settings */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <span>🎲</span> โอกาสแสดง Quote
+          </CardTitle>
+          <CardDescription>ตั้งค่าเปอร์เซ็นต์โอกาสที่จะแสดงข้อความแยกตาม Check-in / Check-out</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Check-in Chance */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LogIn className="h-4 w-4 text-green-600" />
+                <Label>Check-in</Label>
+              </div>
+              <span className="text-lg font-bold text-green-600">{checkInChance}%</span>
+            </div>
+            <Slider
+              value={[checkInChance]}
+              onValueChange={(value) => setCheckInChance(value[0])}
+              max={100}
+              min={0}
+              step={5}
+              className="w-full"
+            />
+          </div>
+
+          {/* Check-out Chance */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LogOut className="h-4 w-4 text-orange-600" />
+                <Label>Check-out</Label>
+              </div>
+              <span className="text-lg font-bold text-orange-600">{checkOutChance}%</span>
+            </div>
+            <Slider
+              value={[checkOutChance]}
+              onValueChange={(value) => setCheckOutChance(value[0])}
+              max={100}
+              min={0}
+              step={5}
+              className="w-full"
+            />
+          </div>
+
+          <Button 
+            onClick={async () => {
+              setIsSavingSettings(true);
+              try {
+                const { error } = await supabase
+                  .from('feature_flags')
+                  .update({ 
+                    settings: {
+                      check_in_chance: checkInChance,
+                      check_out_chance: checkOutChance,
+                    },
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('flag_key', 'cute_quotes_liveness');
+                
+                if (error) throw error;
+                toast({ title: 'บันทึกการตั้งค่าสำเร็จ' });
+              } catch (error) {
+                toast({ title: 'เกิดข้อผิดพลาด', description: String(error), variant: 'destructive' });
+              } finally {
+                setIsSavingSettings(false);
+              }
+            }}
+            disabled={isSavingSettings}
+            className="w-full"
+          >
+            {isSavingSettings ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-4">
@@ -168,7 +262,7 @@ export default function CuteQuotesSettings() {
           <div className="text-sm text-muted-foreground">เปิดใช้งาน</div>
         </Card>
         <Card className="p-4">
-          <div className="text-2xl font-bold text-gray-400">
+          <div className="text-2xl font-bold text-muted-foreground">
             {quotes.filter(q => !q.is_active).length}
           </div>
           <div className="text-sm text-muted-foreground">ปิดใช้งาน</div>

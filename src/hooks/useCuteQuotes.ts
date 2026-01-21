@@ -20,11 +20,16 @@ export interface CuteQuote {
   updated_at: string;
 }
 
+export interface CuteQuoteSettings {
+  check_in_chance: number;
+  check_out_chance: number;
+}
+
 /**
  * Hook to fetch and manage cute quotes
  */
 export function useCuteQuotes() {
-  const { isEnabled, isLoading: isFlagLoading } = useFeatureFlag('cute_quotes_liveness');
+  const { isEnabled, isLoading: isFlagLoading, flag } = useFeatureFlag('cute_quotes_liveness');
   
   const { data: quotes, isLoading: isQuotesLoading, refetch } = useQuery({
     queryKey: ['cute-quotes'],
@@ -45,6 +50,26 @@ export function useCuteQuotes() {
     enabled: isEnabled,
   });
 
+  // Parse settings from feature flag
+  const settings = useMemo<CuteQuoteSettings>(() => {
+    const s = flag?.settings as unknown as CuteQuoteSettings | null | undefined;
+    return {
+      check_in_chance: s?.check_in_chance ?? 100,
+      check_out_chance: s?.check_out_chance ?? 100,
+    };
+  }, [flag?.settings]);
+
+  /**
+   * Check if quote should be shown based on event type and configured chance
+   */
+  const shouldShowQuote = useCallback((eventType: 'check_in' | 'check_out' = 'check_in') => {
+    if (!isEnabled) return false;
+    const chance = eventType === 'check_in' 
+      ? settings.check_in_chance 
+      : settings.check_out_chance;
+    return Math.random() * 100 < chance;
+  }, [isEnabled, settings]);
+
   // Get a random quote
   const getRandomQuote = useCallback(() => {
     if (!isEnabled || !quotes || quotes.length === 0) return null;
@@ -60,6 +85,8 @@ export function useCuteQuotes() {
   return {
     quotes: quotes || [],
     getRandomQuote,
+    shouldShowQuote,
+    settings,
     isEnabled,
     isLoading: isFlagLoading || isQuotesLoading,
     isReady,

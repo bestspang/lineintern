@@ -9,6 +9,7 @@ import { useCuteQuotes } from "@/hooks/useCuteQuotes";
 interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
   onCancel: () => void;
+  eventType?: 'check_in' | 'check_out';
 }
 
 export interface LivenessData {
@@ -26,7 +27,7 @@ const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
   { type: "turn_right", text: "หันหน้าไปทางขวา", icon: MoveHorizontal },
 ];
 
-export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraProps) {
+export default function LivenessCamera({ onCapture, onCancel, eventType = 'check_in' }: LivenessCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -66,7 +67,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   });
   
   // ✅ Cute Quotes feature
-  const { getRandomQuote, isEnabled: cuteQuotesEnabled } = useCuteQuotes();
+  const { getRandomQuote, shouldShowQuote, isEnabled: cuteQuotesEnabled } = useCuteQuotes();
   const [cuteQuote, setCuteQuote] = useState<{ text: string; emoji: string } | null>(null);
   
   // ✅ Refs for accessing latest state in animation frame (avoid stale closure)
@@ -195,15 +196,17 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
   useEffect(() => {
     if (challengeCompleted && !waitingForCenter) {
       setWaitingForCenter(true);
-      // ✅ Show cute quote when entering center hold phase
-      if (cuteQuotesEnabled) {
+      // ✅ Show cute quote when entering center hold phase (based on % chance)
+      if (cuteQuotesEnabled && shouldShowQuote(eventType)) {
         const quote = getRandomQuote();
         if (quote) {
           setCuteQuote({ text: quote.text, emoji: quote.emoji });
         }
+      } else {
+        setCuteQuote(null);
       }
     }
-  }, [challengeCompleted, waitingForCenter, cuteQuotesEnabled, getRandomQuote]);
+  }, [challengeCompleted, waitingForCenter, cuteQuotesEnabled, shouldShowQuote, eventType, getRandomQuote]);
 
   // ✅ MERGED: Single render loop for both liveness detection AND center hold check
   // This prevents double GPU/CPU load from running detectForVideo() twice per frame
