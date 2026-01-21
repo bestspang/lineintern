@@ -29,11 +29,12 @@ interface LeaveRequest {
   };
 }
 
-const leaveTypeLabels: Record<string, { th: string; en: string }> = {
-  vacation: { th: 'ลาพักร้อน', en: 'Vacation' },
-  sick: { th: 'ลาป่วย', en: 'Sick Leave' },
-  personal: { th: 'ลากิจ', en: 'Personal' },
-  other: { th: 'อื่นๆ', en: 'Other' },
+const leaveTypeLabels: Record<string, { th: string; en: string; isPaid: boolean }> = {
+  vacation: { th: 'ลาพักร้อน', en: 'Vacation', isPaid: true },
+  sick: { th: 'ลาป่วย', en: 'Sick Leave', isPaid: true },
+  personal: { th: 'ลากิจ', en: 'Personal', isPaid: true },
+  unpaid: { th: 'ลาไม่รับค่าจ้าง', en: 'Unpaid Leave', isPaid: false },
+  other: { th: 'อื่นๆ', en: 'Other', isPaid: true },
 };
 
 export default function ApproveLeave() {
@@ -167,8 +168,13 @@ export default function ApproveLeave() {
                 </div>
 
                 <div className="bg-muted/50 rounded-lg p-3 mb-3">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Badge variant="secondary">{getLeaveTypeLabel(req.leave_type)}</Badge>
+                    {req.leave_type === 'unpaid' && (
+                      <Badge variant="destructive" className="text-xs">
+                        {locale === 'th' ? '💸 หักเงิน' : '💸 Deducted'}
+                      </Badge>
+                    )}
                     <span className="text-sm font-medium">
                       {req.total_days} {locale === 'th' ? 'วัน' : 'days'}
                     </span>

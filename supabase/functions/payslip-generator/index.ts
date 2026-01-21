@@ -161,7 +161,8 @@ function generatePayslipHTML(record: any, period: any): string {
           <span class="label">ชั่วโมงรวม:</span> <span class="value">${(record.total_work_hours || 0).toFixed(1)} ชม.</span><br>
           <span class="label">OT:</span> <span class="value">${(record.ot_hours || 0).toFixed(1)} ชม.</span><br>
           <span class="label">สาย:</span> <span class="value">${record.late_count || 0} ครั้ง (${record.late_minutes || 0} นาที)</span><br>
-          <span class="label">ลา:</span> <span class="value">${record.leave_days || 0} วัน</span>
+          <span class="label">ลามีเงินเดือน:</span> <span class="value">${record.paid_leave_days || record.leave_days || 0} วัน</span><br>
+          <span class="label">ลาไม่รับค่าจ้าง:</span> <span class="value">${record.unpaid_leave_days || 0} วัน</span>
         </div>
       </div>
     </div>

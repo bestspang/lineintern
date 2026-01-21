@@ -2,11 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 import { Wallet, Clock, AlertCircle, Calendar, TrendingUp, Banknote } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
-import { format, startOfMonth, isWeekend } from 'date-fns';
+import { format, startOfMonth, getDay, eachDayOfInterval } from 'date-fns';
 import { th } from 'date-fns/locale';
+
+interface WorkSchedule {
+  day_of_week: number;
+  is_working_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+}
 
 interface PayrollData {
   workDays: number;
@@ -16,10 +24,13 @@ interface PayrollData {
   lateDays: number;
   absentDays: number;
   leaveDays: number;
+  paidLeaveDays: number;
+  unpaidLeaveDays: number;
   baseSalary: number;
   hourlyRate: number;
   payType: string;
   estimatedEarnings: number;
+  leaveDeduction: number;
 }
 
 interface PayrollApiResponse {
@@ -28,6 +39,8 @@ interface PayrollApiResponse {
   overtime: any[];
   leaves: any[];
   checkInLogs: any[];
+  workSchedules: WorkSchedule[];
+  gracePeriodMinutes: number;
 }
 
 export default function MyPayroll() {
@@ -53,41 +66,93 @@ export default function MyPayroll() {
 
       const today = new Date();
       const monthStart = startOfMonth(today);
-
-      // Calculate expected work days (excluding weekends)
-      let expectedWorkDays = 0;
-      for (let d = new Date(monthStart); d <= today; d.setDate(d.getDate() + 1)) {
-        if (!isWeekend(d)) expectedWorkDays++;
+      const daysInRange = eachDayOfInterval({ start: monthStart, end: today });
+      
+      // Build work schedule map (default Mon-Fri if no schedules)
+      const workScheduleMap = new Map<number, { isWorkingDay: boolean; startTime: string }>();
+      const defaultWorkDays = [1, 2, 3, 4, 5]; // Mon-Fri
+      
+      if (data.workSchedules && data.workSchedules.length > 0) {
+        data.workSchedules.forEach(ws => {
+          workScheduleMap.set(ws.day_of_week, {
+            isWorkingDay: ws.is_working_day,
+            startTime: ws.start_time || '09:00'
+          });
+        });
+      } else {
+        // Default schedule
+        defaultWorkDays.forEach(day => {
+          workScheduleMap.set(day, { isWorkingDay: true, startTime: '09:00' });
+        });
       }
+
+      // Calculate expected work days using actual schedule
+      let expectedWorkDays = 0;
+      daysInRange.forEach(d => {
+        const dayOfWeek = getDay(d); // 0=Sun, 1=Mon, ...
+        const schedule = workScheduleMap.get(dayOfWeek);
+        if (schedule?.isWorkingDay) {
+          expectedWorkDays++;
+        }
+      });
 
       // Calculate totals
       const totalMinutes = data.sessions?.reduce((sum, s) => sum + (s.billable_minutes || 0), 0) || 0;
       const otMinutes = (data.overtime?.reduce((sum, o) => sum + (o.estimated_hours || 0), 0) || 0) * 60;
       const workDays = data.sessions?.length || 0;
-      const leaveDays = data.leaves?.length || 0;
+      
+      // Separate paid and unpaid leave
+      const paidLeaves = data.leaves?.filter(l => l.leave_type !== 'unpaid') || [];
+      const unpaidLeaves = data.leaves?.filter(l => l.leave_type === 'unpaid') || [];
+      const paidLeaveDays = paidLeaves.length;
+      const unpaidLeaveDays = unpaidLeaves.length;
+      const leaveDays = paidLeaveDays + unpaidLeaveDays;
 
-      // Late detection (simplified - check-in after 9am)
-      const lateDays = data.checkInLogs?.filter(l => {
-        const checkInHour = new Date(l.server_time).getHours();
-        return checkInHour >= 9;
-      }).length || 0;
+      // Late detection using work schedule + grace period
+      const gracePeriodMinutes = data.gracePeriodMinutes || 15;
+      let lateDays = 0;
+      
+      data.checkInLogs?.forEach(log => {
+        const checkInDate = new Date(log.server_time);
+        const dayOfWeek = getDay(checkInDate);
+        const schedule = workScheduleMap.get(dayOfWeek);
+        
+        if (!schedule?.isWorkingDay) return;
+        
+        const [startHour, startMinute] = (schedule.startTime || '09:00').split(':').map(Number);
+        const expectedMinutes = startHour * 60 + startMinute;
+        const actualMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
+        
+        // Only count as late if exceeds grace period
+        if (actualMinutes > expectedMinutes + gracePeriodMinutes) {
+          lateDays++;
+        }
+      });
 
       const absentDays = Math.max(0, expectedWorkDays - workDays - leaveDays);
 
       // Calculate estimated earnings
       const baseSalary = data.settings?.salary_per_month || 0;
-      const hourlyRate = data.settings?.hourly_rate || (baseSalary / 30 / 8);
+      const hoursPerDay = data.settings?.hours_per_day || 8;
+      const hourlyRate = data.settings?.hourly_rate || (baseSalary / 30 / hoursPerDay);
       const payType = data.settings?.pay_type || 'monthly';
+      const otRateMultiplier = data.settings?.ot_rate_multiplier || 1.5;
 
       let estimatedEarnings = 0;
+      const dailyRate = expectedWorkDays > 0 ? baseSalary / expectedWorkDays : 0;
+      
       if (payType === 'monthly') {
-        estimatedEarnings = (baseSalary / 30) * workDays;
+        // Base: daily rate × (work days + paid leave days)
+        estimatedEarnings = dailyRate * (workDays + paidLeaveDays);
       } else {
         estimatedEarnings = (totalMinutes / 60) * hourlyRate;
       }
 
-      // Add OT pay (1.5x)
-      estimatedEarnings += (otMinutes / 60) * hourlyRate * 1.5;
+      // Add OT pay
+      estimatedEarnings += (otMinutes / 60) * hourlyRate * otRateMultiplier;
+
+      // Calculate unpaid leave deduction
+      const leaveDeduction = dailyRate * unpaidLeaveDays;
 
       // Deduct late penalty (simplified)
       estimatedEarnings -= lateDays * (hourlyRate * 0.5);
@@ -100,10 +165,13 @@ export default function MyPayroll() {
         lateDays,
         absentDays,
         leaveDays,
+        paidLeaveDays,
+        unpaidLeaveDays,
         baseSalary,
         hourlyRate,
         payType,
-        estimatedEarnings: Math.max(0, estimatedEarnings),
+        estimatedEarnings: Math.max(0, estimatedEarnings - leaveDeduction),
+        leaveDeduction,
       });
     } catch (err) {
       console.error('Error fetching payroll:', err);
@@ -225,7 +293,14 @@ export default function MyPayroll() {
                   <p className="text-xs text-muted-foreground">
                     {locale === 'th' ? 'ลางาน' : 'Leave'}
                   </p>
-                  <p className="font-semibold">{payroll.leaveDays} {locale === 'th' ? 'วัน' : 'days'}</p>
+                  <div className="flex items-center gap-1">
+                    <span className="font-semibold">{payroll.leaveDays}</span>
+                    {payroll.unpaidLeaveDays > 0 && (
+                      <Badge variant="destructive" className="text-xs px-1 py-0">
+                        {payroll.unpaidLeaveDays} {locale === 'th' ? 'ไม่รับค่า' : 'unpaid'}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -266,6 +341,14 @@ export default function MyPayroll() {
                 </span>
                 <span className="font-medium text-rose-600">{payroll.absentDays} {locale === 'th' ? 'วัน' : 'days'}</span>
               </div>
+              {payroll.leaveDeduction > 0 && (
+                <div className="flex justify-between text-sm border-t pt-2">
+                  <span className="text-muted-foreground">
+                    {locale === 'th' ? '💸 หักลาไม่รับค่าจ้าง' : '💸 Unpaid Leave Deduction'}
+                  </span>
+                  <span className="font-medium text-rose-600">-{formatCurrency(payroll.leaveDeduction)}</span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
