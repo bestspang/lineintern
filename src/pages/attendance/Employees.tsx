@@ -688,11 +688,24 @@ export default function AttendanceEmployees() {
                 <TableRow key={employee.id}>
                   <TableCell className="font-medium font-mono text-xs sm:text-sm py-2">{employee.code}</TableCell>
                   <TableCell className="py-2">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1">
                       <span className="text-xs sm:text-sm">{employee.full_name}</span>
                       <span className="text-xs text-muted-foreground sm:hidden">
                         {employee.employee_role?.display_name_th || employee.role || 'No role'}
                       </span>
+                      {/* Special status badges */}
+                      <div className="flex flex-wrap gap-1">
+                        {employee.skip_attendance_tracking && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800">
+                            👔 ไม่ track
+                          </Badge>
+                        )}
+                        {employee.exclude_from_points && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950/50 dark:text-slate-300 dark:border-slate-700">
+                            🎯 ไม่รับ point
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell py-2">
