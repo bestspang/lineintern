@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useFeatureFlag } from './useFeatureFlags';
 import { useCallback, useMemo } from 'react';
+import { formatBangkokISODate, getBangkokNow } from '@/lib/timezone';
 
 export interface CuteQuote {
   id: string;
@@ -94,9 +95,21 @@ export function useCuteQuotes() {
   ) => {
     if (!isEnabled || !quotes || quotes.length === 0) return null;
     
-    const today = new Date();
-    const todayMMDD = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const todayISO = today.toISOString().split('T')[0];
+    // Use Bangkok timezone for consistent date matching
+    const bangkokNow = getBangkokNow();
+    const todayMMDD = `${String(bangkokNow.getMonth() + 1).padStart(2, '0')}-${String(bangkokNow.getDate()).padStart(2, '0')}`;
+    const todayISO = formatBangkokISODate(bangkokNow);
+    
+    // Timezone monitoring - log if browser date differs from Bangkok date
+    const browserDateISO = new Date().toISOString().split('T')[0];
+    if (browserDateISO !== todayISO) {
+      console.warn('[Timezone Monitor] Date mismatch detected:', {
+        browserDate: browserDateISO,
+        bangkokDate: todayISO,
+        browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        browserTime: new Date().toTimeString().slice(0, 8)
+      });
+    }
     
     // Filter by show_time first
     // For deposit: match 'deposit' or 'both'
