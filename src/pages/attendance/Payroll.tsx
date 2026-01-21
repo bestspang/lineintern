@@ -37,7 +37,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -70,7 +72,9 @@ import {
   Home,
   Ban,
   Star,
-  CalendarClock
+  CalendarClock,
+  List,
+  CheckSquare
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDay, parseISO, isWeekend, addMonths, subMonths, differenceInDays, max, min } from "date-fns";
 import { th } from "date-fns/locale";
@@ -149,6 +153,13 @@ export default function Payroll() {
   const [startDateDialogOpen, setStartDateDialogOpen] = useState(false);
   const [editingStartDateEmployee, setEditingStartDateEmployee] = useState<{ id: string; name: string; currentDate: string | null } | null>(null);
   const [newStartDate, setNewStartDate] = useState<string>('');
+  
+  // Bulk adjustment mode state
+  const [bulkModeEmployee, setBulkModeEmployee] = useState<string | null>(null);
+  const [bulkSelectedDates, setBulkSelectedDates] = useState<Set<string>>(new Set());
+  const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<string>('not_started');
+  const [bulkReason, setBulkReason] = useState<string>('');
   
   // Toggle row expansion
   const toggleRowExpansion = (employeeId: string) => {
@@ -1739,6 +1750,116 @@ export default function Payroll() {
     },
   });
 
+  // Bulk status options for adjustment
+  const BULK_STATUS_OPTIONS = [
+    { value: 'not_started', label: 'ยังไม่เริ่มงาน', color: 'bg-slate-400' },
+    { value: 'present', label: 'มาตรงเวลา', color: 'bg-emerald-600' },
+    { value: 'day_off', label: 'วันหยุด', color: 'bg-indigo-400' },
+    { value: 'leave', label: 'ลา', color: 'bg-sky-500' },
+    { value: 'absent', label: 'ขาด', color: 'bg-red-500' },
+  ];
+
+  // Handle bulk date selection
+  const handleBulkDateSelect = (date: string, selected: boolean) => {
+    const newSet = new Set(bulkSelectedDates);
+    if (selected) {
+      newSet.add(date);
+    } else {
+      newSet.delete(date);
+    }
+    setBulkSelectedDates(newSet);
+  };
+
+  // Toggle bulk mode for employee
+  const toggleBulkMode = (employeeId: string) => {
+    if (bulkModeEmployee === employeeId) {
+      // Exit bulk mode
+      setBulkModeEmployee(null);
+      setBulkSelectedDates(new Set());
+    } else {
+      // Enter bulk mode for this employee
+      setBulkModeEmployee(employeeId);
+      setBulkSelectedDates(new Set());
+    }
+  };
+
+  // Bulk adjustment mutation
+  const bulkAdjustmentMutation = useMutation({
+    mutationFn: async ({ 
+      employeeId, 
+      dates, 
+      status, 
+      reason 
+    }: { 
+      employeeId: string; 
+      dates: string[]; 
+      status: string; 
+      reason: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const adjustments = dates.map(date => ({
+        employee_id: employeeId,
+        adjustment_date: date,
+        override_status: status,
+        reason: reason,
+        adjusted_by_user_id: user?.id,
+      }));
+      
+      const { error } = await supabase
+        .from("attendance_adjustments")
+        .upsert(adjustments, { 
+          onConflict: 'employee_id,adjustment_date' 
+        });
+      
+      if (error) throw error;
+      
+      // Log bulk action in audit
+      await supabase.from('audit_logs').insert({
+        action_type: 'bulk_update',
+        resource_type: 'attendance_adjustment',
+        resource_id: employeeId,
+        new_values: { dates, status },
+        reason,
+        performed_by_user_id: user?.id,
+      });
+      
+      return { count: dates.length };
+    },
+    onSuccess: (data) => {
+      toast.success(`อัพเดท ${data.count} วันสำเร็จ`);
+      queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
+      setBulkActionDialogOpen(false);
+      setBulkModeEmployee(null);
+      setBulkSelectedDates(new Set());
+      setBulkStatus('not_started');
+      setBulkReason('');
+    },
+    onError: (error: any) => {
+      toast.error("เกิดข้อผิดพลาด: " + error.message);
+    },
+  });
+
+  // Get first check-in suggestion for employee
+  const getFirstCheckInSuggestion = (employeeId: string): string | null => {
+    const emp = employees?.find(e => e.id === employeeId);
+    if (!emp || emp.employment_start_date) return null;
+    
+    // Find earliest check-in from this month's logs
+    const empLogs = allAttendanceData?.filter(l => 
+      l.employee_id === employeeId && l.event_type === 'check_in'
+    );
+    
+    if (!empLogs || empLogs.length === 0) return null;
+    
+    const sortedLogs = [...empLogs].sort((a, b) => 
+      parseISO(a.server_time).getTime() - parseISO(b.server_time).getTime()
+    );
+    
+    return formatBangkokISODate(sortedLogs[0].server_time);
+  };
+
   const getStatusIcon = (status: DailyAttendance['status']) => {
     switch (status) {
       case 'present': return <CheckCircle className="h-3 w-3 text-green-500" />;
@@ -2195,12 +2316,14 @@ export default function Payroll() {
                                                 e.stopPropagation();
                                                 // If it's a no_start_date warning, open the start date dialog
                                                 if (w.type === 'no_start_date') {
+                                                  const suggestion = getFirstCheckInSuggestion(emp.id);
                                                   setEditingStartDateEmployee({
                                                     id: emp.id,
                                                     name: emp.full_name,
                                                     currentDate: emp.employment_start_date
                                                   });
-                                                  setNewStartDate(emp.employment_start_date || format(startOfMonth(currentMonth), 'yyyy-MM-dd'));
+                                                  // Pre-fill with first check-in date if available
+                                                  setNewStartDate(suggestion || emp.employment_start_date || format(startOfMonth(currentMonth), 'yyyy-MM-dd'));
                                                   setStartDateDialogOpen(true);
                                                 }
                                               }}
@@ -2214,7 +2337,14 @@ export default function Payroll() {
                                           <TooltipContent>
                                             <p className="text-xs">{w.message}</p>
                                             {w.type === 'no_start_date' && (
-                                              <p className="text-xs text-primary mt-1">คลิกเพื่อตั้งวันเริ่มงาน</p>
+                                              <>
+                                                <p className="text-xs text-primary mt-1">คลิกเพื่อตั้งวันเริ่มงาน</p>
+                                                {getFirstCheckInSuggestion(emp.id) && (
+                                                  <p className="text-xs text-green-600 mt-0.5">
+                                                    💡 พบ check-in ครั้งแรก: {format(parseISO(getFirstCheckInSuggestion(emp.id)!), "d MMM yyyy", { locale: th })}
+                                                  </p>
+                                                )}
+                                              </>
                                             )}
                                           </TooltipContent>
                                         </Tooltip>
@@ -2228,15 +2358,55 @@ export default function Payroll() {
                               </div>
                             </td>
                             <td className="p-3">
-                              <PayrollMiniCalendar 
-                                currentMonth={currentMonth}
-                                attendanceData={empAttendance}
-                                onDayClick={(date, data) => {
-                                  setEditingEmployeeId(emp.id);
-                                  setEditingDate(date);
-                                  setAttendanceEditDialogOpen(true);
-                                }}
-                              />
+                              <div className="flex items-center gap-2">
+                                <PayrollMiniCalendar 
+                                  currentMonth={currentMonth}
+                                  attendanceData={empAttendance}
+                                  bulkSelectMode={bulkModeEmployee === emp.id}
+                                  selectedDates={bulkModeEmployee === emp.id ? bulkSelectedDates : undefined}
+                                  onDateSelect={bulkModeEmployee === emp.id ? handleBulkDateSelect : undefined}
+                                  onDayClick={(date, data) => {
+                                    setEditingEmployeeId(emp.id);
+                                    setEditingDate(date);
+                                    setAttendanceEditDialogOpen(true);
+                                  }}
+                                />
+                                {/* Bulk mode toggle button */}
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant={bulkModeEmployee === emp.id ? "default" : "ghost"}
+                                        size="icon"
+                                        className="h-6 w-6 shrink-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleBulkMode(emp.id);
+                                        }}
+                                        disabled={currentPeriod?.status === 'completed'}
+                                      >
+                                        {bulkModeEmployee === emp.id ? <CheckSquare className="h-3 w-3" /> : <List className="h-3 w-3" />}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {bulkModeEmployee === emp.id ? 'ยกเลิกโหมดเลือกหลายวัน' : 'เลือกหลายวัน'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {/* Show bulk action button when dates are selected */}
+                                {bulkModeEmployee === emp.id && bulkSelectedDates.size > 0 && (
+                                  <Button
+                                    size="sm"
+                                    className="h-6 text-xs px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setBulkActionDialogOpen(true);
+                                    }}
+                                  >
+                                    ตั้งสถานะ {bulkSelectedDates.size} วัน
+                                  </Button>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3 text-center">
                               <Badge variant="outline" className="text-xs">
@@ -2850,6 +3020,82 @@ export default function Payroll() {
               {updateStartDateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Bulk Adjustment Dialog */}
+      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-primary" />
+              แก้ไขหลายวันพร้อมกัน
+            </DialogTitle>
+            <DialogDescription>
+              {bulkModeEmployee && employees?.find(e => e.id === bulkModeEmployee)?.full_name} • เลือก {bulkSelectedDates.size} วัน
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>เลือกสถานะที่ต้องการตั้ง</Label>
+              <RadioGroup value={bulkStatus} onValueChange={setBulkStatus}>
+                {BULK_STATUS_OPTIONS.map(opt => (
+                  <div key={opt.value} className="flex items-center gap-2">
+                    <RadioGroupItem value={opt.value} id={`bulk-${opt.value}`} />
+                    <Label htmlFor={`bulk-${opt.value}`} className="flex items-center gap-2 cursor-pointer">
+                      <span className={`w-3 h-3 rounded-full ${opt.color}`} />
+                      {opt.label}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="bulk-reason">เหตุผล <span className="text-destructive">*</span></Label>
+              <Textarea 
+                id="bulk-reason"
+                value={bulkReason} 
+                onChange={(e) => setBulkReason(e.target.value)}
+                placeholder="เช่น: แก้ไขวันก่อนเริ่มงาน, ตั้งสถานะวันหยุดพิเศษ"
+                rows={3}
+              />
+            </div>
+            
+            <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+              <p className="font-medium mb-1">วันที่เลือก:</p>
+              <div className="flex flex-wrap gap-1">
+                {Array.from(bulkSelectedDates).sort().slice(0, 10).map(d => (
+                  <Badge key={d} variant="outline" className="text-[10px]">
+                    {format(parseISO(d), "d MMM", { locale: th })}
+                  </Badge>
+                ))}
+                {bulkSelectedDates.size > 10 && (
+                  <Badge variant="secondary" className="text-[10px]">+{bulkSelectedDates.size - 10} วัน</Badge>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setBulkActionDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button 
+              onClick={() => {
+                if (bulkModeEmployee && bulkSelectedDates.size > 0 && bulkReason.trim()) {
+                  bulkAdjustmentMutation.mutate({
+                    employeeId: bulkModeEmployee,
+                    dates: Array.from(bulkSelectedDates),
+                    status: bulkStatus,
+                    reason: bulkReason.trim(),
+                  });
+                }
+              }}
+              disabled={!bulkReason.trim() || bulkAdjustmentMutation.isPending}
+            >
+              {bulkAdjustmentMutation.isPending ? 'กำลังบันทึก...' : `บันทึก ${bulkSelectedDates.size} วัน`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
