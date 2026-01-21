@@ -68,7 +68,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   
   // ✅ Cute Quotes feature
   const { getRandomQuote, shouldShowQuote, isEnabled: cuteQuotesEnabled } = useCuteQuotes();
-  const [cuteQuote, setCuteQuote] = useState<{ text: string; emoji: string } | null>(null);
+  const [cuteQuote, setCuteQuote] = useState<{ text: string; emoji: string; bgColor: string } | null>(null);
   
   // ✅ Refs for accessing latest state in animation frame (avoid stale closure)
   const waitingForCenterAfterStep1Ref = useRef(false);
@@ -198,9 +198,9 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       setWaitingForCenter(true);
       // ✅ Show cute quote when entering center hold phase (based on % chance)
       if (cuteQuotesEnabled && shouldShowQuote(eventType)) {
-        const quote = getRandomQuote();
+        const quote = getRandomQuote(eventType);
         if (quote) {
-          setCuteQuote({ text: quote.text, emoji: quote.emoji });
+          setCuteQuote({ text: quote.text, emoji: quote.emoji, bgColor: quote.bg_color });
         }
       } else {
         setCuteQuote(null);
@@ -498,6 +498,20 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     }
   };
 
+  // ✅ Helper: Get gradient class from bg_color key
+  const getBgGradientClass = (colorKey: string) => {
+    const colorMap: Record<string, string> = {
+      'pink-purple': 'from-pink-500/90 to-purple-500/90',
+      'blue-cyan': 'from-blue-500/90 to-cyan-500/90',
+      'green-teal': 'from-green-500/90 to-teal-500/90',
+      'orange-yellow': 'from-orange-500/90 to-yellow-500/90',
+      'red-pink': 'from-red-500/90 to-pink-500/90',
+      'indigo-purple': 'from-indigo-500/90 to-purple-500/90',
+      'gray': 'from-gray-600/90 to-gray-500/90',
+    };
+    return colorMap[colorKey] || colorMap['pink-purple'];
+  };
+
   const currentChallengeInfo = CHALLENGES.find(c => c.type === currentChallenge)!;
   const ChallengeIcon = currentChallengeInfo.icon;
 
@@ -644,9 +658,9 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 {/* 😊 Cute Quote - Show only during center hold phase */}
                 {waitingForCenter && cuteQuote && (
                   <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 max-w-[80%]">
-                    <div className="bg-gradient-to-r from-pink-500/90 to-purple-500/90 
+                    <div className={`bg-gradient-to-r ${getBgGradientClass(cuteQuote.bgColor)} 
                                     text-white px-4 py-2 rounded-full shadow-lg
-                                    text-sm font-medium text-center animate-bounce">
+                                    text-sm font-medium text-center animate-bounce`}>
                       {cuteQuote.emoji} {cuteQuote.text}
                     </div>
                   </div>

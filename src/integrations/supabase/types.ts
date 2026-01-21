@@ -1347,34 +1347,40 @@ export type Database = {
       }
       cute_quotes: {
         Row: {
+          bg_color: string | null
           category: string | null
           created_at: string | null
           display_order: number | null
           emoji: string | null
           id: string
           is_active: boolean | null
+          show_time: string | null
           text: string
           text_en: string | null
           updated_at: string | null
         }
         Insert: {
+          bg_color?: string | null
           category?: string | null
           created_at?: string | null
           display_order?: number | null
           emoji?: string | null
           id?: string
           is_active?: boolean | null
+          show_time?: string | null
           text: string
           text_en?: string | null
           updated_at?: string | null
         }
         Update: {
+          bg_color?: string | null
           category?: string | null
           created_at?: string | null
           display_order?: number | null
           emoji?: string | null
           id?: string
           is_active?: boolean | null
+          show_time?: string | null
           text?: string
           text_en?: string | null
           updated_at?: string | null

@@ -16,6 +16,8 @@ export interface CuteQuote {
   emoji: string;
   is_active: boolean;
   display_order: number;
+  show_time: 'check_in' | 'check_out' | 'both';
+  bg_color: string;
   created_at: string;
   updated_at: string;
 }
@@ -70,11 +72,18 @@ export function useCuteQuotes() {
     return Math.random() * 100 < chance;
   }, [isEnabled, settings]);
 
-  // Get a random quote
-  const getRandomQuote = useCallback(() => {
+  // Get a random quote filtered by event type
+  const getRandomQuote = useCallback((eventType: 'check_in' | 'check_out' = 'check_in') => {
     if (!isEnabled || !quotes || quotes.length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * quotes.length);
-    return quotes[randomIndex];
+    
+    // Filter quotes by show_time matching eventType
+    const filtered = quotes.filter(q => 
+      q.show_time === 'both' || q.show_time === eventType
+    );
+    
+    if (filtered.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * filtered.length);
+    return filtered[randomIndex];
   }, [isEnabled, quotes]);
 
   // Check if feature is ready
@@ -122,6 +131,8 @@ export function useCuteQuotesAdmin() {
         category: quote.category || 'general',
         is_active: quote.is_active ?? true,
         display_order: quote.display_order ?? 0,
+        show_time: quote.show_time || 'both',
+        bg_color: quote.bg_color || 'pink-purple',
       }]);
     
     if (error) throw error;
