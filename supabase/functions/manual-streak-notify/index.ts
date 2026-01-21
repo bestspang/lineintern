@@ -104,6 +104,88 @@ async function insertBotLogViaClient(
   }
 }
 
+async function loadEmployeeAndBranchLineGroup(
+  supabase: any,
+  employeeId: string
+): Promise<
+  | {
+      id: string;
+      full_name: string | null;
+      line_user_id: string | null;
+      announcement_group_line_id: string | null;
+      branch_line_group_id: string | null;
+    }
+  | null
+> {
+  // Preferred: explicit FK to avoid PGRST201 ambiguity (employees has multiple FKs to branches).
+  const { data: employeeEmbed, error: embedError } = await supabase
+    .from("employees")
+    .select(
+      "id, full_name, line_user_id, announcement_group_line_id, branch:branches!employees_branch_id_fkey(line_group_id)"
+    )
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  if (embedError) {
+    logger.error("[manual-streak-notify] employee embed query error", {
+      employee_id: employeeId,
+      error: embedError,
+    });
+  }
+
+  if (employeeEmbed) {
+    return {
+      id: employeeEmbed.id,
+      full_name: (employeeEmbed as any).full_name ?? null,
+      line_user_id: (employeeEmbed as any).line_user_id ?? null,
+      announcement_group_line_id: (employeeEmbed as any).announcement_group_line_id ?? null,
+      branch_line_group_id: (employeeEmbed as any).branch?.line_group_id ?? null,
+    };
+  }
+
+  // Fallback: if embedding fails (or schema changes), fetch branch_id then lookup branches separately.
+  const { data: employeeBase, error: baseError } = await supabase
+    .from("employees")
+    .select("id, full_name, line_user_id, announcement_group_line_id, branch_id")
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  if (baseError) {
+    logger.error("[manual-streak-notify] employee base query error", {
+      employee_id: employeeId,
+      error: baseError,
+    });
+  }
+
+  if (!employeeBase) return null;
+
+  let branchLineGroupId: string | null = null;
+  const branchId = (employeeBase as any).branch_id as string | null;
+  if (branchId) {
+    const { data: branch, error: branchError } = await supabase
+      .from("branches")
+      .select("line_group_id")
+      .eq("id", branchId)
+      .maybeSingle();
+    if (branchError) {
+      logger.error("[manual-streak-notify] branch query error", {
+        employee_id: employeeId,
+        branch_id: branchId,
+        error: branchError,
+      });
+    }
+    branchLineGroupId = (branch as any)?.line_group_id ?? null;
+  }
+
+  return {
+    id: employeeBase.id,
+    full_name: (employeeBase as any).full_name ?? null,
+    line_user_id: (employeeBase as any).line_user_id ?? null,
+    announcement_group_line_id: (employeeBase as any).announcement_group_line_id ?? null,
+    branch_line_group_id: branchLineGroupId,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -224,26 +306,17 @@ serve(async (req) => {
       );
     }
 
-    // Load employee + branch group
-    const { data: employee, error: employeeError } = await supabase
-      .from("employees")
-      .select("id, full_name, line_user_id, announcement_group_line_id, branch:branches(line_group_id)")
-      .eq("id", tx.employee_id)
-      .maybeSingle();
-
-    if (employeeError) {
-      logger.error("[manual-streak-notify] employee query error", {
-        employee_id: tx.employee_id,
-        error: employeeError,
-        using_service_role: hasServiceRoleKey(),
-      });
-    }
+    // Load employee + branch group (explicit FK to avoid PGRST201 ambiguity)
+    const employee = await loadEmployeeAndBranchLineGroup(supabase, tx.employee_id);
 
     if (!employee) {
-      return new Response(JSON.stringify({ success: false, error: "Employee not found", employee_id: tx.employee_id }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Employee not found", employee_id: tx.employee_id }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const message = replaceTemplateVariables(template, {
@@ -254,8 +327,7 @@ serve(async (req) => {
       shields_remaining: meta?.shields_remaining ?? 0,
     });
 
-    const groupId =
-      body.destination_group_id || employee.announcement_group_line_id || (employee as any).branch?.line_group_id;
+    const groupId = body.destination_group_id || employee.announcement_group_line_id || employee.branch_line_group_id;
 
     const results: Array<{ channel: "group" | "dm"; status: "sent" | "failed"; error?: string }> = [];
 
