@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useCuteQuotesAdmin, CuteQuote } from '@/hooks/useCuteQuotes';
 import { useFeatureFlag, useFeatureFlagsAdmin } from '@/hooks/useFeatureFlags';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut, Sunrise, Sunset, Sun } from 'lucide-react';
 
 const CATEGORIES = [
   { value: 'general', label: 'ทั่วไป', color: 'bg-gray-500' },
@@ -22,6 +22,22 @@ const CATEGORIES = [
 ];
 
 const EMOJI_OPTIONS = ['😊', '😁', '😅', '🌟', '📸', '💪', '🤩', '🧊', '⏱️', '✊', '👏', '🎉', '❤️', '🔥', '✨'];
+
+const SHOW_TIME_OPTIONS = [
+  { value: 'both', label: 'ทั้งเช้าและเย็น', icon: Sun },
+  { value: 'check_in', label: 'เช้า (Check-in)', icon: Sunrise },
+  { value: 'check_out', label: 'เย็น (Check-out)', icon: Sunset },
+];
+
+const BG_COLOR_OPTIONS = [
+  { value: 'pink-purple', label: 'ชมพู-ม่วง', class: 'from-pink-500/90 to-purple-500/90' },
+  { value: 'blue-cyan', label: 'ฟ้า-น้ำเงิน', class: 'from-blue-500/90 to-cyan-500/90' },
+  { value: 'green-teal', label: 'เขียว', class: 'from-green-500/90 to-teal-500/90' },
+  { value: 'orange-yellow', label: 'ส้ม-เหลือง', class: 'from-orange-500/90 to-yellow-500/90' },
+  { value: 'red-pink', label: 'แดง-ชมพู', class: 'from-red-500/90 to-pink-500/90' },
+  { value: 'indigo-purple', label: 'คราม-ม่วง', class: 'from-indigo-500/90 to-purple-500/90' },
+  { value: 'gray', label: 'เทา', class: 'from-gray-600/90 to-gray-500/90' },
+];
 
 export default function CuteQuotesSettings() {
   const { toast } = useToast();
@@ -52,6 +68,8 @@ export default function CuteQuotesSettings() {
   const [newText, setNewText] = useState('');
   const [newEmoji, setNewEmoji] = useState('😊');
   const [newCategory, setNewCategory] = useState('general');
+  const [newShowTime, setNewShowTime] = useState<'check_in' | 'check_out' | 'both'>('both');
+  const [newBgColor, setNewBgColor] = useState('pink-purple');
   
   // Filter
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -71,11 +89,15 @@ export default function CuteQuotesSettings() {
         text: newText.trim(),
         emoji: newEmoji,
         category: newCategory,
+        show_time: newShowTime,
+        bg_color: newBgColor,
       });
       
       setNewText('');
       setNewEmoji('😊');
       setNewCategory('general');
+      setNewShowTime('both');
+      setNewBgColor('pink-purple');
       setIsCreateOpen(false);
       
       toast({ title: 'เพิ่มข้อความสำเร็จ' });
@@ -92,6 +114,8 @@ export default function CuteQuotesSettings() {
         text: editingQuote.text,
         emoji: editingQuote.emoji,
         category: editingQuote.category,
+        show_time: editingQuote.show_time,
+        bg_color: editingQuote.bg_color,
       });
       
       setEditingQuote(null);
@@ -126,6 +150,22 @@ export default function CuteQuotesSettings() {
 
   const getCategoryInfo = (category: string) => {
     return CATEGORIES.find(c => c.value === category) || CATEGORIES[0];
+  };
+
+  const getBgColorClass = (colorKey: string) => {
+    const color = BG_COLOR_OPTIONS.find(c => c.value === colorKey);
+    return color?.class || BG_COLOR_OPTIONS[0].class;
+  };
+
+  const getShowTimeIcon = (showTime: string) => {
+    const opt = SHOW_TIME_OPTIONS.find(o => o.value === showTime);
+    return opt?.icon || Sun;
+  };
+
+  const getShowTimeLabel = (showTime: string) => {
+    if (showTime === 'check_in') return '🌅';
+    if (showTime === 'check_out') return '🌆';
+    return '🌗';
   };
 
   if (isLoading) {
@@ -343,10 +383,55 @@ export default function CuteQuotesSettings() {
                       </Select>
                     </div>
                     
+                    {/* Show Time Selection */}
+                    <div className="space-y-2">
+                      <Label>🕐 เวลาที่จะแสดง</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {SHOW_TIME_OPTIONS.map(opt => {
+                          const Icon = opt.icon;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setNewShowTime(opt.value as typeof newShowTime)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm ${
+                                newShowTime === opt.value 
+                                  ? 'border-primary bg-primary/10' 
+                                  : 'border-transparent bg-muted hover:border-muted-foreground/30'
+                              }`}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Background Color Selection */}
+                    <div className="space-y-2">
+                      <Label>🎨 สีพื้นหลัง</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {BG_COLOR_OPTIONS.map(color => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            onClick={() => setNewBgColor(color.value)}
+                            className={`w-10 h-10 rounded-lg border-2 transition-all bg-gradient-to-r ${color.class} ${
+                              newBgColor === color.value 
+                                ? 'border-foreground ring-2 ring-foreground ring-offset-2' 
+                                : 'border-transparent hover:scale-110'
+                            }`}
+                            title={color.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    
                     {/* Preview */}
                     <div className="space-y-2">
                       <Label>ตัวอย่าง</Label>
-                      <div className="bg-gradient-to-r from-pink-500/90 to-purple-500/90 text-white px-4 py-2 rounded-full text-center">
+                      <div className={`bg-gradient-to-r ${getBgColorClass(newBgColor)} text-white px-4 py-2 rounded-full text-center`}>
                         {newEmoji} {newText || 'ข้อความจะแสดงตรงนี้'}
                       </div>
                     </div>
@@ -379,9 +464,18 @@ export default function CuteQuotesSettings() {
                   
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{quote.text}</div>
-                    <Badge variant="outline" className="text-xs mt-1">
-                      {getCategoryInfo(quote.category).label}
-                    </Badge>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-xs">
+                        {getCategoryInfo(quote.category).label}
+                      </Badge>
+                      <span className="text-sm" title={SHOW_TIME_OPTIONS.find(o => o.value === quote.show_time)?.label || 'ทั้งวัน'}>
+                        {getShowTimeLabel(quote.show_time)}
+                      </span>
+                      <div 
+                        className={`w-4 h-4 rounded-full bg-gradient-to-r ${getBgColorClass(quote.bg_color)}`}
+                        title={BG_COLOR_OPTIONS.find(c => c.value === quote.bg_color)?.label || 'ชมพู-ม่วง'}
+                      />
+                    </div>
                   </div>
                   
                   <div className="flex items-center gap-1">
@@ -439,16 +533,23 @@ export default function CuteQuotesSettings() {
             <DialogTitle>ตัวอย่างการแสดงผล</DialogTitle>
           </DialogHeader>
           <div className="py-8 flex justify-center">
-            <div className="bg-gradient-to-r from-pink-500/90 to-purple-500/90 text-white px-6 py-3 rounded-full text-lg font-medium shadow-lg animate-bounce">
+            <div className={`bg-gradient-to-r ${getBgColorClass(previewQuote?.bg_color || 'pink-purple')} text-white px-6 py-3 rounded-full text-lg font-medium shadow-lg animate-bounce`}>
               {previewQuote?.emoji} {previewQuote?.text}
             </div>
+          </div>
+          <div className="text-center text-sm text-muted-foreground">
+            {previewQuote && (
+              <>
+                {getShowTimeLabel(previewQuote.show_time)} {SHOW_TIME_OPTIONS.find(o => o.value === previewQuote.show_time)?.label}
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={!!editingQuote} onOpenChange={() => setEditingQuote(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>แก้ไขข้อความ</DialogTitle>
           </DialogHeader>
@@ -499,10 +600,55 @@ export default function CuteQuotesSettings() {
                 </Select>
               </div>
               
+              {/* Show Time Selection */}
+              <div className="space-y-2">
+                <Label>🕐 เวลาที่จะแสดง</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SHOW_TIME_OPTIONS.map(opt => {
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setEditingQuote({ ...editingQuote, show_time: opt.value as 'check_in' | 'check_out' | 'both' })}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm ${
+                          editingQuote.show_time === opt.value 
+                            ? 'border-primary bg-primary/10' 
+                            : 'border-transparent bg-muted hover:border-muted-foreground/30'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {/* Background Color Selection */}
+              <div className="space-y-2">
+                <Label>🎨 สีพื้นหลัง</Label>
+                <div className="flex flex-wrap gap-2">
+                  {BG_COLOR_OPTIONS.map(color => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setEditingQuote({ ...editingQuote, bg_color: color.value })}
+                      className={`w-10 h-10 rounded-lg border-2 transition-all bg-gradient-to-r ${color.class} ${
+                        editingQuote.bg_color === color.value 
+                          ? 'border-foreground ring-2 ring-foreground ring-offset-2' 
+                          : 'border-transparent hover:scale-110'
+                      }`}
+                      title={color.label}
+                    />
+                  ))}
+                </div>
+              </div>
+              
               {/* Preview */}
               <div className="space-y-2">
                 <Label>ตัวอย่าง</Label>
-                <div className="bg-gradient-to-r from-pink-500/90 to-purple-500/90 text-white px-4 py-2 rounded-full text-center">
+                <div className={`bg-gradient-to-r ${getBgColorClass(editingQuote.bg_color)} text-white px-4 py-2 rounded-full text-center`}>
                   {editingQuote.emoji} {editingQuote.text}
                 </div>
               </div>
