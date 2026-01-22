@@ -15,6 +15,31 @@ interface PointRulesMap {
   [key: string]: { points: number; conditions?: any };
 }
 
+type ResponseTier = { maxSeconds: number; points: number };
+
+function normalizeResponseTiers(input: any): ResponseTier[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((t) => {
+      const maxSeconds = Number(t?.max_seconds ?? t?.maxSeconds ?? t?.max_seconds_inclusive);
+      const points = Number(t?.points);
+      if (!Number.isFinite(maxSeconds) || !Number.isFinite(points)) return null;
+      return { maxSeconds, points } as ResponseTier;
+    })
+    .filter(Boolean) as ResponseTier[];
+}
+
+function secondsToMinutesCeil(seconds: number) {
+  return Math.max(0, Math.ceil(seconds / 60));
+}
+
+function formatTierLabel(locale: string, kind: 'lt' | 'gt', minutes: number) {
+  if (locale === 'th') {
+    return kind === 'lt' ? `เฉลี่ย < ${minutes} นาที` : `เฉลี่ย > ${minutes} นาที`;
+  }
+  return kind === 'lt' ? `Avg < ${minutes} min` : `Avg > ${minutes} min`;
+}
+
 export default function MyPoints() {
   const { employee, locale } = usePortal();
 
@@ -117,6 +142,33 @@ export default function MyPoints() {
 
   // Daily response score is now a tier-based system (max 8 pts), not /20
   const todayResponsePoints = happyPoints?.daily_response_score || 0;
+
+  const responseRule = pointRules?.response_daily_avg;
+  const responseConditions = responseRule?.conditions ?? {};
+  const minResponses = Number(responseConditions?.min_responses ?? responseConditions?.minResponses);
+
+  const defaultResponseTiers: ResponseTier[] = [
+    { maxSeconds: 300, points: 8 },
+    { maxSeconds: 600, points: 5 },
+    { maxSeconds: 1800, points: 3 },
+    { maxSeconds: 999999, points: 1 },
+  ];
+
+  const responseTiers = (() => {
+    const normalized = normalizeResponseTiers(responseConditions?.tiers);
+    const tiers = normalized.length > 0 ? normalized : defaultResponseTiers;
+    return [...tiers].sort((a, b) => a.maxSeconds - b.maxSeconds);
+  })();
+
+  const responseTierRows = responseTiers.map((tier, idx) => {
+    const isLast = idx === responseTiers.length - 1;
+    const prev = responseTiers[idx - 1];
+
+    // Last tier is typically a catch-all (e.g., 999999) => display as "> previous threshold"
+    const labelMinutes = isLast && prev ? secondsToMinutesCeil(prev.maxSeconds) : secondsToMinutesCeil(tier.maxSeconds);
+    const label = formatTierLabel(locale, isLast && prev ? 'gt' : 'lt', labelMinutes);
+    return { label, points: tier.points };
+  });
 
   return (
     <div className="space-y-4">
@@ -233,24 +285,20 @@ export default function MyPoints() {
                 ? 'คำนวณจากความเร็วเฉลี่ยในการตอบทั้งวัน (23:00)' 
                 : 'Based on avg response time for the day (23:00)'}
             </p>
+             {Number.isFinite(minResponses) && minResponses > 0 && (
+               <p className="text-xs text-muted-foreground pl-6 mb-2">
+                 {locale === 'th'
+                   ? `ต้องมีอย่างน้อย ${minResponses} ข้อความที่วัดเวลาได้ ถึงจะได้คะแนน`
+                   : `Requires at least ${minResponses} measured replies to score`}
+               </p>
+             )}
             <div className="grid grid-cols-1 gap-2 text-sm pl-6">
-              {/* SYNC: tiers from point_rules.response_daily_avg.conditions.tiers */}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">🏆 {locale === 'th' ? 'เฉลี่ย < 5 นาที' : 'Avg < 5 min'}</span>
-                <Badge variant="outline" className="text-green-600">+8</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">👍 {locale === 'th' ? 'เฉลี่ย < 10 นาที' : 'Avg < 10 min'}</span>
-                <Badge variant="outline" className="text-green-600">+5</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">✅ {locale === 'th' ? 'เฉลี่ย < 30 นาที' : 'Avg < 30 min'}</span>
-                <Badge variant="outline" className="text-green-600">+3</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">⏰ {locale === 'th' ? 'เฉลี่ย > 30 นาที' : 'Avg > 30 min'}</span>
-                <Badge variant="outline" className="text-green-600">+1</Badge>
-              </div>
+               {responseTierRows.map((row, idx) => (
+                 <div key={`${idx}-${row.points}`} className="flex justify-between">
+                   <span className="text-muted-foreground">{row.label}</span>
+                   <Badge variant="outline" className="text-green-600">+{row.points}</Badge>
+                 </div>
+               ))}
             </div>
           </div>
           
