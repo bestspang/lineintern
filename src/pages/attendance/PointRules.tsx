@@ -35,6 +35,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ResponseDailyAvgTierEditor } from '@/components/attendance/ResponseDailyAvgTierEditor';
 
 interface PointRule {
   id: string;
@@ -194,6 +195,28 @@ export default function PointRules() {
           include_categories: newCategories 
         } 
       },
+    });
+  };
+
+  const formatConditionValue = (value: unknown) => {
+    if (value == null) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      // Keep simple and readable in a badge
+      const allPrimitive = value.every((v) => ['string', 'number', 'boolean'].includes(typeof v));
+      return allPrimitive ? value.map(String).join(', ') : `${value.length} items`;
+    }
+    // object
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length ? `{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? ', …' : ''}}` : '{}';
+  };
+
+  const handleDailyResponseConditionsSave = (rule: PointRule, nextConditions: Record<string, any>) => {
+    updateMutation.mutate({
+      id: rule.id,
+      updates: { conditions: nextConditions },
     });
   };
 
@@ -558,13 +581,21 @@ export default function PointRules() {
                             </p>
                           )}
                           {rule.conditions && Object.keys(rule.conditions).length > 0 && !isSummaryRule(rule) && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {Object.entries(rule.conditions).map(([key, value]) => (
-                                <Badge key={key} variant="secondary" className="text-xs">
-                                  {key}: {String(value)}
-                                </Badge>
-                              ))}
-                            </div>
+                            rule.rule_key === 'response_daily_avg' ? (
+                              <ResponseDailyAvgTierEditor
+                                conditions={rule.conditions || {}}
+                                disabled={updateMutation.isPending}
+                                onSave={(next) => handleDailyResponseConditionsSave(rule, next)}
+                              />
+                            ) : (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {Object.entries(rule.conditions).map(([key, value]) => (
+                                  <Badge key={key} variant="secondary" className="text-xs">
+                                    {key}: {formatConditionValue(value)}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )
                           )}
                         </div>
 
