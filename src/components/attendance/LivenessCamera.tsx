@@ -108,20 +108,30 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     step2ChallengeRef.current = step2Challenge;
   }, [step2Challenge]);
 
-  // Initialize MediaPipe Face Landmarker
+  // ✅ State for retry and loading status
+  const [modelLoadingStatus, setModelLoadingStatus] = useState<"loading" | "retrying" | "loaded" | "error">("loading");
+
+  // Initialize MediaPipe Face Landmarker with GPU → CPU fallback + retry
   useEffect(() => {
-    let isMounted = true; // ✅ Memory leak prevention
+    let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 2;
     
-    const initializeFaceLandmarker = async () => {
+    const initializeFaceLandmarker = async (useGpu = true): Promise<void> => {
       try {
+        if (!isMounted) return;
+        setModelLoadingStatus(retryCount > 0 ? "retrying" : "loading");
+        
+        console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount})`);
+        
         const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
         );
         
         const landmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: "GPU",
+            delegate: useGpu ? "GPU" : "CPU",
           },
           outputFaceBlendshapes: true,
           outputFacialTransformationMatrixes: true,
@@ -129,16 +139,38 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           numFaces: 1,
         });
         
-        // ✅ Only update state if component is still mounted
         if (isMounted) {
           setFaceLandmarker(landmarker);
+          setModelLoadingStatus("loaded");
+          setError("");
+          console.log(`[FaceLandmarker] ✅ Loaded successfully (delegate=${useGpu ? "GPU" : "CPU"})`);
         } else {
           landmarker.close();
         }
       } catch (err) {
-        console.error("Failed to initialize face landmarker:", err);
+        console.error(`[FaceLandmarker] Failed (GPU=${useGpu}, retry=${retryCount}):`, err);
+        
+        if (!isMounted) return;
+        
+        // Try CPU fallback if GPU failed
+        if (useGpu) {
+          console.log("[FaceLandmarker] Retrying with CPU delegate...");
+          return initializeFaceLandmarker(false);
+        }
+        
+        // Retry mechanism
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`[FaceLandmarker] Retry ${retryCount}/${maxRetries} in 2s...`);
+          await new Promise(r => setTimeout(r, 2000));
+          return initializeFaceLandmarker(true);
+        }
+        
+        // All retries exhausted
         if (isMounted) {
-          setError("Failed to load face detection model");
+          setModelLoadingStatus("error");
+          const errMessage = err instanceof Error ? err.message : "Unknown error";
+          setError(`ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้\n(${errMessage})\n\nกรุณาลองรีเฟรชหน้านี้`);
         }
       }
     };
@@ -146,7 +178,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     initializeFaceLandmarker();
 
     return () => {
-      isMounted = false; // ✅ Mark as unmounted
+      isMounted = false;
       if (faceLandmarker) {
         faceLandmarker.close();
       }
