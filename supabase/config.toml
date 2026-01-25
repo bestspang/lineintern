@@ -225,3 +225,6 @@ verify_jwt = false
 
 [functions.birthday-reminder]
 verify_jwt = false
+
+[functions.stale-session-cleaner]
+verify_jwt = false

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { FaceLandmarker, FilesetResolver, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Check, X, Eye, MoveHorizontal } from "lucide-react";
+import { Camera, Check, X, Eye, MoveHorizontal, RefreshCw, AlertTriangle } from "lucide-react";
 import { useCuteQuotes } from "@/hooks/useCuteQuotes";
 
 interface LivenessCameraProps {
@@ -29,6 +29,31 @@ const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
   { type: "turn_right", text: "หันหน้าไปทางขวา", icon: MoveHorizontal },
 ];
 
+// ✅ Multi-CDN Fallback URLs with pinned version
+const CDN_URLS = [
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm",
+  "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
+];
+
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+
+// ✅ Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff
+
+// ✅ Helper: Sleep function for retry delays
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ✅ Helper: Check WebGL2 support
+const checkWebGL2Support = (): boolean => {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!canvas.getContext('webgl2');
+  } catch {
+    return false;
+  }
+};
+
 export default function LivenessCamera({ onCapture, onCancel, eventType = 'check_in', employeeBirthDate, todayHolidayIds }: LivenessCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -36,6 +61,17 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>("");
+  
+  // ✅ New: Loading and retry states
+  const [loadingStatus, setLoadingStatus] = useState<string>("กำลังเริ่มต้น...");
+  const [showRetryButton, setShowRetryButton] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<{
+    webgl2: boolean;
+    lastError: string;
+    delegate: 'GPU' | 'CPU';
+  }>({ webgl2: false, lastError: '', delegate: 'GPU' });
   
   // Liveness detection state
   const [currentChallenge, setCurrentChallenge] = useState<Challenge>("turn_right");
@@ -108,50 +144,111 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     step2ChallengeRef.current = step2Challenge;
   }, [step2Challenge]);
 
-  // Initialize MediaPipe Face Landmarker
-  useEffect(() => {
-    let isMounted = true; // ✅ Memory leak prevention
+  // ✅ Initialize MediaPipe Face Landmarker with retry logic
+  const initializeFaceLandmarker = useCallback(async (
+    attemptNumber: number = 0, 
+    useCpu: boolean = false
+  ): Promise<void> => {
+    const cdnIndex = attemptNumber % CDN_URLS.length;
+    const cdnUrl = CDN_URLS[cdnIndex];
+    const delegate = useCpu ? "CPU" : "GPU";
     
-    const initializeFaceLandmarker = async () => {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-        );
-        
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: "GPU",
-          },
-          outputFaceBlendshapes: true,
-          outputFacialTransformationMatrixes: true,
-          runningMode: "VIDEO",
-          numFaces: 1,
-        });
-        
-        // ✅ Only update state if component is still mounted
-        if (isMounted) {
-          setFaceLandmarker(landmarker);
-        } else {
-          landmarker.close();
-        }
-      } catch (err) {
-        console.error("Failed to initialize face landmarker:", err);
-        if (isMounted) {
-          setError("Failed to load face detection model");
-        }
+    setDiagnosticInfo(prev => ({ 
+      ...prev, 
+      webgl2: checkWebGL2Support(),
+      delegate 
+    }));
+    
+    try {
+      setLoadingStatus(`กำลังโหลดจาก CDN ${cdnIndex + 1}/${CDN_URLS.length} (${delegate})...`);
+      setShowRetryButton(false);
+      setError("");
+      
+      console.log(`[LivenessCamera] Attempt ${attemptNumber + 1}/${MAX_RETRIES}, CDN: ${cdnUrl}, Delegate: ${delegate}`);
+      
+      const vision = await FilesetResolver.forVisionTasks(cdnUrl);
+      
+      setLoadingStatus("กำลังสร้างโมเดลตรวจจับใบหน้า...");
+      
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: MODEL_URL,
+          delegate: delegate,
+        },
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        runningMode: "VIDEO",
+        numFaces: 1,
+      });
+      
+      console.log(`[LivenessCamera] ✅ Successfully initialized with ${delegate} delegate`);
+      setFaceLandmarker(landmarker);
+      setLoadingStatus("");
+      setRetryCount(0);
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`[LivenessCamera] Attempt ${attemptNumber + 1} failed:`, errorMessage);
+      
+      setDiagnosticInfo(prev => ({ ...prev, lastError: errorMessage }));
+      
+      // Determine error type for better user messaging
+      let errorType = "unknown";
+      if (errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to load")) {
+        errorType = "network";
+      } else if (errorMessage.includes("GPU") || errorMessage.includes("WebGL") || errorMessage.includes("delegate")) {
+        errorType = "gpu";
+      } else if (errorMessage.includes("memory") || errorMessage.includes("Memory")) {
+        errorType = "memory";
       }
-    };
+      
+      // Try next attempt if we haven't exhausted retries
+      if (attemptNumber < MAX_RETRIES - 1) {
+        const delayMs = RETRY_DELAYS[attemptNumber] || 4000;
+        setLoadingStatus(`โหลดไม่สำเร็จ รอ ${delayMs / 1000} วินาทีแล้วลองใหม่...`);
+        
+        await sleep(delayMs);
+        return initializeFaceLandmarker(attemptNumber + 1, useCpu);
+      }
+      
+      // GPU exhausted, try CPU fallback
+      if (!useCpu && checkWebGL2Support()) {
+        console.log("[LivenessCamera] GPU failed, trying CPU fallback...");
+        setLoadingStatus("GPU ล้มเหลว กำลังลอง CPU mode...");
+        await sleep(1000);
+        return initializeFaceLandmarker(0, true);
+      }
+      
+      // All attempts failed
+      console.error("[LivenessCamera] ❌ All initialization attempts failed");
+      setError("ไม่สามารถโหลดระบบตรวจจับใบหน้าได้");
+      setShowRetryButton(true);
+      setLoadingStatus("");
+    }
+  }, []);
 
-    initializeFaceLandmarker();
+  // ✅ Manual retry handler
+  const handleRetry = useCallback(() => {
+    setIsRetrying(true);
+    setRetryCount(prev => prev + 1);
+    initializeFaceLandmarker(0, false).finally(() => {
+      setIsRetrying(false);
+    });
+  }, [initializeFaceLandmarker]);
+
+  // Initialize on mount
+  useEffect(() => {
+    let isMounted = true;
+    
+    initializeFaceLandmarker(0, false);
 
     return () => {
-      isMounted = false; // ✅ Mark as unmounted
+      isMounted = false;
       if (faceLandmarker) {
         faceLandmarker.close();
       }
     };
-  }, []);
+  }, [initializeFaceLandmarker]);
 
   // Start camera
   useEffect(() => {
@@ -534,8 +631,50 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
           {error ? (
-            <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-              {error}
+            <div className="bg-destructive/10 text-destructive p-4 rounded-lg space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                <span className="font-medium">{error}</span>
+              </div>
+              
+              {showRetryButton && (
+                <div className="space-y-2">
+                  <Button 
+                    onClick={handleRetry} 
+                    disabled={isRetrying}
+                    className="w-full"
+                    variant="default"
+                  >
+                    {isRetrying ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        กำลังลองใหม่...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        🔄 ลองใหม่ {retryCount > 0 && `(ครั้งที่ ${retryCount + 1})`}
+                      </>
+                    )}
+                  </Button>
+                  
+                  <p className="text-xs text-muted-foreground text-center">
+                    หากยังไม่สำเร็จ กรุณาลองเปลี่ยน browser หรือรีเฟรชหน้า
+                  </p>
+                  
+                  {/* Diagnostic info for debugging */}
+                  <details className="text-xs text-muted-foreground mt-2">
+                    <summary className="cursor-pointer hover:text-foreground">ข้อมูลสำหรับแก้ปัญหา</summary>
+                    <div className="mt-2 p-2 bg-muted/50 rounded text-left font-mono">
+                      <p>WebGL2: {diagnosticInfo.webgl2 ? '✅ รองรับ' : '❌ ไม่รองรับ'}</p>
+                      <p>Mode: {diagnosticInfo.delegate}</p>
+                      {diagnosticInfo.lastError && (
+                        <p className="truncate">Error: {diagnosticInfo.lastError.slice(0, 50)}...</p>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -632,10 +771,11 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 />
                 <canvas ref={canvasRef} className="hidden" />
                 
-                {/* Face detection overlay */}
-                {!faceLandmarker && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-sm">
-                    กำลังโหลดระบบตรวจจับใบหน้า...
+                {/* Face detection overlay with loading status */}
+                {!faceLandmarker && !error && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white gap-3">
+                    <RefreshCw className="h-8 w-8 animate-spin" />
+                    <span className="text-sm text-center px-4">{loadingStatus || "กำลังโหลดระบบตรวจจับใบหน้า..."}</span>
                   </div>
                 )}
                 
