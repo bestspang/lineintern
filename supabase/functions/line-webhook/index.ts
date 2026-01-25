@@ -5034,18 +5034,87 @@ async function handleRemindersCommand(groupId: string, replyToken: string) {
 }
 
 /**
- * Handle /help command - show available commands (Dynamic from database)
+ * Get employee role priority from LINE user ID
+ * Returns 0 if not found or not an employee (show all public commands)
+ * @param lineUserId - The LINE user ID to check
+ * @returns Priority number (0-10, higher = more access)
+ */
+async function getEmployeeRolePriority(lineUserId: string): Promise<number> {
+  try {
+    // First, try to get priority from employees + employee_roles
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select(`
+        role,
+        employee_roles!employees_role_fkey (
+          priority
+        )
+      `)
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    // Handle join result - use type assertion for flexibility
+    const roleData = employee?.employee_roles as unknown;
+    let rolePriority: number | undefined;
+    
+    if (Array.isArray(roleData) && roleData.length > 0) {
+      rolePriority = (roleData[0] as { priority?: number })?.priority;
+    } else if (roleData && typeof roleData === 'object') {
+      rolePriority = (roleData as { priority?: number })?.priority;
+    }
+    
+    if (!empError && rolePriority !== undefined) {
+      console.log(`[getEmployeeRolePriority] Found employee role priority: ${rolePriority}`);
+      return rolePriority;
+    }
+
+    // Fallback: Check if employee has a role string that matches known roles
+    if (employee?.role) {
+      const roleMap: Record<string, number> = {
+        'owner': 10,
+        'hr': 9,
+        'admin': 8,
+        'executive': 7,
+        'manager': 5,
+        'supervisor': 4,
+        'senior': 3,
+        'field': 1,
+        'employee': 0,
+        'office': 0,
+      };
+      const priority = roleMap[employee.role.toLowerCase()] ?? 0;
+      console.log(`[getEmployeeRolePriority] Mapped role '${employee.role}' to priority: ${priority}`);
+      return priority;
+    }
+
+    // Not an employee - default to 0 (public commands only)
+    console.log(`[getEmployeeRolePriority] No employee found for LINE user ${lineUserId}, using priority 0`);
+    return 0;
+  } catch (error) {
+    console.error('[getEmployeeRolePriority] Error:', error);
+    return 0; // Safe default
+  }
+}
+
+/**
+ * Handle /help command - show available commands (Dynamic from database, filtered by role)
  */
 async function handleHelpCommand(
   groupId: string,
   userId: string,
   language: 'en' | 'th' | 'other',
-  replyToken: string
+  replyToken: string,
+  lineUserId: string  // ✅ NEW: Added for role-based filtering
 ) {
   console.log(`[handleHelpCommand] Generating dynamic help for user ${userId} in ${language}`);
 
   try {
-    // Fetch all enabled commands from database with their aliases
+    // ✅ Get user's role priority for filtering commands
+    const userRolePriority = await getEmployeeRolePriority(lineUserId);
+    console.log(`[handleHelpCommand] User role priority: ${userRolePriority}`);
+
+    // Fetch enabled commands filtered by user's role priority
     const { data: commands, error: cmdError } = await supabase
       .from('bot_commands')
       .select(`
@@ -5057,6 +5126,7 @@ async function handleHelpCommand(
         )
       `)
       .eq('is_enabled', true)
+      .lte('min_role_priority', userRolePriority)  // ✅ Filter by role
       .order('display_order');
 
     if (cmdError || !commands) {
@@ -5064,6 +5134,8 @@ async function handleHelpCommand(
       await replyToLine(replyToken, 'Sorry, I couldn\'t load the command list.');
       return;
     }
+    
+    console.log(`[handleHelpCommand] Found ${commands.length} commands for user with priority ${userRolePriority}`);
 
     // Category icons and names
     // ⚠️ SYNC: Must include all categories from bot_commands table
@@ -10302,10 +10374,10 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // Handle /help command
+  // Handle /help command (role-based dynamic help)
   if (parsed.commandType === 'help') {
     const language = detectLanguage(event.message.text);
-    await handleHelpCommand(group.id, user.id, language, event.replyToken);
+    await handleHelpCommand(group.id, user.id, language, event.replyToken, lineUserId);
     return;
   }
 
