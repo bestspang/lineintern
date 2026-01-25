@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles } from 'lucide-react';
+import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -80,6 +80,60 @@ export default function Overview() {
 
       if (error) throw error;
       return data;
+    },
+    refetchInterval: 60000,
+  });
+
+  // ✅ NEW: Attendance System Health Check
+  const { data: attendanceHealth, isLoading: attendanceHealthLoading } = useQuery({
+    queryKey: ['attendance-system-health'],
+    queryFn: async () => {
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+
+      const [
+        orphanedSessionsRes,
+        expiredTokensRes,
+        recentCheckInsRes,
+        cronLogsRes,
+      ] = await Promise.all([
+        // Orphaned work_sessions (active > 24 hours)
+        supabase
+          .from('work_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'active')
+          .lt('actual_start_time', twentyFourHoursAgo),
+        
+        // Expired pending tokens
+        supabase
+          .from('attendance_tokens')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .lt('expires_at', now.toISOString()),
+        
+        // Recent check-ins (last hour)
+        supabase
+          .from('attendance_logs')
+          .select('id', { count: 'exact', head: true })
+          .gte('server_time', oneHourAgo),
+        
+        // Recent cron job logs (stale-session-cleaner)
+        supabase
+          .from('bot_message_logs')
+          .select('id, sent_at, delivery_status')
+          .eq('edge_function_name', 'stale-session-cleaner')
+          .order('sent_at', { ascending: false })
+          .limit(1),
+      ]);
+
+      return {
+        orphanedSessions: orphanedSessionsRes.count || 0,
+        expiredTokens: expiredTokensRes.count || 0,
+        recentCheckIns: recentCheckInsRes.count || 0,
+        lastCleanerRun: cronLogsRes.data?.[0]?.sent_at || null,
+        cleanerStatus: cronLogsRes.data?.[0]?.delivery_status || 'unknown',
+      };
     },
     refetchInterval: 60000,
   });
@@ -218,6 +272,72 @@ export default function Overview() {
         </CardContent>
       </Card>
 
+      {/* ✅ NEW: Attendance System Health Card */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6 pb-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Server className="h-5 w-5 text-blue-600" />
+            Attendance System Health
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Session & token monitoring</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          {attendanceHealthLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className={`text-2xl font-bold ${(attendanceHealth?.orphanedSessions || 0) > 0 ? 'text-destructive' : 'text-foreground'}`}>
+                  {attendanceHealth?.orphanedSessions || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Orphaned Sessions</p>
+                {(attendanceHealth?.orphanedSessions || 0) > 0 && (
+                  <Badge variant="destructive" className="mt-1 text-[10px]">⚠️ Needs cleanup</Badge>
+                )}
+              </div>
+              
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className={`text-2xl font-bold ${(attendanceHealth?.expiredTokens || 0) > 5 ? 'text-amber-600' : 'text-foreground'}`}>
+                  {attendanceHealth?.expiredTokens || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Expired Tokens</p>
+              </div>
+              
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-2xl font-bold">
+                  {attendanceHealth?.recentCheckIns || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Check-ins (1h)</p>
+              </div>
+              
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center justify-center gap-1">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    {attendanceHealth?.lastCleanerRun 
+                      ? formatInTimeZone(new Date(attendanceHealth.lastCleanerRun), 'Asia/Bangkok', 'dd/MM HH:mm', { locale: th })
+                      : 'Never'
+                    }
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Last Cleanup</p>
+                <Badge 
+                  variant={attendanceHealth?.cleanerStatus === 'success' ? 'default' : 'secondary'} 
+                  className="mt-1 text-[10px]"
+                >
+                  {attendanceHealth?.cleanerStatus === 'success' ? '✓ OK' : attendanceHealth?.cleanerStatus || 'Unknown'}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="p-4 sm:p-6">
@@ -276,16 +396,28 @@ export default function Overview() {
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm">Webhook Status</span>
-                  <span className={`h-2 w-2 rounded-full ${systemHealth?.webhook ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                  <span className="text-xs sm:text-sm flex items-center gap-2">
+                    <Wifi className="h-3 w-3" /> Webhook Status
+                  </span>
+                  <Badge variant={systemHealth?.webhook ? 'default' : 'destructive'} className="text-[10px]">
+                    {systemHealth?.webhook ? '✓ Online' : '✗ Offline'}
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm">Database</span>
-                  <span className={`h-2 w-2 rounded-full ${systemHealth?.database ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                  <span className="text-xs sm:text-sm flex items-center gap-2">
+                    <Database className="h-3 w-3" /> Database
+                  </span>
+                  <Badge variant={systemHealth?.database ? 'default' : 'destructive'} className="text-[10px]">
+                    {systemHealth?.database ? '✓ Connected' : '✗ Error'}
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm">LINE API</span>
-                  <span className={`h-2 w-2 rounded-full ${systemHealth?.lineApi ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                  <span className="text-xs sm:text-sm flex items-center gap-2">
+                    <MessageSquare className="h-3 w-3" /> LINE API
+                  </span>
+                  <Badge variant={systemHealth?.lineApi ? 'default' : 'destructive'} className="text-[10px]">
+                    {systemHealth?.lineApi ? '✓ Healthy' : '✗ Degraded'}
+                  </Badge>
                 </div>
               </div>
             )}
