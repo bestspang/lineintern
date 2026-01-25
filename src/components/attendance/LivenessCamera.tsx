@@ -93,6 +93,9 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   const challengeCompletedRef = useRef(false);
   const step2ChallengeRef = useRef<"blink" | "turn_left">("blink");
   
+  // ✅ Ref for FaceLandmarker cleanup (avoids stale closure in useEffect cleanup)
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  
   // Tips dialog state
   const [showTips, setShowTips] = useState(false);
   
@@ -261,12 +264,18 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     }));
   }, [checkWebGL2Support, categorizeError, tryCreateLandmarker]);
 
-  // ✅ Initialize on mount
+  // ✅ Sync faceLandmarker state to ref for cleanup
+  useEffect(() => {
+    faceLandmarkerRef.current = faceLandmarker;
+  }, [faceLandmarker]);
+
+  // ✅ Initialize on mount - FIXED: Empty dependency to prevent infinite loop
   useEffect(() => {
     let isMounted = true;
     
     const init = async () => {
       if (isMounted) {
+        // Call the initialization function
         await initializeFaceLandmarker();
       }
     };
@@ -275,11 +284,19 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
 
     return () => {
       isMounted = false;
-      if (faceLandmarker) {
-        faceLandmarker.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ✅ Empty dependency - run once on mount only
+
+  // ✅ Cleanup FaceLandmarker on unmount - separate effect
+  useEffect(() => {
+    return () => {
+      if (faceLandmarkerRef.current) {
+        console.log("[FaceLandmarker] Cleaning up...");
+        faceLandmarkerRef.current.close();
       }
     };
-  }, [initializeFaceLandmarker]);
+  }, []);
 
   // Start camera
   useEffect(() => {
@@ -470,13 +487,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
 
     const landmarks = result.faceLandmarks[0];
     
-    // ✅ Debug: Log current ref values
-    console.log("[DEBUG] detectLiveness called with refs:", {
-      waitingForCenterAfterStep1: waitingForCenterAfterStep1Ref.current,
-      step1Completed: step1CompletedRef.current,
-      challengeStep: challengeStepRef.current,
-      currentChallenge: currentChallengeRef.current
-    });
+    // Debug logs removed - were causing performance issues by running every frame
 
     // Blink detection - only during step 2 if challenge is blink
     if (!challengeCompletedRef.current && challengeStepRef.current === 2 && currentChallengeRef.current === "blink") {
@@ -528,19 +539,11 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       if (Math.abs(normalizedOffset) <= 0.10) {
         setHeadPosition("center");
         
-        console.log("[DEBUG] ✓ Detected center after step 1, advancing to step 2...", {
-          normalizedOffset,
-          step1Completed: step1CompletedRef.current,
-          step2Challenge: step2ChallengeRef.current
-        });
-        
         // ✅ Advance to step 2 immediately
         setWaitingForCenterAfterStep1(false);
         setChallengeStep(2);
         setCurrentChallenge(step2ChallengeRef.current);
         livenessDataRef.current.headTurned = true;
-        
-        console.log("[DEBUG] ✅ Advanced to step 2 with challenge:", step2ChallengeRef.current);
       } else {
         // Not centered yet, show position
         if (normalizedOffset < -0.10) {
