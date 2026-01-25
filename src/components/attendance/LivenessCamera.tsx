@@ -166,13 +166,28 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           landmarker.close();
         }
       } catch (err) {
+        // ✅ Extract error message safely - handle Error, Event, and unknown types
+        const getErrorMessage = (e: unknown): string => {
+          if (e instanceof Error) return e.message;
+          if (e instanceof Event) {
+            // Handle ProgressEvent from failed fetches
+            if ('type' in e) return `Event: ${e.type}`;
+            return 'Unknown Event';
+          }
+          if (typeof e === 'string') return e;
+          if (e && typeof e === 'object' && 'message' in e) return String((e as any).message);
+          return 'Unknown error';
+        };
+        
+        const errMsg = getErrorMessage(err);
+        
         // ✅ Enhanced debug logging for troubleshooting
         const canvas = document.createElement('canvas');
         const debugInfo = {
           gpu: useGpu,
           retry: retryCount,
           cdnIndex,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMsg,
           errorType: err?.constructor?.name || 'Unknown',
           stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
           userAgent: navigator.userAgent,
@@ -223,9 +238,8 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           
           // Determine specific error message
           let userFriendlyError = "";
-          const errMsg = err instanceof Error ? err.message : String(err);
           
-          if (errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load')) {
+          if (errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load') || errMsg.includes('Event:')) {
             userFriendlyError = "ไม่สามารถดาวน์โหลดโมเดลได้ - กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต";
           } else if (errMsg.includes('WebGL') || errMsg.includes('GPU')) {
             userFriendlyError = "อุปกรณ์ไม่รองรับ WebGL - กรุณาใช้เบราว์เซอร์อื่น";
@@ -233,8 +247,8 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
             userFriendlyError = "หน่วยความจำไม่พอ - กรุณาปิดแอปอื่นและลองใหม่";
           } else if (errMsg.includes('CORS') || errMsg.includes('blocked')) {
             userFriendlyError = "CDN ถูกบล็อก - กรุณาลองเปลี่ยน WiFi หรือใช้ 4G";
-          } else if (!errMsg || errMsg === 'Unknown error' || errMsg === 'undefined') {
-            userFriendlyError = "เกิดข้อผิดพลาดไม่ทราบสาเหตุ - กรุณาลองรีเฟรชหน้าใหม่หรือเปลี่ยนเบราว์เซอร์";
+          } else if (!errMsg || errMsg === 'Unknown error' || errMsg === 'undefined' || errMsg.includes('[object')) {
+            userFriendlyError = "เกิดข้อผิดพลาด - กรุณาลองรีเฟรชหน้าใหม่หรือเปลี่ยนเบราว์เซอร์";
           } else {
             userFriendlyError = errMsg;
           }
