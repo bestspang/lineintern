@@ -633,6 +633,7 @@ export type Database = {
           icon_name: string | null
           id: string
           is_enabled: boolean | null
+          min_role_priority: number | null
           require_mention_in_group: boolean | null
           updated_at: string | null
           usage_example_en: string | null
@@ -652,6 +653,7 @@ export type Database = {
           icon_name?: string | null
           id?: string
           is_enabled?: boolean | null
+          min_role_priority?: number | null
           require_mention_in_group?: boolean | null
           updated_at?: string | null
           usage_example_en?: string | null
@@ -671,6 +673,7 @@ export type Database = {
           icon_name?: string | null
           id?: string
           is_enabled?: boolean | null
+          min_role_priority?: number | null
           require_mention_in_group?: boolean | null
           updated_at?: string | null
           usage_example_en?: string | null
