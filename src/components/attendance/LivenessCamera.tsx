@@ -108,154 +108,50 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     step2ChallengeRef.current = step2Challenge;
   }, [step2Challenge]);
 
-  // ✅ State for retry and loading status
-  const [modelLoadingStatus, setModelLoadingStatus] = useState<"loading" | "retrying" | "loaded" | "error" | "skipped">("loading");
-  const [manualRetryCount, setManualRetryCount] = useState(0); // Trigger for manual retry
-  const [skipLiveness, setSkipLiveness] = useState(false); // Skip liveness if model fails completely
-
-  // ✅ Extracted initialization function for reuse
-  const initializeFaceLandmarkerRef = useRef<(() => Promise<void>) | null>(null);
-
-  // Initialize MediaPipe Face Landmarker with GPU → CPU fallback + retry
-  // ✅ SIMPLIFIED: Remove pre-test, just try to load directly with better error handling
+  // Initialize MediaPipe Face Landmarker
   useEffect(() => {
-    let isMounted = true;
-    let aborted = false;
+    let isMounted = true; // ✅ Memory leak prevention
     
-    // Multiple CDN sources for resilience
-    const cdnSources = [
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm",
-      "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
-    ];
-    
-    const initializeFaceLandmarker = async (): Promise<void> => {
-      if (!isMounted || aborted) return;
-      
-      setModelLoadingStatus("loading");
-      setError("");
-      
-      // Pre-check: Verify WebGL2 support for GPU mode decision
-      const testCanvas = document.createElement('canvas');
-      const hasWebGL2 = !!testCanvas.getContext('webgl2');
-      console.log(`[FaceLandmarker] WebGL2 support: ${hasWebGL2}`);
-      
-      // Try each CDN with GPU first, then CPU fallback
-      for (let cdnIndex = 0; cdnIndex < cdnSources.length; cdnIndex++) {
-        if (!isMounted || aborted) return;
+    const initializeFaceLandmarker = async () => {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        );
         
-        const cdnUrl = cdnSources[cdnIndex];
-        const delegatesToTry = hasWebGL2 ? ["GPU", "CPU"] : ["CPU"]; // Skip GPU if no WebGL2
+        const landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU",
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: "VIDEO",
+          numFaces: 1,
+        });
         
-        for (const delegate of delegatesToTry) {
-          if (!isMounted || aborted) return;
-          
-          try {
-            console.log(`[FaceLandmarker] Trying CDN ${cdnIndex} with ${delegate}...`);
-            setModelLoadingStatus(cdnIndex > 0 ? "retrying" : "loading");
-            
-            // Attempt to load FilesetResolver with timeout
-            const visionPromise = FilesetResolver.forVisionTasks(cdnUrl);
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('TIMEOUT')), 30000) // 30s timeout
-            );
-            
-            const vision = await Promise.race([visionPromise, timeoutPromise]) as Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>;
-            
-            if (!isMounted || aborted) return;
-            
-            // Attempt to create FaceLandmarker
-            const landmarker = await FaceLandmarker.createFromOptions(vision, {
-              baseOptions: {
-                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-                delegate: delegate as "GPU" | "CPU",
-              },
-              outputFaceBlendshapes: true,
-              outputFacialTransformationMatrixes: true,
-              runningMode: "VIDEO",
-              numFaces: 1,
-            });
-            
-            if (!isMounted || aborted) {
-              landmarker.close();
-              return;
-            }
-            
-            // ✅ Success!
-            setFaceLandmarker(landmarker);
-            setModelLoadingStatus("loaded");
-            setSkipLiveness(false);
-            setError("");
-            console.log(`[FaceLandmarker] ✅ Loaded successfully (CDN=${cdnIndex}, delegate=${delegate})`);
-            return; // Exit all loops on success
-            
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            console.warn(`[FaceLandmarker] CDN ${cdnIndex}/${delegate} failed:`, errMsg);
-            
-            // If it's a delegate-specific error, continue to next delegate
-            // Otherwise continue to next CDN
-          }
+        // ✅ Only update state if component is still mounted
+        if (isMounted) {
+          setFaceLandmarker(landmarker);
+        } else {
+          landmarker.close();
+        }
+      } catch (err) {
+        console.error("Failed to initialize face landmarker:", err);
+        if (isMounted) {
+          setError("Failed to load face detection model");
         }
       }
-      
-      // All CDNs and delegates failed
-      if (!isMounted || aborted) return;
-      
-      // ✅ Enhanced debug logging
-      const debugInfo = {
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        webgl2: hasWebGL2,
-        deviceMemory: (navigator as any).deviceMemory || 'unknown',
-        connection: (navigator as any).connection?.effectiveType || 'unknown',
-        cdnsTried: cdnSources.length,
-        timestamp: new Date().toISOString(),
-      };
-      
-      console.error("[FaceLandmarker] 🚨 All CDNs and delegates failed:", debugInfo);
-      
-      // Non-blocking log to server
-      try {
-        fetch('/api/debug-log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'face_landmarker_all_failed', ...debugInfo }),
-        }).catch(() => {});
-      } catch {}
-      
-      setModelLoadingStatus("error");
-      setError("ไม่สามารถโหลดระบบตรวจจับใบหน้าได้ - กรุณากดลองใหม่หรือถ่ายรูปแบบปกติ");
-    };
-
-    // ✅ Store reference for manual retry
-    initializeFaceLandmarkerRef.current = () => {
-      aborted = false;
-      return initializeFaceLandmarker();
     };
 
     initializeFaceLandmarker();
 
     return () => {
-      isMounted = false;
-      aborted = true;
+      isMounted = false; // ✅ Mark as unmounted
       if (faceLandmarker) {
         faceLandmarker.close();
       }
     };
-  }, [manualRetryCount]); // Re-run when manualRetryCount changes
-
-  // ✅ Manual retry handler (doesn't reload entire page)
-  const handleManualRetry = () => {
-    console.log("[FaceLandmarker] 🔄 Manual retry triggered by user");
-    // Close existing landmarker if any
-    if (faceLandmarker) {
-      faceLandmarker.close();
-      setFaceLandmarker(null);
-    }
-    setError("");
-    setModelLoadingStatus("loading");
-    setManualRetryCount(prev => prev + 1);
-  };
+  }, []);
 
   // Start camera
   useEffect(() => {
@@ -607,52 +503,6 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     }
   };
 
-  // ✅ Capture photo without liveness check (fallback when model fails)
-  const capturePhotoWithoutLiveness = async () => {
-    if (!videoRef.current || !canvasRef.current) {
-      setError("ไม่สามารถเข้าถึงกล้องได้");
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Cannot get canvas context");
-      
-      // Mirror the captured image
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0);
-      
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            // Create liveness data indicating skipped verification
-            const fallbackLivenessData: LivenessData = {
-              blinked: false,
-              headTurned: false,
-              challenge: "skipped_due_to_model_load_failure",
-              timestamp: Date.now(),
-            };
-            onCapture(blob, fallbackLivenessData);
-          }
-        },
-        "image/jpeg",
-        0.9
-      );
-    } catch (err) {
-      console.error("Capture error (fallback):", err);
-      setError("Failed to capture photo");
-      setIsProcessing(false);
-    }
-  };
-
   // ✅ Helper: Get gradient class from bg_color key
   const getBgGradientClass = (colorKey: string) => {
     const colorMap: Record<string, string> = {
@@ -683,120 +533,9 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
-          {/* Skip Liveness Mode - Allow photo capture without face detection */}
-          {skipLiveness ? (
-            <div className="space-y-4">
-              <div className="bg-accent/10 text-accent-foreground border border-accent/30 p-4 rounded-lg">
-                <div className="font-medium mb-1 flex items-center gap-2">
-                  <Camera className="h-4 w-4" />
-                  โหมดถ่ายรูปปกติ
-                </div>
-                <p className="text-sm text-muted-foreground">ระบบตรวจสอบใบหน้าไม่พร้อมใช้งาน กรุณาถ่ายรูปตามปกติ</p>
-              </div>
-              
-              {/* Video Feed for skip mode */}
-              <div className="relative bg-black rounded-lg overflow-hidden h-[400px] sm:h-[450px]">
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover scale-x-[-1]"
-                  playsInline
-                  muted
-                />
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
-              
-              {/* Actions for skip mode */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={onCancel}
-                  disabled={isProcessing}
-                  className="flex-1"
-                >
-                  ยกเลิก
-                </Button>
-                <Button
-                  onClick={capturePhoto}
-                  disabled={isProcessing || !stream}
-                  className="flex-1"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Camera className="h-4 w-4 mr-2 animate-pulse" />
-                      กำลังถ่ายรูป...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="h-4 w-4 mr-2" />
-                      📷 ถ่ายรูป
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          ) : error || modelLoadingStatus === "error" ? (
-            <div className="space-y-4">
-              <div className="bg-destructive/10 text-destructive p-4 rounded-lg whitespace-pre-line">
-                {error || "ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้"}
-              </div>
-              
-              {/* Retry and Skip buttons */}
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleManualRetry}
-                  variant="default"
-                  className="flex-1"
-                  disabled={modelLoadingStatus === "loading" || modelLoadingStatus === "retrying"}
-                >
-                  {modelLoadingStatus === "loading" || modelLoadingStatus === "retrying" 
-                    ? "🔄 กำลังโหลด..." 
-                    : "🔄 ลองใหม่"}
-                </Button>
-                
-                {/* Skip liveness button - allows photo capture without face detection */}
-                <Button 
-                  onClick={() => {
-                    setSkipLiveness(true);
-                    setModelLoadingStatus("skipped");
-                    setError("");
-                    // Mark as completed so user can capture photo
-                    setChallengeCompleted(true);
-                    setWaitingForCenter(false);
-                    livenessDataRef.current = {
-                      blinked: false,
-                      headTurned: false,
-                      challenge: "skipped_due_to_error",
-                      timestamp: Date.now(),
-                    };
-                    console.log("[FaceLandmarker] 🚨 User skipped liveness detection");
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  📷 ถ่ายรูปเลย
-                </Button>
-              </div>
-              
-              <p className="text-xs text-muted-foreground text-center">
-                หากปัญหายังคงอยู่ สามารถกด "ถ่ายรูปเลย" เพื่อถ่ายรูปแบบปกติได้
-              </p>
-              
-              {/* Debug info for troubleshooting */}
-              <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer hover:underline">ข้อมูล Debug (สำหรับแจ้งปัญหา)</summary>
-                <pre className="mt-2 p-2 bg-muted rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all">
-{JSON.stringify({
-  userAgent: navigator.userAgent,
-  platform: navigator.platform,
-  webglSupport: !!document.createElement('canvas').getContext('webgl2'),
-  deviceMemory: (navigator as any).deviceMemory || 'unknown',
-  hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-  timestamp: new Date().toISOString(),
-  modelStatus: modelLoadingStatus,
-  errorMessage: error,
-}, null, 2)}
-                </pre>
-              </details>
+          {error ? (
+            <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
+              {error}
             </div>
           ) : (
             <>
