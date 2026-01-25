@@ -231,17 +231,43 @@ async function uploadRichMenuImage(lineAccessToken: string, richMenuId: string, 
     return { success: false, error: `Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}` };
   }
 
-  const originalContentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+  const originalContentType = imageResponse.headers.get('content-type') || '';
   const imageBuffer = await imageResponse.arrayBuffer();
+  
+  // Validate that we actually received an image, not HTML (error page, redirect, etc.)
+  if (originalContentType.includes('text/html') || originalContentType.includes('text/plain')) {
+    console.error(`[line-richmenu-setup] URL returned non-image content: ${originalContentType}`);
+    return { 
+      success: false, 
+      error: `Image URL returned invalid content type: ${originalContentType}. Please ensure the URL points directly to an image file (PNG or JPEG).` 
+    };
+  }
   
   // LINE API only accepts 'image/jpeg' or 'image/png' - normalize the content type
   // Some servers return 'image/jpg' which LINE rejects
   let lineContentType: 'image/jpeg' | 'image/png' = 'image/jpeg';
   if (originalContentType.includes('png')) {
     lineContentType = 'image/png';
+  } else if (!originalContentType.includes('jpeg') && !originalContentType.includes('jpg') && !originalContentType.includes('png')) {
+    // If content type is not a recognized image type, try to detect from magic bytes
+    const uint8 = new Uint8Array(imageBuffer.slice(0, 8));
+    // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
+    if (uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) {
+      lineContentType = 'image/png';
+    }
+    // JPEG magic bytes: FF D8 FF
+    else if (uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF) {
+      lineContentType = 'image/jpeg';
+    } else {
+      console.error(`[line-richmenu-setup] Could not detect image type from content: ${originalContentType}`);
+      return { 
+        success: false, 
+        error: `Could not detect image type. Content-Type was: ${originalContentType || 'not specified'}. Please use PNG or JPEG images.` 
+      };
+    }
   }
   
-  console.log(`[line-richmenu-setup] Uploading image (${imageBuffer.byteLength} bytes, original: ${originalContentType}, sending: ${lineContentType}) to Rich Menu: ${richMenuId}`);
+  console.log(`[line-richmenu-setup] Uploading image (${imageBuffer.byteLength} bytes, original: ${originalContentType || 'unknown'}, sending: ${lineContentType}) to Rich Menu: ${richMenuId}`);
 
   const uploadResponse = await fetch(
     `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
