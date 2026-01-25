@@ -5951,6 +5951,7 @@ export type Database = {
         Row: {
           actual_end_time: string | null
           actual_start_time: string | null
+          admin_notes: string | null
           admin_notified_at: string | null
           auto_checkout_grace_expires_at: string | null
           auto_checkout_performed: boolean | null
@@ -5977,6 +5978,7 @@ export type Database = {
         Insert: {
           actual_end_time?: string | null
           actual_start_time?: string | null
+          admin_notes?: string | null
           admin_notified_at?: string | null
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null
@@ -6003,6 +6005,7 @@ export type Database = {
         Update: {
           actual_end_time?: string | null
           actual_start_time?: string | null
+          admin_notes?: string | null
           admin_notified_at?: string | null
           auto_checkout_grace_expires_at?: string | null
           auto_checkout_performed?: boolean | null

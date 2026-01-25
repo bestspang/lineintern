@@ -53,6 +53,36 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ========================================
+    // CLEANUP EXPIRED ATTENDANCE TOKENS (always run first)
+    // ========================================
+    const { data: expiredTokens, error: tokenFetchError } = await supabase
+      .from("attendance_tokens")
+      .select("id")
+      .eq("status", "pending")
+      .lt("expires_at", new Date().toISOString());
+
+    let expiredTokenCount = 0;
+    if (!tokenFetchError && expiredTokens && expiredTokens.length > 0) {
+      const { error: tokenUpdateError } = await supabase
+        .from("attendance_tokens")
+        .update({ status: "expired" })
+        .eq("status", "pending")
+        .lt("expires_at", new Date().toISOString());
+
+      if (!tokenUpdateError) {
+        expiredTokenCount = expiredTokens.length;
+        console.log(`[stale-session-cleaner] ✅ Cleaned ${expiredTokenCount} expired tokens`);
+      } else {
+        console.warn(`[stale-session-cleaner] Failed to cleanup tokens: ${tokenUpdateError.message}`);
+      }
+    } else {
+      console.log(`[stale-session-cleaner] No expired tokens to cleanup`);
+    }
+
+    // ========================================
+    // CLEANUP STALE WORK SESSIONS
+    // ========================================
     // Find stale sessions (active for more than 24 hours)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
@@ -70,47 +100,36 @@ Deno.serve(async (req) => {
     const staleCount = staleSessions?.length || 0;
     console.log(`[stale-session-cleaner] Found ${staleCount} stale sessions`);
 
-    if (staleCount === 0) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: "No stale sessions found",
-          stats: {
-            checked_at: today,
-            stale_count: 0,
-            cleaned_count: 0,
-            duration_ms: Date.now() - startTime,
-          },
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let cleanedCount = 0;
+
+    if (staleCount > 0) {
+      // Log details of sessions being cleaned
+      for (const session of staleSessions) {
+        console.log(`[stale-session-cleaner] Cleaning session: ${session.id}, employee: ${session.employee_id}, started: ${session.actual_start_time}`);
+      }
+
+      // Update stale sessions to auto_closed with admin_notes
+      const { data: updatedSessions, error: updateError } = await supabase
+        .from("work_sessions")
+        .update({
+          status: "auto_closed",
+          actual_end_time: new Date(
+            new Date(staleSessions[0].actual_start_time).getTime() + 8 * 60 * 60 * 1000
+          ).toISOString(), // Set end time to 8 hours after start
+          admin_notes: `Auto-closed by stale-session-cleaner on ${today}: session active > 24 hours`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("status", "active")
+        .lt("actual_start_time", twentyFourHoursAgo)
+        .select("id");
+
+      if (updateError) {
+        throw new Error(`Failed to update stale sessions: ${updateError.message}`);
+      }
+
+      cleanedCount = updatedSessions?.length || 0;
+      console.log(`[stale-session-cleaner] ✅ Successfully cleaned ${cleanedCount} stale sessions`);
     }
-
-    // Log details of sessions being cleaned
-    for (const session of staleSessions) {
-      console.log(`[stale-session-cleaner] Cleaning session: ${session.id}, employee: ${session.employee_id}, started: ${session.actual_start_time}`);
-    }
-
-    // Update stale sessions to auto_closed
-    const { data: updatedSessions, error: updateError } = await supabase
-      .from("work_sessions")
-      .update({
-        status: "auto_closed",
-        actual_end_time: new Date(
-          new Date(staleSessions[0].actual_start_time).getTime() + 8 * 60 * 60 * 1000
-        ).toISOString(), // Set end time to 8 hours after start
-        updated_at: new Date().toISOString(),
-      })
-      .eq("status", "active")
-      .lt("actual_start_time", twentyFourHoursAgo)
-      .select("id");
-
-    if (updateError) {
-      throw new Error(`Failed to update stale sessions: ${updateError.message}`);
-    }
-
-    const cleanedCount = updatedSessions?.length || 0;
-    console.log(`[stale-session-cleaner] ✅ Successfully cleaned ${cleanedCount} stale sessions`);
 
     // Log cleanup result for monitoring
     try {
@@ -119,7 +138,7 @@ Deno.serve(async (req) => {
         destination_type: "system",
         destination_id: "system",
         message_type: "info",
-        message_text: `Cleaned ${cleanedCount} stale work sessions`,
+        message_text: `Cleaned ${cleanedCount} stale sessions, ${expiredTokenCount} expired tokens`,
         command_type: "cron_cleanup",
         delivery_status: "success",
       });
@@ -130,14 +149,14 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Successfully cleaned ${cleanedCount} stale sessions`,
+        message: `Successfully cleaned ${cleanedCount} stale sessions and ${expiredTokenCount} expired tokens`,
         stats: {
           checked_at: today,
           stale_count: staleCount,
           cleaned_count: cleanedCount,
+          expired_tokens_cleaned: expiredTokenCount,
           duration_ms: Date.now() - startTime,
         },
-        cleaned_sessions: updatedSessions?.map(s => s.id) || [],
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
