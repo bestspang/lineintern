@@ -535,6 +535,52 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     }
   };
 
+  // ✅ Capture photo without liveness check (fallback when model fails)
+  const capturePhotoWithoutLiveness = async () => {
+    if (!videoRef.current || !canvasRef.current) {
+      setError("ไม่สามารถเข้าถึงกล้องได้");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Cannot get canvas context");
+      
+      // Mirror the captured image
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0);
+      
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            // Create liveness data indicating skipped verification
+            const fallbackLivenessData: LivenessData = {
+              blinked: false,
+              headTurned: false,
+              challenge: "skipped_due_to_model_load_failure",
+              timestamp: Date.now(),
+            };
+            onCapture(blob, fallbackLivenessData);
+          }
+        },
+        "image/jpeg",
+        0.9
+      );
+    } catch (err) {
+      console.error("Capture error (fallback):", err);
+      setError("Failed to capture photo");
+      setIsProcessing(false);
+    }
+  };
+
   // ✅ Helper: Get gradient class from bg_color key
   const getBgGradientClass = (colorKey: string) => {
     const colorMap: Record<string, string> = {
@@ -565,9 +611,34 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
-          {error ? (
-            <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-              {error}
+          {error || modelLoadingStatus === "error" ? (
+            <div className="space-y-4">
+              <div className="bg-destructive/10 text-destructive p-4 rounded-lg whitespace-pre-line">
+                {error || "ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้"}
+              </div>
+              
+              {/* Retry / Skip buttons */}
+              <div className="flex flex-col gap-2">
+                <Button 
+                  onClick={() => window.location.reload()}
+                  variant="default"
+                  className="w-full"
+                >
+                  🔄 ลองใหม่อีกครั้ง (Refresh)
+                </Button>
+                
+                <Button 
+                  onClick={capturePhotoWithoutLiveness}
+                  variant="outline"
+                  className="w-full text-muted-foreground"
+                >
+                  📷 ข้ามขั้นตอนนี้ (ถ่ายรูปโดยไม่ตรวจใบหน้า)
+                </Button>
+              </div>
+              
+              <p className="text-xs text-muted-foreground text-center">
+                สาเหตุที่เป็นไปได้: สัญญาณอินเทอร์เน็ตไม่เสถียร, เบราว์เซอร์ไม่รองรับ, หรือหน่วยความจำไม่พอ
+              </p>
             </div>
           ) : (
             <>
