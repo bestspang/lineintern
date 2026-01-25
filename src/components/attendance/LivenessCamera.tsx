@@ -110,6 +110,10 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
 
   // ✅ State for retry and loading status
   const [modelLoadingStatus, setModelLoadingStatus] = useState<"loading" | "retrying" | "loaded" | "error">("loading");
+  const [manualRetryCount, setManualRetryCount] = useState(0); // Trigger for manual retry
+
+  // ✅ Extracted initialization function for reuse
+  const initializeFaceLandmarkerRef = useRef<(() => Promise<void>) | null>(null);
 
   // Initialize MediaPipe Face Landmarker with GPU → CPU fallback + retry
   useEffect(() => {
@@ -121,6 +125,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       try {
         if (!isMounted) return;
         setModelLoadingStatus(retryCount > 0 ? "retrying" : "loading");
+        setError("");
         
         console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount})`);
         
@@ -200,6 +205,12 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       }
     };
 
+    // ✅ Store reference for manual retry
+    initializeFaceLandmarkerRef.current = () => {
+      retryCount = 0; // Reset retry count for manual retry
+      return initializeFaceLandmarker(true);
+    };
+
     initializeFaceLandmarker();
 
     return () => {
@@ -208,7 +219,20 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         faceLandmarker.close();
       }
     };
-  }, []);
+  }, [manualRetryCount]); // Re-run when manualRetryCount changes
+
+  // ✅ Manual retry handler (doesn't reload entire page)
+  const handleManualRetry = () => {
+    console.log("[FaceLandmarker] 🔄 Manual retry triggered by user");
+    // Close existing landmarker if any
+    if (faceLandmarker) {
+      faceLandmarker.close();
+      setFaceLandmarker(null);
+    }
+    setError("");
+    setModelLoadingStatus("loading");
+    setManualRetryCount(prev => prev + 1);
+  };
 
   // Start camera
   useEffect(() => {
@@ -642,13 +666,16 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 {error || "ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้"}
               </div>
               
-              {/* Retry button */}
+              {/* Retry button - only reloads face model, not entire page */}
               <Button 
-                onClick={() => window.location.reload()}
+                onClick={handleManualRetry}
                 variant="default"
                 className="w-full"
+                disabled={modelLoadingStatus === "loading" || modelLoadingStatus === "retrying"}
               >
-                🔄 ลองใหม่อีกครั้ง (Refresh)
+                {modelLoadingStatus === "loading" || modelLoadingStatus === "retrying" 
+                  ? "🔄 กำลังโหลด..." 
+                  : "🔄 ลองโหลดใหม่"}
               </Button>
               
               <p className="text-xs text-muted-foreground text-center">
