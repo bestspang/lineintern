@@ -148,7 +148,29 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           landmarker.close();
         }
       } catch (err) {
-        console.error(`[FaceLandmarker] Failed (GPU=${useGpu}, retry=${retryCount}):`, err);
+        // ✅ Enhanced debug logging for troubleshooting
+        const debugInfo = {
+          gpu: useGpu,
+          retry: retryCount,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          webgl2: !!document.createElement('canvas').getContext('webgl2'),
+          deviceMemory: (navigator as any).deviceMemory || 'unknown',
+          timestamp: new Date().toISOString(),
+        };
+        
+        console.error(`[FaceLandmarker] ❌ Failed:`, debugInfo);
+        
+        // Send debug info to server for tracking (non-blocking)
+        try {
+          fetch('/api/debug-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'face_landmarker_error', ...debugInfo }),
+          }).catch(() => {}); // Ignore fetch errors
+        } catch {}
         
         if (!isMounted) return;
         
@@ -166,11 +188,14 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           return initializeFaceLandmarker(true);
         }
         
-        // All retries exhausted
+        // All retries exhausted - show detailed error
         if (isMounted) {
           setModelLoadingStatus("error");
           const errMessage = err instanceof Error ? err.message : "Unknown error";
-          setError(`ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้\n(${errMessage})\n\nกรุณาลองรีเฟรชหน้านี้`);
+          setError(`ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้\n\n${errMessage}`);
+          
+          // Log final failure
+          console.error("[FaceLandmarker] 🚨 All retries exhausted:", debugInfo);
         }
       }
     };
@@ -617,28 +642,35 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 {error || "ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้"}
               </div>
               
-              {/* Retry / Skip buttons */}
-              <div className="flex flex-col gap-2">
-                <Button 
-                  onClick={() => window.location.reload()}
-                  variant="default"
-                  className="w-full"
-                >
-                  🔄 ลองใหม่อีกครั้ง (Refresh)
-                </Button>
-                
-                <Button 
-                  onClick={capturePhotoWithoutLiveness}
-                  variant="outline"
-                  className="w-full text-muted-foreground"
-                >
-                  📷 ข้ามขั้นตอนนี้ (ถ่ายรูปโดยไม่ตรวจใบหน้า)
-                </Button>
-              </div>
+              {/* Retry button */}
+              <Button 
+                onClick={() => window.location.reload()}
+                variant="default"
+                className="w-full"
+              >
+                🔄 ลองใหม่อีกครั้ง (Refresh)
+              </Button>
               
               <p className="text-xs text-muted-foreground text-center">
                 สาเหตุที่เป็นไปได้: สัญญาณอินเทอร์เน็ตไม่เสถียร, เบราว์เซอร์ไม่รองรับ, หรือหน่วยความจำไม่พอ
               </p>
+              
+              {/* Debug info for troubleshooting */}
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer hover:underline">ข้อมูล Debug (สำหรับแจ้งปัญหา)</summary>
+                <pre className="mt-2 p-2 bg-muted rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all">
+{JSON.stringify({
+  userAgent: navigator.userAgent,
+  platform: navigator.platform,
+  webglSupport: !!document.createElement('canvas').getContext('webgl2'),
+  deviceMemory: (navigator as any).deviceMemory || 'unknown',
+  hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+  timestamp: new Date().toISOString(),
+  modelStatus: modelLoadingStatus,
+  errorMessage: error,
+}, null, 2)}
+                </pre>
+              </details>
             </div>
           ) : (
             <>
