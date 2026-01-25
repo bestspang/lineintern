@@ -29,10 +29,10 @@ const CHALLENGES: { type: Challenge; text: string; icon: any }[] = [
   { type: "turn_right", text: "หันหน้าไปทางขวา", icon: MoveHorizontal },
 ];
 
-// ✅ Multi-CDN Fallback URLs with pinned version
+// ✅ Multi-CDN Fallback URLs with verified stable version
 const CDN_URLS = [
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm",
-  "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm",
+  "https://unpkg.com/@mediapipe/tasks-vision@0.10.17/wasm",
 ];
 
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -119,6 +119,10 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   // Tips dialog state
   const [showTips, setShowTips] = useState(false);
 
+  // ✅ Guards to prevent re-initialization
+  const isInitializingRef = useRef(false);
+  const initAttemptedRef = useRef(false);
+
   // ✅ Sync state to refs for animation frame access
   useEffect(() => {
     waitingForCenterAfterStep1Ref.current = waitingForCenterAfterStep1;
@@ -149,6 +153,13 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     attemptNumber: number = 0, 
     useCpu: boolean = false
   ): Promise<void> => {
+    // ✅ Guard: Prevent concurrent initialization
+    if (isInitializingRef.current) {
+      console.log("[LivenessCamera] Already initializing, skipping...");
+      return;
+    }
+    isInitializingRef.current = true;
+
     const cdnIndex = attemptNumber % CDN_URLS.length;
     const cdnUrl = CDN_URLS[cdnIndex];
     const delegate = useCpu ? "CPU" : "GPU";
@@ -185,7 +196,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       setFaceLandmarker(landmarker);
       setLoadingStatus("");
       setRetryCount(0);
-      
+      isInitializingRef.current = false;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`[LivenessCamera] Attempt ${attemptNumber + 1} failed:`, errorMessage);
@@ -208,6 +219,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         setLoadingStatus(`โหลดไม่สำเร็จ รอ ${delayMs / 1000} วินาทีแล้วลองใหม่...`);
         
         await sleep(delayMs);
+        isInitializingRef.current = false; // Allow retry
         return initializeFaceLandmarker(attemptNumber + 1, useCpu);
       }
       
@@ -216,6 +228,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         console.log("[LivenessCamera] GPU failed, trying CPU fallback...");
         setLoadingStatus("GPU ล้มเหลว กำลังลอง CPU mode...");
         await sleep(1000);
+        isInitializingRef.current = false; // Allow CPU retry
         return initializeFaceLandmarker(0, true);
       }
       
@@ -224,6 +237,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       setError("ไม่สามารถโหลดระบบตรวจจับใบหน้าได้");
       setShowRetryButton(true);
       setLoadingStatus("");
+      isInitializingRef.current = false;
     }
   }, []);
 
@@ -231,24 +245,30 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   const handleRetry = useCallback(() => {
     setIsRetrying(true);
     setRetryCount(prev => prev + 1);
+    isInitializingRef.current = false; // Reset guard for manual retry
     initializeFaceLandmarker(0, false).finally(() => {
       setIsRetrying(false);
     });
   }, [initializeFaceLandmarker]);
 
-  // Initialize on mount
+  // Initialize on mount - ONLY ONCE
   useEffect(() => {
-    let isMounted = true;
+    // ✅ Guard: Prevent double initialization (Strict Mode)
+    if (initAttemptedRef.current) {
+      console.log("[LivenessCamera] Already attempted init, skipping...");
+      return;
+    }
+    initAttemptedRef.current = true;
     
     initializeFaceLandmarker(0, false);
 
     return () => {
-      isMounted = false;
       if (faceLandmarker) {
         faceLandmarker.close();
       }
     };
-  }, [initializeFaceLandmarker]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency - run only on mount
 
   // Start camera
   useEffect(() => {
