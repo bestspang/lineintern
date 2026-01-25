@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { FaceLandmarker, FilesetResolver, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Check, X, Eye, MoveHorizontal } from "lucide-react";
+import { Camera, Check, X, Eye, MoveHorizontal, RefreshCw, ChevronDown } from "lucide-react";
 import { useCuteQuotes } from "@/hooks/useCuteQuotes";
+
+// ✅ Pinned version matching package.json to prevent version mismatch
+const MEDIAPIPE_VERSION = "0.10.22";
+
+// ✅ Multi-CDN redundancy for resilience
+const CDN_SOURCES = [
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`,
+];
+
+// ✅ Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE_MS = 1000;
 
 interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
@@ -82,6 +95,18 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   
   // Tips dialog state
   const [showTips, setShowTips] = useState(false);
+  
+  // ✅ Model loading states for resilience
+  const [isModelLoading, setIsModelLoading] = useState(true);
+  const [modelLoadAttempt, setModelLoadAttempt] = useState(0);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState({
+    webgl2: false,
+    userAgent: '',
+    errorCategory: '',
+    lastCdnTried: '',
+  });
 
   // ✅ Sync state to refs for animation frame access
   useEffect(() => {
@@ -108,50 +133,153 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     step2ChallengeRef.current = step2Challenge;
   }, [step2Challenge]);
 
-  // Initialize MediaPipe Face Landmarker
-  useEffect(() => {
-    let isMounted = true; // ✅ Memory leak prevention
+  // ✅ Helper: Check WebGL2 support
+  const checkWebGL2Support = useCallback(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2');
+      return !!gl;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // ✅ Helper: Categorize error for diagnostics
+  const categorizeError = useCallback((err: unknown): string => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('network') || message.includes('fetch') || message.includes('Failed to fetch')) {
+      return 'Network/CDN Error';
+    }
+    if (message.includes('WebGL') || message.includes('GPU') || message.includes('context')) {
+      return 'GPU/WebGL Error';
+    }
+    if (message.includes('memory') || message.includes('Memory')) {
+      return 'Memory Error';
+    }
+    if (message.includes('wasm') || message.includes('WASM')) {
+      return 'WASM Loading Error';
+    }
+    return 'Unknown Error';
+  }, []);
+
+  // ✅ Helper: Try to create landmarker with specific delegate
+  const tryCreateLandmarker = useCallback(async (
+    vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
+    delegate: "GPU" | "CPU"
+  ): Promise<FaceLandmarker | null> => {
+    try {
+      console.log(`[FaceLandmarker] Trying with delegate: ${delegate}`);
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate,
+        },
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        runningMode: "VIDEO",
+        numFaces: 1,
+      });
+      console.log(`[FaceLandmarker] ✅ Success with ${delegate}`);
+      return landmarker;
+    } catch (err) {
+      console.warn(`[FaceLandmarker] ❌ Failed with ${delegate}:`, err);
+      return null;
+    }
+  }, []);
+
+  // ✅ Main initialization function with multi-CDN, GPU/CPU fallback, and retry
+  const initializeFaceLandmarker = useCallback(async () => {
+    setIsModelLoading(true);
+    setModelLoadError(null);
+    setFaceLandmarker(null);
     
-    const initializeFaceLandmarker = async () => {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-        );
+    // Collect diagnostic info
+    const webgl2 = checkWebGL2Support();
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      webgl2,
+      userAgent: navigator.userAgent,
+    }));
+
+    let lastError: unknown = null;
+
+    // Retry loop with exponential backoff
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      setModelLoadAttempt(attempt);
+      console.log(`[FaceLandmarker] Attempt ${attempt}/${MAX_RETRIES}`);
+
+      // Try each CDN source
+      for (const cdnSource of CDN_SOURCES) {
+        setDiagnosticInfo(prev => ({ ...prev, lastCdnTried: cdnSource }));
         
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: "GPU",
-          },
-          outputFaceBlendshapes: true,
-          outputFacialTransformationMatrixes: true,
-          runningMode: "VIDEO",
-          numFaces: 1,
-        });
-        
-        // ✅ Only update state if component is still mounted
-        if (isMounted) {
-          setFaceLandmarker(landmarker);
-        } else {
-          landmarker.close();
-        }
-      } catch (err) {
-        console.error("Failed to initialize face landmarker:", err);
-        if (isMounted) {
-          setError("Failed to load face detection model");
+        try {
+          console.log(`[FaceLandmarker] Loading from CDN: ${cdnSource}`);
+          const vision = await FilesetResolver.forVisionTasks(cdnSource);
+
+          // Try GPU first, then CPU fallback
+          let landmarker = await tryCreateLandmarker(vision, "GPU");
+          
+          if (!landmarker) {
+            console.warn("[FaceLandmarker] GPU failed, falling back to CPU...");
+            landmarker = await tryCreateLandmarker(vision, "CPU");
+          }
+
+          if (landmarker) {
+            setFaceLandmarker(landmarker);
+            setIsModelLoading(false);
+            setModelLoadError(null);
+            console.log("[FaceLandmarker] ✅ Successfully initialized");
+            return; // Success!
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn(`[FaceLandmarker] CDN ${cdnSource} failed:`, err);
+          setDiagnosticInfo(prev => ({
+            ...prev,
+            errorCategory: categorizeError(err),
+          }));
         }
       }
-    };
 
-    initializeFaceLandmarker();
+      // Wait before next retry (exponential backoff)
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY_BASE_MS * attempt;
+        console.log(`[FaceLandmarker] Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // All retries failed
+    console.error("[FaceLandmarker] ❌ All attempts failed:", lastError);
+    setIsModelLoading(false);
+    setModelLoadError(
+      `โหลดระบบตรวจจับใบหน้าไม่สำเร็จ (${categorizeError(lastError)})`
+    );
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      errorCategory: categorizeError(lastError),
+    }));
+  }, [checkWebGL2Support, categorizeError, tryCreateLandmarker]);
+
+  // ✅ Initialize on mount
+  useEffect(() => {
+    let isMounted = true;
+    
+    const init = async () => {
+      if (isMounted) {
+        await initializeFaceLandmarker();
+      }
+    };
+    
+    init();
 
     return () => {
-      isMounted = false; // ✅ Mark as unmounted
+      isMounted = false;
       if (faceLandmarker) {
         faceLandmarker.close();
       }
     };
-  }, []);
+  }, [initializeFaceLandmarker]);
 
   // Start camera
   useEffect(() => {
@@ -533,9 +661,60 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
-          {error ? (
+          {/* ✅ Model loading error with retry and diagnostics */}
+          {modelLoadError ? (
+            <div className="space-y-4">
+              <div className="bg-destructive/10 text-destructive p-4 rounded-lg text-center">
+                <p className="font-medium mb-2">❌ {modelLoadError}</p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  กรุณาลองใหม่อีกครั้ง หากยังไม่สำเร็จ ลองปิดแอปพลิเคชันอื่นเพื่อเพิ่มหน่วยความจำ
+                </p>
+                
+                <div className="flex gap-2 justify-center">
+                  <Button 
+                    onClick={() => initializeFaceLandmarker()} 
+                    disabled={isModelLoading}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isModelLoading ? 'animate-spin' : ''}`} />
+                    {isModelLoading ? `กำลังลอง (${modelLoadAttempt}/${MAX_RETRIES})...` : 'ลองใหม่'}
+                  </Button>
+                  <Button variant="outline" onClick={onCancel}>
+                    ยกเลิก
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Diagnostics section */}
+              <div className="border rounded-lg">
+                <button
+                  onClick={() => setShowDiagnostics(!showDiagnostics)}
+                  className="w-full flex items-center justify-between p-3 text-xs text-muted-foreground hover:bg-muted/50"
+                >
+                  <span>📋 ข้อมูลเครื่อง (สำหรับแจ้งปัญหา)</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showDiagnostics ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showDiagnostics && (
+                  <div className="p-3 pt-0 text-xs font-mono bg-muted/30 space-y-1">
+                    <p>• WebGL2: {diagnosticInfo.webgl2 ? '✓ รองรับ' : '✗ ไม่รองรับ'}</p>
+                    <p>• Error: {diagnosticInfo.errorCategory || 'Unknown'}</p>
+                    <p>• CDN: {diagnosticInfo.lastCdnTried?.split('/')[2] || '-'}</p>
+                    <p className="break-all">• UA: {diagnosticInfo.userAgent.slice(0, 80)}...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : error ? (
             <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
               {error}
+            </div>
+          ) : isModelLoading ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-sm text-muted-foreground">
+                กำลังโหลดระบบตรวจจับใบหน้า... ({modelLoadAttempt}/{MAX_RETRIES})
+              </p>
             </div>
           ) : (
             <>
@@ -632,10 +811,13 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
                 />
                 <canvas ref={canvasRef} className="hidden" />
                 
-                {/* Face detection overlay */}
-                {!faceLandmarker && (
+                {/* Face detection overlay - now shown only during initial load */}
+                {!faceLandmarker && !modelLoadError && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-sm">
-                    กำลังโหลดระบบตรวจจับใบหน้า...
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                      <span>กำลังเตรียมระบบ...</span>
+                    </div>
                   </div>
                 )}
                 
