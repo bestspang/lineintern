@@ -109,8 +109,9 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   }, [step2Challenge]);
 
   // ✅ State for retry and loading status
-  const [modelLoadingStatus, setModelLoadingStatus] = useState<"loading" | "retrying" | "loaded" | "error">("loading");
+  const [modelLoadingStatus, setModelLoadingStatus] = useState<"loading" | "retrying" | "loaded" | "error" | "skipped">("loading");
   const [manualRetryCount, setManualRetryCount] = useState(0); // Trigger for manual retry
+  const [skipLiveness, setSkipLiveness] = useState(false); // Skip liveness if model fails completely
 
   // ✅ Extracted initialization function for reuse
   const initializeFaceLandmarkerRef = useRef<(() => Promise<void>) | null>(null);
@@ -127,6 +128,28 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
     ];
     
+    // ✅ Pre-fetch test to check CDN accessibility
+    const testCdnAccess = async (cdnUrl: string): Promise<boolean> => {
+      try {
+        const testUrl = `${cdnUrl}/vision_wasm_internal.js`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+        
+        const response = await fetch(testUrl, { 
+          method: 'HEAD', 
+          mode: 'cors',
+          signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+        
+        console.log(`[CDN Test] ${cdnUrl} -> ${response.ok ? '✅ OK' : '❌ Failed'}`);
+        return response.ok;
+      } catch (err) {
+        console.warn(`[CDN Test] ${cdnUrl} -> ❌ Unreachable:`, err instanceof Error ? err.message : err);
+        return false;
+      }
+    };
+    
     const initializeFaceLandmarker = async (useGpu = true, cdnIndex = 0): Promise<void> => {
       try {
         if (!isMounted) return;
@@ -135,6 +158,18 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         
         const cdnUrl = cdnSources[cdnIndex] || cdnSources[0];
         console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount}, CDN=${cdnIndex})`);
+        
+        // ✅ Pre-test CDN accessibility before loading heavy WASM
+        const cdnAccessible = await testCdnAccess(cdnUrl);
+        if (!cdnAccessible) {
+          // Try next CDN
+          if (cdnIndex < cdnSources.length - 1) {
+            console.log(`[FaceLandmarker] CDN ${cdnIndex} unreachable, trying next...`);
+            return initializeFaceLandmarker(useGpu, cdnIndex + 1);
+          }
+          // All CDNs failed - throw to trigger retry/skip
+          throw new Error('CDN_UNREACHABLE: ไม่สามารถเชื่อมต่อ CDN ได้');
+        }
         
         // Pre-check: Verify WebGL2 support
         const canvas = document.createElement('canvas');
@@ -160,6 +195,7 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         if (isMounted) {
           setFaceLandmarker(landmarker);
           setModelLoadingStatus("loaded");
+          setSkipLiveness(false);
           setError("");
           console.log(`[FaceLandmarker] ✅ Loaded successfully (delegate=${useGpu ? "GPU" : "CPU"}, CDN=${cdnIndex})`);
         } else {
@@ -212,14 +248,14 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         
         if (!isMounted) return;
         
-        // Try CPU fallback if GPU failed
-        if (useGpu) {
+        // Try CPU fallback if GPU failed (but not for CDN errors)
+        if (useGpu && !errMsg.includes('CDN_UNREACHABLE')) {
           console.log("[FaceLandmarker] Retrying with CPU delegate...");
           return initializeFaceLandmarker(false, cdnIndex);
         }
         
         // Try alternate CDN
-        if (cdnIndex < cdnSources.length - 1) {
+        if (cdnIndex < cdnSources.length - 1 && !errMsg.includes('CDN_UNREACHABLE')) {
           console.log(`[FaceLandmarker] Trying alternate CDN (${cdnIndex + 1})...`);
           return initializeFaceLandmarker(true, cdnIndex + 1);
         }
@@ -232,15 +268,15 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           return initializeFaceLandmarker(true, 0);
         }
         
-        // All retries exhausted - show detailed error with specific cause
+        // All retries exhausted - offer skip option
         if (isMounted) {
           setModelLoadingStatus("error");
           
           // Determine specific error message
           let userFriendlyError = "";
           
-          if (errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load') || errMsg.includes('Event:')) {
-            userFriendlyError = "ไม่สามารถดาวน์โหลดโมเดลได้ - กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต";
+          if (errMsg.includes('CDN_UNREACHABLE') || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load') || errMsg.includes('Event:')) {
+            userFriendlyError = "ไม่สามารถดาวน์โหลดโมเดลได้ - อาจเป็นปัญหาเครือข่ายหรือเบราว์เซอร์ไม่รองรับ";
           } else if (errMsg.includes('WebGL') || errMsg.includes('GPU')) {
             userFriendlyError = "อุปกรณ์ไม่รองรับ WebGL - กรุณาใช้เบราว์เซอร์อื่น";
           } else if (errMsg.includes('memory') || errMsg.includes('Memory')) {
@@ -716,26 +752,102 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
-          {error || modelLoadingStatus === "error" ? (
+          {/* Skip Liveness Mode - Allow photo capture without face detection */}
+          {skipLiveness ? (
+            <div className="space-y-4">
+              <div className="bg-accent/10 text-accent-foreground border border-accent/30 p-4 rounded-lg">
+                <div className="font-medium mb-1 flex items-center gap-2">
+                  <Camera className="h-4 w-4" />
+                  โหมดถ่ายรูปปกติ
+                </div>
+                <p className="text-sm text-muted-foreground">ระบบตรวจสอบใบหน้าไม่พร้อมใช้งาน กรุณาถ่ายรูปตามปกติ</p>
+              </div>
+              
+              {/* Video Feed for skip mode */}
+              <div className="relative bg-black rounded-lg overflow-hidden h-[400px] sm:h-[450px]">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover scale-x-[-1]"
+                  playsInline
+                  muted
+                />
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+              
+              {/* Actions for skip mode */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={onCancel}
+                  disabled={isProcessing}
+                  className="flex-1"
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  onClick={capturePhoto}
+                  disabled={isProcessing || !stream}
+                  className="flex-1"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Camera className="h-4 w-4 mr-2 animate-pulse" />
+                      กำลังถ่ายรูป...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-4 w-4 mr-2" />
+                      📷 ถ่ายรูป
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : error || modelLoadingStatus === "error" ? (
             <div className="space-y-4">
               <div className="bg-destructive/10 text-destructive p-4 rounded-lg whitespace-pre-line">
                 {error || "ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้"}
               </div>
               
-              {/* Retry button - only reloads face model, not entire page */}
-              <Button 
-                onClick={handleManualRetry}
-                variant="default"
-                className="w-full"
-                disabled={modelLoadingStatus === "loading" || modelLoadingStatus === "retrying"}
-              >
-                {modelLoadingStatus === "loading" || modelLoadingStatus === "retrying" 
-                  ? "🔄 กำลังโหลด..." 
-                  : "🔄 ลองโหลดใหม่"}
-              </Button>
+              {/* Retry and Skip buttons */}
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleManualRetry}
+                  variant="default"
+                  className="flex-1"
+                  disabled={modelLoadingStatus === "loading" || modelLoadingStatus === "retrying"}
+                >
+                  {modelLoadingStatus === "loading" || modelLoadingStatus === "retrying" 
+                    ? "🔄 กำลังโหลด..." 
+                    : "🔄 ลองใหม่"}
+                </Button>
+                
+                {/* Skip liveness button - allows photo capture without face detection */}
+                <Button 
+                  onClick={() => {
+                    setSkipLiveness(true);
+                    setModelLoadingStatus("skipped");
+                    setError("");
+                    // Mark as completed so user can capture photo
+                    setChallengeCompleted(true);
+                    setWaitingForCenter(false);
+                    livenessDataRef.current = {
+                      blinked: false,
+                      headTurned: false,
+                      challenge: "skipped_due_to_error",
+                      timestamp: Date.now(),
+                    };
+                    console.log("[FaceLandmarker] 🚨 User skipped liveness detection");
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  📷 ถ่ายรูปเลย
+                </Button>
+              </div>
               
               <p className="text-xs text-muted-foreground text-center">
-                สาเหตุที่เป็นไปได้: สัญญาณอินเทอร์เน็ตไม่เสถียร, เบราว์เซอร์ไม่รองรับ, หรือหน่วยความจำไม่พอ
+                หากปัญหายังคงอยู่ สามารถกด "ถ่ายรูปเลย" เพื่อถ่ายรูปแบบปกติได้
               </p>
               
               {/* Debug info for troubleshooting */}
