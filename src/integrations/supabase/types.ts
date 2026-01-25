@@ -4676,6 +4676,45 @@ export type Database = {
           },
         ]
       }
+      richmenu_button_config: {
+        Row: {
+          action_type: string
+          action_value: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_enabled: boolean | null
+          label: string
+          position: number
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          action_type: string
+          action_value: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          label: string
+          position: number
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          action_type?: string
+          action_value?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          label?: string
+          position?: number
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       role_menu_permissions: {
         Row: {
           created_at: string | null

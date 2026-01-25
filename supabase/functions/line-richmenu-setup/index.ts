@@ -63,18 +63,50 @@ async function getLiffId(): Promise<string> {
   return '';
 }
 
-// Helper function to create Rich Menu structure
-async function createRichMenuStructure(lineAccessToken: string, liffId: string): Promise<{ success: boolean; richMenuId?: string; error?: string }> {
-  // 6 equal-sized buttons: 3 columns x 2 rows
+// Helper function to get button configs from database
+async function getButtonConfigs(): Promise<Array<{
+  position: number;
+  label: string;
+  action_type: 'uri' | 'message';
+  action_value: string;
+}> | null> {
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data, error } = await supabase
+      .from('richmenu_button_config')
+      .select('position, label, action_type, action_value, is_enabled')
+      .eq('is_enabled', true)
+      .order('position');
+
+    if (error || !data || data.length !== 6) {
+      console.error('[line-richmenu-setup] Error fetching button configs:', error);
+      return null;
+    }
+
+    return data as Array<{
+      position: number;
+      label: string;
+      action_type: 'uri' | 'message';
+      action_value: string;
+    }>;
+  } catch (error) {
+    console.error('[line-richmenu-setup] Exception fetching button configs:', error);
+    return null;
+  }
+}
+
+// Default button configs (fallback)
+function getDefaultButtonConfigs(liffBaseUrl: string): RichMenuArea[] {
   const richMenuWidth = 2500;
   const richMenuHeight = 1686;
-  const colWidth = Math.floor(richMenuWidth / 3); // 833px per column
-  const rowHeight = Math.floor(richMenuHeight / 2); // 843px per row
+  const colWidth = Math.floor(richMenuWidth / 3);
+  const rowHeight = Math.floor(richMenuHeight / 2);
 
-  const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
-
-  const richMenuAreas: RichMenuArea[] = [
-    // Row 1: เช็คอิน/เอาท์, สถานะ, เมนู
+  return [
     {
       bounds: { x: 0, y: 0, width: colWidth, height: rowHeight },
       action: liffBaseUrl 
@@ -85,16 +117,10 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
       bounds: { x: colWidth, y: 0, width: colWidth, height: rowHeight },
       action: { type: 'message', text: '/status', label: 'สถานะ' }
     },
-    // Top-right: เมนู (Menu) - Direct LIFF URL without path for faster loading
     {
       bounds: { x: colWidth * 2, y: 0, width: richMenuWidth - (colWidth * 2), height: rowHeight },
-      action: { 
-        type: 'uri', 
-        uri: 'https://liff.line.me/2008841252-SKfNa87Z', 
-        label: 'เมนู' 
-      }
+      action: { type: 'uri', uri: 'https://liff.line.me/2008841252-SKfNa87Z', label: 'เมนู' }
     },
-    // Row 2: ลางาน, ขอ OT, ช่วยเหลือ
     {
       bounds: { x: 0, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
       action: liffBaseUrl
@@ -112,6 +138,56 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
       action: { type: 'message', text: '/help', label: 'ช่วยเหลือ' }
     },
   ];
+}
+
+// Helper function to create Rich Menu structure
+async function createRichMenuStructure(lineAccessToken: string, liffId: string): Promise<{ success: boolean; richMenuId?: string; error?: string }> {
+  // 6 equal-sized buttons: 3 columns x 2 rows
+  const richMenuWidth = 2500;
+  const richMenuHeight = 1686;
+  const colWidth = Math.floor(richMenuWidth / 3); // 833px per column
+  const rowHeight = Math.floor(richMenuHeight / 2); // 843px per row
+
+  const liffBaseUrl = liffId ? `https://liff.line.me/${liffId}` : '';
+
+  // Try to get button configs from database
+  const buttonConfigs = await getButtonConfigs();
+  
+  let richMenuAreas: RichMenuArea[];
+  
+  if (buttonConfigs) {
+    console.log('[line-richmenu-setup] Using button configs from database');
+    // Build areas dynamically from database config
+    richMenuAreas = buttonConfigs.map((config, index) => {
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      
+      const x = col * colWidth;
+      const y = row * rowHeight;
+      const width = col === 2 ? richMenuWidth - (colWidth * 2) : colWidth;
+      const height = row === 1 ? richMenuHeight - rowHeight : rowHeight;
+      
+      let action: RichMenuArea['action'];
+      if (config.action_type === 'uri') {
+        // Build full URI
+        let uri = config.action_value;
+        if (!uri.startsWith('http')) {
+          uri = `${liffBaseUrl}${config.action_value}`;
+        }
+        action = { type: 'uri', uri, label: config.label };
+      } else {
+        action = { type: 'message', text: config.action_value, label: config.label };
+      }
+      
+      return {
+        bounds: { x, y, width, height },
+        action
+      };
+    });
+  } else {
+    console.log('[line-richmenu-setup] Using default button configs (fallback)');
+    richMenuAreas = getDefaultButtonConfigs(liffBaseUrl);
+  }
 
   const richMenuObject = {
     size: {
@@ -119,7 +195,7 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
       height: richMenuHeight
     },
     selected: true,
-    name: 'LINE Intern - Employee Menu v3',
+    name: 'LINE Intern - Employee Menu v4',
     chatBarText: 'เมนู / Menu',
     areas: richMenuAreas
   };

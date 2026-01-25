@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Upload, XCircle, Image, MessageSquare, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LiffSettingsCard from '@/components/settings/LiffSettingsCard';
+import RichMenuButtonEditor from '@/components/settings/RichMenuButtonEditor';
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
   const { toast } = useToast();
@@ -803,18 +804,8 @@ function RichMenuSetup() {
           </div>
         )}
 
-        {/* Layout Preview */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <p className="text-sm font-medium mb-2">Rich Menu Layout (6 ปุ่ม)</p>
-          <div className="grid grid-cols-3 gap-1 text-xs text-center">
-            <div className="bg-primary/10 p-2 rounded">✓ เช็คอิน/เอาท์</div>
-            <div className="bg-primary/10 p-2 rounded">🕐 สถานะ</div>
-            <div className="bg-primary/10 p-2 rounded">≡ เมนู</div>
-            <div className="bg-primary/10 p-2 rounded">📅 ลางาน</div>
-            <div className="bg-primary/10 p-2 rounded">+ ขอ OT</div>
-            <div className="bg-primary/10 p-2 rounded">? ช่วยเหลือ</div>
-          </div>
-        </div>
+        {/* Button Configuration Editor */}
+        <RichMenuButtonEditor />
 
         {/* Image Source Selection */}
         <div className="space-y-3">
