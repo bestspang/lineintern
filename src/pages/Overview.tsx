@@ -302,10 +302,13 @@ export default function Overview() {
               </div>
               
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <div className={`text-2xl font-bold ${(attendanceHealth?.expiredTokens || 0) > 5 ? 'text-amber-600' : 'text-foreground'}`}>
+                <div className={`text-2xl font-bold ${(attendanceHealth?.expiredTokens || 0) > 50 ? 'text-amber-600' : (attendanceHealth?.expiredTokens || 0) > 10 ? 'text-amber-500' : 'text-foreground'}`}>
                   {attendanceHealth?.expiredTokens || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">Expired Tokens</p>
+                {(attendanceHealth?.expiredTokens || 0) > 50 && (
+                  <Badge variant="outline" className="mt-1 text-[10px] border-amber-500 text-amber-600">Awaiting cleanup</Badge>
+                )}
               </div>
               
               <div className="text-center p-3 bg-muted/50 rounded-lg">
