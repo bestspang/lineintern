@@ -22,11 +22,20 @@ interface ButtonConfig {
   is_enabled: boolean;
 }
 
-export default function RichMenuButtonEditor() {
+interface RichMenuButtonEditorProps {
+  onHasChangesChange?: (hasChanges: boolean) => void;
+}
+
+export default function RichMenuButtonEditor({ onHasChangesChange }: RichMenuButtonEditorProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedConfigs, setEditedConfigs] = useState<Record<number, Partial<ButtonConfig>>>({});
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Notify parent of changes state
+  useEffect(() => {
+    onHasChangesChange?.(hasChanges);
+  }, [hasChanges, onHasChangesChange]);
 
   // Fetch button configs
   const { data: buttonConfigs, isLoading, error } = useQuery({
