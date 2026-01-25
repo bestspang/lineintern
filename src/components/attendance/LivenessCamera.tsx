@@ -117,10 +117,10 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
   const initializeFaceLandmarkerRef = useRef<(() => Promise<void>) | null>(null);
 
   // Initialize MediaPipe Face Landmarker with GPU → CPU fallback + retry
+  // ✅ SIMPLIFIED: Remove pre-test, just try to load directly with better error handling
   useEffect(() => {
     let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 2;
+    let aborted = false;
     
     // Multiple CDN sources for resilience
     const cdnSources = [
@@ -128,185 +128,116 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
       "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
     ];
     
-    // ✅ Pre-fetch test to check CDN accessibility
-    const testCdnAccess = async (cdnUrl: string): Promise<boolean> => {
-      try {
-        const testUrl = `${cdnUrl}/vision_wasm_internal.js`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const initializeFaceLandmarker = async (): Promise<void> => {
+      if (!isMounted || aborted) return;
+      
+      setModelLoadingStatus("loading");
+      setError("");
+      
+      // Pre-check: Verify WebGL2 support for GPU mode decision
+      const testCanvas = document.createElement('canvas');
+      const hasWebGL2 = !!testCanvas.getContext('webgl2');
+      console.log(`[FaceLandmarker] WebGL2 support: ${hasWebGL2}`);
+      
+      // Try each CDN with GPU first, then CPU fallback
+      for (let cdnIndex = 0; cdnIndex < cdnSources.length; cdnIndex++) {
+        if (!isMounted || aborted) return;
         
-        const response = await fetch(testUrl, { 
-          method: 'HEAD', 
-          mode: 'cors',
-          signal: controller.signal 
-        });
-        clearTimeout(timeoutId);
+        const cdnUrl = cdnSources[cdnIndex];
+        const delegatesToTry = hasWebGL2 ? ["GPU", "CPU"] : ["CPU"]; // Skip GPU if no WebGL2
         
-        console.log(`[CDN Test] ${cdnUrl} -> ${response.ok ? '✅ OK' : '❌ Failed'}`);
-        return response.ok;
-      } catch (err) {
-        console.warn(`[CDN Test] ${cdnUrl} -> ❌ Unreachable:`, err instanceof Error ? err.message : err);
-        return false;
-      }
-    };
-    
-    const initializeFaceLandmarker = async (useGpu = true, cdnIndex = 0): Promise<void> => {
-      try {
-        if (!isMounted) return;
-        setModelLoadingStatus(retryCount > 0 ? "retrying" : "loading");
-        setError("");
-        
-        const cdnUrl = cdnSources[cdnIndex] || cdnSources[0];
-        console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount}, CDN=${cdnIndex})`);
-        
-        // ✅ Pre-test CDN accessibility before loading heavy WASM
-        const cdnAccessible = await testCdnAccess(cdnUrl);
-        if (!cdnAccessible) {
-          // Try next CDN
-          if (cdnIndex < cdnSources.length - 1) {
-            console.log(`[FaceLandmarker] CDN ${cdnIndex} unreachable, trying next...`);
-            return initializeFaceLandmarker(useGpu, cdnIndex + 1);
+        for (const delegate of delegatesToTry) {
+          if (!isMounted || aborted) return;
+          
+          try {
+            console.log(`[FaceLandmarker] Trying CDN ${cdnIndex} with ${delegate}...`);
+            setModelLoadingStatus(cdnIndex > 0 ? "retrying" : "loading");
+            
+            // Attempt to load FilesetResolver with timeout
+            const visionPromise = FilesetResolver.forVisionTasks(cdnUrl);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('TIMEOUT')), 30000) // 30s timeout
+            );
+            
+            const vision = await Promise.race([visionPromise, timeoutPromise]) as Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>;
+            
+            if (!isMounted || aborted) return;
+            
+            // Attempt to create FaceLandmarker
+            const landmarker = await FaceLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                delegate: delegate as "GPU" | "CPU",
+              },
+              outputFaceBlendshapes: true,
+              outputFacialTransformationMatrixes: true,
+              runningMode: "VIDEO",
+              numFaces: 1,
+            });
+            
+            if (!isMounted || aborted) {
+              landmarker.close();
+              return;
+            }
+            
+            // ✅ Success!
+            setFaceLandmarker(landmarker);
+            setModelLoadingStatus("loaded");
+            setSkipLiveness(false);
+            setError("");
+            console.log(`[FaceLandmarker] ✅ Loaded successfully (CDN=${cdnIndex}, delegate=${delegate})`);
+            return; // Exit all loops on success
+            
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.warn(`[FaceLandmarker] CDN ${cdnIndex}/${delegate} failed:`, errMsg);
+            
+            // If it's a delegate-specific error, continue to next delegate
+            // Otherwise continue to next CDN
           }
-          // All CDNs failed - throw to trigger retry/skip
-          throw new Error('CDN_UNREACHABLE: ไม่สามารถเชื่อมต่อ CDN ได้');
-        }
-        
-        // Pre-check: Verify WebGL2 support
-        const canvas = document.createElement('canvas');
-        const webgl2 = canvas.getContext('webgl2');
-        if (!webgl2 && useGpu) {
-          console.warn("[FaceLandmarker] WebGL2 not supported, forcing CPU mode");
-          return initializeFaceLandmarker(false, cdnIndex);
-        }
-        
-        const vision = await FilesetResolver.forVisionTasks(cdnUrl);
-        
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: useGpu ? "GPU" : "CPU",
-          },
-          outputFaceBlendshapes: true,
-          outputFacialTransformationMatrixes: true,
-          runningMode: "VIDEO",
-          numFaces: 1,
-        });
-        
-        if (isMounted) {
-          setFaceLandmarker(landmarker);
-          setModelLoadingStatus("loaded");
-          setSkipLiveness(false);
-          setError("");
-          console.log(`[FaceLandmarker] ✅ Loaded successfully (delegate=${useGpu ? "GPU" : "CPU"}, CDN=${cdnIndex})`);
-        } else {
-          landmarker.close();
-        }
-      } catch (err) {
-        // ✅ Extract error message safely - handle Error, Event, and unknown types
-        const getErrorMessage = (e: unknown): string => {
-          if (e instanceof Error) return e.message;
-          if (e instanceof Event) {
-            // Handle ProgressEvent from failed fetches
-            if ('type' in e) return `Event: ${e.type}`;
-            return 'Unknown Event';
-          }
-          if (typeof e === 'string') return e;
-          if (e && typeof e === 'object' && 'message' in e) return String((e as any).message);
-          return 'Unknown error';
-        };
-        
-        const errMsg = getErrorMessage(err);
-        
-        // ✅ Enhanced debug logging for troubleshooting
-        const canvas = document.createElement('canvas');
-        const debugInfo = {
-          gpu: useGpu,
-          retry: retryCount,
-          cdnIndex,
-          error: errMsg,
-          errorType: err?.constructor?.name || 'Unknown',
-          stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
-          userAgent: navigator.userAgent,
-          platform: navigator.platform,
-          webgl: !!canvas.getContext('webgl'),
-          webgl2: !!canvas.getContext('webgl2'),
-          deviceMemory: (navigator as any).deviceMemory || 'unknown',
-          connection: (navigator as any).connection?.effectiveType || 'unknown',
-          timestamp: new Date().toISOString(),
-        };
-        
-        console.error(`[FaceLandmarker] ❌ Failed:`, debugInfo);
-        
-        // Send debug info to server for tracking (non-blocking)
-        try {
-          fetch('/api/debug-log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'face_landmarker_error', ...debugInfo }),
-          }).catch(() => {}); // Ignore fetch errors
-        } catch {}
-        
-        if (!isMounted) return;
-        
-        // Try CPU fallback if GPU failed (but not for CDN errors)
-        if (useGpu && !errMsg.includes('CDN_UNREACHABLE')) {
-          console.log("[FaceLandmarker] Retrying with CPU delegate...");
-          return initializeFaceLandmarker(false, cdnIndex);
-        }
-        
-        // Try alternate CDN
-        if (cdnIndex < cdnSources.length - 1 && !errMsg.includes('CDN_UNREACHABLE')) {
-          console.log(`[FaceLandmarker] Trying alternate CDN (${cdnIndex + 1})...`);
-          return initializeFaceLandmarker(true, cdnIndex + 1);
-        }
-        
-        // Retry mechanism
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`[FaceLandmarker] Retry ${retryCount}/${maxRetries} in 2s...`);
-          await new Promise(r => setTimeout(r, 2000));
-          return initializeFaceLandmarker(true, 0);
-        }
-        
-        // All retries exhausted - offer skip option
-        if (isMounted) {
-          setModelLoadingStatus("error");
-          
-          // Determine specific error message
-          let userFriendlyError = "";
-          
-          if (errMsg.includes('CDN_UNREACHABLE') || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load') || errMsg.includes('Event:')) {
-            userFriendlyError = "ไม่สามารถดาวน์โหลดโมเดลได้ - อาจเป็นปัญหาเครือข่ายหรือเบราว์เซอร์ไม่รองรับ";
-          } else if (errMsg.includes('WebGL') || errMsg.includes('GPU')) {
-            userFriendlyError = "อุปกรณ์ไม่รองรับ WebGL - กรุณาใช้เบราว์เซอร์อื่น";
-          } else if (errMsg.includes('memory') || errMsg.includes('Memory')) {
-            userFriendlyError = "หน่วยความจำไม่พอ - กรุณาปิดแอปอื่นและลองใหม่";
-          } else if (errMsg.includes('CORS') || errMsg.includes('blocked')) {
-            userFriendlyError = "CDN ถูกบล็อก - กรุณาลองเปลี่ยน WiFi หรือใช้ 4G";
-          } else if (!errMsg || errMsg === 'Unknown error' || errMsg === 'undefined' || errMsg.includes('[object')) {
-            userFriendlyError = "เกิดข้อผิดพลาด - กรุณาลองรีเฟรชหน้าใหม่หรือเปลี่ยนเบราว์เซอร์";
-          } else {
-            userFriendlyError = errMsg;
-          }
-          
-          setError(userFriendlyError);
-          
-          // Log final failure
-          console.error("[FaceLandmarker] 🚨 All retries exhausted:", debugInfo);
         }
       }
+      
+      // All CDNs and delegates failed
+      if (!isMounted || aborted) return;
+      
+      // ✅ Enhanced debug logging
+      const debugInfo = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        webgl2: hasWebGL2,
+        deviceMemory: (navigator as any).deviceMemory || 'unknown',
+        connection: (navigator as any).connection?.effectiveType || 'unknown',
+        cdnsTried: cdnSources.length,
+        timestamp: new Date().toISOString(),
+      };
+      
+      console.error("[FaceLandmarker] 🚨 All CDNs and delegates failed:", debugInfo);
+      
+      // Non-blocking log to server
+      try {
+        fetch('/api/debug-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'face_landmarker_all_failed', ...debugInfo }),
+        }).catch(() => {});
+      } catch {}
+      
+      setModelLoadingStatus("error");
+      setError("ไม่สามารถโหลดระบบตรวจจับใบหน้าได้ - กรุณากดลองใหม่หรือถ่ายรูปแบบปกติ");
     };
 
     // ✅ Store reference for manual retry
     initializeFaceLandmarkerRef.current = () => {
-      retryCount = 0; // Reset retry count for manual retry
-      return initializeFaceLandmarker(true);
+      aborted = false;
+      return initializeFaceLandmarker();
     };
 
     initializeFaceLandmarker();
 
     return () => {
       isMounted = false;
+      aborted = true;
       if (faceLandmarker) {
         faceLandmarker.close();
       }
