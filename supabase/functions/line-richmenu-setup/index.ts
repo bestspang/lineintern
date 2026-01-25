@@ -99,6 +99,9 @@ async function getButtonConfigs(): Promise<Array<{
   }
 }
 
+// Default LIFF URL when action_value is empty
+const DEFAULT_LIFF_URL = 'https://liff.line.me/2008841252-SKfNa87Z';
+
 // Default button configs (fallback)
 function getDefaultButtonConfigs(liffBaseUrl: string): RichMenuArea[] {
   const richMenuWidth = 2500;
@@ -119,7 +122,7 @@ function getDefaultButtonConfigs(liffBaseUrl: string): RichMenuArea[] {
     },
     {
       bounds: { x: colWidth * 2, y: 0, width: richMenuWidth - (colWidth * 2), height: rowHeight },
-      action: { type: 'uri', uri: 'https://liff.line.me/2008841252-SKfNa87Z', label: 'เมนู' }
+      action: { type: 'uri', uri: DEFAULT_LIFF_URL, label: 'เมนู' }
     },
     {
       bounds: { x: 0, y: rowHeight, width: colWidth, height: richMenuHeight - rowHeight },
@@ -169,9 +172,11 @@ async function createRichMenuStructure(lineAccessToken: string, liffId: string):
       
       let action: RichMenuArea['action'];
       if (config.action_type === 'uri') {
-        // Build full URI
-        let uri = config.action_value;
-        if (!uri.startsWith('http')) {
+        // Build full URI - empty value defaults to main LIFF URL
+        let uri = config.action_value?.trim() || '';
+        if (!uri) {
+          uri = DEFAULT_LIFF_URL;
+        } else if (!uri.startsWith('http')) {
           uri = `${liffBaseUrl}${config.action_value}`;
         }
         action = { type: 'uri', uri, label: config.label };

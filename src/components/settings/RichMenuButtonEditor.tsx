@@ -124,10 +124,17 @@ export default function RichMenuButtonEditor() {
     setHasChanges(true);
   };
 
+  // Default LIFF URL when action_value is empty
+  const DEFAULT_LIFF_URL = 'https://liff.line.me/2008841252-SKfNa87Z';
+
   // Validate action value
   const validateActionValue = (type: 'uri' | 'message', value: string): { valid: boolean; message: string } => {
+    // Empty is allowed for URI type (will use default LIFF URL)
     if (!value.trim()) {
-      return { valid: false, message: 'ต้องกรอกค่า' };
+      if (type === 'uri') {
+        return { valid: true, message: '' }; // Empty URI is OK, will use default
+      }
+      return { valid: false, message: 'ต้องกรอกค่า command' };
     }
     if (type === 'uri') {
       if (!value.startsWith('/') && !value.startsWith('http')) {
@@ -144,7 +151,11 @@ export default function RichMenuButtonEditor() {
   // Build preview URL
   const getPreviewUrl = (config: Partial<ButtonConfig>) => {
     if (config.action_type === 'message') {
-      return `ส่งข้อความ: ${config.action_value}`;
+      return `ส่งข้อความ: ${config.action_value || '(ต้องกรอก)'}`;
+    }
+    // Empty URI -> default LIFF URL
+    if (!config.action_value?.trim()) {
+      return DEFAULT_LIFF_URL;
     }
     if (config.action_value?.startsWith('http')) {
       return config.action_value;
@@ -253,7 +264,7 @@ export default function RichMenuButtonEditor() {
                         value={currentValue}
                         onChange={(e) => handleChange(config.position, 'action_value', e.target.value)}
                         className={`h-8 text-sm font-mono ${!validation.valid ? 'border-red-300' : ''}`}
-                        placeholder={currentType === 'uri' ? '/portal/path' : '/command'}
+                        placeholder={currentType === 'uri' ? 'ว่าง = เปิดเมนูหลัก' : '/command'}
                       />
                       {!validation.valid && (
                         <p className="text-xs text-red-500">{validation.message}</p>
@@ -295,6 +306,7 @@ export default function RichMenuButtonEditor() {
         <p className="font-medium mb-1">💡 คำแนะนำ</p>
         <ul className="list-disc list-inside space-y-0.5">
           <li><strong>URI</strong> = เปิด LIFF App (เช่น /portal/checkin → เปิดหน้า Check-in)</li>
+          <li><strong>URI ว่าง</strong> = เปิดเมนูหลัก ({DEFAULT_LIFF_URL})</li>
           <li><strong>Message</strong> = ส่งข้อความ command (เช่น /status → Bot ตอบสถานะ)</li>
           <li>หลังบันทึก ต้อง <strong>Redeploy Rich Menu</strong> ด้านบนเพื่อให้มีผลใน LINE</li>
         </ul>
