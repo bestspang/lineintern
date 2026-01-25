@@ -420,6 +420,7 @@ function RichMenuSetup() {
   } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [buttonConfigHasChanges, setButtonConfigHasChanges] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch portal access mode to determine which UI to show
@@ -735,7 +736,13 @@ function RichMenuSetup() {
               </div>
             </div>
             {/* Redeploy Button */}
-            <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
+            <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800 space-y-2">
+              {buttonConfigHasChanges && (
+                <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                  <span>มีการเปลี่ยนแปลงที่ยังไม่บันทึก - กรุณากด "บันทึกการเปลี่ยนแปลง" ด้านล่างก่อน</span>
+                </div>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -783,7 +790,7 @@ function RichMenuSetup() {
                     setIsDeploying(false);
                   }
                 }}
-                disabled={isDeploying}
+                disabled={isDeploying || buttonConfigHasChanges}
                 className="w-full sm:w-auto"
               >
                 {isDeploying ? (
@@ -805,7 +812,7 @@ function RichMenuSetup() {
         )}
 
         {/* Button Configuration Editor */}
-        <RichMenuButtonEditor />
+        <RichMenuButtonEditor onHasChangesChange={setButtonConfigHasChanges} />
 
         {/* Image Source Selection */}
         <div className="space-y-3">
