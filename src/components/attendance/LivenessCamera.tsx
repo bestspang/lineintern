@@ -121,17 +121,30 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
     let retryCount = 0;
     const maxRetries = 2;
     
-    const initializeFaceLandmarker = async (useGpu = true): Promise<void> => {
+    // Multiple CDN sources for resilience
+    const cdnSources = [
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm",
+      "https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm",
+    ];
+    
+    const initializeFaceLandmarker = async (useGpu = true, cdnIndex = 0): Promise<void> => {
       try {
         if (!isMounted) return;
         setModelLoadingStatus(retryCount > 0 ? "retrying" : "loading");
         setError("");
         
-        console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount})`);
+        const cdnUrl = cdnSources[cdnIndex] || cdnSources[0];
+        console.log(`[FaceLandmarker] Attempting to load... (GPU=${useGpu}, retry=${retryCount}, CDN=${cdnIndex})`);
         
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
-        );
+        // Pre-check: Verify WebGL2 support
+        const canvas = document.createElement('canvas');
+        const webgl2 = canvas.getContext('webgl2');
+        if (!webgl2 && useGpu) {
+          console.warn("[FaceLandmarker] WebGL2 not supported, forcing CPU mode");
+          return initializeFaceLandmarker(false, cdnIndex);
+        }
+        
+        const vision = await FilesetResolver.forVisionTasks(cdnUrl);
         
         const landmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
@@ -148,21 +161,26 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           setFaceLandmarker(landmarker);
           setModelLoadingStatus("loaded");
           setError("");
-          console.log(`[FaceLandmarker] ✅ Loaded successfully (delegate=${useGpu ? "GPU" : "CPU"})`);
+          console.log(`[FaceLandmarker] ✅ Loaded successfully (delegate=${useGpu ? "GPU" : "CPU"}, CDN=${cdnIndex})`);
         } else {
           landmarker.close();
         }
       } catch (err) {
         // ✅ Enhanced debug logging for troubleshooting
+        const canvas = document.createElement('canvas');
         const debugInfo = {
           gpu: useGpu,
           retry: retryCount,
+          cdnIndex,
           error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
+          errorType: err?.constructor?.name || 'Unknown',
+          stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
           userAgent: navigator.userAgent,
           platform: navigator.platform,
-          webgl2: !!document.createElement('canvas').getContext('webgl2'),
+          webgl: !!canvas.getContext('webgl'),
+          webgl2: !!canvas.getContext('webgl2'),
           deviceMemory: (navigator as any).deviceMemory || 'unknown',
+          connection: (navigator as any).connection?.effectiveType || 'unknown',
           timestamp: new Date().toISOString(),
         };
         
@@ -182,7 +200,13 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
         // Try CPU fallback if GPU failed
         if (useGpu) {
           console.log("[FaceLandmarker] Retrying with CPU delegate...");
-          return initializeFaceLandmarker(false);
+          return initializeFaceLandmarker(false, cdnIndex);
+        }
+        
+        // Try alternate CDN
+        if (cdnIndex < cdnSources.length - 1) {
+          console.log(`[FaceLandmarker] Trying alternate CDN (${cdnIndex + 1})...`);
+          return initializeFaceLandmarker(true, cdnIndex + 1);
         }
         
         // Retry mechanism
@@ -190,14 +214,32 @@ export default function LivenessCamera({ onCapture, onCancel, eventType = 'check
           retryCount++;
           console.log(`[FaceLandmarker] Retry ${retryCount}/${maxRetries} in 2s...`);
           await new Promise(r => setTimeout(r, 2000));
-          return initializeFaceLandmarker(true);
+          return initializeFaceLandmarker(true, 0);
         }
         
-        // All retries exhausted - show detailed error
+        // All retries exhausted - show detailed error with specific cause
         if (isMounted) {
           setModelLoadingStatus("error");
-          const errMessage = err instanceof Error ? err.message : "Unknown error";
-          setError(`ไม่สามารถโหลดโมเดลตรวจจับใบหน้าได้\n\n${errMessage}`);
+          
+          // Determine specific error message
+          let userFriendlyError = "";
+          const errMsg = err instanceof Error ? err.message : String(err);
+          
+          if (errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed to load')) {
+            userFriendlyError = "ไม่สามารถดาวน์โหลดโมเดลได้ - กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต";
+          } else if (errMsg.includes('WebGL') || errMsg.includes('GPU')) {
+            userFriendlyError = "อุปกรณ์ไม่รองรับ WebGL - กรุณาใช้เบราว์เซอร์อื่น";
+          } else if (errMsg.includes('memory') || errMsg.includes('Memory')) {
+            userFriendlyError = "หน่วยความจำไม่พอ - กรุณาปิดแอปอื่นและลองใหม่";
+          } else if (errMsg.includes('CORS') || errMsg.includes('blocked')) {
+            userFriendlyError = "CDN ถูกบล็อก - กรุณาลองเปลี่ยน WiFi หรือใช้ 4G";
+          } else if (!errMsg || errMsg === 'Unknown error' || errMsg === 'undefined') {
+            userFriendlyError = "เกิดข้อผิดพลาดไม่ทราบสาเหตุ - กรุณาลองรีเฟรชหน้าใหม่หรือเปลี่ยนเบราว์เซอร์";
+          } else {
+            userFriendlyError = errMsg;
+          }
+          
+          setError(userFriendlyError);
           
           // Log final failure
           console.error("[FaceLandmarker] 🚨 All retries exhausted:", debugInfo);
