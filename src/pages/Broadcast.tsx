@@ -19,7 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import { format, isSameDay, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
 import { th } from "date-fns/locale";
-import { Radio, Send, Clock, Users, FileText, History, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare, CalendarDays } from "lucide-react";
+import { Radio, Send, Clock, Users, FileText, History, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare, CalendarDays, Pencil } from "lucide-react";
 import { getBangkokNow, formatBangkokDateTime, formatBangkokISODate, formatBangkokTimeShort, bangkokLocalToUTC } from "@/lib/timezone";
 
 type MessageType = "text" | "image" | "text_image";
@@ -94,6 +94,15 @@ export default function Broadcast() {
   
   const [sending, setSending] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(getBangkokNow());
+  
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingBroadcast, setEditingBroadcast] = useState<Broadcast | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editScheduledAt, setEditScheduledAt] = useState("");
+  const [editMessageType, setEditMessageType] = useState<MessageType>("text");
 
   // Realtime subscription for broadcasts changes
   useEffect(() => {
@@ -428,6 +437,61 @@ export default function Broadcast() {
       queryClient.invalidateQueries({ queryKey: ["broadcasts"] });
     },
   });
+
+  // Edit broadcast mutation
+  const editBroadcastMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingBroadcast) throw new Error("No broadcast selected");
+      
+      const { error } = await supabase
+        .from("broadcasts")
+        .update({
+          title: editTitle,
+          content: editContent || null,
+          image_url: editImageUrl || null,
+          message_type: editMessageType,
+          scheduled_at: bangkokLocalToUTC(editScheduledAt),
+          next_run_at: editingBroadcast.is_recurring 
+            ? bangkokLocalToUTC(editScheduledAt) 
+            : null,
+        })
+        .eq("id", editingBroadcast.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("อัพเดท Broadcast เรียบร้อย!");
+      setEditDialogOpen(false);
+      setEditingBroadcast(null);
+      queryClient.invalidateQueries({ queryKey: ["broadcasts"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-broadcasts"] });
+    },
+    onError: (error) => {
+      toast.error(`แก้ไขไม่สำเร็จ: ${error.message}`);
+    },
+  });
+
+  // Open edit dialog with broadcast data
+  const openEditDialog = (broadcast: Broadcast) => {
+    setEditingBroadcast(broadcast);
+    setEditTitle(broadcast.title);
+    setEditContent(broadcast.content || "");
+    setEditImageUrl(broadcast.image_url || "");
+    setEditMessageType(broadcast.message_type);
+    
+    // Convert UTC to Bangkok local time for datetime-local input
+    if (broadcast.scheduled_at) {
+      const date = new Date(broadcast.scheduled_at);
+      // Format as YYYY-MM-DDTHH:mm for datetime-local input
+      const bangkokTime = date.toLocaleString('sv-SE', { 
+        timeZone: 'Asia/Bangkok',
+        hour12: false 
+      }).replace(' ', 'T').slice(0, 16);
+      setEditScheduledAt(bangkokTime);
+    }
+    
+    setEditDialogOpen(true);
+  };
 
   // Clone broadcast mutation
   const cloneBroadcastMutation = useMutation({
@@ -1244,6 +1308,14 @@ export default function Broadcast() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
+                                onClick={() => openEditDialog(broadcast)} 
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
                                 onClick={() => cloneBroadcastMutation.mutate(broadcast)} 
                                 title="Clone"
                               >
@@ -1685,6 +1757,102 @@ export default function Broadcast() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Broadcast Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>✏️ แก้ไข Broadcast</DialogTitle>
+            <DialogDescription>
+              แก้ไขข้อความหรือเวลาที่ต้องการส่ง
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Title */}
+            <div className="space-y-2">
+              <Label>Title (Internal)</Label>
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="ชื่อ broadcast"
+              />
+            </div>
+
+            {/* Message Type */}
+            <div className="space-y-2">
+              <Label>ประเภทข้อความ</Label>
+              <Select value={editMessageType} onValueChange={(v) => setEditMessageType(v as MessageType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Text Only</SelectItem>
+                  <SelectItem value="image">Image Only</SelectItem>
+                  <SelectItem value="text_image">Text + Image</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Content */}
+            {(editMessageType === "text" || editMessageType === "text_image") && (
+              <div className="space-y-2">
+                <Label>ข้อความ</Label>
+                <Textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            )}
+
+            {/* Image URL */}
+            {(editMessageType === "image" || editMessageType === "text_image") && (
+              <div className="space-y-2">
+                <Label>Image URL</Label>
+                <Input
+                  value={editImageUrl}
+                  onChange={(e) => setEditImageUrl(e.target.value)}
+                />
+                {editImageUrl && (
+                  <img src={editImageUrl} alt="Preview" className="max-w-[200px] rounded" />
+                )}
+              </div>
+            )}
+
+            {/* Scheduled Time */}
+            <div className="space-y-2">
+              <Label>เวลาส่ง (Bangkok Time)</Label>
+              <Input
+                type="datetime-local"
+                value={editScheduledAt}
+                onChange={(e) => setEditScheduledAt(e.target.value)}
+              />
+            </div>
+
+            {/* Recurring info (read-only) */}
+            {editingBroadcast?.is_recurring && (
+              <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                🔁 Recurring: {editingBroadcast.recurrence_pattern}
+                {editingBroadcast.recurrence_end_date && (
+                  <> | สิ้นสุด: {editingBroadcast.recurrence_end_date}</>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={() => editBroadcastMutation.mutate()}
+              disabled={editBroadcastMutation.isPending || !editTitle.trim() || !editScheduledAt}
+            >
+              {editBroadcastMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              บันทึกการเปลี่ยนแปลง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
