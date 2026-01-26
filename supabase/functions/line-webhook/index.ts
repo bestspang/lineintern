@@ -8157,6 +8157,111 @@ async function handleAttendanceCommand(
       console.log(`[handleAttendanceCommand] Time validation passed: within work hours`);
     }
     
+    // ========== CHECK IF ALREADY CHECKED IN (for /checkin command) ==========
+    if (type === 'check_in') {
+      const { data: canCheckIn } = await supabase.rpc('can_employee_check_in', { 
+        p_employee_id: employee.id 
+      });
+      
+      // If can't check in = currently working
+      if (canCheckIn === false) {
+        console.log(`[handleAttendanceCommand] Employee ${employee.id} is already checked in, providing status + checkout link`);
+        
+        // Get today's check-in log
+        const today = getBangkokDateString();
+        const { data: checkInLog } = await supabase
+          .from('attendance_logs')
+          .select('server_time')
+          .eq('employee_id', employee.id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .order('server_time', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        if (checkInLog) {
+          const checkInTime = toBangkokTime(checkInLog.server_time);
+          const now = getBangkokNow();
+          const minutesWorked = Math.floor((now.getTime() - checkInTime.getTime()) / (1000 * 60));
+          const hoursWorked = Math.floor(minutesWorked / 60);
+          const minsRemaining = minutesWorked % 60;
+          
+          // Calculate standard work hours (from employee or default 8)
+          const standardHours = Number(employee.hours_per_day) || Number(employee.max_work_hours_per_day) || 8;
+          const standardMinutes = standardHours * 60;
+          const isCompleted = minutesWorked >= standardMinutes;
+          
+          // Create checkout token
+          const checkoutExpiresAt = new Date();
+          checkoutExpiresAt.setMinutes(checkoutExpiresAt.getMinutes() + (effectiveSettings?.token_validity_minutes || 10));
+          
+          const { data: checkoutToken, error: checkoutTokenError } = await supabase
+            .from('attendance_tokens')
+            .insert({
+              employee_id: employee.id,
+              type: 'check_out',
+              status: 'pending',
+              expires_at: checkoutExpiresAt.toISOString()
+            })
+            .select()
+            .maybeSingle();
+          
+          if (checkoutTokenError || !checkoutToken) {
+            console.error('[handleAttendanceCommand] Failed to create checkout token:', checkoutTokenError);
+            const smartQuickReply = await getSmartQuickReply(locale);
+            return { 
+              detected: true, 
+              type: 'check_in', 
+              message: locale === 'th'
+                ? 'เกิดข้อผิดพลาดในการสร้างลิงก์ checkout กรุณาลองใหม่'
+                : 'Error creating checkout link. Please try again.',
+              quickReply: smartQuickReply 
+            };
+          }
+          
+          const appUrl = Deno.env.get('APP_URL') || 'https://intern.gem.me';
+          const checkoutUrl = `${appUrl}/attendance?t=${checkoutToken.id}`;
+          
+          // Format time worked
+          const workedTimeStr = hoursWorked > 0 
+            ? `${hoursWorked} ชม. ${minsRemaining} นาที` 
+            : `${minsRemaining} นาที`;
+          const workedTimeStrEn = hoursWorked > 0 
+            ? `${hoursWorked} hr ${minsRemaining} min` 
+            : `${minsRemaining} min`;
+          
+          // Format check-in time
+          const checkInTimeStr = formatBangkokTime(checkInTime, 'HH:mm');
+          
+          let message = '';
+          if (isCompleted) {
+            message = locale === 'th'
+              ? `✅ คุณเช็คอินไปแล้วเมื่อ ${checkInTimeStr} น.\n\n⏱️ ทำงานมาแล้ว ${workedTimeStr}\n🎉 ครบเวลาทำงาน ${standardHours} ชม. แล้ว!\n\nสามารถเช็คเอาต์ได้เลย:\n🔗 ${checkoutUrl}\n\n⏰ ลิงก์หมดอายุใน ${effectiveSettings?.token_validity_minutes || 10} นาที`
+              : `✅ You already checked in at ${checkInTimeStr}\n\n⏱️ Worked: ${workedTimeStrEn}\n🎉 Completed ${standardHours} hour shift!\n\nYou can check out now:\n🔗 ${checkoutUrl}\n\n⏰ Link expires in ${effectiveSettings?.token_validity_minutes || 10} minutes`;
+          } else {
+            const remainingMins = standardMinutes - minutesWorked;
+            const remainingHrs = Math.floor(remainingMins / 60);
+            const remainingMinsRemainder = remainingMins % 60;
+            const remainingStr = remainingHrs > 0 
+              ? `${remainingHrs} ชม. ${remainingMinsRemainder} นาที` 
+              : `${remainingMinsRemainder} นาที`;
+            const remainingStrEn = remainingHrs > 0 
+              ? `${remainingHrs} hr ${remainingMinsRemainder} min` 
+              : `${remainingMinsRemainder} min`;
+            
+            message = locale === 'th'
+              ? `⚠️ คุณเช็คอินไปแล้วเมื่อ ${checkInTimeStr} น.\n\n⏱️ ทำงานมาแล้ว ${workedTimeStr}\n⏳ เหลืออีก ${remainingStr} ถึงครบ ${standardHours} ชม.\n\nหากต้องการออกก่อน ให้เลือกเหตุผลในหน้าเช็คเอาต์:\n🔗 ${checkoutUrl}\n\n⏰ ลิงก์หมดอายุใน ${effectiveSettings?.token_validity_minutes || 10} นาที`
+              : `⚠️ You already checked in at ${checkInTimeStr}\n\n⏱️ Worked: ${workedTimeStrEn}\n⏳ ${remainingStrEn} remaining for ${standardHours} hr shift\n\nTo leave early, select a reason on checkout page:\n🔗 ${checkoutUrl}\n\n⏰ Link expires in ${effectiveSettings?.token_validity_minutes || 10} minutes`;
+          }
+          
+          console.log(`[handleAttendanceCommand] Sent already-checked-in status with checkout link`);
+          const smartQuickReply = await getSmartQuickReply(locale);
+          return { detected: true, type: 'check_in', message, quickReply: smartQuickReply };
+        }
+      }
+    }
+    // ========== END CHECK IF ALREADY CHECKED IN ==========
+    
     // Create attendance token
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + (effectiveSettings.token_validity_minutes || 10));
