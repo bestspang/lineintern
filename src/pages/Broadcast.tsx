@@ -95,6 +95,65 @@ export default function Broadcast() {
   const [sending, setSending] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(getBangkokNow());
 
+  // Realtime subscription for broadcasts changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('broadcasts-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'broadcasts'
+        },
+        (payload) => {
+          console.log('[Realtime] Broadcast changed:', payload);
+          queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
+          queryClient.invalidateQueries({ queryKey: ['scheduled-broadcasts'] });
+          
+          // Toast notification for status changes
+          if (payload.eventType === 'UPDATE') {
+            const newData = payload.new as Broadcast;
+            if (newData.status === 'sent') {
+              toast.success(`📨 "${newData.title}" ส่งเรียบร้อยแล้ว!`);
+            } else if (newData.status === 'failed') {
+              toast.error(`❌ "${newData.title}" ส่งไม่สำเร็จ`);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'broadcast_templates'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['broadcast-templates'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recipient_groups'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['recipient-groups'] });
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Broadcast subscription status:', status);
+      });
+
+    return () => {
+      console.log('[Realtime] Cleaning up broadcast subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   // Fetch broadcasts history
   const { data: broadcasts, isLoading: broadcastsLoading } = useQuery({
     queryKey: ["broadcasts"],
