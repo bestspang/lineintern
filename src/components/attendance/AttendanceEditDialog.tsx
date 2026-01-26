@@ -349,7 +349,7 @@ export function AttendanceEditDialog({
           </DialogDescription>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
           <div className="space-y-6 py-4">
             {/* Status Selection */}
             <div className="space-y-3">
