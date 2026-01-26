@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Search, MessageSquare, User, Bot, Building, ArrowLeft, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -352,9 +352,12 @@ export default function DirectMessages() {
                 </p>
               </div>
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              ประวัติข้อความ Direct Message
+            </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 min-h-0 pr-4">
+          <ScrollArea className="h-[calc(80vh-140px)] pr-4">
             {messagesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
