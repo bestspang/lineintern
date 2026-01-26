@@ -8262,6 +8262,69 @@ async function handleAttendanceCommand(
     }
     // ========== END CHECK IF ALREADY CHECKED IN ==========
     
+    // ========== CHECK IF NOT CHECKED IN (for /checkout command) ==========
+    if (type === 'check_out') {
+      const { data: canCheckOut } = await supabase.rpc('can_employee_check_out', { 
+        p_employee_id: employee.id 
+      });
+      
+      // ถ้า checkout ไม่ได้ = ยังไม่ได้ check-in หรือ checkout ไปแล้ว
+      if (canCheckOut === false) {
+        console.log(`[handleAttendanceCommand] Employee ${employee.id} cannot check out - not checked in or already checked out`);
+        
+        // ดึงข้อมูล checkout ล่าสุดวันนี้ (ถ้ามี)
+        const today = getBangkokDateString();
+        const { data: lastCheckOut } = await supabase
+          .from('attendance_logs')
+          .select('server_time')
+          .eq('employee_id', employee.id)
+          .eq('event_type', 'check_out')
+          .gte('server_time', `${today}T00:00:00+07:00`)
+          .order('server_time', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        let statusMessage = '';
+        if (lastCheckOut) {
+          // กรณี: checkout ไปแล้ววันนี้
+          const checkOutTimeStr = formatBangkokTime(toBangkokTime(lastCheckOut.server_time), 'HH:mm');
+          statusMessage = locale === 'th'
+            ? `✅ คุณเช็คเอาต์ไปแล้วเมื่อ ${checkOutTimeStr} น.\n\nหากต้องการเข้างานใหม่ กรุณาพิมพ์ /checkin`
+            : `✅ You already checked out at ${checkOutTimeStr}\n\nTo start a new shift, type /checkin`;
+        } else {
+          // กรณี: ยังไม่ได้ check-in วันนี้เลย - สร้าง check-in token และส่ง link ไปด้วย
+          const checkInExpiresAt = new Date();
+          checkInExpiresAt.setMinutes(checkInExpiresAt.getMinutes() + (effectiveSettings?.token_validity_minutes || 10));
+          
+          const { data: checkInToken, error: checkInTokenError } = await supabase
+            .from('attendance_tokens')
+            .insert({
+              employee_id: employee.id,
+              type: 'check_in',
+              status: 'pending',
+              expires_at: checkInExpiresAt.toISOString()
+            })
+            .select()
+            .maybeSingle();
+          
+          if (checkInTokenError) {
+            console.error('[handleAttendanceCommand] Failed to create check-in token:', checkInTokenError);
+          }
+          
+          const appUrl = Deno.env.get('APP_URL') || 'https://intern.gem.me';
+          const checkInUrl = checkInToken ? `${appUrl}/attendance?t=${checkInToken.id}` : '';
+          
+          statusMessage = locale === 'th'
+            ? `⚠️ คุณยังไม่ได้เช็คอินวันนี้\n\nกรุณาเช็คอินก่อน:\n🔗 ${checkInUrl}\n\n⏰ ลิงก์หมดอายุใน ${effectiveSettings?.token_validity_minutes || 10} นาที`
+            : `⚠️ You haven't checked in today\n\nPlease check in first:\n🔗 ${checkInUrl}\n\n⏰ Link expires in ${effectiveSettings?.token_validity_minutes || 10} minutes`;
+        }
+        
+        const smartQuickReply = await getSmartQuickReply(locale);
+        return { detected: true, type: 'check_out', message: statusMessage, quickReply: smartQuickReply };
+      }
+    }
+    // ========== END CHECK IF NOT CHECKED IN ==========
+    
     // Create attendance token
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + (effectiveSettings.token_validity_minutes || 10));
