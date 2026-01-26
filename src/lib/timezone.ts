@@ -143,3 +143,41 @@ export function getBangkokHoursMinutes(date: string | Date | null | undefined): 
     return null;
   }
 }
+
+/**
+ * Format date as Bangkok time string (HH:mm only)
+ * @param date - Date string or Date object
+ * @returns Formatted time in Bangkok timezone (e.g., "14:30")
+ */
+export function formatBangkokTimeShort(date: string | Date | null | undefined): string {
+  if (!date) return '-';
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleTimeString('th-TH', { 
+      timeZone: BANGKOK_TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  } catch {
+    return '-';
+  }
+}
+
+/**
+ * Convert a local datetime-local input value to UTC ISO string
+ * datetime-local gives "2025-01-26T08:30" without timezone
+ * This assumes the input is Bangkok time and converts to UTC
+ * @param localDatetime - Value from datetime-local input (e.g., "2025-01-26T08:30")
+ * @returns UTC ISO string
+ */
+export function bangkokLocalToUTC(localDatetime: string): string {
+  if (!localDatetime) return '';
+  try {
+    // Append Bangkok timezone offset (+07:00) to tell JS this is Bangkok time
+    const bangkokDate = new Date(localDatetime + '+07:00');
+    return bangkokDate.toISOString();
+  } catch {
+    return '';
+  }
+}

@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { format, isSameDay, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
 import { th } from "date-fns/locale";
 import { Radio, Send, Clock, Users, FileText, History, Loader2, Plus, Trash2, Copy, Eye, Pause, Play, X, Check, Image, MessageSquare, CalendarDays } from "lucide-react";
-import { getBangkokNow, formatBangkokDateTime } from "@/lib/timezone";
+import { getBangkokNow, formatBangkokDateTime, formatBangkokISODate, formatBangkokTimeShort, bangkokLocalToUTC } from "@/lib/timezone";
 
 type MessageType = "text" | "image" | "text_image";
 type RecurrencePattern = "daily" | "every_3_days" | "weekly" | "monthly" | "yearly";
@@ -208,11 +208,13 @@ export default function Broadcast() {
           content: content || null,
           image_url: imageUrl || null,
           status: scheduleType === "now" ? "scheduled" : "scheduled",
-          scheduled_at: scheduleType === "later" ? scheduledAt : getBangkokNow().toISOString(),
+          scheduled_at: scheduleType === "later" 
+            ? bangkokLocalToUTC(scheduledAt)  // Convert Bangkok local time to UTC
+            : new Date().toISOString(),
           is_recurring: isRecurring,
           recurrence_pattern: isRecurring ? recurrencePattern : null,
           recurrence_end_date: isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
-          next_run_at: isRecurring && scheduleType === "later" ? scheduledAt : null,
+          next_run_at: isRecurring && scheduleType === "later" ? bangkokLocalToUTC(scheduledAt) : null,
         })
         .select()
         .single();
@@ -613,11 +615,11 @@ export default function Broadcast() {
   // Calendar helper: Get broadcasts for selected date
   const broadcastsForSelectedDate = useMemo(() => {
     if (!scheduledBroadcasts || !selectedCalendarDate) return [];
-    const selectedDateStr = format(selectedCalendarDate, "yyyy-MM-dd");
+    const selectedDateStr = formatBangkokISODate(selectedCalendarDate);
     return scheduledBroadcasts.filter((b) => {
       const broadcastDate = b.scheduled_at || b.next_run_at;
       if (!broadcastDate) return false;
-      return format(new Date(broadcastDate), "yyyy-MM-dd") === selectedDateStr;
+      return formatBangkokISODate(broadcastDate) === selectedDateStr;
     }).sort((a, b) => {
       const aTime = new Date(a.scheduled_at || a.next_run_at!).getTime();
       const bTime = new Date(b.scheduled_at || b.next_run_at!).getTime();
@@ -630,14 +632,14 @@ export default function Broadcast() {
     if (!scheduledBroadcasts) return { today: 0, thisWeek: 0, recurring: 0, paused: 0 };
     
     const now = getBangkokNow();
-    const todayStr = format(now, "yyyy-MM-dd");
+    const todayStr = formatBangkokISODate(now);
     const weekStart = startOfWeek(now, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
     
     return {
       today: scheduledBroadcasts.filter((b) => {
         const d = b.scheduled_at || b.next_run_at;
-        return d && format(new Date(d), "yyyy-MM-dd") === todayStr;
+        return d && formatBangkokISODate(d) === todayStr;
       }).length,
       thisWeek: scheduledBroadcasts.filter((b) => {
         const d = b.scheduled_at || b.next_run_at;
@@ -1164,7 +1166,7 @@ export default function Broadcast() {
                               <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
                                 <span className="flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
-                                  {format(new Date(broadcast.scheduled_at || broadcast.next_run_at!), "HH:mm")}
+                                  {formatBangkokTimeShort(broadcast.scheduled_at || broadcast.next_run_at!)}
                                 </span>
                                 <span>•</span>
                                 <span className="flex items-center gap-1">
