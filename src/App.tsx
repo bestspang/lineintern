@@ -96,6 +96,7 @@ import {
   PortalEmployees, PortalEmployeeDetail, PortalReceiptManagement, PortalReceiptAnalytics,
   PortalBranchReport
 } from "./pages/portal";
+import ApproveRemoteCheckout from "./pages/portal/ApproveRemoteCheckout";
 import DepositUpload from "./pages/portal/DepositUpload";
 import DepositReview from "./pages/portal/DepositReview";
 import Deposits from "./pages/attendance/Deposits";
@@ -184,6 +185,7 @@ const App = () => (
                       <Route path="/approvals/ot" element={<ApproveOT />} />
                       <Route path="/approvals/leave" element={<ApproveLeave />} />
                       <Route path="/approvals/early-leave" element={<ApproveEarlyLeave />} />
+                      <Route path="/approvals/remote-checkout" element={<ApproveRemoteCheckout />} />
                       <Route path="/team-summary" element={<TeamSummary />} />
                       <Route path="/photos" element={<TodayPhotos />} />
                       <Route path="/daily-summary" element={<DailySummary />} />

@@ -4563,6 +4563,106 @@ export type Database = {
         }
         Relationships: []
       }
+      remote_checkout_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by_employee_id: string | null
+          branch_id: string | null
+          checkin_log_id: string | null
+          checkout_log_id: string | null
+          created_at: string | null
+          distance_from_branch: number | null
+          employee_id: string
+          id: string
+          latitude: number
+          longitude: number
+          reason: string
+          rejection_reason: string | null
+          request_date: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_employee_id?: string | null
+          branch_id?: string | null
+          checkin_log_id?: string | null
+          checkout_log_id?: string | null
+          created_at?: string | null
+          distance_from_branch?: number | null
+          employee_id: string
+          id?: string
+          latitude: number
+          longitude: number
+          reason: string
+          rejection_reason?: string | null
+          request_date: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_employee_id?: string | null
+          branch_id?: string | null
+          checkin_log_id?: string | null
+          checkout_log_id?: string | null
+          created_at?: string | null
+          distance_from_branch?: number | null
+          employee_id?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          reason?: string
+          rejection_reason?: string | null
+          request_date?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "remote_checkout_requests_approved_by_employee_id_fkey"
+            columns: ["approved_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remote_checkout_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remote_checkout_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remote_checkout_requests_checkin_log_id_fkey"
+            columns: ["checkin_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remote_checkout_requests_checkout_log_id_fkey"
+            columns: ["checkout_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remote_checkout_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           created_at: string
