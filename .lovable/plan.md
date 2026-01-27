@@ -1,228 +1,265 @@
 
-## การตรวจสอบความสอดคล้องของระบบ LINE Intern และข้อเสนอแนะการปรับปรุง
 
-### สรุปการตรวจสอบ
+## แผนการ Implement 4 Features
 
-ได้ทำการตรวจสอบระบบอย่างละเอียดในส่วนต่างๆ ต่อไปนี้:
-- Bot commands (command-parser.ts vs bot_commands table)
-- Portal Help page (Help.tsx vs portal_faqs table)
-- Portal routes (App.tsx) vs Quick Actions
-- Edge functions vs frontend handlers
-- Recent features: Remote Checkout, Cancel OT, Cancel Day-Off
+### ภาพรวมสิ่งที่ต้องทำ
 
----
-
-## ผลการตรวจสอบ
-
-### 1. สิ่งที่ทำงานถูกต้องแล้ว (ไม่ต้องแก้ไข)
-
-| Component | Status | หมายเหตุ |
-|-----------|--------|---------|
-| Remote Checkout Backend | ✅ | `remote-checkout-request`, `remote-checkout-approval` ทำงานปกติ |
-| Remote Checkout Frontend (Attendance.tsx) | ✅ | Dialog และ handler ถูก implement แล้ว |
-| ApproveRemoteCheckout Portal | ✅ | Route `/portal/approvals/remote-checkout` ใช้งานได้ |
-| Approval counts include remoteCheckout | ✅ | portal-data/index.ts line 645-698 รวม remote checkout count |
-| Cancel OT/Day-Off Commands | ✅ | `handleCancelOTCommand`, `handleCancelDayOffCommand` implement แล้ว |
-| bot_commands table | ✅ | มี cancel_ot, cancel_dayoff, dayoff ครบ |
+| Feature | ไฟล์ที่ต้องแก้ไข | ความเสี่ยง |
+|---------|-----------------|-----------|
+| Feature 1: Cancel OT/Day-Off จาก Portal | `MyWorkHistory.tsx`, `portal-data/index.ts` | ต่ำ |
+| Feature 2: LINE notification เมื่อ Remote Checkout อนุมัติ/ปฏิเสธ | `remote-checkout-approval/index.ts` | **ไม่ต้องทำ** - มีแล้ว! |
+| Feature 3: ประวัติ Remote Checkout ใน My Work History | `MyWorkHistory.tsx`, `portal-data/index.ts` | ต่ำ |
+| Feature 4: Leaderboard รวมทั้งหมด | `PointLeaderboard.tsx`, `portal-data/index.ts` | ต่ำ |
 
 ---
 
-### 2. ปัญหาที่พบ (ต้องแก้ไข)
+## การตรวจสอบก่อน Implement
 
-#### 2.1 Help.tsx Quick Actions ไม่ครบ - ขาด Remote Checkout ใน Help Page
+### Feature 2: LINE Notification - **มีอยู่แล้ว ไม่ต้องทำ**
 
-**Root Cause:** Help.tsx มี Quick Actions 17 items แต่ไม่มี Remote Checkout approval
+ตรวจสอบ `remote-checkout-approval/index.ts` พบว่า:
+- **Approval:** ส่ง LINE push notification (lines 162-186)
+- **Rejection:** ส่ง LINE push notification (lines 222-246)
 
-**ไฟล์:** `src/pages/portal/Help.tsx`
+ดังนั้น Feature 2 implement เรียบร้อยแล้ว ไม่ต้องแก้ไข
 
-**วิธีแก้ไข:** เพิ่ม Quick Action สำหรับ Remote Checkout Approval (สำหรับ Manager/Admin)
+---
+
+## Feature 1: Cancel OT/Day-Off จาก Portal
+
+### สถานะปัจจุบัน
+
+- `MyWorkHistory.tsx` แสดงเฉพาะ attendance logs (check-in/check-out)
+- ไม่มี section แสดง pending OT/Day-Off requests
+- ไม่มี cancel button
+
+### Backend (portal-data/index.ts)
+
+**เพิ่ม 3 endpoints ใหม่:**
+
+1. `my-pending-ot-requests` - ดึง pending OT requests ของ employee
+2. `my-pending-dayoff-requests` - ดึง pending Day-Off requests ของ employee  
+3. `cancel-my-request` - ยกเลิก OT หรือ Day-Off request
 
 ```typescript
-// เพิ่มใน quickActions array (ประมาณ line 133)
-{
-  icon: MapPin,  // ต้อง import MapPin
-  title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
-  description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
-  path: '/portal/approvals/remote-checkout'
+// Case: my-pending-ot-requests
+case 'my-pending-ot-requests': {
+  const result = await supabase
+    .from('overtime_requests')
+    .select('id, request_date, estimated_hours, reason, status, created_at')
+    .eq('employee_id', employee_id)
+    .eq('status', 'pending')
+    .order('request_date', { ascending: true });
+  
+  data = result.data;
+  error = result.error;
+  break;
+}
+
+// Case: my-pending-dayoff-requests
+case 'my-pending-dayoff-requests': {
+  const result = await supabase
+    .from('flexible_day_off_requests')
+    .select('id, day_off_date, reason, status, created_at')
+    .eq('employee_id', employee_id)
+    .eq('status', 'pending')
+    .order('day_off_date', { ascending: true });
+  
+  data = result.data;
+  error = result.error;
+  break;
+}
+
+// Case: cancel-my-request
+case 'cancel-my-request': {
+  const { requestId, requestType, reason } = params;
+  
+  if (!requestId || !requestType) {
+    error = { message: 'requestId and requestType are required' };
+    break;
+  }
+  
+  const tableName = requestType === 'ot' ? 'overtime_requests' : 'flexible_day_off_requests';
+  
+  // Verify ownership and pending status
+  const { data: existing } = await supabase
+    .from(tableName)
+    .select('id, employee_id, status')
+    .eq('id', requestId)
+    .eq('employee_id', employee_id)
+    .eq('status', 'pending')
+    .maybeSingle();
+  
+  if (!existing) {
+    error = { message: 'Request not found or cannot be cancelled' };
+    break;
+  }
+  
+  // Update to cancelled
+  const { error: updateError } = await supabase
+    .from(tableName)
+    .update({
+      status: 'cancelled',
+      rejection_reason: reason || 'Cancelled by employee via Portal',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', requestId);
+  
+  if (updateError) {
+    error = updateError;
+  } else {
+    data = { success: true };
+  }
+  break;
 }
 ```
 
----
+### Frontend (MyWorkHistory.tsx)
 
-#### 2.2 portal_faqs ไม่มีข้อมูลเกี่ยวกับ Remote Checkout, Cancel OT/Day-Off
+**เพิ่ม section "คำขอที่รออนุมัติ":**
 
-**Root Cause:** FAQ ในฐานข้อมูลไม่ได้อัปเดตตาม features ใหม่
+- Fetch `my-pending-ot-requests` และ `my-pending-dayoff-requests`
+- แสดงรายการ pending requests
+- เพิ่มปุ่ม "ยกเลิก" พร้อม confirm dialog
+- Call `cancel-my-request` เมื่อกดยืนยัน
+- Refresh data หลังยกเลิก
 
-**ตาราง:** `portal_faqs`
-
-**วิธีแก้ไข:** เพิ่ม FAQ entries ใหม่ผ่าน SQL migration
-
-```sql
-INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order, is_active) VALUES
--- Remote Checkout
-('ฉันจะ checkout นอกสถานที่ได้อย่างไร?', 
- 'How can I check out from outside the office?',
- 'หากคุณอยู่นอกพื้นที่สาขา ระบบจะแสดง dialog ให้กรอกเหตุผล จากนั้นส่งคำขอไปยังหัวหน้าเพื่ออนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ',
- 'If you are outside the branch area, the system will show a dialog to enter your reason. The request will be sent to your manager for approval. Once approved, the system will automatically check you out.',
- 'attendance', 4.5, true),
-
--- Cancel OT
-('ฉันจะยกเลิกคำขอ OT ได้อย่างไร?',
- 'How can I cancel an OT request?',
- 'พิมพ์ /cancel-ot หรือ ยกเลิกโอที ใน LINE Chat กับบอท ระบบจะแสดงรายการ OT ที่รออนุมัติให้เลือกยกเลิก หรือไปที่ Portal > ประวัติการทำงาน',
- 'Type /cancel-ot in LINE Chat with the bot. The system will show pending OT requests to cancel. You can also go to Portal > Work History.',
- 'leave-ot', 9.5, true),
-
--- Cancel Day-Off
-('ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?',
- 'How can I cancel a day-off request?',
- 'พิมพ์ /cancel-dayoff หรือ ยกเลิกวันหยุด ใน LINE Chat กับบอท ระบบจะแสดงรายการวันหยุดที่รออนุมัติให้เลือกยกเลิก',
- 'Type /cancel-dayoff in LINE Chat with the bot. The system will show pending day-off requests to cancel.',
- 'leave-ot', 9.6, true);
-```
-
----
-
-#### 2.3 portal/index.tsx ไม่ได้ export ApproveRemoteCheckout
-
-**Root Cause:** ApproveRemoteCheckout ถูก import ตรงใน App.tsx แต่ไม่อยู่ใน barrel export
-
-**ไฟล์:** `src/pages/portal/index.tsx`
-
-**วิธีแก้ไข:** เพิ่ม export (optional - เพื่อ consistency)
+**State เพิ่มเติม:**
 
 ```typescript
-// เพิ่มใน Manager pages section (line 30)
-export { default as ApproveRemoteCheckout } from './ApproveRemoteCheckout';
+const [pendingOT, setPendingOT] = useState<PendingOTRequest[]>([]);
+const [pendingDayOff, setPendingDayOff] = useState<PendingDayOffRequest[]>([]);
+const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+const [cancelTarget, setCancelTarget] = useState<{id: string, type: 'ot'|'dayoff', label: string} | null>(null);
+const [cancelling, setCancelling] = useState(false);
 ```
-
-**หมายเหตุ:** การแก้ไขนี้เป็น optional เพราะ App.tsx import ตรงอยู่แล้ว แต่ทำเพื่อ consistency
 
 ---
 
-#### 2.4 Static FAQS ใน Help.tsx ไม่ครบถ้วน
+## Feature 3: ประวัติ Remote Checkout
 
-**Root Cause:** Static fallback FAQs มีแค่ 3 ข้อ ขณะที่ database มี 22+ ข้อ
+### Backend (portal-data/index.ts)
 
-**ไฟล์:** `src/pages/portal/Help.tsx` (lines 16-26)
-
-**วิธีแก้ไข:** เพิ่ม static FAQs ที่สำคัญเพื่อ fallback
+**เพิ่ม endpoint `my-remote-checkout-requests`:**
 
 ```typescript
-const STATIC_FAQS_TH = [
-  { question: 'ฉันจะเช็คอินได้อย่างไร?', answer: 'กดปุ่ม "เช็คอิน/เอาท์" จาก Rich Menu หรือเมนูหลัก จากนั้นอนุญาตให้แอปเข้าถึงตำแหน่งและกล้อง แล้วถ่ายรูปยืนยัน' },
-  { question: 'ฉันลืมเช็คเอาท์ ต้องทำอย่างไร?', answer: 'ระบบจะเช็คเอาท์อัตโนมัติตอนเที่ยงคืน แต่ถ้าต้องการแก้ไขเวลา กรุณาติดต่อหัวหน้างานหรือ HR' },
-  { question: 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?', answer: 'ระบบจะแสดง dialog ให้กรอกเหตุผล ส่งคำขอไปยังหัวหน้าอนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ' },
-  { question: 'Happy Points คืออะไร?', answer: 'คะแนนสะสมจากการมาทำงานตรงเวลา ทำ OT และกิจกรรมต่างๆ สามารถนำไปแลกของรางวัลได้' },
-  { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'พิมพ์ /cancel-ot ใน LINE Chat กับบอท หรือไปที่ Portal > ประวัติการทำงาน' },
-];
+case 'my-remote-checkout-requests': {
+  const limit = params?.limit || 10;
+  
+  const result = await supabase
+    .from('remote_checkout_requests')
+    .select(`
+      id, request_date, latitude, longitude, distance_from_branch, 
+      reason, status, created_at, approved_at, rejection_reason
+    `)
+    .eq('employee_id', employee_id)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  
+  data = result.data;
+  error = result.error;
+  break;
+}
 ```
 
----
+### Frontend (MyWorkHistory.tsx)
 
-### 3. สิ่งที่ตรวจสอบแล้วไม่มีปัญหา
+**เพิ่ม section "ประวัติ Remote Checkout":**
 
-| Item | Verification |
-|------|-------------|
-| command-parser.ts aliases | `/cancel-ot`, `/cancel-dayoff` มีครบ (lines 146-157) |
-| line-webhook handlers | `handleCancelOTCommand`, `handleCancelDayOffCommand` implement แล้ว |
-| App.tsx routes | `/portal/approvals/remote-checkout` มีแล้ว (line 188) |
-| Approvals.tsx | รวม remoteCheckout count และ navigation ไว้แล้ว (lines 78-84) |
-| PortalHome.tsx | ไม่ต้องมี Remote Checkout เพราะเป็น Manager feature อยู่ใน Approvals |
+- Fetch `my-remote-checkout-requests`
+- แสดงรายการ remote checkout พร้อมสถานะ (รอ/อนุมัติ/ปฏิเสธ)
+- ใช้ badge สี: pending=yellow, approved=green, rejected=red
 
 ---
 
-## ข้อเสนอแนะ Features ใหม่
+## Feature 4: Leaderboard รวมทั้งหมด
 
-### Feature 1: Cancel OT/Day-Off จาก Portal (ไม่ใช่แค่ LINE)
+### สถานะปัจจุบัน
 
-**สถานะปัจจุบัน:** ยกเลิก OT/Day-Off ได้เฉพาะผ่าน LINE Chat
+`PointLeaderboard.tsx` ส่ง `branchId` ไปที่ backend เสมอ ทำให้เห็นแค่สาขาตัวเอง
 
-**ข้อเสนอ:** เพิ่มปุ่ม "ยกเลิก" ใน Portal > My Work History สำหรับ pending requests
+### Backend (portal-data/index.ts)
 
-**ไฟล์ที่ต้องแก้ไข:**
-- `src/pages/portal/MyWorkHistory.tsx` - เพิ่ม UI สำหรับยกเลิก
-- `supabase/functions/portal-data/index.ts` - เพิ่ม endpoint `cancel-ot-request`
+**แก้ไข endpoint `leaderboard`:**
 
-**ความเสี่ยง:** ต่ำ - เพิ่ม feature ใหม่โดยไม่กระทบ existing code
+ปัจจุบันรองรับ `branchId` อยู่แล้ว (line 972-974) - ถ้าไม่ส่ง branchId จะ query ทั้งหมด
+ดังนั้นไม่ต้องแก้ backend
 
----
+### Frontend (PointLeaderboard.tsx)
 
-### Feature 2: Notification เมื่อ Remote Checkout ถูกอนุมัติ/ปฏิเสธ
-
-**สถานะปัจจุบัน:** พนักงานต้องเช็คใน Portal ว่าได้รับอนุมัติหรือยัง
-
-**ข้อเสนอ:** ส่ง LINE notification เมื่อ manager approve/reject
-
-**ไฟล์ที่ต้องแก้ไข:**
-- `supabase/functions/remote-checkout-approval/index.ts` - เพิ่ม LINE push notification
-
-**ความเสี่ยง:** ต่ำ - เพิ่ม notification โดยไม่กระทบ approval logic
-
----
-
-### Feature 3: ประวัติ Remote Checkout ใน My Work History
-
-**สถานะปัจจุบัน:** ไม่มีที่ให้พนักงานดูประวัติ remote checkout
-
-**ข้อเสนอ:** เพิ่ม section ใน MyWorkHistory.tsx แสดงคำขอ remote checkout
-
-**ไฟล์ที่ต้องแก้ไข:**
-- `src/pages/portal/MyWorkHistory.tsx`
-- `supabase/functions/portal-data/index.ts` - เพิ่ม endpoint
-
-**ความเสี่ยง:** ต่ำมาก - read-only display
-
----
-
-## สรุปลำดับการแก้ไข
-
-| ลำดับ | Task | ความเสี่ยง | Priority |
-|-------|------|-----------|----------|
-| 1 | เพิ่ม FAQs ใน portal_faqs (Remote Checkout, Cancel OT/Day-Off) | ต่ำมาก | สูง |
-| 2 | เพิ่ม MapPin icon และ Quick Action ใน Help.tsx | ต่ำ | สูง |
-| 3 | อัปเดต Static FAQs ใน Help.tsx | ต่ำมาก | ปานกลาง |
-| 4 | Export ApproveRemoteCheckout ใน index.tsx | ต่ำมาก | ต่ำ |
-
----
-
-## Technical Details
-
-### Import ที่ต้องเพิ่มใน Help.tsx
+**เพิ่ม Toggle สลับ Branch/All:**
 
 ```typescript
-// Line 11 - เพิ่ม MapPin
-import { 
-  HelpCircle, Clock, Calendar, FileText, Gift, 
-  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
-  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package, Camera, MapPin  // เพิ่ม MapPin
-} from 'lucide-react';
+const [viewMode, setViewMode] = useState<'branch' | 'all'>('branch');
 ```
 
-### Database Migration SQL
+**แก้ไข fetchLeaderboard:**
 
-```sql
--- เพิ่ม FAQs สำหรับ features ใหม่
-INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order, is_active) VALUES
-('ฉันจะ checkout นอกสถานที่ได้อย่างไร?', 
- 'How can I check out from outside the office?',
- 'หากคุณอยู่นอกพื้นที่สาขา ระบบจะแสดง dialog ให้กรอกเหตุผล จากนั้นส่งคำขอไปยังหัวหน้าเพื่ออนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ',
- 'If you are outside the branch area, the system will show a dialog to enter your reason. The request will be sent to your manager for approval. Once approved, the system will automatically check you out.',
- 'attendance', 4.5, true),
-
-('ฉันจะยกเลิกคำขอ OT ได้อย่างไร?',
- 'How can I cancel an OT request?',
- 'พิมพ์ /cancel-ot หรือ ยกเลิกโอที ใน LINE Chat กับบอท ระบบจะแสดงรายการ OT ที่รออนุมัติให้เลือกยกเลิก',
- 'Type /cancel-ot in LINE Chat with the bot. The system will show pending OT requests to cancel.',
- 'leave-ot', 9.5, true),
-
-('ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?',
- 'How can I cancel a day-off request?',
- 'พิมพ์ /cancel-dayoff หรือ ยกเลิกวันหยุด ใน LINE Chat กับบอท ระบบจะแสดงรายการวันหยุดที่รออนุมัติให้เลือกยกเลิก',
- 'Type /cancel-dayoff in LINE Chat with the bot. The system will show pending day-off requests to cancel.',
- 'leave-ot', 9.6, true);
+```typescript
+const fetchLeaderboard = useCallback(async () => {
+  // ...
+  const { data, error } = await portalApi<LeaderboardApiResponse[]>({
+    endpoint: 'leaderboard',
+    employee_id: employee.id,
+    params: {
+      branchId: viewMode === 'branch' ? employee.branch?.id : undefined, // ส่งเฉพาะเมื่อ viewMode = branch
+      limit: 20
+    }
+  });
+  // ...
+}, [employee?.id, employee?.branch?.id, viewMode]); // เพิ่ม viewMode ใน dependency
 ```
+
+**เพิ่ม Toggle UI:**
+
+```tsx
+<div className="flex items-center gap-2">
+  <Button 
+    variant={viewMode === 'branch' ? 'default' : 'outline'} 
+    size="sm" 
+    onClick={() => setViewMode('branch')}
+  >
+    {locale === 'th' ? 'สาขา' : 'Branch'}
+  </Button>
+  <Button 
+    variant={viewMode === 'all' ? 'default' : 'outline'} 
+    size="sm" 
+    onClick={() => setViewMode('all')}
+  >
+    {locale === 'th' ? 'ทั้งหมด' : 'All'}
+  </Button>
+</div>
+```
+
+**อัปเดต Header description:**
+
+```tsx
+<p className="text-muted-foreground mt-1">
+  {viewMode === 'branch' 
+    ? (locale === 'th' ? 'อันดับคะแนนในสาขา' : 'Branch point rankings')
+    : (locale === 'th' ? 'อันดับคะแนนทั้งบริษัท' : 'Company-wide rankings')}
+</p>
+```
+
+---
+
+## สรุปไฟล์ที่ต้องแก้ไข
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|--------------|
+| `supabase/functions/portal-data/index.ts` | เพิ่ม 4 endpoints ใหม่: `my-pending-ot-requests`, `my-pending-dayoff-requests`, `cancel-my-request`, `my-remote-checkout-requests` |
+| `src/pages/portal/MyWorkHistory.tsx` | เพิ่ม section คำขอที่รออนุมัติ + ปุ่มยกเลิก + ประวัติ Remote Checkout |
+| `src/pages/portal/PointLeaderboard.tsx` | เพิ่ม Toggle สลับ Branch/All |
+
+---
+
+## ไฟล์ที่ไม่ต้องแก้ไข
+
+| ไฟล์ | เหตุผล |
+|------|--------|
+| `remote-checkout-approval/index.ts` | มี LINE notification อยู่แล้ว (lines 162-186, 222-246) |
+| `cancel-ot/index.ts` | ใช้เฉพาะ Admin/Owner ไม่ใช่สำหรับ employee self-cancel |
+| `cancel-dayoff/index.ts` | รองรับ LINE source อยู่แล้ว แต่เราจะ implement logic ใหม่ใน portal-data เพื่อความง่าย |
 
 ---
 
@@ -230,8 +267,15 @@ INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, categor
 
 ### Checklist ก่อน Implement
 
-- [ ] ไม่แก้ไข logic ที่มีอยู่ เพียงเพิ่มข้อมูลใหม่
-- [ ] ไม่ลบ routes หรือ components ที่มีอยู่
-- [ ] ไม่เปลี่ยน API endpoints ที่ใช้งานอยู่
-- [ ] ทดสอบ Help page ทำงานปกติทั้ง static และ dynamic FAQs
-- [ ] ทดสอบ Approvals page แสดง Remote Checkout count ถูกต้อง
+- [ ] ไม่แก้ไข existing endpoints ใน portal-data - เพิ่มใหม่เท่านั้น
+- [ ] ไม่แก้ไข attendance log display logic - เพิ่ม section ใหม่แยกออกมา
+- [ ] ไม่แก้ไข leaderboard endpoint - แค่ไม่ส่ง branchId เมื่อ viewMode = 'all'
+- [ ] ทดสอบว่า existing features ใน MyWorkHistory ทำงานปกติ
+- [ ] ทดสอบว่า leaderboard ยังแสดง branch ranking ได้ปกติ
+
+### Technical Notes
+
+1. **Cancel logic ใช้ employee_id verification** - ป้องกัน employee ยกเลิก request ของคนอื่น
+2. **ยกเลิกได้เฉพาะ pending** - ไม่สามารถยกเลิก approved/rejected requests
+3. **Leaderboard ไม่ส่ง branchId = query ทั้งหมด** - backend รองรับอยู่แล้ว
+
