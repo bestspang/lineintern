@@ -1,119 +1,295 @@
 
 
-## แผนแก้ไข Live Tracking และ Manual Checkout
+## แผนเพิ่ม Remote Checkout Request Dialog ใน Attendance.tsx
 
-### ปัญหาที่พบ
+### สถานะปัจจุบัน
 
-#### 1. Live Tracking ไม่แสดงข้อมูลพนักงาน
-**สาเหตุ:** Query ใน `LiveTracking.tsx` line 137 ใช้:
+#### Backend (พร้อมแล้ว)
+| Component | สถานะ | หมายเหตุ |
+|-----------|-------|---------|
+| `attendance-submit` Edge Function | ✅ | Return `code: 'OUTSIDE_GEOFENCE'` และ `requires_remote_approval: true` เมื่อ checkout นอกพื้นที่ |
+| `remote-checkout-request` Edge Function | ✅ | ทดสอบด้วย curl สำเร็จ - สร้าง request และส่ง LINE notification |
+| `remote-checkout-approval` Edge Function | ✅ | Process approval และ checkout ให้พนักงาน |
+
+#### Frontend (ต้องเพิ่ม)
+| Component | สถานะ | หมายเหตุ |
+|-----------|-------|---------|
+| Handle `OUTSIDE_GEOFENCE` error | ❌ | ไม่มีใน `Attendance.tsx` |
+| Remote Checkout Dialog | ❌ | ต้องสร้างใหม่ |
+
+---
+
+### Flow ที่จะ Implement
+
+```text
+[พนักงาน] กด Submit Check Out
+         ↓
+[attendance-submit] ตรวจ geofence
+         ↓
+    ┌────────────────────────────────────┐
+    │ อยู่นอกพื้นที่                        │
+    │ return 403 + OUTSIDE_GEOFENCE     │
+    └────────────────────────────────────┘
+         ↓
+[Attendance.tsx] ตรวจจับ error code
+         ↓
+    ┌────────────────────────────────────┐
+    │ เปิด Remote Checkout Dialog        │
+    │ - แสดงระยะห่างจากสาขา             │
+    │ - กรอกเหตุผล                       │
+    └────────────────────────────────────┘
+         ↓
+[พนักงาน] กรอกเหตุผล → กดส่ง
+         ↓
+[remote-checkout-request] สร้าง request
+         ↓
+[Manager] อนุมัติใน Portal
+         ↓
+[remote-checkout-approval] Checkout ให้อัตโนมัติ
+```
+
+---
+
+### การแก้ไข Attendance.tsx
+
+#### Step 1: เพิ่ม State Variables (ประมาณ Line 52)
+
 ```typescript
-branch:branches (name)
+// Remote checkout request state
+const [showRemoteCheckoutDialog, setShowRemoteCheckoutDialog] = useState(false);
+const [remoteCheckoutReason, setRemoteCheckoutReason] = useState<string>('');
+const [remoteCheckoutSubmitting, setRemoteCheckoutSubmitting] = useState(false);
+const [remoteCheckoutData, setRemoteCheckoutData] = useState<{
+  distance: number;
+  allowed_radius: number;
+  branch_name: string;
+  branch_id: string;
+  latitude: number;
+  longitude: number;
+} | null>(null);
 ```
-
-แต่ตาราง `employees` มี **2 Foreign Keys** ไปหา `branches`:
-- `branch_id` → `branches` (employees_branch_id_fkey)
-- `primary_branch_id` → `branches` (employees_primary_branch_id_fkey)
-
-ทำให้ Supabase return **error PGRST201**: "Could not embed because more than one relationship was found"
-
-#### 2. ไฟล์อื่นที่มีปัญหาเดียวกัน
-Query จาก `attendance_logs` ที่ nested ไปยัง `employees.branches` ก็เจอปัญหาเดียวกัน:
-- `src/pages/attendance/Photos.tsx` (line 70)
-- `src/pages/attendance/Analytics.tsx` (line 245)
-- `src/pages/portal/PortalEmployees.tsx` (line 40)
-- `src/pages/portal/PortalEmployeeDetail.tsx` (line 48)
-- และไฟล์อื่นๆ
-
-#### 3. ntp.冬至 และ Noey ยังค้างใน system
-มี work_sessions status = 'active' สำหรับวันที่ 27 ม.ค.:
-- Noey: check-in 08:56
-- ntp.冬至: check-in 09:03
 
 ---
 
-### Step 1: แก้ไข LiveTracking.tsx
+#### Step 2: เพิ่ม Handler สำหรับ OUTSIDE_GEOFENCE (ประมาณ Line 331)
 
-**ไฟล์:** `src/pages/attendance/LiveTracking.tsx`
+หลังจาก handle OT approval (line 346) เพิ่ม:
 
-**ตำแหน่ง:** Line 137
-
-**เปลี่ยนจาก:**
 ```typescript
-branch:branches (
-  name
-)
+// Handle 403 Outside Geofence - remote checkout required
+if (response.status === 403 && result.code === 'OUTSIDE_GEOFENCE') {
+  setSubmitting(false);
+  setSubmitProgress('');
+  
+  // Store geofence data for the dialog
+  setRemoteCheckoutData({
+    distance: result.distance,
+    allowed_radius: result.allowed_radius,
+    branch_name: result.branch_name,
+    branch_id: result.branch_id,
+    latitude: result.latitude,
+    longitude: result.longitude
+  });
+  
+  // Show remote checkout dialog
+  setShowRemoteCheckoutDialog(true);
+  return;
+}
 ```
 
-**เป็น:**
+---
+
+#### Step 3: เพิ่ม Handler Function สำหรับส่งคำขอ (ประมาณ Line 557)
+
+หลัง `handleEarlyLeaveRequest` function:
+
 ```typescript
-branch:branches!employees_branch_id_fkey (
-  name
-)
+const handleRemoteCheckoutRequest = async () => {
+  if (!remoteCheckoutReason.trim() || !remoteCheckoutData) {
+    toast({
+      title: 'กรอกข้อมูลให้ครบ',
+      description: 'กรุณาระบุเหตุผลในการขอ checkout นอกสถานที่',
+      variant: 'destructive'
+    });
+    return;
+  }
+
+  try {
+    setRemoteCheckoutSubmitting(true);
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/remote-checkout-request`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          employee_id: tokenData.employee.id,
+          latitude: remoteCheckoutData.latitude,
+          longitude: remoteCheckoutData.longitude,
+          distance_from_branch: remoteCheckoutData.distance,
+          branch_id: remoteCheckoutData.branch_id,
+          reason: remoteCheckoutReason
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to submit remote checkout request');
+    }
+
+    setShowRemoteCheckoutDialog(false);
+    setSubmitted(true);
+    setSubmitResult({
+      log: {
+        server_time: new Date().toISOString(),
+        is_flagged: false
+      },
+      remote_checkout_pending: true,
+      request_id: result.request_id
+    });
+
+    toast({
+      title: '✅ ส่งคำขอ Checkout นอกสถานที่สำเร็จ',
+      description: 'รอการอนุมัติจากหัวหน้างาน'
+    });
+
+  } catch (err) {
+    console.error('Remote checkout request error:', err);
+    toast({
+      title: 'เกิดข้อผิดพลาด',
+      description: err instanceof Error ? err.message : 'Failed to submit request',
+      variant: 'destructive'
+    });
+  } finally {
+    setRemoteCheckoutSubmitting(false);
+  }
+};
 ```
 
 ---
 
-### Step 2: แก้ไขไฟล์อื่นที่มีปัญหา FK Ambiguity
+#### Step 4: เพิ่ม Dialog Component (ก่อน closing `</div>` ประมาณ Line 1098)
 
-| ไฟล์ | บรรทัด | เปลี่ยนจาก | เป็น |
-|------|--------|-----------|------|
-| Photos.tsx | 70 | `branch:branches(id, name)` | `branch:branches!attendance_logs_branch_id_fkey(id, name)` |
-| Analytics.tsx | 245 | `branch:branches(id, name, ...)` | `branch:branches!attendance_logs_branch_id_fkey(id, name, ...)` |
-| PortalEmployees.tsx | 40 | `branch:branches(id, name)` | `branch:branches!employees_branch_id_fkey(id, name)` |
-| PortalEmployeeDetail.tsx | 48 | `branch:branches(name)` | `branch:branches!employees_branch_id_fkey(name)` |
-| OvertimeSummary.tsx | 73 | `branch:branches(id, name)` | `branch:branches!attendance_logs_branch_id_fkey(id, name)` |
-| DepositReviewList.tsx | 47 | `branch:branches(id, name)` | `branch:branches!daily_deposits_branch_id_fkey(id, name)` |
+```typescript
+{/* Remote Checkout Request Dialog */}
+<Dialog open={showRemoteCheckoutDialog} onOpenChange={setShowRemoteCheckoutDialog}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <MapPin className="h-5 w-5 text-orange-500" />
+        ขอ Checkout นอกสถานที่
+      </DialogTitle>
+      <DialogDescription>
+        คุณอยู่นอกพื้นที่ที่กำหนด กรุณาระบุเหตุผล
+      </DialogDescription>
+    </DialogHeader>
 
----
+    <div className="space-y-4 py-4">
+      {remoteCheckoutData && (
+        <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+          <MapPin className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-sm">
+            <div><strong>สาขา:</strong> {remoteCheckoutData.branch_name}</div>
+            <div><strong>ระยะห่าง:</strong> {remoteCheckoutData.distance} เมตร</div>
+            <div><strong>อนุญาตภายใน:</strong> {remoteCheckoutData.allowed_radius} เมตร</div>
+          </AlertDescription>
+        </Alert>
+      )}
 
-### Step 3: Insert Manual Checkout สำหรับ ntp.冬至 และ Noey
+      <div className="space-y-2">
+        <Label htmlFor="remote-reason">เหตุผล *</Label>
+        <Textarea
+          id="remote-reason"
+          placeholder="เช่น: ไปพบลูกค้า, ออกไปซื้อของให้ร้าน, ธุระด่วน..."
+          value={remoteCheckoutReason}
+          onChange={(e) => setRemoteCheckoutReason(e.target.value)}
+          className="min-h-[100px]"
+          maxLength={500}
+        />
+        <p className="text-xs text-muted-foreground">
+          {remoteCheckoutReason.length}/500 ตัวอักษร
+        </p>
+      </div>
 
-ต้อง:
-1. Insert `attendance_logs` record สำหรับ check_out
-2. Update `work_sessions` status เป็น 'closed'
+      <Alert>
+        <AlertDescription className="text-xs">
+          คำขอจะถูกส่งไปยังหัวหน้าเพื่อพิจารณา เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ
+        </AlertDescription>
+      </Alert>
+    </div>
 
-**Employee IDs:**
-- Noey: `a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af`
-- ntp.冬至: `0a9c61de-8482-49ac-8586-e7878a740812`
-
-**Work Session IDs:**
-- Noey: `a2554ce5-952f-46b9-874d-d8f9bd482e1b`
-- ntp.冬至: `ee4e5e4b-625c-4f3f-abca-0e7062af4204`
-
-**SQL ที่จะรันผ่าน migration:**
-```sql
--- Insert checkout logs สำหรับวันที่ 27 ม.ค.
-INSERT INTO attendance_logs (employee_id, branch_id, event_type, server_time, device_time, timezone, source, admin_notes)
-VALUES 
-  ('a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af', '4defa047-4387-439b-8b7e-67921b0b01ea', 'check_out', '2026-01-27T23:30:00+07:00', '2026-01-27T23:30:00+07:00', 'Asia/Bangkok', 'admin_manual', 'Manual checkout by admin - auto-checkout bug fix'),
-  ('0a9c61de-8482-49ac-8586-e7878a740812', '4defa047-4387-439b-8b7e-67921b0b01ea', 'check_out', '2026-01-27T23:30:00+07:00', '2026-01-27T23:30:00+07:00', 'Asia/Bangkok', 'admin_manual', 'Manual checkout by admin - auto-checkout bug fix');
-
--- Update work sessions status
-UPDATE work_sessions 
-SET status = 'closed', 
-    actual_end_time = '2026-01-27T23:30:00+07:00',
-    close_source = 'admin_manual',
-    net_work_minutes = EXTRACT(EPOCH FROM ('2026-01-27T23:30:00+07:00'::timestamptz - actual_start_time)) / 60
-WHERE id IN ('a2554ce5-952f-46b9-874d-d8f9bd482e1b', 'ee4e5e4b-625c-4f3f-abca-0e7062af4204');
+    <div className="flex gap-2">
+      <Button
+        variant="outline"
+        onClick={() => {
+          setShowRemoteCheckoutDialog(false);
+          setRemoteCheckoutReason('');
+          setRemoteCheckoutData(null);
+        }}
+        disabled={remoteCheckoutSubmitting}
+        className="flex-1"
+      >
+        ยกเลิก
+      </Button>
+      <Button
+        onClick={handleRemoteCheckoutRequest}
+        disabled={remoteCheckoutSubmitting || !remoteCheckoutReason.trim()}
+        className="flex-1"
+      >
+        {remoteCheckoutSubmitting ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            กำลังส่ง...
+          </>
+        ) : (
+          'ส่งคำขอ'
+        )}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
 ```
 
 ---
 
-### ลำดับการดำเนินการ
+#### Step 5: อัปเดต Success Screen สำหรับ Remote Checkout Pending (Line 639)
 
-1. **แก้ไข LiveTracking.tsx** - เปลี่ยน FK reference (line 137)
-2. **แก้ไขไฟล์อื่นๆ** - Photos.tsx, Analytics.tsx, PortalEmployees.tsx, etc.
-3. **Run migration** - Insert manual checkout logs และ close work_sessions
+เพิ่มใน success screen เพื่อแสดงสถานะ pending:
+
+```typescript
+{submitResult.remote_checkout_pending && (
+  <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+    <MapPin className="h-4 w-4 text-orange-600" />
+    <AlertDescription className="text-xs sm:text-sm">
+      📍 คำขอ Checkout นอกสถานที่ถูกส่งแล้ว
+      <br />
+      รอการอนุมัติจากหัวหน้า - เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ
+    </AlertDescription>
+  </Alert>
+)}
+```
 
 ---
 
-### ความเสี่ยง
+### สรุปไฟล์ที่ต้องแก้ไข
 
-| ความเสี่ยง | ระดับ | การลดความเสี่ยง |
-|-----------|-------|----------------|
-| แก้ FK reference ผิด | ต่ำมาก | ระบุ FK name ตรงจาก database schema |
-| กระทบ query อื่น | ไม่มี | เปลี่ยนเฉพาะ FK hint ไม่เปลี่ยน logic |
-| ข้อมูล checkout ผิด | ต่ำ | ใช้เวลา 23:30 ของวันที่ 27 ม.ค. |
+| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
+|------|--------------|-----------|
+| `src/pages/Attendance.tsx` | เพิ่ม state, handler, dialog, success screen | ต่ำ |
+
+---
+
+### ไม่ต้องแก้ไข
+
+- `remote-checkout-request/index.ts` - ทำงานถูกต้องแล้ว
+- `remote-checkout-approval/index.ts` - ทำงานถูกต้องแล้ว
+- `attendance-submit/index.ts` - return error code ถูกต้องแล้ว
+- `ApproveRemoteCheckout.tsx` - Portal ทำงานถูกต้องแล้ว
 
 ---
 
@@ -121,7 +297,7 @@ WHERE id IN ('a2554ce5-952f-46b9-874d-d8f9bd482e1b', 'ee4e5e4b-625c-4f3f-abca-0e
 
 | Before | After |
 |--------|-------|
-| Live Tracking แสดงตารางว่าง | แสดงรายชื่อพนักงานครบ |
-| Photos, Analytics มี error | แสดงข้อมูลปกติ |
-| ntp.冬至 และ Noey ค้าง active | status = closed, checkout 23:30 |
+| พนักงาน checkout นอกสถานที่ → เห็น error message ทั่วไป | พนักงาน checkout นอกสถานที่ → เห็น dialog ให้กรอกเหตุผล |
+| ไม่มีทางส่งคำขอ remote checkout | กรอกเหตุผล → ส่งคำขอ → รอ manager อนุมัติ |
+| Manager ไม่รู้ว่าพนักงานต้องการ checkout | Manager ได้รับ LINE notification และเห็นใน Portal |
 
