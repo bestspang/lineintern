@@ -1286,6 +1286,104 @@ serve(async (req) => {
         break;
       }
 
+      // ========== SELF-SERVICE CANCELLATION ENDPOINTS ==========
+
+      // Get pending OT requests for cancellation (Feature 1)
+      case 'my-pending-ot-requests': {
+        const result = await supabase
+          .from('overtime_requests')
+          .select('id, request_date, estimated_hours, reason, status, created_at')
+          .eq('employee_id', employee_id)
+          .eq('status', 'pending')
+          .order('request_date', { ascending: true });
+        
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Get pending Day-Off requests for cancellation (Feature 1)
+      case 'my-pending-dayoff-requests': {
+        const result = await supabase
+          .from('flexible_day_off_requests')
+          .select('id, day_off_date, reason, status, created_at')
+          .eq('employee_id', employee_id)
+          .eq('status', 'pending')
+          .order('day_off_date', { ascending: true });
+        
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Cancel own OT or Day-Off request (Feature 1)
+      case 'cancel-my-request': {
+        const { requestId, requestType, reason } = params || {};
+        
+        if (!requestId || !requestType) {
+          error = { message: 'requestId and requestType are required' };
+          break;
+        }
+        
+        if (!['ot', 'dayoff'].includes(requestType)) {
+          error = { message: 'requestType must be "ot" or "dayoff"' };
+          break;
+        }
+        
+        const tableName = requestType === 'ot' ? 'overtime_requests' : 'flexible_day_off_requests';
+        
+        // Verify ownership and pending status
+        const { data: existing } = await supabase
+          .from(tableName)
+          .select('id, employee_id, status')
+          .eq('id', requestId)
+          .eq('employee_id', employee_id)
+          .eq('status', 'pending')
+          .maybeSingle();
+        
+        if (!existing) {
+          error = { message: 'Request not found or cannot be cancelled' };
+          break;
+        }
+        
+        // Update to cancelled
+        const updateData = requestType === 'ot' 
+          ? { status: 'cancelled', rejection_reason: reason || 'Cancelled by employee via Portal', updated_at: new Date().toISOString() }
+          : { status: 'cancelled', admin_notes: reason || 'Cancelled by employee via Portal', updated_at: new Date().toISOString() };
+        
+        const { error: updateError } = await supabase
+          .from(tableName)
+          .update(updateData)
+          .eq('id', requestId);
+        
+        if (updateError) {
+          error = updateError;
+        } else {
+          console.log(`[portal-data] ${requestType} request ${requestId} cancelled by employee ${employee_id}`);
+          data = { success: true };
+        }
+        break;
+      }
+
+      // Get Remote Checkout history (Feature 3)
+      case 'my-remote-checkout-requests': {
+        const limit = params?.limit || 10;
+        
+        const result = await supabase
+          .from('remote_checkout_requests')
+          .select(`
+            id, request_date, latitude, longitude, distance_from_branch, 
+            reason, status, created_at, approved_at, rejection_reason
+          `)
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
