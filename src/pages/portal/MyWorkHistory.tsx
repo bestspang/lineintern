@@ -71,6 +71,18 @@ interface RemoteCheckoutRequest {
   rejection_reason: string | null;
 }
 
+interface LeaveRequest {
+  id: string;
+  start_date: string;
+  end_date: string;
+  leave_type: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  approved_at: string | null;
+  rejection_reason: string | null;
+}
+
 export default function MyWorkHistory() {
   const { employee, locale } = usePortal();
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -81,11 +93,12 @@ export default function MyWorkHistory() {
   const [pendingOT, setPendingOT] = useState<PendingOTRequest[]>([]);
   const [pendingDayOff, setPendingDayOff] = useState<PendingDayOffRequest[]>([]);
   const [remoteCheckouts, setRemoteCheckouts] = useState<RemoteCheckoutRequest[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
   // Cancel dialog state
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<{ id: string; type: 'ot' | 'dayoff'; label: string } | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; type: 'ot' | 'dayoff' | 'leave'; label: string } | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
   const fetchHistory = useCallback(async () => {
@@ -131,7 +144,7 @@ export default function MyWorkHistory() {
     if (!employee?.id) return;
     setLoadingRequests(true);
 
-    const [otResult, dayOffResult, remoteResult] = await Promise.all([
+    const [otResult, dayOffResult, remoteResult, leaveResult] = await Promise.all([
       portalApi<PendingOTRequest[]>({
         endpoint: 'my-pending-ot-requests',
         employee_id: employee.id,
@@ -145,11 +158,17 @@ export default function MyWorkHistory() {
         employee_id: employee.id,
         params: { limit: 10 }
       }),
+      portalApi<LeaveRequest[]>({
+        endpoint: 'my-leave-requests',
+        employee_id: employee.id,
+        params: { limit: 10 }
+      }),
     ]);
 
     if (!otResult.error && otResult.data) setPendingOT(otResult.data);
     if (!dayOffResult.error && dayOffResult.data) setPendingDayOff(dayOffResult.data);
     if (!remoteResult.error && remoteResult.data) setRemoteCheckouts(remoteResult.data);
+    if (!leaveResult.error && leaveResult.data) setLeaveRequests(leaveResult.data);
     
     setLoadingRequests(false);
   }, [employee?.id]);
@@ -163,14 +182,16 @@ export default function MyWorkHistory() {
     if (!cancelTarget || !employee?.id) return;
     setCancelling(true);
 
+    // Use different endpoint for leave vs OT/dayoff
+    const endpoint = cancelTarget.type === 'leave' ? 'cancel-leave-request' : 'cancel-my-request';
+    const params = cancelTarget.type === 'leave' 
+      ? { requestId: cancelTarget.id, reason: 'Cancelled by employee via Portal' }
+      : { requestId: cancelTarget.id, requestType: cancelTarget.type, reason: 'Cancelled by employee via Portal' };
+
     const { data, error } = await portalApi<{ success: boolean }>({
-      endpoint: 'cancel-my-request',
+      endpoint,
       employee_id: employee.id,
-      params: {
-        requestId: cancelTarget.id,
-        requestType: cancelTarget.type,
-        reason: 'Cancelled by employee via Portal'
-      }
+      params
     });
 
     if (error || !data?.success) {
@@ -185,10 +206,13 @@ export default function MyWorkHistory() {
     setCancelTarget(null);
   };
 
-  const openCancelDialog = (id: string, type: 'ot' | 'dayoff', label: string) => {
+  const openCancelDialog = (id: string, type: 'ot' | 'dayoff' | 'leave', label: string) => {
     setCancelTarget({ id, type, label });
     setCancelDialogOpen(true);
   };
+
+  // Filter pending leave requests
+  const pendingLeaves = leaveRequests.filter(l => l.status === 'pending');
 
   // Group logs by date using Bangkok timezone
   const groupedLogs = logs.reduce((acc, log) => {
@@ -200,7 +224,7 @@ export default function MyWorkHistory() {
 
   const dateLocale = locale === 'th' ? th : enUS;
 
-  const hasPendingRequests = pendingOT.length > 0 || pendingDayOff.length > 0;
+  const hasPendingRequests = pendingOT.length > 0 || pendingDayOff.length > 0 || pendingLeaves.length > 0;
 
   if (loading) {
     return (
@@ -349,6 +373,33 @@ export default function MyWorkHistory() {
                   variant="outline"
                   className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
                   onClick={() => openCancelDialog(req.id, 'dayoff', `Day Off ${format(parseISO(req.day_off_date), 'd MMM')}`)}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </Button>
+              </div>
+            ))}
+
+            {/* Pending Leave Requests */}
+            {pendingLeaves.map((req) => (
+              <div key={req.id} className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg border border-violet-200 dark:border-violet-800">
+                <div className="flex items-center gap-3">
+                  <Calendar className="h-5 w-5 text-violet-500" />
+                  <div>
+                    <p className="font-medium text-sm">
+                      {locale === 'th' ? 'ลางาน:' : 'Leave:'} {format(parseISO(req.start_date), 'd MMM', { locale: dateLocale })}
+                      {req.start_date !== req.end_date && ` - ${format(parseISO(req.end_date), 'd MMM', { locale: dateLocale })}`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {req.leave_type} - {req.reason}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={() => openCancelDialog(req.id, 'leave', `Leave ${format(parseISO(req.start_date), 'd MMM')}`)}
                 >
                   <XCircle className="h-4 w-4 mr-1" />
                   {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
