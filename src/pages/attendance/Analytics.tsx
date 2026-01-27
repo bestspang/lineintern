@@ -4,9 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User, CheckCircle2, XCircle, Timer } from 'lucide-react';
+import { Loader2, TrendingUp, Clock, AlertTriangle, Users, Building2, BarChart3, Activity, User, CheckCircle2, XCircle, Timer, FileText, MapPin, ClockIcon } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format, subDays, startOfDay, isWeekend } from 'date-fns';
+import { format, subDays, startOfDay, isWeekend, startOfWeek, endOfWeek } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -102,6 +102,132 @@ export default function AttendanceAnalytics() {
       return data || [];
     }
   });
+
+  // ========== Requests Summary Queries ==========
+  
+  // Early Leave Requests
+  const { data: earlyLeaveRequests } = useQuery({
+    queryKey: ['early-leave-requests-analytics', dateRange, selectedBranch],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const bangkokNow = getBangkokNow();
+      const fromDate = formatBangkokISODate(subDays(bangkokNow, days));
+      
+      let query = supabase
+        .from('early_leave_requests')
+        .select('id, status, created_at, employee_id, employees!inner(full_name, branch_id)')
+        .gte('created_at', fromDate);
+      
+      if (selectedBranch !== 'all') {
+        query = query.eq('employees.branch_id', selectedBranch);
+      }
+      
+      const { data } = await query;
+      return data || [];
+    }
+  });
+
+  // Remote Checkout Requests
+  const { data: remoteCheckoutRequests } = useQuery({
+    queryKey: ['remote-checkout-requests-analytics', dateRange, selectedBranch],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const bangkokNow = getBangkokNow();
+      const fromDate = formatBangkokISODate(subDays(bangkokNow, days));
+      
+      let query = supabase
+        .from('remote_checkout_requests')
+        .select('id, status, created_at, distance_from_branch, employee_id, employees!inner(full_name, branch_id)')
+        .gte('created_at', fromDate);
+      
+      if (selectedBranch !== 'all') {
+        query = query.eq('employees.branch_id', selectedBranch);
+      }
+      
+      const { data } = await query;
+      return data || [];
+    }
+  });
+
+  // OT Requests
+  const { data: otRequests } = useQuery({
+    queryKey: ['ot-requests-analytics', dateRange, selectedBranch],
+    queryFn: async () => {
+      const days = parseInt(dateRange);
+      const bangkokNow = getBangkokNow();
+      const fromDate = formatBangkokISODate(subDays(bangkokNow, days));
+      
+      let query = supabase
+        .from('overtime_requests')
+        .select('id, status, created_at, estimated_hours, employee_id, employees!inner(full_name, branch_id)')
+        .gte('created_at', fromDate);
+      
+      if (selectedBranch !== 'all') {
+        query = query.eq('employees.branch_id', selectedBranch);
+      }
+      
+      const { data } = await query;
+      return data || [];
+    }
+  });
+
+  // Calculate request statistics
+  const requestStats = useMemo(() => {
+    const earlyLeave = {
+      total: earlyLeaveRequests?.length || 0,
+      approved: earlyLeaveRequests?.filter(r => r.status === 'approved').length || 0,
+      rejected: earlyLeaveRequests?.filter(r => r.status === 'rejected').length || 0,
+      pending: earlyLeaveRequests?.filter(r => r.status === 'pending').length || 0,
+    };
+    
+    const remoteCheckout = {
+      total: remoteCheckoutRequests?.length || 0,
+      approved: remoteCheckoutRequests?.filter(r => r.status === 'approved').length || 0,
+      rejected: remoteCheckoutRequests?.filter(r => r.status === 'rejected').length || 0,
+      pending: remoteCheckoutRequests?.filter(r => r.status === 'pending').length || 0,
+      avgDistance: remoteCheckoutRequests?.length 
+        ? Math.round(remoteCheckoutRequests.reduce((sum, r) => sum + (r.distance_from_branch || 0), 0) / remoteCheckoutRequests.length)
+        : 0,
+    };
+    
+    const ot = {
+      total: otRequests?.length || 0,
+      approved: otRequests?.filter(r => r.status === 'approved').length || 0,
+      rejected: otRequests?.filter(r => r.status === 'rejected').length || 0,
+      pending: otRequests?.filter(r => r.status === 'pending').length || 0,
+      totalHours: otRequests?.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.estimated_hours || 0), 0) || 0,
+    };
+    
+    return { earlyLeave, remoteCheckout, ot };
+  }, [earlyLeaveRequests, remoteCheckoutRequests, otRequests]);
+
+  // Daily request trend
+  const requestDailyTrend = useMemo(() => {
+    const trendMap = new Map<string, { date: string; earlyLeave: number; remoteCheckout: number; ot: number }>();
+    
+    earlyLeaveRequests?.forEach(r => {
+      const date = format(new Date(r.created_at), 'MMM dd');
+      const existing = trendMap.get(date) || { date, earlyLeave: 0, remoteCheckout: 0, ot: 0 };
+      existing.earlyLeave++;
+      trendMap.set(date, existing);
+    });
+    
+    remoteCheckoutRequests?.forEach(r => {
+      const date = format(new Date(r.created_at), 'MMM dd');
+      const existing = trendMap.get(date) || { date, earlyLeave: 0, remoteCheckout: 0, ot: 0 };
+      existing.remoteCheckout++;
+      trendMap.set(date, existing);
+    });
+    
+    otRequests?.forEach(r => {
+      const date = format(new Date(r.created_at), 'MMM dd');
+      const existing = trendMap.get(date) || { date, earlyLeave: 0, remoteCheckout: 0, ot: 0 };
+      existing.ot++;
+      trendMap.set(date, existing);
+    });
+    
+    return Array.from(trendMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [earlyLeaveRequests, remoteCheckoutRequests, otRequests]);
 
   const { data: logs, isLoading } = useQuery({
     queryKey: ['attendance-analytics', dateRange, selectedBranch],
@@ -480,6 +606,10 @@ export default function AttendanceAnalytics() {
             <BarChart3 className="h-3 w-3 mr-1" />
             สรุปการเข้างาน
           </TabsTrigger>
+          <TabsTrigger value="requests" className="text-xs sm:text-sm">
+            <FileText className="h-3 w-3 mr-1" />
+            คำขอพิเศษ
+          </TabsTrigger>
           <TabsTrigger value="live" className="text-xs sm:text-sm">
             <Activity className="h-3 w-3 mr-1" />
             สถานะปัจจุบัน
@@ -573,6 +703,215 @@ export default function AttendanceAnalytics() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Requests Summary Tab */}
+        <TabsContent value="requests" className="space-y-4">
+          {/* Request Summary Cards */}
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
+            {/* Early Leave Card */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+                <CardTitle className="text-xs sm:text-sm font-medium">ขอออกก่อนเวลา</CardTitle>
+                <Timer className="h-4 w-4 text-amber-600" />
+              </CardHeader>
+              <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+                <div className="text-2xl font-bold">{requestStats.earlyLeave.total}</div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <Badge variant="outline" className="bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                    ✅ {requestStats.earlyLeave.approved}
+                  </Badge>
+                  <Badge variant="outline" className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
+                    ❌ {requestStats.earlyLeave.rejected}
+                  </Badge>
+                  {requestStats.earlyLeave.pending > 0 && (
+                    <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                      ⏳ {requestStats.earlyLeave.pending}
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Remote Checkout Card */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+                <CardTitle className="text-xs sm:text-sm font-medium">Checkout นอกสถานที่</CardTitle>
+                <MapPin className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+                <div className="text-2xl font-bold">{requestStats.remoteCheckout.total}</div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <Badge variant="outline" className="bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                    ✅ {requestStats.remoteCheckout.approved}
+                  </Badge>
+                  <Badge variant="outline" className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
+                    ❌ {requestStats.remoteCheckout.rejected}
+                  </Badge>
+                  {requestStats.remoteCheckout.pending > 0 && (
+                    <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                      ⏳ {requestStats.remoteCheckout.pending}
+                    </Badge>
+                  )}
+                </div>
+                {requestStats.remoteCheckout.avgDistance > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    ระยะห่างเฉลี่ย: {requestStats.remoteCheckout.avgDistance} เมตร
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* OT Requests Card */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+                <CardTitle className="text-xs sm:text-sm font-medium">ขอทำ OT</CardTitle>
+                <ClockIcon className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+                <div className="text-2xl font-bold">{requestStats.ot.total}</div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <Badge variant="outline" className="bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                    ✅ {requestStats.ot.approved}
+                  </Badge>
+                  <Badge variant="outline" className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
+                    ❌ {requestStats.ot.rejected}
+                  </Badge>
+                  {requestStats.ot.pending > 0 && (
+                    <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                      ⏳ {requestStats.ot.pending}
+                    </Badge>
+                  )}
+                </div>
+                {requestStats.ot.totalHours > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    รวม OT อนุมัติ: {requestStats.ot.totalHours} ชม.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Daily Request Trend Chart */}
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">แนวโน้มคำขอรายวัน</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                จำนวนคำขอแต่ละประเภทในช่วงที่เลือก
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              {requestDailyTrend.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={requestDailyTrend}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="date" style={{ fontSize: '11px' }} />
+                    <YAxis style={{ fontSize: '11px' }} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--background))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="earlyLeave" fill="hsl(var(--chart-3))" name="ออกก่อนเวลา" />
+                    <Bar dataKey="remoteCheckout" fill="hsl(var(--chart-1))" name="Checkout นอกสถานที่" />
+                    <Bar dataKey="ot" fill="hsl(var(--chart-4))" name="ขอทำ OT" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>ไม่มีคำขอในช่วงเวลาที่เลือก</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Approval Rate Summary */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Timer className="h-4 w-4 text-amber-600" />
+                  อัตราอนุมัติ Early Leave
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="w-full bg-muted rounded-full h-3">
+                      <div 
+                        className="h-3 rounded-full transition-all"
+                        style={{ 
+                          width: `${requestStats.earlyLeave.total ? (requestStats.earlyLeave.approved / requestStats.earlyLeave.total * 100) : 0}%`,
+                          backgroundColor: 'hsl(var(--chart-1))'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold">
+                    {requestStats.earlyLeave.total ? Math.round(requestStats.earlyLeave.approved / requestStats.earlyLeave.total * 100) : 0}%
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-blue-600" />
+                  อัตราอนุมัติ Remote Checkout
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="w-full bg-muted rounded-full h-3">
+                      <div 
+                        className="h-3 rounded-full transition-all"
+                        style={{ 
+                          width: `${requestStats.remoteCheckout.total ? (requestStats.remoteCheckout.approved / requestStats.remoteCheckout.total * 100) : 0}%`,
+                          backgroundColor: 'hsl(var(--chart-1))'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold">
+                    {requestStats.remoteCheckout.total ? Math.round(requestStats.remoteCheckout.approved / requestStats.remoteCheckout.total * 100) : 0}%
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ClockIcon className="h-4 w-4 text-purple-600" />
+                  อัตราอนุมัติ OT
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="w-full bg-muted rounded-full h-3">
+                      <div 
+                        className="h-3 rounded-full transition-all"
+                        style={{ 
+                          width: `${requestStats.ot.total ? (requestStats.ot.approved / requestStats.ot.total * 100) : 0}%`,
+                          backgroundColor: 'hsl(var(--chart-1))'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold">
+                    {requestStats.ot.total ? Math.round(requestStats.ot.approved / requestStats.ot.total * 100) : 0}%
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Live Status Tab */}

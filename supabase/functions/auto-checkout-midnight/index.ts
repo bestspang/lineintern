@@ -92,7 +92,7 @@ serve(async (req) => {
           hours_per_day,
           salary_per_month,
           announcement_group_line_id,
-          branches (
+          branches:branches!employees_branch_id_fkey (
             id,
             name,
             line_group_id
