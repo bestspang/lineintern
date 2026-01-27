@@ -169,28 +169,37 @@ export default function ReceiptQuota() {
     },
   });
 
-  // Fetch users with LINE user IDs
-  const { data: users = [], isLoading: usersLoading } = useQuery({
-    queryKey: ['users-for-quota'],
+  // Fetch active employees (source of truth for quota display)
+  const { data: employees = [], isLoading: employeesLoading } = useQuery({
+    queryKey: ['active-employees-for-quota'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('users')
-        .select('id, line_user_id, display_name')
+        .from('employees')
+        .select('id, full_name, line_user_id')
+        .eq('status', 'active')
         .not('line_user_id', 'is', null);
       if (error) throw error;
-      return data as User[];
+      return data;
     },
   });
 
-  // Build user quota display data
-  const userQuotaData: UserQuotaDisplay[] = usageRecords.map(usage => {
-    const user = users.find(u => u.line_user_id === usage.line_user_id);
-    const subscription = subscriptions.find(s => s.line_user_id === usage.line_user_id);
-    const plan = plans.find(p => p.id === (subscription?.plan_id || 'free')) || 
+  // Build user quota display data - NOW BASED ON EMPLOYEES (shows all active employees)
+  const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || 'free';
+  
+  const userQuotaData: UserQuotaDisplay[] = employees.map(emp => {
+    // Find usage record (if exists)
+    const usage = usageRecords.find(u => u.line_user_id === emp.line_user_id);
+    
+    // Find subscription (if exists)
+    const subscription = subscriptions.find(s => s.line_user_id === emp.line_user_id);
+    
+    // Find plan or use default plan
+    const plan = plans.find(p => p.id === (subscription?.plan_id || defaultPlanId)) || 
       plans.find(p => p.id === 'free') || 
       { id: 'free', name: 'Free', ai_receipts_limit: 8, price_thb: 0 };
     
-    const used = usage.ai_receipts_used || 0;
+    // Used = 0 if no usage record exists
+    const used = usage?.ai_receipts_used || 0;
     const limit = plan.ai_receipts_limit;
     const isUnlimited = limit === -1;
     const percentUsed = isUnlimited ? 0 : (limit > 0 ? (used / limit) * 100 : 0);
@@ -202,13 +211,13 @@ export default function ReceiptQuota() {
     }
     
     return {
-      lineUserId: usage.line_user_id,
-      displayName: user?.display_name || usage.line_user_id.slice(0, 10) + '...',
+      lineUserId: emp.line_user_id!,
+      displayName: emp.full_name || 'Unknown',
       planId: plan.id,
       planName: plan.name,
       used,
       limit,
-      period: usage.period_yyyymm,
+      period: currentPeriod,
       status,
       percentUsed,
     };
@@ -379,7 +388,7 @@ export default function ReceiptQuota() {
     },
   });
 
-  const isLoading = plansLoading || usageLoading || subsLoading || usersLoading || defaultPlanLoading;
+  const isLoading = plansLoading || usageLoading || subsLoading || employeesLoading || defaultPlanLoading;
 
   const currentDefaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || 'free';
 
