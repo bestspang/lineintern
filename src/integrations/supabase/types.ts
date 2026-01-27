@@ -5342,6 +5342,42 @@ export type Database = {
           },
         ]
       }
+      unregistered_user_alerts: {
+        Row: {
+          branch_name: string | null
+          created_at: string
+          group_id: string
+          group_name: string | null
+          id: string
+          is_processed: boolean | null
+          line_user_id: string
+          processed_at: string | null
+          user_display_name: string | null
+        }
+        Insert: {
+          branch_name?: string | null
+          created_at?: string
+          group_id: string
+          group_name?: string | null
+          id?: string
+          is_processed?: boolean | null
+          line_user_id: string
+          processed_at?: string | null
+          user_display_name?: string | null
+        }
+        Update: {
+          branch_name?: string | null
+          created_at?: string
+          group_id?: string
+          group_name?: string | null
+          id?: string
+          is_processed?: boolean | null
+          line_user_id?: string
+          processed_at?: string | null
+          user_display_name?: string | null
+        }
+        Relationships: []
+      }
       user_network_metrics: {
         Row: {
           betweenness_centrality: number | null

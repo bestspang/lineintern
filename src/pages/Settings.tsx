@@ -14,6 +14,7 @@ import { Smartphone, Menu, Loader2, CheckCircle, AlertCircle, ExternalLink, Uplo
 import { cn } from '@/lib/utils';
 import LiffSettingsCard from '@/components/settings/LiffSettingsCard';
 import RichMenuButtonEditor from '@/components/settings/RichMenuButtonEditor';
+import BotAlertSettings from '@/components/settings/BotAlertSettings';
 // Separate component for Portal Access Mode to manage its own state
 function PortalAccessModeSettings() {
   const { toast } = useToast();
@@ -383,6 +384,9 @@ export default function Settings() {
 
       {/* Rich Menu Setup */}
       <RichMenuSetup />
+
+      {/* Bot Alert Settings */}
+      <BotAlertSettings />
 
       <Card>
         <CardHeader className="p-4 sm:p-6">
