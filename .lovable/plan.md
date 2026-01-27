@@ -1,129 +1,109 @@
 
 
-## แผนแก้ไข Auto-Checkout และเพิ่ม Analytics Dashboard
+## แผนแก้ไข Live Tracking และ Manual Checkout
 
-### สรุปปัญหาที่พบจากการตรวจสอบ
+### ปัญหาที่พบ
 
-#### ❌ ปัญหาหลัก: Auto-Checkout Midnight ไม่ทำงาน
-
-จากการ test และดู logs พบว่า function `auto-checkout-midnight` มี error:
-```
-PGRST201: Could not embed because more than one relationship 
-was found for 'employees' and 'branches'
+#### 1. Live Tracking ไม่แสดงข้อมูลพนักงาน
+**สาเหตุ:** Query ใน `LiveTracking.tsx` line 137 ใช้:
+```typescript
+branch:branches (name)
 ```
 
-**สาเหตุ:** ตาราง `employees` มี 2 FK ไปยัง `branches`:
-- `branch_id` → `branches` (สาขาหลัก)
-- `primary_branch_id` → `branches` (สาขาเริ่มต้น)
+แต่ตาราง `employees` มี **2 Foreign Keys** ไปหา `branches`:
+- `branch_id` → `branches` (employees_branch_id_fkey)
+- `primary_branch_id` → `branches` (employees_primary_branch_id_fkey)
 
-Supabase ไม่รู้จะใช้อันไหน จึง error
+ทำให้ Supabase return **error PGRST201**: "Could not embed because more than one relationship was found"
 
-**ผลกระทบ:** พนักงาน ntp.冬至 และ Noey ไม่ได้รับ auto-checkout วันที่ 27 ม.ค.
+#### 2. ไฟล์อื่นที่มีปัญหาเดียวกัน
+Query จาก `attendance_logs` ที่ nested ไปยัง `employees.branches` ก็เจอปัญหาเดียวกัน:
+- `src/pages/attendance/Photos.tsx` (line 70)
+- `src/pages/attendance/Analytics.tsx` (line 245)
+- `src/pages/portal/PortalEmployees.tsx` (line 40)
+- `src/pages/portal/PortalEmployeeDetail.tsx` (line 48)
+- และไฟล์อื่นๆ
+
+#### 3. ntp.冬至 และ Noey ยังค้างใน system
+มี work_sessions status = 'active' สำหรับวันที่ 27 ม.ค.:
+- Noey: check-in 08:56
+- ntp.冬至: check-in 09:03
 
 ---
 
-### ✅ สิ่งที่ implement ไปแล้วถูกต้อง (ไม่ต้องแก้)
+### Step 1: แก้ไข LiveTracking.tsx
 
-| Feature | สถานะ |
-|---------|-------|
-| Early Leave Check สำหรับ time_based | ✅ ทำงานถูกต้อง |
-| Remote Checkout Request/Approval | ✅ ทำงานถูกต้อง |
-| Geofence → Request Approval Flow | ✅ ทำงานถูกต้อง |
-| Portal Approvals UI (Remote Checkout) | ✅ ทำงานถูกต้อง |
-| ตาราง remote_checkout_requests | ✅ สร้างแล้ว |
+**ไฟล์:** `src/pages/attendance/LiveTracking.tsx`
 
----
+**ตำแหน่ง:** Line 137
 
-### การแก้ไขที่ต้องทำ
-
-#### Step 1: แก้ไข auto-checkout-midnight (เร่งด่วน)
-
-**ไฟล์:** `supabase/functions/auto-checkout-midnight/index.ts`
-
-**ตำแหน่ง:** Line 95
-
-**การเปลี่ยนแปลง:**
-```text
-BEFORE (ผิด):
-employees (
-  ...
-  branches (         ← Ambiguous!
-    id, name, line_group_id
-  )
+**เปลี่ยนจาก:**
+```typescript
+branch:branches (
+  name
 )
+```
 
-AFTER (ถูก):
-employees (
-  ...
-  branches:branches!employees_branch_id_fkey (   ← Explicit FK
-    id, name, line_group_id
-  )
+**เป็น:**
+```typescript
+branch:branches!employees_branch_id_fkey (
+  name
 )
 ```
 
 ---
 
-#### Step 2: เพิ่ม Analytics Dashboard สำหรับ Request Statistics
+### Step 2: แก้ไขไฟล์อื่นที่มีปัญหา FK Ambiguity
 
-**ไฟล์:** `src/pages/attendance/Analytics.tsx`
-
-**เพิ่ม Section ใหม่:**
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 📊 สรุปคำขอพิเศษ (Requests Summary)                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐              │
-│ │ Early Leave  │ │ Remote       │ │ OT Requests  │              │
-│ │ Requests     │ │ Checkout     │ │              │              │
-│ ├──────────────┤ ├──────────────┤ ├──────────────┤              │
-│ │ Total: 15    │ │ Total: 8     │ │ Total: 22    │              │
-│ │ ✅ 12 อนุมัติ │ │ ✅ 6 อนุมัติ  │ │ ✅ 18 อนุมัติ │              │
-│ │ ❌ 3 ปฏิเสธ   │ │ ❌ 2 ปฏิเสธ  │ │ ❌ 4 ปฏิเสธ   │              │
-│ └──────────────┘ └──────────────┘ └──────────────┘              │
-│                                                                 │
-│ [Chart: Daily Request Trend]                                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+| ไฟล์ | บรรทัด | เปลี่ยนจาก | เป็น |
+|------|--------|-----------|------|
+| Photos.tsx | 70 | `branch:branches(id, name)` | `branch:branches!attendance_logs_branch_id_fkey(id, name)` |
+| Analytics.tsx | 245 | `branch:branches(id, name, ...)` | `branch:branches!attendance_logs_branch_id_fkey(id, name, ...)` |
+| PortalEmployees.tsx | 40 | `branch:branches(id, name)` | `branch:branches!employees_branch_id_fkey(id, name)` |
+| PortalEmployeeDetail.tsx | 48 | `branch:branches(name)` | `branch:branches!employees_branch_id_fkey(name)` |
+| OvertimeSummary.tsx | 73 | `branch:branches(id, name)` | `branch:branches!attendance_logs_branch_id_fkey(id, name)` |
+| DepositReviewList.tsx | 47 | `branch:branches(id, name)` | `branch:branches!daily_deposits_branch_id_fkey(id, name)` |
 
 ---
 
-### รายละเอียดทางเทคนิค
+### Step 3: Insert Manual Checkout สำหรับ ntp.冬至 และ Noey
 
-#### ไฟล์ที่ต้องแก้ไข
+ต้อง:
+1. Insert `attendance_logs` record สำหรับ check_out
+2. Update `work_sessions` status เป็น 'closed'
 
-| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
-|------|--------------|-----------|
-| `auto-checkout-midnight/index.ts` | เปลี่ยน FK reference (1 บรรทัด) | ต่ำมาก |
-| `src/pages/attendance/Analytics.tsx` | เพิ่ม queries และ cards สำหรับ requests | ต่ำ |
+**Employee IDs:**
+- Noey: `a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af`
+- ntp.冬至: `0a9c61de-8482-49ac-8586-e7878a740812`
 
-#### ไม่ต้องแก้ไข
+**Work Session IDs:**
+- Noey: `a2554ce5-952f-46b9-874d-d8f9bd482e1b`
+- ntp.冬至: `ee4e5e4b-625c-4f3f-abca-0e7062af4204`
 
-- `attendance-submit/index.ts` - Early leave check ถูกต้องแล้ว
-- `remote-checkout-request/index.ts` - ถูกต้องแล้ว
-- `remote-checkout-approval/index.ts` - ถูกต้องแล้ว
-- `portal-data/index.ts` - ถูกต้องแล้ว
-- `ApproveRemoteCheckout.tsx` - ถูกต้องแล้ว
-- `Approvals.tsx` - ถูกต้องแล้ว
+**SQL ที่จะรันผ่าน migration:**
+```sql
+-- Insert checkout logs สำหรับวันที่ 27 ม.ค.
+INSERT INTO attendance_logs (employee_id, branch_id, event_type, server_time, device_time, timezone, source, admin_notes)
+VALUES 
+  ('a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af', '4defa047-4387-439b-8b7e-67921b0b01ea', 'check_out', '2026-01-27T23:30:00+07:00', '2026-01-27T23:30:00+07:00', 'Asia/Bangkok', 'admin_manual', 'Manual checkout by admin - auto-checkout bug fix'),
+  ('0a9c61de-8482-49ac-8586-e7878a740812', '4defa047-4387-439b-8b7e-67921b0b01ea', 'check_out', '2026-01-27T23:30:00+07:00', '2026-01-27T23:30:00+07:00', 'Asia/Bangkok', 'admin_manual', 'Manual checkout by admin - auto-checkout bug fix');
+
+-- Update work sessions status
+UPDATE work_sessions 
+SET status = 'closed', 
+    actual_end_time = '2026-01-27T23:30:00+07:00',
+    close_source = 'admin_manual',
+    net_work_minutes = EXTRACT(EPOCH FROM ('2026-01-27T23:30:00+07:00'::timestamptz - actual_start_time)) / 60
+WHERE id IN ('a2554ce5-952f-46b9-874d-d8f9bd482e1b', 'ee4e5e4b-625c-4f3f-abca-0e7062af4204');
+```
 
 ---
 
 ### ลำดับการดำเนินการ
 
-1. **แก้ไข `auto-checkout-midnight/index.ts`** - Line 95 เปลี่ยน FK reference
-2. **Deploy function** - ให้ทำงานได้
-3. **Test** - เรียก function ด้วย curl เพื่อยืนยัน
-4. **เพิ่ม Analytics Dashboard** - Query early_leave_requests, remote_checkout_requests, overtime_requests และแสดง cards
-
----
-
-### การแก้ไขข้อมูลสำหรับ ntp.冬至 และ Noey
-
-หลังแก้ bug แล้ว สามารถ:
-- รอ cron รันคืนนี้ (28 ม.ค. 00:00) → จะ auto-checkout ให้วันที่ 27 ม.ค.
-- หรือ Manual checkout ผ่าน admin-checkout function
+1. **แก้ไข LiveTracking.tsx** - เปลี่ยน FK reference (line 137)
+2. **แก้ไขไฟล์อื่นๆ** - Photos.tsx, Analytics.tsx, PortalEmployees.tsx, etc.
+3. **Run migration** - Insert manual checkout logs และ close work_sessions
 
 ---
 
@@ -131,7 +111,17 @@ employees (
 
 | ความเสี่ยง | ระดับ | การลดความเสี่ยง |
 |-----------|-------|----------------|
-| แก้ FK reference ผิด | ต่ำมาก | เปลี่ยนแค่ 1 บรรทัด, ชัดเจน |
-| Analytics query ช้า | ต่ำ | ใช้ index ที่มีอยู่แล้ว |
-| กระทบ logic อื่น | ไม่มี | ไม่แตะ code ส่วนอื่น |
+| แก้ FK reference ผิด | ต่ำมาก | ระบุ FK name ตรงจาก database schema |
+| กระทบ query อื่น | ไม่มี | เปลี่ยนเฉพาะ FK hint ไม่เปลี่ยน logic |
+| ข้อมูล checkout ผิด | ต่ำ | ใช้เวลา 23:30 ของวันที่ 27 ม.ค. |
+
+---
+
+### ผลลัพธ์ที่คาดหวัง
+
+| Before | After |
+|--------|-------|
+| Live Tracking แสดงตารางว่าง | แสดงรายชื่อพนักงานครบ |
+| Photos, Analytics มี error | แสดงข้อมูลปกติ |
+| ntp.冬至 และ Noey ค้าง active | status = closed, checkout 23:30 |
 
