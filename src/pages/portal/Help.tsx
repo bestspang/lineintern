@@ -9,20 +9,26 @@ import {
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
   CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package, Camera
+  Activity, Package, Camera, MapPin
 } from 'lucide-react';
 
 // Static fallback FAQs (used when database is empty or has errors)
 const STATIC_FAQS_TH = [
   { question: 'ฉันจะเช็คอินได้อย่างไร?', answer: 'กดปุ่ม "เช็คอิน/เอาท์" จาก Rich Menu หรือเมนูหลัก จากนั้นอนุญาตให้แอปเข้าถึงตำแหน่งและกล้อง แล้วถ่ายรูปยืนยัน' },
   { question: 'ฉันลืมเช็คเอาท์ ต้องทำอย่างไร?', answer: 'ระบบจะเช็คเอาท์อัตโนมัติตอนเที่ยงคืน แต่ถ้าต้องการแก้ไขเวลา กรุณาติดต่อหัวหน้างานหรือ HR' },
+  { question: 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?', answer: 'ระบบจะแสดง dialog ให้กรอกเหตุผล ส่งคำขอไปยังหัวหน้าอนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ' },
   { question: 'Happy Points คืออะไร?', answer: 'คะแนนสะสมจากการมาทำงานตรงเวลา ทำ OT และกิจกรรมต่างๆ สามารถนำไปแลกของรางวัลได้' },
+  { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'พิมพ์ /cancel-ot ใน LINE Chat กับบอท หรือไปที่ Portal > ประวัติการทำงาน' },
+  { question: 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?', answer: 'พิมพ์ /cancel-dayoff ใน LINE Chat กับบอท ระบบจะแสดงรายการวันหยุดที่รออนุมัติให้เลือกยกเลิก' },
 ];
 
 const STATIC_FAQS_EN = [
   { question: 'How do I check in?', answer: 'Press "Check In/Out" from Rich Menu or main menu, allow location and camera access, then take a photo to confirm.' },
   { question: 'I forgot to check out, what should I do?', answer: 'The system will auto check-out at midnight. If you need to modify the time, please contact your supervisor or HR.' },
+  { question: 'How can I check out from outside the office?', answer: 'The system will show a dialog to enter your reason. The request will be sent to your manager for approval. Once approved, the system will automatically check you out.' },
   { question: 'What are Happy Points?', answer: 'Points earned from on-time attendance, OT, and various activities. Can be redeemed for rewards.' },
+  { question: 'How can I cancel an OT request?', answer: 'Type /cancel-ot in LINE Chat with the bot, or go to Portal > Work History.' },
+  { question: 'How can I cancel a day-off request?', answer: 'Type /cancel-dayoff in LINE Chat with the bot. The system will show pending day-off requests to cancel.' },
 ];
 
 export default function Help() {
@@ -153,6 +159,12 @@ export default function Help() {
       title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
       description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
       path: '/portal/photos'
+    },
+    {
+      icon: MapPin,
+      title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
+      description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
+      path: '/portal/approvals/remote-checkout'
     },
     {
       icon: FileText,
