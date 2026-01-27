@@ -44,7 +44,7 @@ export default function DepositReviewList() {
       .select(`
         id, amount, status, deposit_date, created_at, slip_photo_url, bank_name, reference_number,
         employee:employees!inner(id, full_name, nickname),
-        branch:branches(id, name)
+        branch:branches!daily_deposits_branch_id_fkey(id, name)
       `)
       .eq('status', 'pending')
       .order('created_at', { ascending: true });

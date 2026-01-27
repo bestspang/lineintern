@@ -67,7 +67,7 @@ export default function AttendancePhotos() {
           longitude,
           is_remote_checkin,
           employee:employees!inner(id, full_name, code),
-          branch:branches(id, name)
+          branch:branches!attendance_logs_branch_id_fkey(id, name)
         `)
         .order('server_time', { ascending: false });
 

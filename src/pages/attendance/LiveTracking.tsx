@@ -134,7 +134,7 @@ export default function LiveTracking() {
             hours_per_day,
             break_hours,
             auto_checkout_grace_period_minutes,
-            branch:branches (
+            branch:branches!employees_branch_id_fkey (
               name
             )
           )

@@ -37,7 +37,7 @@ export default function PortalEmployees() {
           name,
           is_active,
           role:employee_roles(role_name),
-          branch:branches(id, name)
+          branch:branches!employees_branch_id_fkey(id, name)
         `)
         .eq('is_active', true)
         .order('name');
