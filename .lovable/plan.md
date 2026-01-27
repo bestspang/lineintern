@@ -1,121 +1,164 @@
 
 
-## แผนเพิ่ม Bot Alert Settings (เปิด/ปิด & Aggregate Mode)
+## แผนการปรับปรุงระบบ Attendance Requests (ฉบับตรวจสอบแล้ว)
 
-### สรุปปัญหา
-- Alert "ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป" ถูกส่งทุกครั้ง ทำให้รบกวน Admin
-- ต้องการให้ Admin สามารถ:
-  1. เปิด/ปิด alert นี้ได้
-  2. เลือก mode: Real-time หรือ Aggregate (สรุปรวม)
-  3. Default = ปิด
+### สรุปการตรวจสอบระบบปัจจุบัน
+
+#### 1. สถานะของ ntp.冬至 และ Noey
+- **เมื่อวาน (2026-01-26):** ทั้งสองคน check-in และ check-out ปกติ ไม่ต้องใช้ auto-checkout
+  - ntp.冬至: check-in 08:58, check-out 18:38 (รวม ~9.7 ชม., net_work_minutes: 520)
+  - Noey: check-in 08:46, check-out 18:38 (รวม ~9.9 ชม., net_work_minutes: 532)
+- **วันนี้ (2026-01-27):** ทั้งสองคน check-in ไปแล้ว, ยังอยู่ในสถานะ active (ซึ่งเป็นปกติ)
+- **ไม่มีปัญหา auto-checkout** - ระบบทำงานปกติ
+
+#### 2. ระบบ Early Leave Requests ปัจจุบัน
+- **มีอยู่แล้ว** ใน `early-checkout-request/index.ts`
+- ทำงานสำหรับ `hours_based` employees เท่านั้น (block checkout ถ้าไม่ครบชั่วโมง)
+- **ปัญหา:** `time_based` employees ไม่ถูก enforce - สามารถ checkout ก่อน shift_end_time ได้โดยไม่ต้องขออนุมัติ
+
+#### 3. ระบบ Remote Checkout
+- **ไม่มี** - ปัจจุบันถ้าอยู่นอก geofence จะถูก block ทันที (return 403)
+- พนักงานที่มี `allow_remote_checkin = true` จะ bypass ได้
+- ไม่มีระบบขออนุมัติสำหรับ checkout นอกสถานที่
+
+#### 4. ระบบ OT Requests
+- **มีและทำงานปกติ** ใน `overtime-request/index.ts`
+- มีการตรวจสอบ conflict กับ early leave requests
+- หน้าอนุมัติใน Portal มีอยู่แล้ว (`ApproveOT.tsx`)
+
+#### 5. หน้า Portal Approvals
+- **มีอยู่แล้ว** แยกเป็น tabs: OT, Leave, Early Leave, Redemptions, Deposits
+- ใช้ `portal-data/index.ts` เป็น backend
 
 ---
 
-### การเปลี่ยนแปลง
+### การเปลี่ยนแปลงที่จำเป็น (Step-by-Step)
 
-#### 1. เพิ่ม Setting ใน Database
+---
 
-**ตาราง:** `system_settings`
+### Step 1: เพิ่ม Early Leave Check สำหรับ time_based employees
+
+**ปัญหาที่แก้:** time_based employees สามารถ checkout ก่อน shift_end_time ได้โดยไม่ต้องขออนุมัติ
+
+**ไฟล์:** `supabase/functions/attendance-submit/index.ts`
+
+**ตำแหน่งที่แก้:** หลัง minimum hours check สำหรับ hours_based (~line 654-704)
+
+**Logic ใหม่:**
+```text
+IF token.type === 'check_out'
+   AND employee.working_time_type === 'time_based'
+   AND current_bangkok_time < shift_end_time - 15min grace
+   AND NO approved early_leave_request for today
+THEN
+   Return error: "กรุณาขออนุมัติออกก่อนเวลา"
+```
+
+**ความเสี่ยง:** ต่ำ - เพิ่ม logic ใหม่ ไม่แก้ไข logic เดิมที่ทำงานดีอยู่
+
+---
+
+### Step 2: เพิ่มระบบ Remote Checkout Request
+
+**ปัญหาที่แก้:** พนักงานนอก geofence ถูก block ทันที ไม่มีทางขออนุมัติ
+
+#### 2.1 สร้างตาราง `remote_checkout_requests`
 
 ```sql
-INSERT INTO system_settings (setting_key, setting_value, category, description, is_editable)
-VALUES (
-  'bot_alert_unregistered_user',
-  '{"enabled": false, "mode": "aggregate", "aggregate_interval_hours": 24}',
-  'bot',
-  'Settings for unregistered user image alerts. Mode: realtime (send immediately) or aggregate (daily summary)',
-  true
+CREATE TABLE remote_checkout_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id UUID NOT NULL REFERENCES employees(id),
+  request_date DATE NOT NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  distance_from_branch DOUBLE PRECISION,
+  reason TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  approved_by_employee_id UUID REFERENCES employees(id),
+  approved_at TIMESTAMPTZ,
+  rejection_reason TEXT,
+  checkin_log_id UUID REFERENCES attendance_logs(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
-**Schema ของ `setting_value`:**
-```json
-{
-  "enabled": false,         // เปิด/ปิด alert (default: ปิด)
-  "mode": "aggregate",      // "realtime" หรือ "aggregate"
-  "aggregate_interval_hours": 24  // สรุปทุกกี่ชั่วโมง (default: 24)
-}
-```
+#### 2.2 แก้ไข geofence logic ใน attendance-submit
 
----
+**ตำแหน่ง:** ~line 521-559
 
-#### 2. เพิ่ม UI Settings ใน Admin Dashboard
-
-**ไฟล์:** `src/pages/Settings.tsx`
-
-เพิ่ม Card ใหม่สำหรับ Bot Alert Settings:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ 🔔 Bot Alert Settings                                   │
-│ ตั้งค่าการแจ้งเตือนจาก Bot                              │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│ ☐ แจ้งเตือนเมื่อผู้ใช้ที่ไม่ได้ลงทะเบียนส่งรูป        │
-│   (ปิดอยู่)                                            │
-│                                                         │
-│ [เมื่อเปิดจะแสดง options เพิ่ม:]                        │
-│                                                         │
-│ ◉ Real-time - ส่งทันทีทุกครั้ง                          │
-│ ○ Aggregate - สรุปรวมวันละครั้ง                         │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-#### 3. แก้ไข Edge Function
-
-**ไฟล์:** `supabase/functions/line-webhook/index.ts`
-
-ตรงส่วน `handleImageMessage` (~line 8908-8929):
-
-**Before:**
+**Before:** Block ทันที (return 403)
 ```typescript
-if (!employee) {
-  await notifyAdminGroup(`📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`, {...});
-  return;
-}
+return new Response(
+  JSON.stringify({ 
+    success: false, 
+    error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด...`
+  }),
+  { status: 403, ... }
+);
 ```
 
-**After:**
+**After:** ส่ง error พร้อมข้อมูลให้ frontend prompt ขอ approval
 ```typescript
-if (!employee) {
-  // ตรวจสอบ setting ก่อนส่ง alert
-  const alertSetting = await getUnregisteredUserAlertSetting();
-  
-  if (alertSetting.enabled) {
-    if (alertSetting.mode === 'realtime') {
-      // ส่งทันที
-      await notifyAdminGroup(`📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`, {...});
-    } else {
-      // บันทึกลง queue สำหรับ aggregate
-      await queueUnregisteredUserAlert({...});
-    }
-  }
-  return;
-}
+return new Response(
+  JSON.stringify({ 
+    success: false, 
+    error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด...`,
+    code: 'OUTSIDE_GEOFENCE',
+    requires_remote_approval: true,
+    distance: Math.round(distance),
+    allowed_radius: allowedRadius,
+    branch_name: token.employee.branch.name,
+    latitude: latitude,
+    longitude: longitude
+  }),
+  { status: 403, ... }
+);
+```
+
+#### 2.3 สร้าง Edge Function `remote-checkout-request/index.ts`
+
+**หน้าที่:** รับคำขอ checkout นอกสถานที่จาก frontend
+
+#### 2.4 สร้าง Edge Function `remote-checkout-approval/index.ts`
+
+**หน้าที่:** Admin/Manager อนุมัติ/ปฏิเสธ และ trigger checkout อัตโนมัติ
+
+---
+
+### Step 3: เพิ่ม Remote Checkout ใน Portal Approvals
+
+**ไฟล์ที่แก้ไข:**
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|--------------|
+| `src/pages/portal/Approvals.tsx` | เพิ่ม card สำหรับ Remote Checkout |
+| `src/pages/portal/ApproveRemoteCheckout.tsx` | หน้าใหม่สำหรับอนุมัติ |
+| `supabase/functions/portal-data/index.ts` | เพิ่ม endpoints: approval-counts, pending-remote-checkout, approve-remote-checkout |
+
+**UI ใหม่ใน Approvals.tsx:**
+```text
+┌────────────────────────────────────────┐
+│ ✅ อนุมัติคำขอ                          │
+├────────────────────────────────────────┤
+│ [OT Requests] [12]                     │
+│ [Leave Requests] [3]                   │
+│ [Early Leave] [5]                      │
+│ [Remote Checkout] [2] ← NEW            │
+│ [Redemptions] [0] (admin only)         │
+│ [Deposits] [8]                         │
+└────────────────────────────────────────┘
 ```
 
 ---
 
-#### 4. สร้าง Aggregate Alert Cron Job (Optional)
+### Step 4: อัปเดต Routes
 
-**ไฟล์:** `supabase/functions/unregistered-user-alert-summary/index.ts`
+**ไฟล์:** `src/App.tsx`
 
-Cron job ที่รันทุกวัน/ตามที่ตั้ง เพื่อส่งสรุป:
-
-```
-📊 สรุป Bot Alert ประจำวัน
-━━━━━━━━━━━━━━━━━━━━━━
-📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนส่งรูป: 15 ครั้ง
-
-🔹 Central Park สีลม: 8 ครั้ง
-   - User 8da68c: 5 ครั้ง
-   - User f2a91b: 3 ครั้ง
-   
-🔹 Good Lime: 7 ครั้ง
-   - User c3b72d: 7 ครั้ง
+**เพิ่ม:**
+```tsx
+<Route path="approvals/remote-checkout" element={<ApproveRemoteCheckout />} />
 ```
 
 ---
@@ -126,82 +169,147 @@ Cron job ที่รันทุกวัน/ตามที่ตั้ง เ
 
 | ไฟล์ | การเปลี่ยนแปลง |
 |------|--------------|
-| `src/pages/Settings.tsx` | เพิ่ม Bot Alert Settings Card |
-| `supabase/functions/line-webhook/index.ts` | ตรวจสอบ setting ก่อนส่ง alert |
+| `attendance-submit/index.ts` | เพิ่ม early leave check สำหรับ time_based (~20 lines) |
+| `attendance-submit/index.ts` | แก้ไข geofence error response (~10 lines) |
+| `portal-data/index.ts` | เพิ่ม 3 endpoints สำหรับ remote checkout |
+| `src/pages/portal/Approvals.tsx` | เพิ่ม Remote Checkout card |
 
-#### ไฟล์ใหม่ที่ต้องสร้าง (สำหรับ Aggregate mode)
+#### ไฟล์ใหม่ที่ต้องสร้าง
 
 | ไฟล์ | รายละเอียด |
 |------|-----------|
-| `supabase/functions/unregistered-user-alert-summary/index.ts` | Cron job สรุป alert รายวัน |
+| `remote-checkout-request/index.ts` | สร้างคำขอ remote checkout |
+| `remote-checkout-approval/index.ts` | อนุมัติ/ปฏิเสธ remote checkout |
+| `src/pages/portal/ApproveRemoteCheckout.tsx` | หน้าอนุมัติใน Portal |
 
-#### Database Changes
+#### Database Migration
 
-| ตาราง | การเปลี่ยนแปลง |
-|------|--------------|
-| `system_settings` | INSERT setting ใหม่ `bot_alert_unregistered_user` |
-| `unregistered_user_alerts` (ใหม่) | เก็บ queue สำหรับ aggregate mode |
+```sql
+-- 1. สร้างตาราง remote_checkout_requests
+CREATE TABLE remote_checkout_requests (...);
+
+-- 2. เพิ่ม RLS policies
+ALTER TABLE remote_checkout_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "..." ON remote_checkout_requests ...;
+
+-- 3. เพิ่ม indexes
+CREATE INDEX idx_remote_checkout_employee_date ON remote_checkout_requests(employee_id, request_date);
+CREATE INDEX idx_remote_checkout_status ON remote_checkout_requests(status);
+```
+
+---
+
+### สิ่งที่ไม่ต้องแก้ไข (ทำงานดีอยู่แล้ว)
+
+| Feature | สถานะ |
+|---------|-------|
+| Auto-checkout midnight cron | ทำงานปกติ (cron job id: 38) |
+| OT Request/Approval | ทำงานปกติ |
+| Early Leave Request (hours_based) | ทำงานปกติ |
+| Portal Approvals หน้าหลัก | มีอยู่แล้ว แค่เพิ่ม item |
+| ntp.冬至 ทำงาน 8 ชม. | ยืนยันว่าทำครบแล้ว |
 
 ---
 
 ### Flow Diagram
 
 ```text
-User sends image
+พนักงานกด Checkout
        │
        ▼
 ┌──────────────────┐
-│ Is Employee?     │
-└────────┬─────────┘
-         │ No
-         ▼
-┌──────────────────┐
-│ Check Setting    │
-│ bot_alert_       │
-│ unregistered_user│
+│ เช็ค geofence    │
 └────────┬─────────┘
          │
     ┌────┴────┐
-    │ enabled │
-    │ = true? │
+    │ อยู่ใน  │
+    │ พื้นที่? │
     └────┬────┘
-     No  │  Yes
+     Yes │  No
+     │   ▼
+     │  ┌─────────────────────┐
+     │  │ Return error code:  │
+     │  │ OUTSIDE_GEOFENCE    │
+     │  │ + requires_remote_  │
+     │  │   approval: true    │
+     │  └──────────┬──────────┘
+     │             │
+     │             ▼
+     │       [Frontend shows dialog]
+     │       "ส่งคำขอ checkout นอกสถานที่?"
+     │             │
+     │             ▼
+     │       remote-checkout-request
+     │             │
+     │             ▼
+     │       แจ้ง Admin/Manager
+     │             │
+     │             ▼
+     │       [Admin อนุมัติใน Portal]
+     │             │
+     │             ▼
+     │       remote-checkout-approval
+     │             │
+     │             ▼
+     │       Auto checkout ให้พนักงาน
+     │
+     ▼
+┌──────────────────┐
+│ เช็คเวลา         │
+│ (time_based)     │
+└────────┬─────────┘
+         │
+    ┌────┴────┐
+    │ ก่อน    │
+    │ shift   │
+    │ end -   │
+    │ 15min?  │
+    └────┬────┘
+     Yes │  No
      │   │
      ▼   ▼
-  Skip  ┌─────────────┐
-        │ mode =      │
-        │ realtime?   │
-        └──────┬──────┘
-          Yes  │  No (aggregate)
-          │    │
-          ▼    ▼
-     Send   Save to queue
-     Alert  (daily summary)
+  ต้องมี  Checkout
+  early   สำเร็จ
+  leave
+  approved
+     │
+     ▼
+  Checkout
+  สำเร็จ
 ```
 
 ---
 
-### ผลลัพธ์ที่คาดหวัง
+### ลำดับการ Implement
 
-| สถานะ | Before | After |
-|-------|--------|-------|
-| Default | ส่ง alert ทุกครั้ง | ไม่ส่ง alert (ปิดอยู่) |
-| เปิด + Realtime | - | ส่งทันทีทุกครั้ง |
-| เปิด + Aggregate | - | สรุปวันละครั้ง |
+1. **Database Migration** - สร้างตาราง `remote_checkout_requests`
+2. **attendance-submit/index.ts** - เพิ่ม early leave check สำหรับ time_based
+3. **attendance-submit/index.ts** - แก้ไข geofence error response
+4. **remote-checkout-request/index.ts** - สร้าง edge function
+5. **remote-checkout-approval/index.ts** - สร้าง edge function
+6. **portal-data/index.ts** - เพิ่ม endpoints
+7. **ApproveRemoteCheckout.tsx** - สร้างหน้าใหม่
+8. **Approvals.tsx** - เพิ่ม card
+9. **App.tsx** - เพิ่ม route
 
 ---
 
 ### ความเสี่ยง
 
-- **ต่ำมาก** - เป็นการเพิ่ม feature ใหม่ ไม่กระทบ logic เดิม
-- Default = ปิด จึงไม่มีผลกระทบทันทีหลัง deploy
+| ความเสี่ยง | ระดับ | การลดความเสี่ยง |
+|-----------|-------|----------------|
+| กระทบ checkout เดิมของ hours_based | ต่ำมาก | ไม่แก้ไข logic ส่วนนี้เลย |
+| กระทบ checkout เดิมของ time_based ที่ตรงเวลา | ไม่มี | Check เฉพาะก่อน shift_end - grace |
+| Remote checkout ถูกใช้มากเกินไป | ต่ำ | ต้องมี approval + audit trail |
+| Auto-checkout ไม่ทำงาน | ไม่มี | ยืนยันแล้วว่าทำงานปกติ |
 
-### ขั้นตอนการ Implement
+---
 
-1. สร้าง Migration เพิ่ม setting ใน `system_settings`
-2. สร้างตาราง `unregistered_user_alerts` สำหรับ queue (aggregate mode)
-3. เพิ่ม UI Card ใน `Settings.tsx`
-4. แก้ไข `line-webhook/index.ts` ให้ตรวจสอบ setting
-5. สร้าง Cron job `unregistered-user-alert-summary` สำหรับ aggregate
-6. Test ทั้ง 3 โหมด: ปิด, Realtime, Aggregate
+### ผลลัพธ์ที่คาดหวัง
+
+| Before | After |
+|--------|-------|
+| time_based checkout ก่อนเวลาได้เลย | ต้องมี early leave approved |
+| นอก geofence ถูก block ทันที | สามารถขออนุมัติได้ |
+| Admin/Manager ดูคำขอใน Portal | เพิ่ม Remote Checkout ใน Approvals |
 
