@@ -45,7 +45,7 @@ export default function PortalEmployeeDetail() {
       // Fetch employee
       const { data: empData } = await supabase
         .from('employees')
-        .select('*, branch:branches(name)')
+        .select('*, branch:branches!employees_branch_id_fkey(name)')
         .eq('id', id)
         .maybeSingle();
 

@@ -70,7 +70,7 @@ export default function OvertimeSummary() {
             ot_rate_multiplier,
             employee_payroll_settings(salary_per_month)
           ),
-          branch:branches(id, name),
+          branch:branches!attendance_logs_branch_id_fkey(id, name),
           overtime_request:overtime_requests(id, reason, status)
         `)
         .eq('event_type', 'check_out')

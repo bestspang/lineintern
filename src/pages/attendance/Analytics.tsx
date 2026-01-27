@@ -242,7 +242,7 @@ export default function AttendanceAnalytics() {
         .select(`
           *,
           employee:employees(full_name, branch_id, working_time_type, shift_start_time),
-          branch:branches(id, name, standard_start_time)
+          branch:branches!attendance_logs_branch_id_fkey(id, name, standard_start_time)
         `)
         .gte('server_time', fromDate.toISOString())
         .order('server_time', { ascending: true });
