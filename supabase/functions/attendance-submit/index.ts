@@ -539,21 +539,46 @@ serve(async (req) => {
         const allowedRadius = token.employee.branch.radius_meters || 200;
 
         if (distance && distance > allowedRadius) {
-          // BLOCK: Don't allow check-in outside geofence
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด\n\n📍 ระยะห่าง: ${Math.round(distance)} เมตร\n✅ อนุญาตภายใน: ${allowedRadius} เมตร\n\nกรุณาเข้าใกล้สาขา "${token.employee.branch.name}" เพื่อ check-in`,
-              error_en: `🚫 You are outside the allowed area\n\n📍 Distance: ${Math.round(distance)} meters\n✅ Allowed within: ${allowedRadius} meters\n\nPlease move closer to "${token.employee.branch.name}" branch to check in`,
-              distance: Math.round(distance),
-              allowed_radius: allowedRadius,
-              branch_name: token.employee.branch.name
-            }),
-            { 
-              status: 403,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
+          // For CHECK-OUT: Allow requesting remote checkout approval
+          // For CHECK-IN: Still block (must be on-site)
+          if (token.type === 'check_out') {
+            // Return special error code for frontend to handle remote checkout request
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด\n\n📍 ระยะห่าง: ${Math.round(distance)} เมตร\n✅ อนุญาตภายใน: ${allowedRadius} เมตร\n\nหากต้องการ Checkout นอกสถานที่ กรุณาส่งคำขออนุมัติ`,
+                error_en: `🚫 You are outside the allowed area\n\n📍 Distance: ${Math.round(distance)} meters\n✅ Allowed within: ${allowedRadius} meters\n\nTo checkout remotely, please submit a request for approval`,
+                code: 'OUTSIDE_GEOFENCE',
+                requires_remote_approval: true,
+                distance: Math.round(distance),
+                allowed_radius: allowedRadius,
+                branch_name: token.employee.branch.name,
+                branch_id: token.employee.branch.id,
+                latitude: latitude,
+                longitude: longitude
+              }),
+              { 
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          } else {
+            // CHECK-IN: Still block - must be on-site
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด\n\n📍 ระยะห่าง: ${Math.round(distance)} เมตร\n✅ อนุญาตภายใน: ${allowedRadius} เมตร\n\nกรุณาเข้าใกล้สาขา "${token.employee.branch.name}" เพื่อ check-in`,
+                error_en: `🚫 You are outside the allowed area\n\n📍 Distance: ${Math.round(distance)} meters\n✅ Allowed within: ${allowedRadius} meters\n\nPlease move closer to "${token.employee.branch.name}" branch to check in`,
+                distance: Math.round(distance),
+                allowed_radius: allowedRadius,
+                branch_name: token.employee.branch.name
+              }),
+              { 
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
         }
       }
     }
@@ -700,6 +725,68 @@ serve(async (req) => {
                 employee_id: token.employee.id,
                 early_leave_id: approvedEarlyLeave.id
               });
+            }
+          }
+        }
+
+        // 🚨 EARLY LEAVE VALIDATION for time_based employees
+        // Check if checkout is before shift_end_time (with 15 min grace)
+        if (token.employee.working_time_type === 'time_based' && !token.employee.is_test_mode) {
+          const shiftEndTime = token.employee.shift_end_time;
+          
+          if (shiftEndTime) {
+            const bangkokNow = getBangkokNow();
+            const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+            
+            // Parse shift end time and subtract 15 min grace
+            const [endH, endM] = shiftEndTime.split(':').map(Number);
+            const graceMinutes = 15;
+            let totalEndMinutes = endH * 60 + endM - graceMinutes;
+            if (totalEndMinutes < 0) totalEndMinutes = 0;
+            const deadlineH = Math.floor(totalEndMinutes / 60);
+            const deadlineM = totalEndMinutes % 60;
+            const earlyDeadlineStr = `${String(deadlineH).padStart(2, '0')}:${String(deadlineM).padStart(2, '0')}:00`;
+            
+            if (currentTimeStr < earlyDeadlineStr) {
+              // Check for approved early leave request
+              const { data: approvedEarlyLeave } = await supabase
+                .from('early_leave_requests')
+                .select('id, status')
+                .eq('employee_id', token.employee.id)
+                .eq('request_date', today)
+                .eq('status', 'approved')
+                .maybeSingle();
+              
+              if (!approvedEarlyLeave) {
+                logger.warn('Check-out blocked: Before shift end time (time_based)', {
+                  employee_id: token.employee.id,
+                  current_time: currentTimeStr,
+                  shift_end_time: shiftEndTime,
+                  early_deadline: earlyDeadlineStr
+                });
+                
+                return new Response(
+                  JSON.stringify({ 
+                    success: false, 
+                    error: `⚠️ ยังไม่ถึงเวลาเลิกงาน\n\n⏰ เวลาปัจจุบัน: ${currentTimeStr.substring(0,5)} น.\n🏁 เวลาเลิกงาน: ${shiftEndTime.substring(0,5)} น.\n\nหากต้องการออกก่อนเวลา กรุณา:\n• พิมพ์ "/ลาก่อน [เหตุผล]" เพื่อขออนุมัติ\n• หรือติดต่อหัวหน้างาน`,
+                    error_en: `⚠️ Shift end time not reached yet\n\nCurrent time: ${currentTimeStr.substring(0,5)}\nShift ends: ${shiftEndTime.substring(0,5)}\n\nTo leave early, please:\n• Type "/ลาก่อน [reason]" for approval\n• Or contact your supervisor`,
+                    current_time: currentTimeStr,
+                    shift_end_time: shiftEndTime,
+                    requires_early_leave_approval: true
+                  }),
+                  { 
+                    status: 403, 
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                  }
+                );
+              } else {
+                // Has approved early leave
+                earlyLeaveRequestId = approvedEarlyLeave.id;
+                logger.info('Early leave approved (time_based), allowing checkout', {
+                  employee_id: token.employee.id,
+                  early_leave_id: approvedEarlyLeave.id
+                });
+              }
             }
           }
         }

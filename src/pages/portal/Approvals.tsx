@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, Calendar, ChevronRight, ClipboardList, Gift, Banknote } from 'lucide-react';
+import { Clock, Calendar, ChevronRight, ClipboardList, Gift, Banknote, MapPin } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 
@@ -11,6 +11,7 @@ interface PendingCounts {
   ot: number;
   leave: number;
   earlyLeave: number;
+  remoteCheckout: number;
   redemptions: number;
   deposits: number;
 }
@@ -18,7 +19,7 @@ interface PendingCounts {
 export default function Approvals() {
   const navigate = useNavigate();
   const { employee, locale, isManager, isAdmin } = usePortal();
-  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, redemptions: 0, deposits: 0 });
+  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, remoteCheckout: 0, redemptions: 0, deposits: 0 });
   const [loading, setLoading] = useState(true);
 
   const fetchCounts = useCallback(async () => {
@@ -48,7 +49,7 @@ export default function Approvals() {
     return () => clearInterval(interval);
   }, [fetchCounts]);
 
-  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.redemptions + counts.deposits;
+  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.remoteCheckout + counts.redemptions + counts.deposits;
 
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
@@ -73,6 +74,13 @@ export default function Approvals() {
       count: counts.earlyLeave,
       path: '/portal/approvals/early-leave',
       color: 'from-amber-500 to-amber-600',
+    },
+    {
+      icon: MapPin,
+      label: locale === 'th' ? 'Checkout นอกสถานที่' : 'Remote Checkout',
+      count: counts.remoteCheckout,
+      path: '/portal/approvals/remote-checkout',
+      color: 'from-cyan-500 to-cyan-600',
     },
     // Admin/Owner only: Redemptions
     ...(['admin', 'owner'].includes(roleKey) ? [{

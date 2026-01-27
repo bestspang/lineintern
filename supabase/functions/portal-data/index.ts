@@ -642,17 +642,24 @@ serve(async (req) => {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
 
+        let remoteCheckoutQuery = supabase
+          .from('remote_checkout_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
         // Manager filter by branch (need to filter after fetch for requests without direct branch_id)
         if (!isAdmin && branchId) {
           depositsQuery = depositsQuery.eq('branch_id', branchId);
+          remoteCheckoutQuery = remoteCheckoutQuery.eq('branch_id', branchId);
         }
 
-        const [otRes, leaveRes, earlyRes, redemptionRes, depositRes] = await Promise.all([
+        const [otRes, leaveRes, earlyRes, redemptionRes, depositRes, remoteRes] = await Promise.all([
           otQuery,
           leaveQuery,
           earlyLeaveQuery,
           redemptionsQuery,
-          depositsQuery
+          depositsQuery,
+          remoteCheckoutQuery
         ]);
 
         // For manager, we need to filter OT/Leave/EarlyLeave by fetching with branch
@@ -679,6 +686,7 @@ serve(async (req) => {
             ot: otBranchRes.count || 0,
             leave: leaveBranchRes.count || 0,
             earlyLeave: earlyBranchRes.count || 0,
+            remoteCheckout: remoteRes.count || 0,
             redemptions: 0, // Manager doesn't see redemptions
             deposits: depositRes.count || 0
           };
@@ -687,6 +695,7 @@ serve(async (req) => {
             ot: otRes.count || 0,
             leave: leaveRes.count || 0,
             earlyLeave: earlyRes.count || 0,
+            remoteCheckout: remoteRes.count || 0,
             redemptions: redemptionRes.count || 0,
             deposits: depositRes.count || 0
           };
@@ -843,6 +852,69 @@ serve(async (req) => {
           error = updateError;
         } else {
           data = { success: true };
+        }
+        break;
+      }
+
+      // ========== REMOTE CHECKOUT ENDPOINTS ==========
+
+      // Pending remote checkout requests for ApproveRemoteCheckout.tsx
+      case 'pending-remote-checkout-requests': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        let query = supabase
+          .from('remote_checkout_requests')
+          .select(`
+            id, request_date, latitude, longitude, distance_from_branch, reason, status, created_at,
+            employee:employees!remote_checkout_requests_employee_id_fkey (
+              id, full_name, code, branch_id,
+              branch:branches!employees_branch_id_fkey ( name )
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
+
+        if (!isAdmin && branchId) {
+          query = query.eq('branch_id', branchId);
+        }
+
+        const { data: requests, error: reqError } = await query;
+
+        if (reqError) {
+          error = reqError;
+        } else {
+          data = requests || [];
+        }
+        break;
+      }
+
+      // Approve/Reject remote checkout request
+      case 'approve-remote-checkout': {
+        const { requestId, approved, approverEmployeeId, rejectionReason } = params;
+
+        // Call the remote-checkout-approval function
+        const approvalUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/remote-checkout-approval`;
+        const approvalResponse = await fetch(approvalUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({
+            request_id: requestId,
+            approved: approved,
+            approver_employee_id: approverEmployeeId,
+            rejection_reason: rejectionReason
+          })
+        });
+
+        const result = await approvalResponse.json();
+        
+        if (!approvalResponse.ok) {
+          error = { message: result.error || 'Failed to process approval' };
+        } else {
+          data = result;
         }
         break;
       }
