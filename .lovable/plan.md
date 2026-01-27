@@ -1,117 +1,207 @@
 
-## แผนแก้ไข: แสดง Active Employees ทุกคนในหน้า Receipt Quota
 
-### ปัญหาปัจจุบัน
-- ระบบปัจจุบัน: ดึงข้อมูลจาก `receipt_usage` → map กับ `users` → แสดงเฉพาะคนที่มี usage record (6 คน)
-- ปัญหา: พนักงาน active มี 8 คน แต่แสดงแค่ 6 คนที่เคยใช้ AI receipt
+## แผนเพิ่ม Bot Alert Settings (เปิด/ปิด & Aggregate Mode)
 
-### การแก้ไข
+### สรุปปัญหา
+- Alert "ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป" ถูกส่งทุกครั้ง ทำให้รบกวน Admin
+- ต้องการให้ Admin สามารถ:
+  1. เปิด/ปิด alert นี้ได้
+  2. เลือก mode: Real-time หรือ Aggregate (สรุปรวม)
+  3. Default = ปิด
 
-**ไฟล์:** `src/pages/receipts/ReceiptQuota.tsx`
+---
 
-#### 1. เพิ่ม Query ดึง Active Employees
+### การเปลี่ยนแปลง
 
-เพิ่ม query ใหม่เพื่อดึง employees ที่ active จาก `employees` table:
+#### 1. เพิ่ม Setting ใน Database
 
-```typescript
-// Fetch active employees 
-const { data: employees = [], isLoading: employeesLoading } = useQuery({
-  queryKey: ['active-employees-for-quota'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('id, full_name, line_user_id')
-      .eq('status', 'active')
-      .not('line_user_id', 'is', null);
-    if (error) throw error;
-    return data;
-  },
-});
+**ตาราง:** `system_settings`
+
+```sql
+INSERT INTO system_settings (setting_key, setting_value, category, description, is_editable)
+VALUES (
+  'bot_alert_unregistered_user',
+  '{"enabled": false, "mode": "aggregate", "aggregate_interval_hours": 24}',
+  'bot',
+  'Settings for unregistered user image alerts. Mode: realtime (send immediately) or aggregate (daily summary)',
+  true
+);
 ```
 
-#### 2. เปลี่ยน Logic การสร้าง `userQuotaData`
+**Schema ของ `setting_value`:**
+```json
+{
+  "enabled": false,         // เปิด/ปิด alert (default: ปิด)
+  "mode": "aggregate",      // "realtime" หรือ "aggregate"
+  "aggregate_interval_hours": 24  // สรุปทุกกี่ชั่วโมง (default: 24)
+}
+```
 
-เปลี่ยนจาก `usageRecords.map()` → `employees.map()`:
+---
 
+#### 2. เพิ่ม UI Settings ใน Admin Dashboard
+
+**ไฟล์:** `src/pages/Settings.tsx`
+
+เพิ่ม Card ใหม่สำหรับ Bot Alert Settings:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 🔔 Bot Alert Settings                                   │
+│ ตั้งค่าการแจ้งเตือนจาก Bot                              │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│ ☐ แจ้งเตือนเมื่อผู้ใช้ที่ไม่ได้ลงทะเบียนส่งรูป        │
+│   (ปิดอยู่)                                            │
+│                                                         │
+│ [เมื่อเปิดจะแสดง options เพิ่ม:]                        │
+│                                                         │
+│ ◉ Real-time - ส่งทันทีทุกครั้ง                          │
+│ ○ Aggregate - สรุปรวมวันละครั้ง                         │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 3. แก้ไข Edge Function
+
+**ไฟล์:** `supabase/functions/line-webhook/index.ts`
+
+ตรงส่วน `handleImageMessage` (~line 8908-8929):
+
+**Before:**
 ```typescript
-// Build user quota display data - NOW BASED ON EMPLOYEES
-const userQuotaData: UserQuotaDisplay[] = employees.map(emp => {
-  // หา usage record (ถ้ามี)
-  const usage = usageRecords.find(u => u.line_user_id === emp.line_user_id);
+if (!employee) {
+  await notifyAdminGroup(`📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`, {...});
+  return;
+}
+```
+
+**After:**
+```typescript
+if (!employee) {
+  // ตรวจสอบ setting ก่อนส่ง alert
+  const alertSetting = await getUnregisteredUserAlertSetting();
   
-  // หา subscription (ถ้ามี) 
-  const subscription = subscriptions.find(s => s.line_user_id === emp.line_user_id);
-  
-  // หา plan หรือใช้ default plan
-  const defaultPlanId = (defaultPlanSetting?.setting_value as { plan_id?: string })?.plan_id || 'free';
-  const plan = plans.find(p => p.id === (subscription?.plan_id || defaultPlanId)) || 
-    plans.find(p => p.id === 'free') || 
-    { id: 'free', name: 'Free', ai_receipts_limit: 8, price_thb: 0 };
-  
-  // Used = 0 ถ้ายังไม่มี usage record
-  const used = usage?.ai_receipts_used || 0;
-  const limit = plan.ai_receipts_limit;
-  const isUnlimited = limit === -1;
-  const percentUsed = isUnlimited ? 0 : (limit > 0 ? (used / limit) * 100 : 0);
-  
-  let status: 'ok' | 'warning' | 'exceeded' = 'ok';
-  if (!isUnlimited) {
-    if (percentUsed >= 100) status = 'exceeded';
-    else if (percentUsed >= 80) status = 'warning';
+  if (alertSetting.enabled) {
+    if (alertSetting.mode === 'realtime') {
+      // ส่งทันที
+      await notifyAdminGroup(`📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`, {...});
+    } else {
+      // บันทึกลง queue สำหรับ aggregate
+      await queueUnregisteredUserAlert({...});
+    }
   }
-  
-  return {
-    lineUserId: emp.line_user_id!,
-    displayName: emp.full_name || 'Unknown',
-    planId: plan.id,
-    planName: plan.name,
-    used,
-    limit,
-    period: currentPeriod,
-    status,
-    percentUsed,
-  };
-});
+  return;
+}
 ```
 
-#### 3. อัปเดต Loading State
+---
 
-```typescript
-const isLoading = plansLoading || usageLoading || subsLoading || employeesLoading || defaultPlanLoading;
+#### 4. สร้าง Aggregate Alert Cron Job (Optional)
+
+**ไฟล์:** `supabase/functions/unregistered-user-alert-summary/index.ts`
+
+Cron job ที่รันทุกวัน/ตามที่ตั้ง เพื่อส่งสรุป:
+
+```
+📊 สรุป Bot Alert ประจำวัน
+━━━━━━━━━━━━━━━━━━━━━━
+📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนส่งรูป: 15 ครั้ง
+
+🔹 Central Park สีลม: 8 ครั้ง
+   - User 8da68c: 5 ครั้ง
+   - User f2a91b: 3 ครั้ง
+   
+🔹 Good Lime: 7 ครั้ง
+   - User c3b72d: 7 ครั้ง
+```
+
+---
+
+### รายละเอียดทางเทคนิค
+
+#### ไฟล์ที่ต้องแก้ไข
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|--------------|
+| `src/pages/Settings.tsx` | เพิ่ม Bot Alert Settings Card |
+| `supabase/functions/line-webhook/index.ts` | ตรวจสอบ setting ก่อนส่ง alert |
+
+#### ไฟล์ใหม่ที่ต้องสร้าง (สำหรับ Aggregate mode)
+
+| ไฟล์ | รายละเอียด |
+|------|-----------|
+| `supabase/functions/unregistered-user-alert-summary/index.ts` | Cron job สรุป alert รายวัน |
+
+#### Database Changes
+
+| ตาราง | การเปลี่ยนแปลง |
+|------|--------------|
+| `system_settings` | INSERT setting ใหม่ `bot_alert_unregistered_user` |
+| `unregistered_user_alerts` (ใหม่) | เก็บ queue สำหรับ aggregate mode |
+
+---
+
+### Flow Diagram
+
+```text
+User sends image
+       │
+       ▼
+┌──────────────────┐
+│ Is Employee?     │
+└────────┬─────────┘
+         │ No
+         ▼
+┌──────────────────┐
+│ Check Setting    │
+│ bot_alert_       │
+│ unregistered_user│
+└────────┬─────────┘
+         │
+    ┌────┴────┐
+    │ enabled │
+    │ = true? │
+    └────┬────┘
+     No  │  Yes
+     │   │
+     ▼   ▼
+  Skip  ┌─────────────┐
+        │ mode =      │
+        │ realtime?   │
+        └──────┬──────┘
+          Yes  │  No (aggregate)
+          │    │
+          ▼    ▼
+     Send   Save to queue
+     Alert  (daily summary)
 ```
 
 ---
 
 ### ผลลัพธ์ที่คาดหวัง
 
-| User | Plan | Usage | Status |
-|------|------|-------|--------|
-| Baifern | Infinite | 8 / ∞ | OK |
-| Ing | Infinite | 7 / ∞ | OK |
-| Best | Infinite | 7 / ∞ | OK |
-| Wariss | Infinite | 2 / ∞ | OK |
-| D! | Infinite | 0 / ∞ | OK |
-| -🧸 | Infinite | 0 / ∞ | OK |
-| **Nu** | **Free** | **0 / 8** | **OK** |
-| **โม** | **Free** | **0 / 8** | **OK** |
+| สถานะ | Before | After |
+|-------|--------|-------|
+| Default | ส่ง alert ทุกครั้ง | ไม่ส่ง alert (ปิดอยู่) |
+| เปิด + Realtime | - | ส่งทันทีทุกครั้ง |
+| เปิด + Aggregate | - | สรุปวันละครั้ง |
 
 ---
 
-### รายละเอียดทางเทคนิค
-
-| การเปลี่ยนแปลง | รายละเอียด |
-|--------------|-----------|
-| เพิ่ม Query | `employees` table (status = 'active', line_user_id not null) |
-| เปลี่ยน Logic | Base loop จาก `usageRecords` → `employees` |
-| อัปเดต Loading | รวม `employeesLoading` |
-| ลบ Query เดิม | `users-for-quota` (ไม่จำเป็นแล้ว) |
-
-### ไฟล์ที่ต้องแก้ไข
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|--------------|
-| `src/pages/receipts/ReceiptQuota.tsx` | เปลี่ยน data source จาก users → employees |
-
 ### ความเสี่ยง
-- **ต่ำมาก** - ไม่กระทบ logic การ reset quota หรือ change plan (ใช้ line_user_id เหมือนเดิม)
-- ชื่อที่แสดงจะเปลี่ยนจาก `display_name` (users table) → `full_name` (employees table)
+
+- **ต่ำมาก** - เป็นการเพิ่ม feature ใหม่ ไม่กระทบ logic เดิม
+- Default = ปิด จึงไม่มีผลกระทบทันทีหลัง deploy
+
+### ขั้นตอนการ Implement
+
+1. สร้าง Migration เพิ่ม setting ใน `system_settings`
+2. สร้างตาราง `unregistered_user_alerts` สำหรับ queue (aggregate mode)
+3. เพิ่ม UI Card ใน `Settings.tsx`
+4. แก้ไข `line-webhook/index.ts` ให้ตรวจสอบ setting
+5. สร้าง Cron job `unregistered-user-alert-summary` สำหรับ aggregate
+6. Test ทั้ง 3 โหมด: ปิด, Realtime, Aggregate
+
