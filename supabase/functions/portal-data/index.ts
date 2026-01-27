@@ -1384,6 +1384,65 @@ serve(async (req) => {
         break;
       }
 
+      // ========== LEAVE REQUEST ENDPOINTS (Suggestion 3) ==========
+
+      // Get leave requests history
+      case 'my-leave-requests': {
+        const limit = params?.limit || 10;
+        
+        const result = await supabase
+          .from('leave_requests')
+          .select('id, start_date, end_date, leave_type, reason, status, created_at, approved_at, rejection_reason')
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Cancel own Leave request
+      case 'cancel-leave-request': {
+        const { requestId, reason } = params || {};
+        
+        if (!requestId) {
+          error = { message: 'requestId is required' };
+          break;
+        }
+        
+        // Verify ownership and pending status
+        const { data: existing } = await supabase
+          .from('leave_requests')
+          .select('id, employee_id, status')
+          .eq('id', requestId)
+          .eq('employee_id', employee_id)
+          .eq('status', 'pending')
+          .maybeSingle();
+        
+        if (!existing) {
+          error = { message: 'Request not found or cannot be cancelled' };
+          break;
+        }
+        
+        const { error: updateError } = await supabase
+          .from('leave_requests')
+          .update({
+            status: 'cancelled',
+            rejection_reason: reason || 'Cancelled by employee via Portal',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', requestId);
+        
+        if (updateError) {
+          error = updateError;
+        } else {
+          console.log(`[portal-data] Leave request ${requestId} cancelled by employee ${employee_id}`);
+          data = { success: true };
+        }
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),

@@ -257,6 +257,40 @@ export default function PortalHome() {
     return () => clearInterval(timer);
   }, []);
 
+  // Fetch pending requests count for badge
+  const { data: pendingCounts } = useQuery({
+    queryKey: ['pending-counts', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return { ot: 0, dayoff: 0, leave: 0 };
+      const [otResult, dayOffResult, leaveResult] = await Promise.all([
+        portalApi<any[]>({
+          endpoint: 'my-pending-ot-requests',
+          employee_id: employee.id
+        }),
+        portalApi<any[]>({
+          endpoint: 'my-pending-dayoff-requests',
+          employee_id: employee.id
+        }),
+        portalApi<any[]>({
+          endpoint: 'my-leave-requests',
+          employee_id: employee.id,
+          params: { limit: 50 }
+        })
+      ]);
+      // Filter leave for pending only
+      const pendingLeaves = (leaveResult.data || []).filter((l: any) => l.status === 'pending');
+      return {
+        ot: otResult.data?.length || 0,
+        dayoff: dayOffResult.data?.length || 0,
+        leave: pendingLeaves.length
+      };
+    },
+    enabled: !!employee?.id,
+    refetchInterval: 60000,
+  });
+
+  const totalPending = (pendingCounts?.ot || 0) + (pendingCounts?.dayoff || 0) + (pendingCounts?.leave || 0);
+
   // Fetch home summary data using useQuery
   const { data: homeSummary, isLoading: isLoadingSummary } = useQuery({
     queryKey: ['home-summary', employee?.id],
@@ -414,6 +448,7 @@ export default function PortalHome() {
           {sortedQuickActions.map((action) => {
             const Icon = action.icon;
             const isFav = isFavorite(action.path);
+            const showPendingBadge = action.path === '/portal/my-history' && totalPending > 0;
             return (
               <Card
                 key={action.path}
@@ -430,6 +465,12 @@ export default function PortalHome() {
                     toggleFavorite(action.path);
                   }}
                 />
+                {/* Pending requests badge for Work History */}
+                {showPendingBadge && (
+                  <Badge className="absolute top-2 right-8 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 z-10">
+                    {totalPending}
+                  </Badge>
+                )}
                 <CardContent className="p-4">
                   <div className={cn(
                     'h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
