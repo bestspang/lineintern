@@ -1,13 +1,28 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useEffect, useState, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, LogIn, LogOut, AlertCircle, Calendar } from 'lucide-react';
+import { 
+  Clock, LogIn, LogOut, AlertCircle, Calendar, 
+  XCircle, ClockIcon, CalendarX, MapPin, Check, X 
+} from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { format, parseISO } from 'date-fns';
 import { formatBangkokTime, formatBangkokISODate, getBangkokHoursMinutes } from '@/lib/timezone';
 import { th, enUS } from 'date-fns/locale';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface AttendanceLog {
   id: string;
@@ -26,55 +41,154 @@ interface DailyStats {
   avgCheckIn: string;
 }
 
+interface PendingOTRequest {
+  id: string;
+  request_date: string;
+  estimated_hours: number;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
+interface PendingDayOffRequest {
+  id: string;
+  day_off_date: string;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
+interface RemoteCheckoutRequest {
+  id: string;
+  request_date: string;
+  latitude: number;
+  longitude: number;
+  distance_from_branch: number;
+  reason: string;
+  status: string;
+  created_at: string;
+  approved_at: string | null;
+  rejection_reason: string | null;
+}
+
 export default function MyWorkHistory() {
   const { employee, locale } = usePortal();
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [stats, setStats] = useState<DailyStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (!employee?.id) return;
+  // Pending requests state
+  const [pendingOT, setPendingOT] = useState<PendingOTRequest[]>([]);
+  const [pendingDayOff, setPendingDayOff] = useState<PendingDayOffRequest[]>([]);
+  const [remoteCheckouts, setRemoteCheckouts] = useState<RemoteCheckoutRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(true);
 
-      const { data, error } = await portalApi<AttendanceLog[]>({
-        endpoint: 'attendance-history',
-        employee_id: employee.id,
-        params: { days: 30 }
+  // Cancel dialog state
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; type: 'ot' | 'dayoff'; label: string } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const fetchHistory = useCallback(async () => {
+    if (!employee?.id) return;
+
+    const { data, error } = await portalApi<AttendanceLog[]>({
+      endpoint: 'attendance-history',
+      employee_id: employee.id,
+      params: { days: 30 }
+    });
+
+    if (!error && data) {
+      setLogs(data);
+
+      // Calculate stats
+      const checkIns = data.filter(l => l.event_type === 'check_in');
+      const uniqueDays = new Set(checkIns.map(l => formatBangkokISODate(l.server_time)));
+      const flaggedCount = checkIns.filter(l => l.is_flagged).length;
+
+      // Calculate average check-in time using Bangkok timezone
+      const checkInHours = checkIns.map(l => {
+        const bangkokTime = getBangkokHoursMinutes(l.server_time);
+        if (!bangkokTime) return 0;
+        return bangkokTime.hours + bangkokTime.minutes / 60;
       });
+      const avgHour = checkInHours.length > 0
+        ? checkInHours.reduce((a, b) => a + b, 0) / checkInHours.length
+        : 0;
+      const avgHours = Math.floor(avgHour);
+      const avgMins = Math.round((avgHour - avgHours) * 60);
 
-      if (!error && data) {
-        setLogs(data);
-        
-        // Calculate stats
-        const checkIns = data.filter(l => l.event_type === 'check_in');
-        // Use Bangkok timezone for date grouping
-        const uniqueDays = new Set(checkIns.map(l => formatBangkokISODate(l.server_time)));
-        const flaggedCount = checkIns.filter(l => l.is_flagged).length;
-        
-        // Calculate average check-in time using Bangkok timezone
-        const checkInHours = checkIns.map(l => {
-          const bangkokTime = getBangkokHoursMinutes(l.server_time);
-          if (!bangkokTime) return 0;
-          return bangkokTime.hours + bangkokTime.minutes / 60;
-        });
-        const avgHour = checkInHours.length > 0 
-          ? checkInHours.reduce((a, b) => a + b, 0) / checkInHours.length 
-          : 0;
-        const avgHours = Math.floor(avgHour);
-        const avgMins = Math.round((avgHour - avgHours) * 60);
-
-        setStats({
-          totalDays: uniqueDays.size,
-          onTime: checkIns.length - flaggedCount,
-          late: flaggedCount,
-          avgCheckIn: `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`,
-        });
-      }
-      setLoading(false);
-    };
-
-    fetchHistory();
+      setStats({
+        totalDays: uniqueDays.size,
+        onTime: checkIns.length - flaggedCount,
+        late: flaggedCount,
+        avgCheckIn: `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`,
+      });
+    }
+    setLoading(false);
   }, [employee?.id]);
+
+  const fetchPendingRequests = useCallback(async () => {
+    if (!employee?.id) return;
+    setLoadingRequests(true);
+
+    const [otResult, dayOffResult, remoteResult] = await Promise.all([
+      portalApi<PendingOTRequest[]>({
+        endpoint: 'my-pending-ot-requests',
+        employee_id: employee.id,
+      }),
+      portalApi<PendingDayOffRequest[]>({
+        endpoint: 'my-pending-dayoff-requests',
+        employee_id: employee.id,
+      }),
+      portalApi<RemoteCheckoutRequest[]>({
+        endpoint: 'my-remote-checkout-requests',
+        employee_id: employee.id,
+        params: { limit: 10 }
+      }),
+    ]);
+
+    if (!otResult.error && otResult.data) setPendingOT(otResult.data);
+    if (!dayOffResult.error && dayOffResult.data) setPendingDayOff(dayOffResult.data);
+    if (!remoteResult.error && remoteResult.data) setRemoteCheckouts(remoteResult.data);
+    
+    setLoadingRequests(false);
+  }, [employee?.id]);
+
+  useEffect(() => {
+    fetchHistory();
+    fetchPendingRequests();
+  }, [fetchHistory, fetchPendingRequests]);
+
+  const handleCancelRequest = async () => {
+    if (!cancelTarget || !employee?.id) return;
+    setCancelling(true);
+
+    const { data, error } = await portalApi<{ success: boolean }>({
+      endpoint: 'cancel-my-request',
+      employee_id: employee.id,
+      params: {
+        requestId: cancelTarget.id,
+        requestType: cancelTarget.type,
+        reason: 'Cancelled by employee via Portal'
+      }
+    });
+
+    if (error || !data?.success) {
+      toast.error(locale === 'th' ? 'ไม่สามารถยกเลิกได้' : 'Failed to cancel');
+    } else {
+      toast.success(locale === 'th' ? 'ยกเลิกเรียบร้อย' : 'Cancelled successfully');
+      fetchPendingRequests();
+    }
+
+    setCancelling(false);
+    setCancelDialogOpen(false);
+    setCancelTarget(null);
+  };
+
+  const openCancelDialog = (id: string, type: 'ot' | 'dayoff', label: string) => {
+    setCancelTarget({ id, type, label });
+    setCancelDialogOpen(true);
+  };
 
   // Group logs by date using Bangkok timezone
   const groupedLogs = logs.reduce((acc, log) => {
@@ -83,6 +197,10 @@ export default function MyWorkHistory() {
     acc[date].push(log);
     return acc;
   }, {} as Record<string, AttendanceLog[]>);
+
+  const dateLocale = locale === 'th' ? th : enUS;
+
+  const hasPendingRequests = pendingOT.length > 0 || pendingDayOff.length > 0;
 
   if (loading) {
     return (
@@ -114,7 +232,7 @@ export default function MyWorkHistory() {
               {locale === 'th' ? '👔 คุณไม่ต้อง Track Attendance' : '👔 You are exempt from attendance tracking'}
             </h2>
             <p className="opacity-90 text-sm">
-              {locale === 'th' 
+              {locale === 'th'
                 ? 'บัญชีของคุณถูกตั้งค่าเป็นผู้บริหาร ไม่จำเป็นต้องลงเวลาทำงาน'
                 : 'Your account is set as executive and does not require attendance tracking.'}
             </p>
@@ -123,8 +241,6 @@ export default function MyWorkHistory() {
       </div>
     );
   }
-
-  const dateLocale = locale === 'th' ? th : enUS;
 
   return (
     <div className="space-y-6">
@@ -159,18 +275,18 @@ export default function MyWorkHistory() {
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-emerald-50 border-emerald-200">
+          <Card className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{stats.onTime}</p>
-              <p className="text-xs text-emerald-600">
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.onTime}</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
                 {locale === 'th' ? 'ตรงเวลา' : 'On Time'}
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-amber-50 border-amber-200">
+          <Card className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-amber-600">{stats.late}</p>
-              <p className="text-xs text-amber-600">
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.late}</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">
                 {locale === 'th' ? 'มาสาย' : 'Late'}
               </p>
             </CardContent>
@@ -178,7 +294,119 @@ export default function MyWorkHistory() {
         </div>
       )}
 
-      {/* Timeline */}
+      {/* Pending Requests Section */}
+      {!loadingRequests && hasPendingRequests && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ClockIcon className="h-5 w-5 text-amber-500" />
+              {locale === 'th' ? 'คำขอที่รออนุมัติ' : 'Pending Requests'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Pending OT */}
+            {pendingOT.map((req) => (
+              <div key={req.id} className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                <div className="flex items-center gap-3">
+                  <ClockIcon className="h-5 w-5 text-orange-500" />
+                  <div>
+                    <p className="font-medium text-sm">
+                      OT: {format(parseISO(req.request_date), 'd MMM', { locale: dateLocale })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {req.estimated_hours} {locale === 'th' ? 'ชม.' : 'hrs'} - {req.reason}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={() => openCancelDialog(req.id, 'ot', `OT ${format(parseISO(req.request_date), 'd MMM')}`)}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </Button>
+              </div>
+            ))}
+
+            {/* Pending Day-Off */}
+            {pendingDayOff.map((req) => (
+              <div key={req.id} className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-3">
+                  <CalendarX className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="font-medium text-sm">
+                      {locale === 'th' ? 'วันหยุด:' : 'Day Off:'} {format(parseISO(req.day_off_date), 'd MMM', { locale: dateLocale })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {req.reason}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={() => openCancelDialog(req.id, 'dayoff', `Day Off ${format(parseISO(req.day_off_date), 'd MMM')}`)}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Remote Checkout History */}
+      {!loadingRequests && remoteCheckouts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-purple-500" />
+              {locale === 'th' ? 'ประวัติ Remote Checkout' : 'Remote Checkout History'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {remoteCheckouts.map((req) => (
+              <div key={req.id} className="flex items-center justify-between p-3 rounded-lg border">
+                <div className="flex items-center gap-3">
+                  <MapPin className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium text-sm">
+                      {format(parseISO(req.request_date), 'd MMM yyyy', { locale: dateLocale })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {req.reason} • {Math.round(req.distance_from_branch)}m away
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : 'secondary'}
+                  className={
+                    req.status === 'approved' 
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                      : req.status === 'rejected'
+                      ? ''
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  }
+                >
+                  {req.status === 'approved' && <Check className="h-3 w-3 mr-1" />}
+                  {req.status === 'rejected' && <X className="h-3 w-3 mr-1" />}
+                  {req.status === 'approved' 
+                    ? (locale === 'th' ? 'อนุมัติ' : 'Approved')
+                    : req.status === 'rejected'
+                    ? (locale === 'th' ? 'ปฏิเสธ' : 'Rejected')
+                    : (locale === 'th' ? 'รออนุมัติ' : 'Pending')}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Attendance Timeline */}
       <div className="space-y-4">
         <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
           {locale === 'th' ? 'รายการล่าสุด' : 'Recent Activity'}
@@ -208,9 +436,9 @@ export default function MyWorkHistory() {
                   {dayLogs.map((log) => (
                     <div key={log.id} className="flex items-center gap-3 text-sm">
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                        log.event_type === 'check_in' 
-                          ? 'bg-emerald-100 text-emerald-600' 
-                          : 'bg-blue-100 text-blue-600'
+                        log.event_type === 'check_in'
+                          ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                       }`}>
                         {log.event_type === 'check_in' ? (
                           <LogIn className="h-4 w-4" />
@@ -220,12 +448,12 @@ export default function MyWorkHistory() {
                       </div>
                       <div className="flex-1">
                         <span className="font-medium">
-                          {log.event_type === 'check_in' 
+                          {log.event_type === 'check_in'
                             ? (locale === 'th' ? 'เช็คอิน' : 'Check In')
                             : (locale === 'th' ? 'เช็คเอาท์' : 'Check Out')}
                         </span>
                         {log.is_overtime && (
-                          <Badge variant="secondary" className="ml-2 text-xs bg-orange-100 text-orange-600">
+                          <Badge variant="secondary" className="ml-2 text-xs bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
                             OT
                           </Badge>
                         )}
@@ -244,6 +472,36 @@ export default function MyWorkHistory() {
           ))
         )}
       </div>
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {locale === 'th' ? 'ยืนยันการยกเลิก?' : 'Confirm Cancellation?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {locale === 'th'
+                ? `คุณต้องการยกเลิกคำขอ ${cancelTarget?.label} หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้`
+                : `Do you want to cancel the request for ${cancelTarget?.label}? This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>
+              {locale === 'th' ? 'ไม่' : 'No'}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelRequest}
+              disabled={cancelling}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelling
+                ? (locale === 'th' ? 'กำลังยกเลิก...' : 'Cancelling...')
+                : (locale === 'th' ? 'ยืนยันยกเลิก' : 'Yes, Cancel')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

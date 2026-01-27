@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Trophy, Medal, Award, Crown, Flame } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, Flame, Building2, Globe } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ export default function PointLeaderboard() {
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [myRank, setMyRank] = useState<LeaderboardEntry | null>(null);
+  const [viewMode, setViewMode] = useState<'branch' | 'all'>('branch');
 
   const fetchLeaderboard = useCallback(async () => {
     if (!employee?.id) return;
@@ -45,7 +47,7 @@ export default function PointLeaderboard() {
         endpoint: 'leaderboard',
         employee_id: employee.id,
         params: {
-          branchId: employee.branch?.id,
+          branchId: viewMode === 'branch' ? employee.branch?.id : undefined,
           limit: 20
         }
       });
@@ -73,7 +75,7 @@ export default function PointLeaderboard() {
     } finally {
       setLoading(false);
     }
-  }, [employee?.id, employee?.branch?.id]);
+  }, [employee?.id, employee?.branch?.id, viewMode]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -109,14 +111,40 @@ export default function PointLeaderboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Trophy className="h-6 w-6 text-yellow-500" />
-          {locale === 'th' ? 'Leaderboard' : 'Leaderboard'}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          {locale === 'th' ? 'อันดับคะแนนในสาขา' : 'Branch point rankings'}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Trophy className="h-6 w-6 text-yellow-500" />
+            {locale === 'th' ? 'Leaderboard' : 'Leaderboard'}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {viewMode === 'branch'
+              ? (locale === 'th' ? 'อันดับคะแนนในสาขา' : 'Branch point rankings')
+              : (locale === 'th' ? 'อันดับคะแนนทั้งบริษัท' : 'Company-wide rankings')}
+          </p>
+        </div>
+
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          <Button
+            variant={viewMode === 'branch' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('branch')}
+            className="gap-1"
+          >
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">{locale === 'th' ? 'สาขา' : 'Branch'}</span>
+          </Button>
+          <Button
+            variant={viewMode === 'all' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('all')}
+            className="gap-1"
+          >
+            <Globe className="h-4 w-4" />
+            <span className="hidden sm:inline">{locale === 'th' ? 'ทั้งหมด' : 'All'}</span>
+          </Button>
+        </div>
       </div>
 
       {/* My Rank Card */}
@@ -162,9 +190,9 @@ export default function PointLeaderboard() {
         ) : (
           leaderboard.map((entry) => {
             const isMe = entry.employeeId === employee?.id;
-            
+
             return (
-              <Card 
+              <Card
                 key={entry.id}
                 className={cn(
                   'transition-all border',
@@ -177,7 +205,7 @@ export default function PointLeaderboard() {
                     <div className="w-10 flex justify-center">
                       {getRankIcon(entry.rank)}
                     </div>
-                    
+
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={entry.avatarUrl} />
                       <AvatarFallback className="bg-muted">
