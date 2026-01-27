@@ -50,6 +50,19 @@ export default function Attendance() {
   const [estimatedEndTime, setEstimatedEndTime] = useState<string>('');
   const [otRequestSubmitting, setOTRequestSubmitting] = useState(false);
 
+  // Remote checkout request state
+  const [showRemoteCheckoutDialog, setShowRemoteCheckoutDialog] = useState(false);
+  const [remoteCheckoutReason, setRemoteCheckoutReason] = useState<string>('');
+  const [remoteCheckoutSubmitting, setRemoteCheckoutSubmitting] = useState(false);
+  const [remoteCheckoutData, setRemoteCheckoutData] = useState<{
+    distance: number;
+    allowed_radius: number;
+    branch_name: string;
+    branch_id: string;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
   // Today's holidays for cute quotes context
   const [todayHolidayIds, setTodayHolidayIds] = useState<string[]>([]);
 
@@ -345,6 +358,26 @@ export default function Attendance() {
           return;
         }
 
+        // Handle 403 Outside Geofence - remote checkout required
+        if (response.status === 403 && result.code === 'OUTSIDE_GEOFENCE') {
+          setSubmitting(false);
+          setSubmitProgress('');
+          
+          // Store geofence data for the dialog
+          setRemoteCheckoutData({
+            distance: Math.round(result.distance || 0),
+            allowed_radius: result.allowed_radius || 0,
+            branch_name: result.branch_name || tokenData?.branch?.name || '',
+            branch_id: result.branch_id || tokenData?.branch?.id || '',
+            latitude: location?.lat || 0,
+            longitude: location?.lon || 0
+          });
+          
+          // Show remote checkout dialog
+          setShowRemoteCheckoutDialog(true);
+          return;
+        }
+
         if (!response.ok || !result.success) {
           throw new Error(result.error || 'Submission failed');
         }
@@ -556,6 +589,74 @@ export default function Attendance() {
     }
   };
 
+  const handleRemoteCheckoutRequest = async () => {
+    if (!remoteCheckoutReason.trim() || !remoteCheckoutData) {
+      toast({
+        title: 'กรอกข้อมูลให้ครบ',
+        description: 'กรุณาระบุเหตุผลในการขอ checkout นอกสถานที่',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setRemoteCheckoutSubmitting(true);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/remote-checkout-request`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            employee_id: tokenData.employee.id,
+            latitude: remoteCheckoutData.latitude,
+            longitude: remoteCheckoutData.longitude,
+            distance_from_branch: remoteCheckoutData.distance,
+            branch_id: remoteCheckoutData.branch_id,
+            reason: remoteCheckoutReason
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to submit remote checkout request');
+      }
+
+      setShowRemoteCheckoutDialog(false);
+      setRemoteCheckoutReason('');
+      setRemoteCheckoutData(null);
+      setSubmitted(true);
+      setSubmitResult({
+        log: {
+          server_time: new Date().toISOString(),
+          is_flagged: false
+        },
+        remote_checkout_pending: true,
+        request_id: result.request_id
+      });
+
+      toast({
+        title: '✅ ส่งคำขอ Checkout นอกสถานที่สำเร็จ',
+        description: 'รอการอนุมัติจากหัวหน้างาน'
+      });
+
+    } catch (err) {
+      console.error('Remote checkout request error:', err);
+      toast({
+        title: 'เกิดข้อผิดพลาด',
+        description: err instanceof Error ? err.message : 'Failed to submit request',
+        variant: 'destructive'
+      });
+    } finally {
+      setRemoteCheckoutSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/10 p-4">
@@ -670,6 +771,17 @@ export default function Attendance() {
                     ⏰ ทำงานมา: {submitResult.hours_worked?.toFixed(1)} / {submitResult.required_hours} ชั่วโมง
                     <br />
                     รอการอนุมัติจากหัวหน้า...
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {submitResult.remote_checkout_pending && (
+                <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+                  <MapPin className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-xs sm:text-sm">
+                    📍 คำขอ Checkout นอกสถานที่ถูกส่งแล้ว
+                    <br />
+                    รอการอนุมัติจากหัวหน้า - เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ
                   </AlertDescription>
                 </Alert>
               )}
@@ -1091,6 +1203,84 @@ export default function Attendance() {
                 </>
               ) : (
                 'ส่งคำขอ OT'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remote Checkout Request Dialog */}
+      <Dialog open={showRemoteCheckoutDialog} onOpenChange={setShowRemoteCheckoutDialog}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-orange-500" />
+              ขอ Checkout นอกสถานที่
+            </DialogTitle>
+            <DialogDescription>
+              คุณอยู่นอกพื้นที่ที่กำหนด กรุณาระบุเหตุผล
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {remoteCheckoutData && (
+              <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+                <MapPin className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-sm">
+                  <div><strong>สาขา:</strong> {remoteCheckoutData.branch_name}</div>
+                  <div><strong>ระยะห่าง:</strong> {remoteCheckoutData.distance} เมตร</div>
+                  <div><strong>อนุญาตภายใน:</strong> {remoteCheckoutData.allowed_radius} เมตร</div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="remote-reason">เหตุผล *</Label>
+              <Textarea
+                id="remote-reason"
+                placeholder="เช่น: ไปพบลูกค้า, ออกไปซื้อของให้ร้าน, ธุระด่วน..."
+                value={remoteCheckoutReason}
+                onChange={(e) => setRemoteCheckoutReason(e.target.value)}
+                className="min-h-[100px]"
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                {remoteCheckoutReason.length}/500 ตัวอักษร
+              </p>
+            </div>
+
+            <Alert>
+              <AlertDescription className="text-xs">
+                คำขอจะถูกส่งไปยังหัวหน้าเพื่อพิจารณา เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRemoteCheckoutDialog(false);
+                setRemoteCheckoutReason('');
+                setRemoteCheckoutData(null);
+              }}
+              disabled={remoteCheckoutSubmitting}
+              className="flex-1"
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleRemoteCheckoutRequest}
+              disabled={remoteCheckoutSubmitting || !remoteCheckoutReason.trim()}
+              className="flex-1"
+            >
+              {remoteCheckoutSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  กำลังส่ง...
+                </>
+              ) : (
+                'ส่งคำขอ'
               )}
             </Button>
           </div>
