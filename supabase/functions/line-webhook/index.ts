@@ -8906,26 +8906,58 @@ async function handleImageMessage(event: LineEvent) {
     .maybeSingle();
   
   if (!employee) {
-    console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee - SILENT MODE`);
+    console.log(`[handleImageMessage] User ${rawLineUserId} is not a registered employee - checking alert setting`);
     
-    // Try to get user display name from LINE users table
-    const { data: lineUser } = await supabase
-      .from('users')
-      .select('display_name')
-      .eq('line_user_id', rawLineUserId)
+    // Check alert setting before sending notification
+    const { data: alertSettingData } = await supabase
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'bot_alert_unregistered_user')
       .maybeSingle();
     
-    // Silent mode: Don't reply to customer group, notify admin instead
-    await notifyAdminGroup(
-      `📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`,
-      { 
-        userId: rawLineUserId, 
-        groupId: rawLineGroupId,
-        groupName: groupDisplayName,
-        branchName: branch?.name,
-        userName: lineUser?.display_name
+    const alertSetting = alertSettingData?.setting_value as {
+      enabled: boolean;
+      mode: 'realtime' | 'aggregate';
+      aggregate_interval_hours: number;
+    } | null;
+    
+    // Default = disabled, so only process if explicitly enabled
+    if (alertSetting?.enabled) {
+      // Try to get user display name from LINE users table
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('display_name')
+        .eq('line_user_id', rawLineUserId)
+        .maybeSingle();
+      
+      if (alertSetting.mode === 'realtime') {
+        // Real-time mode: Send alert immediately
+        console.log(`[handleImageMessage] Sending real-time alert for unregistered user ${rawLineUserId}`);
+        await notifyAdminGroup(
+          `📸 ผู้ใช้ที่ไม่ได้ลงทะเบียนพยายามส่งรูป`,
+          { 
+            userId: rawLineUserId, 
+            groupId: rawLineGroupId,
+            groupName: groupDisplayName,
+            branchName: branch?.name,
+            userName: lineUser?.display_name
+          }
+        );
+      } else {
+        // Aggregate mode: Queue alert for daily summary
+        console.log(`[handleImageMessage] Queueing alert for unregistered user ${rawLineUserId} (aggregate mode)`);
+        await supabase.from('unregistered_user_alerts').insert({
+          line_user_id: rawLineUserId,
+          group_id: rawLineGroupId,
+          group_name: groupDisplayName,
+          branch_name: branch?.name,
+          user_display_name: lineUser?.display_name,
+        });
       }
-    );
+    } else {
+      console.log(`[handleImageMessage] Alert disabled, skipping notification for unregistered user`);
+    }
+    
     return; // Silent return - no reply to group
   }
   
