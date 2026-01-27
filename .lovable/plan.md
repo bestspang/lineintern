@@ -1,164 +1,91 @@
 
 
-## แผนการปรับปรุงระบบ Attendance Requests (ฉบับตรวจสอบแล้ว)
+## แผนแก้ไข Auto-Checkout และเพิ่ม Analytics Dashboard
 
-### สรุปการตรวจสอบระบบปัจจุบัน
+### สรุปปัญหาที่พบจากการตรวจสอบ
 
-#### 1. สถานะของ ntp.冬至 และ Noey
-- **เมื่อวาน (2026-01-26):** ทั้งสองคน check-in และ check-out ปกติ ไม่ต้องใช้ auto-checkout
-  - ntp.冬至: check-in 08:58, check-out 18:38 (รวม ~9.7 ชม., net_work_minutes: 520)
-  - Noey: check-in 08:46, check-out 18:38 (รวม ~9.9 ชม., net_work_minutes: 532)
-- **วันนี้ (2026-01-27):** ทั้งสองคน check-in ไปแล้ว, ยังอยู่ในสถานะ active (ซึ่งเป็นปกติ)
-- **ไม่มีปัญหา auto-checkout** - ระบบทำงานปกติ
+#### ❌ ปัญหาหลัก: Auto-Checkout Midnight ไม่ทำงาน
 
-#### 2. ระบบ Early Leave Requests ปัจจุบัน
-- **มีอยู่แล้ว** ใน `early-checkout-request/index.ts`
-- ทำงานสำหรับ `hours_based` employees เท่านั้น (block checkout ถ้าไม่ครบชั่วโมง)
-- **ปัญหา:** `time_based` employees ไม่ถูก enforce - สามารถ checkout ก่อน shift_end_time ได้โดยไม่ต้องขออนุมัติ
+จากการ test และดู logs พบว่า function `auto-checkout-midnight` มี error:
+```
+PGRST201: Could not embed because more than one relationship 
+was found for 'employees' and 'branches'
+```
 
-#### 3. ระบบ Remote Checkout
-- **ไม่มี** - ปัจจุบันถ้าอยู่นอก geofence จะถูก block ทันที (return 403)
-- พนักงานที่มี `allow_remote_checkin = true` จะ bypass ได้
-- ไม่มีระบบขออนุมัติสำหรับ checkout นอกสถานที่
+**สาเหตุ:** ตาราง `employees` มี 2 FK ไปยัง `branches`:
+- `branch_id` → `branches` (สาขาหลัก)
+- `primary_branch_id` → `branches` (สาขาเริ่มต้น)
 
-#### 4. ระบบ OT Requests
-- **มีและทำงานปกติ** ใน `overtime-request/index.ts`
-- มีการตรวจสอบ conflict กับ early leave requests
-- หน้าอนุมัติใน Portal มีอยู่แล้ว (`ApproveOT.tsx`)
+Supabase ไม่รู้จะใช้อันไหน จึง error
 
-#### 5. หน้า Portal Approvals
-- **มีอยู่แล้ว** แยกเป็น tabs: OT, Leave, Early Leave, Redemptions, Deposits
-- ใช้ `portal-data/index.ts` เป็น backend
+**ผลกระทบ:** พนักงาน ntp.冬至 และ Noey ไม่ได้รับ auto-checkout วันที่ 27 ม.ค.
 
 ---
 
-### การเปลี่ยนแปลงที่จำเป็น (Step-by-Step)
+### ✅ สิ่งที่ implement ไปแล้วถูกต้อง (ไม่ต้องแก้)
+
+| Feature | สถานะ |
+|---------|-------|
+| Early Leave Check สำหรับ time_based | ✅ ทำงานถูกต้อง |
+| Remote Checkout Request/Approval | ✅ ทำงานถูกต้อง |
+| Geofence → Request Approval Flow | ✅ ทำงานถูกต้อง |
+| Portal Approvals UI (Remote Checkout) | ✅ ทำงานถูกต้อง |
+| ตาราง remote_checkout_requests | ✅ สร้างแล้ว |
 
 ---
 
-### Step 1: เพิ่ม Early Leave Check สำหรับ time_based employees
+### การแก้ไขที่ต้องทำ
 
-**ปัญหาที่แก้:** time_based employees สามารถ checkout ก่อน shift_end_time ได้โดยไม่ต้องขออนุมัติ
+#### Step 1: แก้ไข auto-checkout-midnight (เร่งด่วน)
 
-**ไฟล์:** `supabase/functions/attendance-submit/index.ts`
+**ไฟล์:** `supabase/functions/auto-checkout-midnight/index.ts`
 
-**ตำแหน่งที่แก้:** หลัง minimum hours check สำหรับ hours_based (~line 654-704)
+**ตำแหน่ง:** Line 95
 
-**Logic ใหม่:**
+**การเปลี่ยนแปลง:**
 ```text
-IF token.type === 'check_out'
-   AND employee.working_time_type === 'time_based'
-   AND current_bangkok_time < shift_end_time - 15min grace
-   AND NO approved early_leave_request for today
-THEN
-   Return error: "กรุณาขออนุมัติออกก่อนเวลา"
-```
+BEFORE (ผิด):
+employees (
+  ...
+  branches (         ← Ambiguous!
+    id, name, line_group_id
+  )
+)
 
-**ความเสี่ยง:** ต่ำ - เพิ่ม logic ใหม่ ไม่แก้ไข logic เดิมที่ทำงานดีอยู่
+AFTER (ถูก):
+employees (
+  ...
+  branches:branches!employees_branch_id_fkey (   ← Explicit FK
+    id, name, line_group_id
+  )
+)
+```
 
 ---
 
-### Step 2: เพิ่มระบบ Remote Checkout Request
+#### Step 2: เพิ่ม Analytics Dashboard สำหรับ Request Statistics
 
-**ปัญหาที่แก้:** พนักงานนอก geofence ถูก block ทันที ไม่มีทางขออนุมัติ
+**ไฟล์:** `src/pages/attendance/Analytics.tsx`
 
-#### 2.1 สร้างตาราง `remote_checkout_requests`
+**เพิ่ม Section ใหม่:**
 
-```sql
-CREATE TABLE remote_checkout_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  employee_id UUID NOT NULL REFERENCES employees(id),
-  request_date DATE NOT NULL,
-  latitude DOUBLE PRECISION NOT NULL,
-  longitude DOUBLE PRECISION NOT NULL,
-  distance_from_branch DOUBLE PRECISION,
-  reason TEXT NOT NULL,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  approved_by_employee_id UUID REFERENCES employees(id),
-  approved_at TIMESTAMPTZ,
-  rejection_reason TEXT,
-  checkin_log_id UUID REFERENCES attendance_logs(id),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-#### 2.2 แก้ไข geofence logic ใน attendance-submit
-
-**ตำแหน่ง:** ~line 521-559
-
-**Before:** Block ทันที (return 403)
-```typescript
-return new Response(
-  JSON.stringify({ 
-    success: false, 
-    error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด...`
-  }),
-  { status: 403, ... }
-);
-```
-
-**After:** ส่ง error พร้อมข้อมูลให้ frontend prompt ขอ approval
-```typescript
-return new Response(
-  JSON.stringify({ 
-    success: false, 
-    error: `🚫 คุณอยู่นอกพื้นที่ที่กำหนด...`,
-    code: 'OUTSIDE_GEOFENCE',
-    requires_remote_approval: true,
-    distance: Math.round(distance),
-    allowed_radius: allowedRadius,
-    branch_name: token.employee.branch.name,
-    latitude: latitude,
-    longitude: longitude
-  }),
-  { status: 403, ... }
-);
-```
-
-#### 2.3 สร้าง Edge Function `remote-checkout-request/index.ts`
-
-**หน้าที่:** รับคำขอ checkout นอกสถานที่จาก frontend
-
-#### 2.4 สร้าง Edge Function `remote-checkout-approval/index.ts`
-
-**หน้าที่:** Admin/Manager อนุมัติ/ปฏิเสธ และ trigger checkout อัตโนมัติ
-
----
-
-### Step 3: เพิ่ม Remote Checkout ใน Portal Approvals
-
-**ไฟล์ที่แก้ไข:**
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|--------------|
-| `src/pages/portal/Approvals.tsx` | เพิ่ม card สำหรับ Remote Checkout |
-| `src/pages/portal/ApproveRemoteCheckout.tsx` | หน้าใหม่สำหรับอนุมัติ |
-| `supabase/functions/portal-data/index.ts` | เพิ่ม endpoints: approval-counts, pending-remote-checkout, approve-remote-checkout |
-
-**UI ใหม่ใน Approvals.tsx:**
 ```text
-┌────────────────────────────────────────┐
-│ ✅ อนุมัติคำขอ                          │
-├────────────────────────────────────────┤
-│ [OT Requests] [12]                     │
-│ [Leave Requests] [3]                   │
-│ [Early Leave] [5]                      │
-│ [Remote Checkout] [2] ← NEW            │
-│ [Redemptions] [0] (admin only)         │
-│ [Deposits] [8]                         │
-└────────────────────────────────────────┘
-```
-
----
-
-### Step 4: อัปเดต Routes
-
-**ไฟล์:** `src/App.tsx`
-
-**เพิ่ม:**
-```tsx
-<Route path="approvals/remote-checkout" element={<ApproveRemoteCheckout />} />
+┌─────────────────────────────────────────────────────────────────┐
+│ 📊 สรุปคำขอพิเศษ (Requests Summary)                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐              │
+│ │ Early Leave  │ │ Remote       │ │ OT Requests  │              │
+│ │ Requests     │ │ Checkout     │ │              │              │
+│ ├──────────────┤ ├──────────────┤ ├──────────────┤              │
+│ │ Total: 15    │ │ Total: 8     │ │ Total: 22    │              │
+│ │ ✅ 12 อนุมัติ │ │ ✅ 6 อนุมัติ  │ │ ✅ 18 อนุมัติ │              │
+│ │ ❌ 3 ปฏิเสธ   │ │ ❌ 2 ปฏิเสธ  │ │ ❌ 4 ปฏิเสธ   │              │
+│ └──────────────┘ └──────────────┘ └──────────────┘              │
+│                                                                 │
+│ [Chart: Daily Request Trend]                                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -167,130 +94,36 @@ return new Response(
 
 #### ไฟล์ที่ต้องแก้ไข
 
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|--------------|
-| `attendance-submit/index.ts` | เพิ่ม early leave check สำหรับ time_based (~20 lines) |
-| `attendance-submit/index.ts` | แก้ไข geofence error response (~10 lines) |
-| `portal-data/index.ts` | เพิ่ม 3 endpoints สำหรับ remote checkout |
-| `src/pages/portal/Approvals.tsx` | เพิ่ม Remote Checkout card |
+| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
+|------|--------------|-----------|
+| `auto-checkout-midnight/index.ts` | เปลี่ยน FK reference (1 บรรทัด) | ต่ำมาก |
+| `src/pages/attendance/Analytics.tsx` | เพิ่ม queries และ cards สำหรับ requests | ต่ำ |
 
-#### ไฟล์ใหม่ที่ต้องสร้าง
+#### ไม่ต้องแก้ไข
 
-| ไฟล์ | รายละเอียด |
-|------|-----------|
-| `remote-checkout-request/index.ts` | สร้างคำขอ remote checkout |
-| `remote-checkout-approval/index.ts` | อนุมัติ/ปฏิเสธ remote checkout |
-| `src/pages/portal/ApproveRemoteCheckout.tsx` | หน้าอนุมัติใน Portal |
-
-#### Database Migration
-
-```sql
--- 1. สร้างตาราง remote_checkout_requests
-CREATE TABLE remote_checkout_requests (...);
-
--- 2. เพิ่ม RLS policies
-ALTER TABLE remote_checkout_requests ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "..." ON remote_checkout_requests ...;
-
--- 3. เพิ่ม indexes
-CREATE INDEX idx_remote_checkout_employee_date ON remote_checkout_requests(employee_id, request_date);
-CREATE INDEX idx_remote_checkout_status ON remote_checkout_requests(status);
-```
+- `attendance-submit/index.ts` - Early leave check ถูกต้องแล้ว
+- `remote-checkout-request/index.ts` - ถูกต้องแล้ว
+- `remote-checkout-approval/index.ts` - ถูกต้องแล้ว
+- `portal-data/index.ts` - ถูกต้องแล้ว
+- `ApproveRemoteCheckout.tsx` - ถูกต้องแล้ว
+- `Approvals.tsx` - ถูกต้องแล้ว
 
 ---
 
-### สิ่งที่ไม่ต้องแก้ไข (ทำงานดีอยู่แล้ว)
+### ลำดับการดำเนินการ
 
-| Feature | สถานะ |
-|---------|-------|
-| Auto-checkout midnight cron | ทำงานปกติ (cron job id: 38) |
-| OT Request/Approval | ทำงานปกติ |
-| Early Leave Request (hours_based) | ทำงานปกติ |
-| Portal Approvals หน้าหลัก | มีอยู่แล้ว แค่เพิ่ม item |
-| ntp.冬至 ทำงาน 8 ชม. | ยืนยันว่าทำครบแล้ว |
+1. **แก้ไข `auto-checkout-midnight/index.ts`** - Line 95 เปลี่ยน FK reference
+2. **Deploy function** - ให้ทำงานได้
+3. **Test** - เรียก function ด้วย curl เพื่อยืนยัน
+4. **เพิ่ม Analytics Dashboard** - Query early_leave_requests, remote_checkout_requests, overtime_requests และแสดง cards
 
 ---
 
-### Flow Diagram
+### การแก้ไขข้อมูลสำหรับ ntp.冬至 และ Noey
 
-```text
-พนักงานกด Checkout
-       │
-       ▼
-┌──────────────────┐
-│ เช็ค geofence    │
-└────────┬─────────┘
-         │
-    ┌────┴────┐
-    │ อยู่ใน  │
-    │ พื้นที่? │
-    └────┬────┘
-     Yes │  No
-     │   ▼
-     │  ┌─────────────────────┐
-     │  │ Return error code:  │
-     │  │ OUTSIDE_GEOFENCE    │
-     │  │ + requires_remote_  │
-     │  │   approval: true    │
-     │  └──────────┬──────────┘
-     │             │
-     │             ▼
-     │       [Frontend shows dialog]
-     │       "ส่งคำขอ checkout นอกสถานที่?"
-     │             │
-     │             ▼
-     │       remote-checkout-request
-     │             │
-     │             ▼
-     │       แจ้ง Admin/Manager
-     │             │
-     │             ▼
-     │       [Admin อนุมัติใน Portal]
-     │             │
-     │             ▼
-     │       remote-checkout-approval
-     │             │
-     │             ▼
-     │       Auto checkout ให้พนักงาน
-     │
-     ▼
-┌──────────────────┐
-│ เช็คเวลา         │
-│ (time_based)     │
-└────────┬─────────┘
-         │
-    ┌────┴────┐
-    │ ก่อน    │
-    │ shift   │
-    │ end -   │
-    │ 15min?  │
-    └────┬────┘
-     Yes │  No
-     │   │
-     ▼   ▼
-  ต้องมี  Checkout
-  early   สำเร็จ
-  leave
-  approved
-     │
-     ▼
-  Checkout
-  สำเร็จ
-```
-
----
-
-### ลำดับการ Implement
-
-1. **Database Migration** - สร้างตาราง `remote_checkout_requests`
-2. **attendance-submit/index.ts** - เพิ่ม early leave check สำหรับ time_based
-3. **attendance-submit/index.ts** - แก้ไข geofence error response
-4. **remote-checkout-request/index.ts** - สร้าง edge function
-5. **remote-checkout-approval/index.ts** - สร้าง edge function
-6. **portal-data/index.ts** - เพิ่ม endpoints
-7. **ApproveRemoteCheckout.tsx** - สร้างหน้าใหม่
-8. **Approvals.tsx** - เพิ่ม card
-9. **App.tsx** - เพิ่ม route
+หลังแก้ bug แล้ว สามารถ:
+- รอ cron รันคืนนี้ (28 ม.ค. 00:00) → จะ auto-checkout ให้วันที่ 27 ม.ค.
+- หรือ Manual checkout ผ่าน admin-checkout function
 
 ---
 
@@ -298,18 +131,7 @@ CREATE INDEX idx_remote_checkout_status ON remote_checkout_requests(status);
 
 | ความเสี่ยง | ระดับ | การลดความเสี่ยง |
 |-----------|-------|----------------|
-| กระทบ checkout เดิมของ hours_based | ต่ำมาก | ไม่แก้ไข logic ส่วนนี้เลย |
-| กระทบ checkout เดิมของ time_based ที่ตรงเวลา | ไม่มี | Check เฉพาะก่อน shift_end - grace |
-| Remote checkout ถูกใช้มากเกินไป | ต่ำ | ต้องมี approval + audit trail |
-| Auto-checkout ไม่ทำงาน | ไม่มี | ยืนยันแล้วว่าทำงานปกติ |
-
----
-
-### ผลลัพธ์ที่คาดหวัง
-
-| Before | After |
-|--------|-------|
-| time_based checkout ก่อนเวลาได้เลย | ต้องมี early leave approved |
-| นอก geofence ถูก block ทันที | สามารถขออนุมัติได้ |
-| Admin/Manager ดูคำขอใน Portal | เพิ่ม Remote Checkout ใน Approvals |
+| แก้ FK reference ผิด | ต่ำมาก | เปลี่ยนแค่ 1 บรรทัด, ชัดเจน |
+| Analytics query ช้า | ต่ำ | ใช้ index ที่มีอยู่แล้ว |
+| กระทบ logic อื่น | ไม่มี | ไม่แตะ code ส่วนอื่น |
 
