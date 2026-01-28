@@ -1,179 +1,288 @@
 
 
-## แผนแก้ไข Timezone Bugs (Verified)
+## รายงานการทดสอบระบบ LINE Intern - รอบที่ 3
 
-### สถานะการตรวจสอบ
+### สรุปผลการตรวจสอบ
 
-หลังจากตรวจสอบ code อย่างละเอียดแล้ว พบว่า:
-
-| ปัญหา | ตรวจสอบแล้ว | ควรแก้ไข? |
-|-------|-------------|----------|
-| Frontend: Attendance.tsx (line 83) | ✅ มีจริง | ✅ ใช่ |
-| Frontend: PointRules.tsx (line 224) | ✅ มีจริง | ✅ ใช่ |
-| Frontend: ConfigurationValidator.tsx (line 142) | ⚠️ มี แต่ไม่กระทบ | ❌ ไม่จำเป็น |
-| Frontend: Memory.tsx (line 722) | ❌ ไม่มีปัญหา | ❌ ไม่ควรแก้ |
-| Edge: birthday-reminder (line 43-46) | ⚠️ ทำงานได้ แต่ไม่ consistent | ✅ ใช่ (consistency) |
-| Edge: sentiment-tracker (line 265) | ✅ มีจริง | ✅ ใช่ |
-| Edge: sentiment-tracker (line 322-323) | ✅ มีจริง | ✅ ใช่ |
-| ErrorBoundary placeholder | ✅ มีจริง | ⚙️ Optional |
+หลังจากตรวจสอบอย่างละเอียดในหลายมิติ ผมพบปัญหาและข้อเสนอแนะดังนี้:
 
 ---
 
-### สิ่งที่จะไม่แก้ไข (และเหตุผล)
+## ปัญหาที่พบ (จัดลำดับตาม Priority)
 
-#### 1. Memory.tsx (line 722) - ไม่ควรแก้
+### 1. Portal FAQs ขาด Features สำคัญ (Medium Priority)
 
-```typescript
-// Line 719-723 ปัจจุบัน:
-const last30Days = Array.from({ length: 30 }, (_, i) => {
-  const date = new Date(now);
-  date.setDate(date.getDate() - (29 - i));
-  return date.toISOString().split('T')[0];  // ← ดูเหมือนผิด แต่...
-});
+**สถานะ:** Database `portal_faqs` มี 26 FAQs แต่ขาดหัวข้อสำคัญ
 
-// Line 730-732:
-const createdDate = memory.created_at.split('T')[0];  // ← UTC จาก DB
-const updatedDate = memory.updated_at.split('T')[0];  // ← UTC จาก DB
-```
+| Feature ที่ขาด | ควรเพิ่ม | หมวด |
+|---------------|---------|------|
+| Early Leave (ขอกลับก่อน) | ✅ | attendance |
+| My Schedule (ตารางกะ) | ✅ | general |
+| My Payroll (เงินเดือน) | ✅ | general |
+| Leaderboard (อันดับแต้ม) | ✅ | points |
+| LINE Bot Commands | ✅ | general |
 
-**เหตุผล:** Logic นี้ **ถูกต้องแล้ว** เพราะ:
-- `memory.created_at` และ `memory.updated_at` เป็น UTC ISO string จาก database
-- การใช้ `toISOString().split('T')[0]` ทั้งสองฝั่งทำให้เป็น UTC กับ UTC ซึ่ง compare ได้ถูกต้อง
-- ถ้าแก้เฉพาะ line 722 เป็น Bangkok แต่ไม่แก้ line 730-732 จะทำให้ chart ผิดแทน
-
-#### 2. ConfigurationValidator.tsx (line 142) - ไม่จำเป็น
-
-```typescript
-.lt('work_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-```
-
-**เหตุผล:** 
-- ใช้หา orphaned sessions ที่เก่ากว่า 7 วัน
-- ความแตกต่าง UTC/Bangkok มีผลแค่ 1 วันเท่านั้น
-- ไม่กระทบ functionality หลัก
+**ความเสี่ยง:** ต่ำมาก - เป็นการ INSERT data ใหม่
 
 ---
 
-### สิ่งที่จะแก้ไข
+### 2. Duplicate sort_order ใน portal_faqs (Low Priority)
 
-#### Task 1: Frontend Timezone Fixes (2 files)
+**สถานะ:** พบ duplicate sort_order ที่ยังไม่ได้แก้ไข:
+- `sort_order = 5` มี 2 records
+- `sort_order = 10` มี 4 records
 
-**ไฟล์ 1: src/pages/Attendance.tsx (line 83)**
+**วิเคราะห์:** Migration ก่อนหน้าอาจใช้ค่าที่ซ้ำกับค่าเดิม จึงยังมี duplicate อยู่
+
+**Solution:** ปรับ sort_order ให้ไม่ซ้ำกัน
+
+---
+
+### 3. LINE Profile Fetch Errors - Alert Spam (Medium Priority)
+
+**สถานะ:** พบ users 4 คนที่ LINE API ไม่สามารถ fetch profile ได้ ทำให้เกิด alert ซ้ำๆ
+
+| User ID (last 6) | จำนวน errors | สถานะ |
+|------------------|--------------|-------|
+| 8da68c | 221 | ยังมี error ต่อเนื่อง |
+| ee (old) | 99 | หยุดแล้ว |
+| 1ed6d1 | 62 | ยังมี error |
+| 892e44 | 20 | ยังมี error |
+
+**วิเคราะห์ Root Cause:**
+- Users เหล่านี้มีอยู่ใน database (display_name = "User XXXXXX")
+- แต่ LINE API ไม่สามารถ fetch profile ได้ (อาจ block bot หรือออกจาก group)
+- ทุกครั้งที่ส่งข้อความ ระบบพยายาม fetch profile และสร้าง alert ใหม่
+
+**Solution:** เพิ่ม rate limiting สำหรับ profile fetch alerts - ไม่สร้าง alert ซ้ำถ้า user เดียวกันมี error ใน 24 ชั่วโมง
+
+---
+
+### 4. Timezone ใน schedule-utils.ts (Low Priority)
+
+**สถานะ:** `src/lib/schedule-utils.ts` ใช้ `toISOString().split('T')[0]`
 
 ```typescript
-// ก่อน
-const today = new Date().toISOString().split('T')[0];
-
-// หลัง
-import { formatBangkokISODate } from '@/lib/timezone';
-// ...
-const today = formatBangkokISODate(new Date());
+// Line 76:
+const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+// Line 192:
+const dateStr = date.toISOString().split('T')[0];
 ```
 
-**ไฟล์ 2: src/pages/attendance/PointRules.tsx (line 224)**
+**วิเคราะห์:** 
+- ✅ **ไม่ควรแก้** - เพราะ input `date` มาจาก caller ที่ส่งเป็น date object ที่ถูกต้องแล้ว
+- Logic ใช้สำหรับ internal comparison ไม่ใช่ display
+- การแก้อาจทำให้ schedule calculation ผิด
 
-```typescript
-// ก่อน
-const today = new Date().toISOString().split('T')[0];
+---
 
-// หลัง
-import { formatBangkokISODate } from '@/lib/timezone';
-// ...
-const today = formatBangkokISODate(new Date());
+### 5. CuteQuotesSettings.tsx และ MemoryAnalytics.tsx (Acceptable)
+
+**สถานะ:** ใช้ `toISOString().split('T')[0]`
+
+**วิเคราะห์:**
+- `CuteQuotesSettings.tsx` Line 248: ใช้สำหรับ preview function เท่านั้น (admin testing)
+- `MemoryAnalytics.tsx` Line 132: Compare กับ UTC timestamps จาก DB - **ถูกต้องแล้ว** (UTC กับ UTC)
+
+**ผลกระทบ:** ต่ำมาก - ไม่กระทบ user ทั่วไป
+
+---
+
+## สิ่งที่ทำงานถูกต้อง (ไม่ต้องแก้ไข)
+
+| รายการ | สถานะ | หมายเหตุ |
+|--------|-------|---------|
+| Cron Jobs | ✅ 33 jobs ไม่มี duplicate | ทำงานปกติ |
+| Portal Routes | ✅ ไม่มี duplicate | ตรวจสอบแล้ว 37 routes |
+| Error Pages | ✅ ครบ 4 หน้า | NotFound, Network, Server, Session |
+| Static FAQs | ✅ 7 รายการ | ใช้เป็น fallback เมื่อ DB error |
+| Quick Actions | ✅ 19 actions | ทุก path มีอยู่ใน App.tsx |
+| RLS Policies | ⚠️ 38 warnings | Intentional design - ใช้ Edge Function + Service Role |
+| Timezone fixes (ก่อนหน้า) | ✅ แก้แล้ว | birthday-reminder, sentiment-tracker, Attendance.tsx, PointRules.tsx |
+
+---
+
+## แผนการ Implementation
+
+### Task 1: เพิ่ม FAQs ที่ขาด (5 รายการ)
+
+```sql
+-- 1. Early Leave FAQ
+INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
+VALUES (
+  'ฉันจะขอกลับก่อนได้อย่างไร?',
+  'How can I request early leave?',
+  'เมื่อ checkout ก่อนเวลาเลิกงาน >15 นาที ระบบจะแสดง dialog ให้กรอกเหตุผล จากนั้นส่งคำขอไปยังหัวหน้าอนุมัติ',
+  'When checking out more than 15 minutes before your shift ends, the system will show a dialog to enter your reason. The request will be sent to your manager for approval.',
+  'attendance',
+  5.1
+);
+
+-- 2. My Schedule FAQ
+INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
+VALUES (
+  'ฉันจะดูตารางกะของฉันได้ที่ไหน?',
+  'Where can I view my work schedule?',
+  'ไปที่เมนู "ตารางกะ" จะแสดงกะการทำงานของสัปดาห์ปัจจุบัน สามารถเลื่อนดูสัปดาห์ถัดไปได้',
+  'Go to "My Schedule" menu to see your current week schedule. You can navigate to view upcoming weeks.',
+  'general',
+  20.1
+);
+
+-- 3. My Payroll FAQ  
+INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
+VALUES (
+  'ฉันจะดูเงินเดือนประมาณการได้ที่ไหน?',
+  'Where can I view my estimated salary?',
+  'ไปที่เมนู "Payroll ของฉัน" จะแสดงรายได้ประมาณการ ชั่วโมงทำงาน OT และสรุปการเข้างาน',
+  'Go to "My Payroll" menu to see estimated earnings, OT hours, and attendance summary.',
+  'general',
+  20.2
+);
+
+-- 4. Leaderboard FAQ
+INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
+VALUES (
+  'Leaderboard คืออะไร?',
+  'What is the Leaderboard?',
+  'แสดงอันดับคะแนน Happy Points ของพนักงานในทีม ช่วยสร้างแรงจูงใจในการเข้างานและมีส่วนร่วม',
+  'Shows Happy Points rankings among team members. Helps motivate attendance and engagement.',
+  'points',
+  16.5
+);
+
+-- 5. LINE Bot Commands FAQ
+INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
+VALUES (
+  'ฉันจะใช้คำสั่ง LINE Bot ได้อย่างไร?',
+  'How can I use LINE Bot commands?',
+  'พิมพ์ /help ใน LINE Chat กับบอท เพื่อดู commands ทั้งหมด คำสั่งหลักๆ เช่น /menu, /checkin, /ot, /cancel-ot',
+  'Type /help in LINE Chat with the bot to see all commands. Main commands include /menu, /checkin, /ot, /cancel-ot',
+  'general',
+  20.3
+);
 ```
 
 ---
 
-#### Task 2: Edge Function Timezone Fixes (2 files)
+### Task 2: แก้ Duplicate sort_order (Optional)
 
-**ไฟล์ 1: supabase/functions/birthday-reminder/index.ts (lines 42-46)**
+```sql
+-- Fix duplicate sort_order values
+UPDATE portal_faqs SET sort_order = 5.5 
+WHERE question_th = 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?';
+
+UPDATE portal_faqs SET sort_order = 10.1 
+WHERE question_th = 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?';
+
+UPDATE portal_faqs SET sort_order = 10.2 
+WHERE question_th = 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?';
+
+UPDATE portal_faqs SET sort_order = 10.3 
+WHERE question_th = 'ฉันจะยกเลิกคำขอลางานได้อย่างไร?';
+```
+
+---
+
+### Task 3: Rate Limit Alert Spam (Medium Priority)
+
+**ไฟล์:** `supabase/functions/line-webhook/index.ts` (lines 3462-3475, 3491-3502)
+
+**การแก้ไข:** เพิ่ม check ก่อนสร้าง alert ว่า user นี้มี alert เหมือนกันใน 24 ชั่วโมงหรือไม่
 
 ```typescript
-// ก่อน
-const now = new Date();
-const bangkokOffset = 7 * 60 * 60 * 1000;
-const bangkokNow = new Date(now.getTime() + bangkokOffset);
-const todayStr = bangkokNow.toISOString().split("T")[0];
+// ก่อนสร้าง alert ใหม่ ตรวจสอบว่ามี alert ซ้ำหรือไม่
+const { data: existingAlert } = await supabase
+  .from('alerts')
+  .select('id')
+  .eq('summary', `Failed to fetch LINE profile for user ${userId.slice(-6)}`)
+  .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+  .maybeSingle();
 
-// หลัง
-import { getBangkokDateString, getBangkokNow } from '../_shared/timezone.ts';
-// ...
-const todayStr = getBangkokDateString();
-const bangkokNow = getBangkokNow();
+if (!existingAlert && groupId) {
+  await supabase.from('alerts').insert({
+    type: 'error',
+    severity: 'low',
+    summary: `Failed to fetch LINE profile for user ${userId.slice(-6)}`,
+    details: { 
+      user_id: userId,
+      status: response.status,
+      error: 'LINE API returned non-OK status'
+    },
+    group_id: groupId
+  });
+}
 ```
 
-**หมายเหตุ:** `bangkokNow` ยังต้องใช้สำหรับ line 97 ในการคำนวณ future dates
-
-**ไฟล์ 2: supabase/functions/sentiment-tracker/index.ts**
-
-Line 265:
-```typescript
-// ก่อน
-const prevDateStr = prevDate.toISOString().split("T")[0];
-
-// หลัง
-const prevDateStr = getBangkokDateString(prevDate);
-```
-
-Lines 322-323:
-```typescript
-// ก่อน
-const periodStart = weekAgo.toISOString().split("T")[0];
-const periodEnd = now.toISOString().split("T")[0];
-
-// หลัง
-const periodStart = getBangkokDateString(weekAgo);
-const periodEnd = getBangkokDateString(now);
-```
+**หมายเหตุ:** การแก้ไขนี้เป็น **Optional** เพราะ alerts ที่มี severity: low ไม่กระทบ user ทั่วไป แต่ช่วยลด noise ใน admin dashboard
 
 ---
 
-#### Task 3: ErrorBoundary (Optional)
+## สิ่งที่จะไม่แก้ไข (หลังวิเคราะห์แล้ว)
 
-**สถานะ:** จะ **ไม่ดำเนินการ** ในรอบนี้ เพราะ:
-1. ต้องสร้าง table ใหม่ใน database
-2. ต้องสร้าง edge function ใหม่
-3. ผลกระทบต่ำ - admin สามารถดู console ได้อยู่แล้ว
-
-**หากต้องการในอนาคต:** สามารถแจ้งให้ implement เพิ่มได้
-
----
-
-### ลำดับการ Implementation
-
-```text
-1. Frontend Fixes
-   ├── Attendance.tsx - เพิ่ม import + แก้ line 83
-   └── PointRules.tsx - เพิ่ม import + แก้ line 224
-
-2. Edge Function Fixes
-   ├── birthday-reminder/index.ts - แก้ lines 1-4, 42-46
-   └── sentiment-tracker/index.ts - แก้ lines 265, 322-323
-```
+| รายการ | เหตุผล |
+|--------|-------|
+| schedule-utils.ts timezone | Logic compare internal dates ถูกต้องแล้ว |
+| MemoryAnalytics.tsx | Compare UTC กับ UTC (ถูกต้อง) |
+| CuteQuotesSettings.tsx | Admin preview function เท่านั้น |
+| Memory.tsx Line 722 | Compare UTC กับ UTC จาก DB (ถูกต้อง) |
+| ConfigurationValidator.tsx | 1 วัน difference ไม่กระทบ 7-day check |
 
 ---
 
-### Regression Prevention
+## Feature Suggestions (ปรับปรุงในอนาคต)
 
-| ไฟล์ | สิ่งที่ต้องตรวจสอบหลังแก้ไข |
-|------|---------------------------|
-| Attendance.tsx | Holiday banner ยังแสดงวันนี้ถูกต้อง |
-| PointRules.tsx | Admin rollback ยังทำงานปกติ |
-| birthday-reminder | Cron job ยังส่ง birthday notification ถูกคน |
-| sentiment-tracker | Sentiment calculation ยังทำงานถูกต้อง |
+### 1. FAQ Search in Help Page
+- เพิ่ม Search box ให้ค้นหา FAQ ได้
+- ประโยชน์: User หา FAQ เร็วขึ้น (26+ FAQs เริ่มเยอะ)
+
+### 2. Auto-resolve Old Alerts  
+- สร้าง cron job ที่ auto-resolve alerts เก่ากว่า 7 วัน
+- ลด clutter ใน admin dashboard
+
+### 3. User Profile Sync Status
+- เพิ่ม column `profile_sync_status` ใน users table
+- Track ว่า profile fetch สำเร็จหรือไม่
+- ช่วย admin รู้ว่า user ไหน LINE profile มีปัญหา
 
 ---
 
-### สรุปไฟล์ที่จะแก้ไข
+## สรุปไฟล์ที่จะแก้ไข
 
-| ไฟล์ | บรรทัดที่แก้ | ความเสี่ยง |
-|------|-------------|-----------|
-| `src/pages/Attendance.tsx` | 1 (import), 83 | ต่ำมาก |
-| `src/pages/attendance/PointRules.tsx` | 1 (import), 224 | ต่ำมาก |
-| `supabase/functions/birthday-reminder/index.ts` | 1-4, 42-46 | ต่ำ |
-| `supabase/functions/sentiment-tracker/index.ts` | 265, 322-323 | ต่ำมาก |
+| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
+|------|---------------|-----------|
+| Database (SQL Migration) | INSERT FAQs 5 รายการ + UPDATE sort_order 4 รายการ | ต่ำมาก |
+| line-webhook/index.ts (Optional) | เพิ่ม rate limit สำหรับ profile fetch alerts | ต่ำ |
 
-**จำนวนไฟล์:** 4 ไฟล์
-**จำนวนบรรทัดที่แก้:** ประมาณ 10-15 บรรทัด
-**Logic ที่เปลี่ยน:** ไม่มี - เปลี่ยนเฉพาะ date string generation
+---
+
+## Regression Prevention
+
+**ก่อน implement:**
+1. ตรวจสอบว่าทุก FAQ question ไม่ซ้ำกับที่มีอยู่
+2. ตรวจสอบว่า sort_order ใหม่ไม่ชนกับค่าเดิม
+
+**หลัง implement:**
+1. ตรวจสอบ Help page แสดง FAQs ครบถ้วน
+2. ตรวจสอบ sort order แสดงตามลำดับที่ถูกต้อง
+3. ทดสอบ LINE webhook ยังทำงานปกติ (ถ้าแก้ไข)
+
+---
+
+## หมายเหตุสำคัญ
+
+**เกี่ยวกับ "AI Regression Prevention":**
+
+1. **ไม่แตะไฟล์ที่ทำงานดีอยู่แล้ว:**
+   - schedule-utils.ts
+   - Memory.tsx  
+   - MemoryAnalytics.tsx
+   - CuteQuotesSettings.tsx
+
+2. **ไม่ refactor code ที่ไม่จำเป็น:**
+   - ทุกการแก้ไขเป็น INSERT/UPDATE data หรือ additive logic เท่านั้น
+   - ไม่แก้ไข function signatures หรือ existing logic
+
+3. **Comment เตือนในทุกจุดที่แก้:**
+   - ทำให้ AI รุ่นหลังรู้ว่าจุดนี้เคยแก้แล้วและทำไม
 
