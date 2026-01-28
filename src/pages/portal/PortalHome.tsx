@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
@@ -465,11 +466,30 @@ export default function PortalHome() {
                     toggleFavorite(action.path);
                   }}
                 />
-                {/* Pending requests badge for Work History */}
+                {/* Pending requests badge for Work History with breakdown tooltip */}
                 {showPendingBadge && (
-                  <Badge className="absolute top-2 right-8 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 z-10">
-                    {totalPending}
-                  </Badge>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge className="absolute top-2 right-8 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 z-10 cursor-help">
+                          {totalPending}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="text-xs">
+                        <div className="space-y-1">
+                          {(pendingCounts?.ot ?? 0) > 0 && (
+                            <p>🕐 OT: {pendingCounts?.ot}</p>
+                          )}
+                          {(pendingCounts?.dayoff ?? 0) > 0 && (
+                            <p>📅 Day-Off: {pendingCounts?.dayoff}</p>
+                          )}
+                          {(pendingCounts?.leave ?? 0) > 0 && (
+                            <p>🏖️ Leave: {pendingCounts?.leave}</p>
+                          )}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 <CardContent className="p-4">
                   <div className={cn(

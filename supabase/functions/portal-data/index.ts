@@ -1361,6 +1361,37 @@ serve(async (req) => {
         } else {
           console.log(`[portal-data] ${requestType} request ${requestId} cancelled by employee ${employee_id}`);
           data = { success: true };
+          
+          // Send LINE push notification to confirm cancellation
+          const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+          const { data: empInfo } = await supabase
+            .from('employees')
+            .select('line_user_id')
+            .eq('id', employee_id)
+            .maybeSingle();
+          
+          if (LINE_ACCESS_TOKEN && empInfo?.line_user_id) {
+            const message = requestType === 'ot'
+              ? `🚫 คำขอ OT ของคุณถูกยกเลิกแล้ว\n\nหากต้องการขอใหม่ สามารถทำได้ที่ Portal`
+              : `🚫 คำขอวันหยุดของคุณถูกยกเลิกแล้ว\n\nหากต้องการขอใหม่ สามารถทำได้ที่ Portal`;
+            
+            try {
+              await fetch('https://api.line.me/v2/bot/message/push', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  to: empInfo.line_user_id,
+                  messages: [{ type: 'text', text: message }]
+                })
+              });
+              console.log(`[portal-data] LINE notification sent for ${requestType} cancellation`);
+            } catch (lineErr) {
+              console.error('[portal-data] LINE push error:', lineErr);
+            }
+          }
         }
         break;
       }
@@ -1439,6 +1470,33 @@ serve(async (req) => {
         } else {
           console.log(`[portal-data] Leave request ${requestId} cancelled by employee ${employee_id}`);
           data = { success: true };
+          
+          // Send LINE push notification to confirm cancellation
+          const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+          const { data: empInfo } = await supabase
+            .from('employees')
+            .select('line_user_id')
+            .eq('id', employee_id)
+            .maybeSingle();
+          
+          if (LINE_ACCESS_TOKEN && empInfo?.line_user_id) {
+            try {
+              await fetch('https://api.line.me/v2/bot/message/push', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  to: empInfo.line_user_id,
+                  messages: [{ type: 'text', text: '🚫 คำขอลางานของคุณถูกยกเลิกแล้ว\n\nหากต้องการขอใหม่ สามารถทำได้ที่ Portal' }]
+                })
+              });
+              console.log('[portal-data] LINE notification sent for leave cancellation');
+            } catch (lineErr) {
+              console.error('[portal-data] LINE push error:', lineErr);
+            }
+          }
         }
         break;
       }
