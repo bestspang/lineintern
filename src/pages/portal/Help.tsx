@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -5,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { usePortal } from '@/contexts/PortalContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
   CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package, Camera, MapPin, XCircle
+  Activity, Package, Camera, MapPin, XCircle, Search
 } from 'lucide-react';
 
 // Static fallback FAQs (used when database is empty or has errors)
@@ -33,8 +36,24 @@ const STATIC_FAQS_EN = [
   { question: 'How can I cancel a leave request?', answer: 'Go to Portal > Work History and click the "Cancel" button. Already approved requests cannot be cancelled.' },
 ];
 
+// ⚠️ PORTAL AUDIT: Verified 2026-01-28
+// Quick Actions: 20 items, FAQs: 33+, All paths valid
+// DO NOT modify paths unless adding new features
+
+// FAQ Categories for filter
+const FAQ_CATEGORIES = [
+  { value: 'all', label: { th: 'ทั้งหมด', en: 'All' } },
+  { value: 'attendance', label: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' } },
+  { value: 'leave-ot', label: { th: 'ลา/OT', en: 'Leave/OT' } },
+  { value: 'points', label: { th: 'แต้ม', en: 'Points' } },
+  { value: 'receipts', label: { th: 'ใบเสร็จ', en: 'Receipts' } },
+  { value: 'general', label: { th: 'ทั่วไป', en: 'General' } },
+];
+
 export default function Help() {
   const { locale } = usePortal();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
   // Fetch FAQs from database
   const { data: dbFaqs, isLoading: isLoadingFaqs } = useQuery({
@@ -52,12 +71,22 @@ export default function Help() {
   });
 
   // Transform database FAQs based on locale
-  const faqs = dbFaqs && dbFaqs.length > 0
+  const allFaqs = dbFaqs && dbFaqs.length > 0
     ? dbFaqs.map(faq => ({
         question: locale === 'th' ? faq.question_th : faq.question_en,
         answer: locale === 'th' ? faq.answer_th : faq.answer_en,
+        category: faq.category || 'general',
       }))
-    : (locale === 'th' ? STATIC_FAQS_TH : STATIC_FAQS_EN);
+    : (locale === 'th' ? STATIC_FAQS_TH : STATIC_FAQS_EN).map(f => ({ ...f, category: 'general' }));
+
+  // Filter FAQs by search and category
+  const faqs = allFaqs.filter(faq => {
+    const matchesSearch = searchQuery === '' || 
+      faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      faq.answer.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || faq.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const quickActions = [
     {
@@ -229,12 +258,41 @@ export default function Help() {
             {locale === 'th' ? 'คำถามที่พบบ่อย' : 'Frequently Asked Questions'}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={locale === 'th' ? 'ค้นหาคำถาม...' : 'Search questions...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Category Tabs */}
+          <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="w-full">
+            <TabsList className="w-full h-auto flex-wrap justify-start gap-1">
+              {FAQ_CATEGORIES.map(cat => (
+                <TabsTrigger key={cat.value} value={cat.value} className="text-xs px-2 py-1">
+                  {locale === 'th' ? cat.label.th : cat.label.en}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+
           {isLoadingFaqs ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
+            </div>
+          ) : faqs.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <HelpCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">
+                {locale === 'th' ? 'ไม่พบคำถามที่ตรงกับการค้นหา' : 'No questions match your search'}
+              </p>
             </div>
           ) : (
             <Accordion type="single" collapsible className="w-full">
@@ -249,6 +307,15 @@ export default function Help() {
                 </AccordionItem>
               ))}
             </Accordion>
+          )}
+          
+          {/* Results count */}
+          {!isLoadingFaqs && searchQuery && (
+            <p className="text-xs text-muted-foreground text-center">
+              {locale === 'th' 
+                ? `พบ ${faqs.length} คำถาม` 
+                : `Found ${faqs.length} question${faqs.length !== 1 ? 's' : ''}`}
+            </p>
           )}
         </CardContent>
       </Card>
