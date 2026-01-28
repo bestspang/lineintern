@@ -234,6 +234,7 @@ const navigationGroups = [
       { title: 'Analytics', titleTh: 'วิเคราะห์', url: '/analytics', icon: BarChart3 },
       { title: 'Bot Message Logs', titleTh: 'บันทึกข้อความบอท', url: '/bot-logs', icon: MessageSquare },
       { title: 'Memory Analytics', titleTh: 'วิเคราะห์หน่วยความจำ', url: '/memory-analytics', icon: Database },
+      { title: 'Profile Sync Health', titleTh: 'สุขภาพ Profile Sync', url: '/profile-sync-health', icon: Activity },
       { title: 'Test Bot', titleTh: 'ทดสอบบอท', url: '/test-bot', icon: TestTube2 },
     ],
   },

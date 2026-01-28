@@ -120,6 +120,7 @@ import ReceiptSettings from "./pages/receipts/ReceiptSettings";
 import ReceiptApprovalLogs from "./pages/receipts/ReceiptApprovalLogs";
 import ReceiptQuota from "./pages/receipts/ReceiptQuota";
 import PortalFaqAdmin from "./pages/PortalFaqAdmin";
+import ProfileSyncHealth from "./pages/ProfileSyncHealth";
 
 // LIFF pages
 import { LiffProvider } from "./contexts/LiffContext";
@@ -256,6 +257,7 @@ const App = () => (
                       <Route path="/direct-messages" element={<DirectMessages />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/memory-analytics" element={<MemoryAnalytics />} />
+                      <Route path="/profile-sync-health" element={<ProfileSyncHealth />} />
                       <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />
                       <Route path="/attendance/employees" element={<AttendanceEmployees />} />
                       <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
