@@ -1,116 +1,169 @@
 
-## แผนแก้ไข: Invalid Hook Call Error ที่ทำให้ App พัง
+## แผนแก้ไข: Double Timezone Conversion Bug
 
-### สรุปปัญหาที่พบ
+### สรุปปัญหา
 
-**ปัญหาหลัก:** React hooks ไม่ทำงาน (Invalid hook call) ทำให้ทั้ง App พัง และผู้ใช้ไม่สามารถใช้งานได้
+**ปัญหาที่พบ (จาก Screenshot):**
+- ระบบแสดง "เวลาปัจจุบัน: 02:02 น." 
+- แต่เวลาจริงคือ 19:03 น. Bangkok
+- ต่างกัน +7 ชั่วโมง (ข้ามวัน!)
 
-**สาเหตุ:** การแก้ไข `src/main.tsx` ครั้งล่าสุดที่เปลี่ยนจาก:
+**Root Cause: Double Timezone Conversion**
+
 ```typescript
-import React from "react";  // ✅ ถูกต้อง
-```
-เป็น:
-```typescript
-import * as React from "react";  // ❌ อาจทำให้เกิด duplicate React instances
-```
+// ❌ BUG - Double conversion!
+const bangkokNow = getBangkokNow();           // Returns "zoned" Date (19:03 internal)
+const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');  // Adds +7 again!
+// Result: 19:03 + 7 = 02:03 (next day)
 
-**หลักฐาน:** Console logs แสดง:
-```
-Warning: Invalid hook call. Hooks can only be called inside of the body of a function component.
-This could happen for one of the following reasons:
-1. You might have mismatching versions of React and the renderer (such as React DOM)
-2. You might be breaking the Rules of Hooks
-3. You might have more than one copy of React in the same app
+// ✅ CORRECT - Single conversion
+const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');  // UTC → Bangkok once
+// Result: 12:03 UTC → 19:03 Bangkok
 ```
 
----
-
-### วิเคราะห์ Root Cause
-
-| รายการ | สถานะ | หมายเหตุ |
-|--------|-------|---------|
-| React version | ✅ ถูกต้อง | 18.3.1 |
-| React-DOM version | ✅ ถูกต้อง | 18.3.1 |
-| main.tsx import | ❌ ปัญหา | `import * as React` อาจสร้าง duplicate instance |
-| Vite config | ✅ ถูกต้อง | ใช้ @vitejs/plugin-react-swc |
-
-**หมายเหตุ:** เรื่อง Timezone ที่แจ้ง "ตี 1" **ไม่ใช่ปัญหา timezone ใน code** แต่เกิดจาก App พังทั้งหมดเพราะ React hooks ไม่ทำงาน ทำให้อาจเห็น error message แปลกๆ หรือหน้าว่างเปล่า
-
----
-
-### แผนการแก้ไข
-
-#### ขั้นตอนที่ 1: Revert main.tsx กลับไปเป็นรูปแบบเดิม
-
-**ก่อนแก้ไข (ปัจจุบัน - มีปัญหา):**
-```typescript
-import * as React from "react";
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
-
-const container = document.getElementById("root");
-if (!container) throw new Error("Root element not found");
-
-const root = createRoot(container);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-```
-
-**หลังแก้ไข (กลับไปรูปแบบมาตรฐาน):**
-```typescript
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-```
+**คำอธิบาย:**
+1. `getBangkokNow()` ใช้ `toZonedTime()` ซึ่ง shift internal value ของ Date object ให้เป็น Bangkok time
+2. `formatBangkokTime()` ใช้ `formatInTimeZone()` ซึ่งคาดหวัง UTC Date และ convert อีกครั้ง
+3. ผล: Convert 2 ครั้ง → เวลาผิด +7 ชั่วโมง!
 
 ---
 
 ### ไฟล์ที่ต้องแก้ไข
 
-| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
-|------|---------------|-----------|
-| `src/main.tsx` | Revert กลับไปรูปแบบมาตรฐาน | ต่ำมาก - เป็น standard pattern |
+| ไฟล์ | บรรทัด | การเปลี่ยนแปลง |
+|------|--------|---------------|
+| `attendance-submit/index.ts` | 738-739 | แก้ double conversion |
+| `attendance-submit/validation.ts` | 17-19, 58-60, 119-121 | แก้ double conversion |
+| `auto-checkout-grace/index.ts` | 81-84, 332-344 | แก้ double conversion |
+| `_shared/timezone.ts` | เพิ่มใหม่ | เพิ่ม warning comments |
 
 ---
 
-### ผลลัพธ์ที่คาดหวัง
+### รายละเอียดการแก้ไข
 
-1. **React hooks ทำงานปกติ** - QueryClientProvider, PortalProvider ทำงานได้
-2. **App ไม่พังอีกต่อไป** - ผู้ใช้เข้าถึง Portal, Check-in/out ได้
-3. **ไม่มี "Invalid hook call" errors** - Console สะอาด
+#### 1. แก้ `attendance-submit/index.ts` (บรรทัด 738-739)
+
+**ก่อน:**
+```typescript
+const bangkokNow = getBangkokNow();
+const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+```
+
+**หลัง:**
+```typescript
+// ⚠️ Use new Date() with formatBangkokTime - NOT getBangkokNow()!
+const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
+```
+
+#### 2. แก้ `attendance-submit/validation.ts`
+
+**บรรทัด 17-19:**
+```typescript
+// ก่อน
+const bangkokNow = getBangkokNow();
+const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+
+// หลัง
+const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
+```
+
+**บรรทัด 58-60:**
+```typescript
+// ก่อน
+const bangkokNow = getBangkokNow();
+const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
+
+// หลัง
+const bangkokDate = formatBangkokTime(new Date(), 'yyyy-MM-dd');
+```
+
+**บรรทัด 119-121:**
+```typescript
+// ก่อน
+const bangkokNow = toBangkokTime(new Date());
+const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
+
+// หลัง
+const bangkokDate = formatBangkokTime(new Date(), 'yyyy-MM-dd');
+```
+
+#### 3. แก้ `auto-checkout-grace/index.ts`
+
+ใช้ pattern เดียวกัน - ใช้ `new Date()` แทน `getBangkokNow()` เมื่อต้อง format
+
+#### 4. เพิ่ม Warning Comments ใน `_shared/timezone.ts`
+
+```typescript
+/**
+ * ⚠️⚠️⚠️ CRITICAL: DO NOT combine getBangkokNow() with formatBangkokTime() ⚠️⚠️⚠️
+ * 
+ * WRONG (Double conversion):
+ *   const bangkokNow = getBangkokNow();
+ *   formatBangkokTime(bangkokNow, 'HH:mm:ss'); // ❌ Will add +7 hours AGAIN!
+ * 
+ * CORRECT:
+ *   formatBangkokTime(new Date(), 'HH:mm:ss'); // ✅ Single conversion
+ * 
+ * OR:
+ *   const bangkokNow = getBangkokNow();
+ *   const hours = bangkokNow.getHours();      // ✅ Direct access to zoned values
+ */
+```
 
 ---
 
-### การป้องกันปัญหาในอนาคต
+### Action Items เพิ่มเติม
 
-**หมายเหตุสำคัญ:** การแก้ไข main.tsx ที่ผ่านมาทำให้ App พังเพราะ:
+#### Manual Checkout สำหรับ Fern
 
-1. **`import * as React`** - อาจทำให้ bundler สร้าง duplicate React instances
-2. **การเปลี่ยน createRoot pattern** - ไม่จำเป็นต้องเปลี่ยน เพราะ `document.getElementById("root")!` ทำงานได้ปกติ
+หลังแก้ bug แล้ว ต้อง manual checkout ให้ Fern ที่เวลา 19:03 (เวลาที่เธอพยายาม checkout จริง)
 
-**ไฟล์ที่ไม่ควรแก้ไขโดยไม่จำเป็น:**
-- `src/main.tsx` - Entry point หลัก
-- `src/App.tsx` - Root component
+```sql
+-- Insert checkout log
+INSERT INTO attendance_logs (employee_id, branch_id, event_type, server_time, device_time, timezone, source, admin_notes)
+VALUES (
+  '0dd289e5-53ce-4928-aac6-1ba5e72c1331',
+  'd7c5e9b3-8fb4-45a6-82bb-ec2a5aca28b5',
+  'check_out',
+  '2026-01-28 12:03:00+00',  -- 19:03 Bangkok
+  '2026-01-28 12:03:00+00',
+  'Asia/Bangkok',
+  'admin',
+  'Manual checkout - System timezone bug prevented normal checkout'
+);
+
+-- Update work session
+UPDATE work_sessions 
+SET actual_end_time = '2026-01-28 12:03:00+00', status = 'completed'
+WHERE id = '0f869d9d-a73f-4661-8e6f-82c33885eb05';
+```
+
+---
+
+### การป้องกันในอนาคต
+
+1. **Code Pattern Rule:**
+   - ❌ Never: `formatBangkokTime(getBangkokNow(), ...)`
+   - ❌ Never: `formatBangkokTime(toBangkokTime(...), ...)`
+   - ✅ Always: `formatBangkokTime(new Date(), ...)`
+   - ✅ Always: `formatBangkokTime(utcDate, ...)`
+
+2. **Testing:**
+   - ทดสอบ checkout หลัง deploy
+   - ตรวจสอบว่าเวลาที่แสดงตรงกับเวลาจริง
+
+3. **Deploy Edge Functions:**
+   - attendance-submit
+   - attendance-validate-token
+   - auto-checkout-grace
 
 ---
 
 ### สรุป
 
-**ปัญหาที่แท้จริง:** ไม่ใช่ timezone แต่เป็น React hooks พังจากการแก้ไข main.tsx
-
-**วิธีแก้:** Revert main.tsx กลับไปรูปแบบมาตรฐาน
-
-**เวลาที่ใช้:** ไม่กี่วินาที
-
-**ความเสี่ยง:** ต่ำมาก
+| รายการ | รายละเอียด |
+|--------|-----------|
+| **สาเหตุ** | Double timezone conversion (getBangkokNow + formatBangkokTime) |
+| **ผลกระทบ** | เวลาแสดงผิด +7 ชั่วโมง ทำให้ checkout ไม่ได้ |
+| **วิธีแก้** | ใช้ `formatBangkokTime(new Date(), ...)` แทน `formatBangkokTime(getBangkokNow(), ...)` |
+| **ความเสี่ยง** | ต่ำ - เป็นการ fix pattern ที่ผิด ไม่กระทบ logic อื่น |
