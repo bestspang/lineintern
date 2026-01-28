@@ -7,6 +7,26 @@
  * Uses date-fns-tz for proper Bangkok time conversion.
  * 
  * ═══════════════════════════════════════════════════════════════════════════
+ * ⚠️⚠️⚠️ CRITICAL BUG PREVENTION - DOUBLE CONVERSION ⚠️⚠️⚠️
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ❌ WRONG - Double conversion (adds +7 TWICE = +14 hours!):
+ *    const bangkokNow = getBangkokNow();
+ *    formatBangkokTime(bangkokNow, 'HH:mm:ss');  // WRONG!
+ * 
+ * ❌ WRONG - Same problem with toBangkokTime:
+ *    const zonedDate = toBangkokTime(someDate);
+ *    formatBangkokTime(zonedDate, 'HH:mm:ss');  // WRONG!
+ * 
+ * ✅ CORRECT - Single conversion from UTC:
+ *    formatBangkokTime(new Date(), 'HH:mm:ss');  // UTC → Bangkok (once)
+ *    formatBangkokTime(utcDateFromDB, 'HH:mm:ss');  // UTC → Bangkok (once)
+ * 
+ * ✅ CORRECT - Direct access to zoned values:
+ *    const bangkokNow = getBangkokNow();
+ *    const hours = bangkokNow.getHours();  // Already in Bangkok!
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  * INVARIANTS (MUST FOLLOW):
  * ═══════════════════════════════════════════════════════════════════════════
  * 

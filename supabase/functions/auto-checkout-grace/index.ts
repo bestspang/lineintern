@@ -79,8 +79,9 @@ Deno.serve(async (req) => {
     const bangkokStartOfDay = getBangkokStartOfDay();
     const bangkokEndOfDay = getBangkokEndOfDay();
     
+    // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT getBangkokNow()!
     logger.info('Starting grace period check (using timezone utility)', { 
-      bangkokTime: formatBangkokTime(bangkokNow),
+      bangkokTime: formatBangkokTime(new Date()),
       bangkokDate: bangkokDateStr,
       utcNow: new Date().toISOString()
     });
@@ -327,11 +328,12 @@ Deno.serve(async (req) => {
       }
     }
     
+    // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT getBangkokNow()!
     logger.info('Grace period check completed', { 
       autoCheckouts,
       skippedNonHoursBased,
       totalSessions: sessions?.length || 0,
-      bangkokTime: formatBangkokTime(bangkokNow)
+      bangkokTime: formatBangkokTime(new Date())
     });
     
     return new Response(
@@ -340,7 +342,7 @@ Deno.serve(async (req) => {
         autoCheckouts,
         skippedNonHoursBased,
         totalSessions: sessions?.length || 0,
-        checkedAt: formatBangkokTime(bangkokNow)
+        checkedAt: formatBangkokTime(new Date())
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

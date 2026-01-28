@@ -15,8 +15,8 @@ export async function validateHoursBasedCheckIn(
     return { valid: true, warning: '🧪 Test mode - time validation bypassed' };
   }
 
-  const bangkokNow = getBangkokNow();
-  const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+  // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT getBangkokNow()!
+  const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
   
   const earliestCheckin = employee.earliest_checkin_time || '06:00:00';
   const latestCheckin = employee.latest_checkin_time || '11:00:00';
@@ -56,11 +56,12 @@ export async function validateHoursBasedCheckOut(
     return { valid: true, warning: '🧪 Test mode - hours validation bypassed (treated as 8h)' };
   }
 
-  const bangkokNow = getBangkokNow();
-  const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
+  // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT getBangkokNow()!
+  const now = new Date();
+  const bangkokDate = formatBangkokTime(now, 'yyyy-MM-dd');
   
-  // Calculate actual work duration
-  const workDurationMs = bangkokNow.getTime() - checkInTime.getTime();
+  // Calculate actual work duration (using UTC timestamps)
+  const workDurationMs = now.getTime() - checkInTime.getTime();
   const workDurationHours = workDurationMs / (1000 * 60 * 60);
   
   // Get minimum work hours requirement
@@ -117,8 +118,9 @@ export async function validateCheckOut(
   employeeId: string,
   employee: any
 ): Promise<{ valid: boolean; error?: string; warning?: string }> {
-  const bangkokNow = toBangkokTime(new Date());
-  const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
+  // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT toBangkokTime()!
+  const now = new Date();
+  const bangkokDate = formatBangkokTime(now, 'yyyy-MM-dd');
 
   // 1. Check if there's an active check-in today
   const { data: checkInLog } = await supabase
@@ -156,9 +158,9 @@ export async function validateCheckOut(
     return validateHoursBasedCheckOut(supabase, employeeId, employee, checkInTime);
   }
 
-  // 4. For time_based: Calculate work hours
+  // 4. For time_based: Calculate work hours (using UTC timestamps for accuracy)
   const checkInTime = toBangkokTime(checkInLog.server_time);
-  const hoursWorked = (bangkokNow.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+  const hoursWorked = (now.getTime() - new Date(checkInLog.server_time).getTime()) / (1000 * 60 * 60);
   const maxWorkHours = employee.max_work_hours_per_day || 8;
 
   // 5. If working overtime, require OT approval
@@ -192,10 +194,11 @@ export async function validateCheckOut(
   // 6. For time_based: check if before allowed_work_end_time
   if (employee.working_time_type === 'time_based' && employee.allowed_work_end_time) {
     const [hour, minute] = employee.allowed_work_end_time.split(':').map(Number);
-    const allowedEndTime = toBangkokTime(bangkokNow);
-    allowedEndTime.setHours(hour, minute, 0, 0);
+    // Compare using Bangkok time format (HH:mm:ss)
+    const currentTimeStr = formatBangkokTime(now, 'HH:mm:ss');
+    const allowedEndTimeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 
-    if (bangkokNow > allowedEndTime) {
+    if (currentTimeStr > allowedEndTimeStr) {
       // Past allowed end time - this is OK but might be overtime
       return { valid: true };
     }
