@@ -1,231 +1,116 @@
 
-## รายงานการตรวจสอบ Portal System - รอบที่ 5 (Deep Audit)
+## แผนแก้ไข: Invalid Hook Call Error ที่ทำให้ App พัง
 
-### สรุปผลการตรวจสอบ
+### สรุปปัญหาที่พบ
 
-หลังจากตรวจสอบ Portal System อย่างละเอียด พบว่า **ระบบทำงานถูกต้องครบถ้วน 98%** โดยมีข้อเสนอแนะเพิ่มเติมดังนี้:
+**ปัญหาหลัก:** React hooks ไม่ทำงาน (Invalid hook call) ทำให้ทั้ง App พัง และผู้ใช้ไม่สามารถใช้งานได้
 
----
-
-## ผลการตรวจสอบทั้งหมด (สิ่งที่ทำงานดี)
-
-| รายการ | สถานะ | รายละเอียด |
-|--------|-------|-----------|
-| **Portal Routes** | ✅ 37 routes | ครบถ้วนไม่มี duplicate |
-| **Quick Actions (Help.tsx)** | ✅ 20 items | ทุก path มีอยู่ใน App.tsx |
-| **Quick Actions (PortalHome.tsx)** | ✅ 21 items | 10 employee + 4 manager + 6 admin + 1 HR |
-| **Portal FAQs** | ✅ 31 FAQs | 6 attendance + 5 general + 8 leave-ot + 8 points + 4 receipts |
-| **Portal Navigation** | ✅ 7 items | role-based filtering ทำงานถูกต้อง |
-| **Timezone Handling** | ✅ Bangkok TZ | ใช้ `formatBangkokISODate` และ `getBangkokDateString` ทุกที่ |
-| **portal-data Endpoints** | ✅ 50+ endpoints | ครบทุก feature |
-| **Cron Jobs** | ✅ ไม่มี duplicate | ทุก job unique |
-| **Self-Service Cancellation** | ✅ ครบ 3 types | OT, DayOff, Leave + LINE notifications |
-| **Executive Mode** | ✅ ทำงานถูกต้อง | skip_attendance_tracking + exclude_from_points |
-| **Session Management** | ✅ Auto-refresh | 80% refresh + 5-minute warning |
-
----
-
-## สิ่งที่พบและต้องพิจารณา
-
-### 1. ✅ Routes & Quick Actions - ครบถ้วน
-
-**Help.tsx Quick Actions (20 items):**
-```
-1. /portal/checkin - Check In/Out
-2. /portal/request-leave - Request Leave
-3. /portal/my-leave - Leave Balance
-4. /portal/request-ot - Request OT
-5. /portal/rewards - Redeem Rewards
-6. /portal/my-points - My Points
-7. /portal/my-receipts - Receipts
-8. /portal/my-schedule - My Schedule
-9. /portal/my-payroll - My Payroll
-10. /portal/leaderboard - Leaderboard
-11. /portal/my-profile - My Profile
-12. /portal/deposit-upload - Deposit
-13. /portal/my-history - Work History
-14. /portal/approvals - Approvals
-15. /portal/status - Today Status
-16. /portal/my-redemptions - My Redemptions
-17. /portal/photos - Today Photos
-18. /portal/approvals/remote-checkout - Remote Checkout
-19. /portal/daily-summary - Daily Summary
-20. /portal/my-history - Cancel Requests (duplicate path - acceptable)
-```
-
-**ทุก path ตรงกับ App.tsx routes ✅**
-
----
-
-### 2. ✅ Portal FAQs - ครบ 31 รายการ
-
-| Category | Count | หัวข้อหลัก |
-|----------|-------|-----------|
-| attendance | 6 | เช็คอิน, ลืมเช็คเอาท์, เช็คอินจากที่อื่น, ขอกลับก่อน, Remote Checkout |
-| general | 5 | แก้ไขข้อมูล, ติดต่อ HR, ตารางกะ, Payroll, LINE Bot Commands |
-| leave-ot | 8 | ขอลา, ประเภทลา, ตรวจสอบวันลา, OT, ยกเลิก OT/DayOff/Leave |
-| points | 8 | Happy Points, แต้มสะสม, Streak, Shield, แลกของ, Leaderboard |
-| receipts | 4 | ส่งใบเสร็จ, ข้อมูลที่ต้องมี, สถานะ, ฝากเงิน |
-
-**ไม่มี duplicate sort_order ✅**
-
----
-
-### 3. ✅ Portal-data Endpoints - ครบถ้วน
-
-**Self-Service Endpoints:**
-- attendance-history, work-sessions, today-status
-- leave-balance, leave-requests, payroll, schedules
-- points, my-points, my-transactions, my-pending-redemptions
-- attendance-status, home-summary, profile, profile-full
-
-**Request/Cancel Endpoints:**
-- submit-leave, submit-ot
-- my-pending-ot-requests, my-pending-dayoff-requests, my-leave-requests
-- cancel-my-request, cancel-leave-request
-
-**Manager/Admin Endpoints:**
-- approval-counts, pending-ot/leave/early-leave-requests
-- approve-ot, approve-leave, approve-early-leave
-- pending-remote-checkout-requests, approve-remote-checkout
-- team-summary, today-photos, branches
-
-**Receipt/Point Endpoints:**
-- my-businesses, my-receipts-list, receipt-detail
-- rewards-list, leaderboard, my-receipt-quota
-- point-rules-summary
-
----
-
-### 4. ⚠️ ข้อเสนอแนะเพิ่มเติม (Optional)
-
-#### 4.1 เพิ่ม FAQs สำหรับ features ที่ยังไม่มี (Low Priority)
-
-| Feature | มี FAQ? | ควรเพิ่ม? |
-|---------|--------|----------|
-| Google Account Connection (MyProfile) | ❌ | ⚠️ Low priority |
-| Executive Mode explanation | ❌ | ⚠️ Low priority |
-
-**SQL สำหรับเพิ่ม (Optional):**
-```sql
--- Google Account FAQ
-INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
-VALUES (
-  'ฉันจะเชื่อมต่อ Google Account ได้อย่างไร?',
-  'How can I connect my Google Account?',
-  'ไปที่เมนู "โปรไฟล์" แล้วกดปุ่ม "เชื่อมต่อ Google" ระบบจะใช้สำหรับส่งข้อมูลใบฝากเงินไปยัง Google Drive และ Sheets',
-  'Go to "My Profile" and click "Connect Google". The system will use it to send deposit data to Google Drive and Sheets.',
-  'general',
-  25
-);
-
--- Executive Mode FAQ
-INSERT INTO portal_faqs (question_th, question_en, answer_th, answer_en, category, sort_order)
-VALUES (
-  'ทำไมฉันถึงไม่ต้อง Track เวลาหรือแต้ม?',
-  'Why am I exempt from attendance tracking or points?',
-  'ผู้บริหารบางตำแหน่งได้รับการยกเว้นจากระบบ Track เวลาและ Happy Points ตามนโยบายบริษัท หากต้องการข้อมูลเพิ่มเติมกรุณาติดต่อ HR',
-  'Some executive positions are exempt from attendance tracking and Happy Points per company policy. Contact HR for details.',
-  'general',
-  26
-);
-```
-
----
-
-#### 4.2 FAQ Search Feature (Medium Priority)
-
-เพิ่ม Search box และ Category tabs ใน Help.tsx เนื่องจากมี 31+ FAQs แล้ว:
-
-**ไฟล์:** `src/pages/portal/Help.tsx`
-
-**การเปลี่ยนแปลง:**
-```tsx
-// เพิ่ม state
-const [searchQuery, setSearchQuery] = useState('');
-const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-// Filter FAQs
-const filteredFaqs = faqs.filter(faq => {
-  const matchesSearch = faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        faq.answer.toLowerCase().includes(searchQuery.toLowerCase());
-  const matchesCategory = !selectedCategory || faq.category === selectedCategory;
-  return matchesSearch && matchesCategory;
-});
-```
-
-**ประโยชน์:**
-- User หา FAQ ได้เร็วขึ้น
-- ลดการ scroll หา FAQ ในรายการยาว
-
-**ความเสี่ยง:** ต่ำมาก - เป็น UI change เท่านั้น
-
----
-
-## สรุปสถานะ Portal System
-
-| หมวด | สถานะ | หมายเหตุ |
-|------|-------|---------|
-| Routes & Navigation | ✅ 100% | 37 routes, 7 nav items, 20 quick actions |
-| FAQs Coverage | ✅ 98% | 31 FAQs ครบหมวดหลัก (ขาด 2 minor) |
-| Endpoints | ✅ 100% | 50+ endpoints ครบถ้วน |
-| Timezone | ✅ 100% | Bangkok TZ ทุกที่ |
-| Self-Service | ✅ 100% | Cancel OT/DayOff/Leave + LINE notifications |
-| Session Management | ✅ 100% | Auto-refresh + warning |
-| Role-based Access | ✅ 100% | Manager/Admin/HR filtering |
-| Error Handling | ✅ 100% | PortalErrorBoundary + fallback FAQs |
-| Cron Jobs | ✅ 100% | ไม่มี duplicate |
-
----
-
-## ไฟล์ที่จะแก้ไข (Optional)
-
-| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง | Priority |
-|------|---------------|-----------|----------|
-| Database (SQL) | INSERT 2 FAQs | ต่ำมาก | Low |
-| `src/pages/portal/Help.tsx` | เพิ่ม Search/Filter | ต่ำ | Medium |
-
----
-
-## Feature Suggestions
-
-### 1. FAQ Search & Category Filter (แนะนำ)
-- เพิ่ม Search box ใน Help.tsx
-- เพิ่ม Tabs แยกตาม category (attendance, points, leave-ot, etc.)
-
-### 2. Quick Actions Customization
-- ให้ user จัดการ favorite quick actions ได้
-- ซ่อน/แสดง actions ตามที่ต้องการ
-
-### 3. Portal Notifications Badge
-- แสดง badge แจ้งเตือนเมื่อมี updates (approved requests, new points, etc.)
-
----
-
-## Regression Prevention Notes
-
-**ไฟล์ที่ตรวจสอบแล้วและไม่ควรแก้:**
-1. `src/pages/portal/PortalHome.tsx` - Quick Actions ครบ 21 items
-2. `src/components/portal/PortalLayout.tsx` - Navigation ครบ 7 items
-3. `src/contexts/PortalContext.tsx` - Session management ถูกต้อง
-4. `supabase/functions/portal-data/index.ts` - Endpoints ครบถ้วน 50+
-5. `src/lib/portal-api.ts` - API wrapper ทำงานถูกต้อง
-
-**Comment ที่ควรเพิ่มในไฟล์สำคัญ:**
+**สาเหตุ:** การแก้ไข `src/main.tsx` ครั้งล่าสุดที่เปลี่ยนจาก:
 ```typescript
-// ⚠️ PORTAL AUDIT: Verified 2026-01-28
-// Routes: 37, Quick Actions: 20, FAQs: 31, Endpoints: 50+
-// DO NOT modify unless adding new features
+import React from "react";  // ✅ ถูกต้อง
+```
+เป็น:
+```typescript
+import * as React from "react";  // ❌ อาจทำให้เกิด duplicate React instances
+```
+
+**หลักฐาน:** Console logs แสดง:
+```
+Warning: Invalid hook call. Hooks can only be called inside of the body of a function component.
+This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
 ```
 
 ---
 
-## สรุป
+### วิเคราะห์ Root Cause
 
-**Portal System อยู่ในสถานะ "Production Ready"** - ทุก feature ทำงานถูกต้อง ไม่มี bugs หรือ issues ที่ต้องแก้ไขเร่งด่วน
+| รายการ | สถานะ | หมายเหตุ |
+|--------|-------|---------|
+| React version | ✅ ถูกต้อง | 18.3.1 |
+| React-DOM version | ✅ ถูกต้อง | 18.3.1 |
+| main.tsx import | ❌ ปัญหา | `import * as React` อาจสร้าง duplicate instance |
+| Vite config | ✅ ถูกต้อง | ใช้ @vitejs/plugin-react-swc |
 
-**Optional Improvements:**
-1. เพิ่ม 2 FAQs (Google Account, Executive Mode)
-2. เพิ่ม FAQ Search feature
+**หมายเหตุ:** เรื่อง Timezone ที่แจ้ง "ตี 1" **ไม่ใช่ปัญหา timezone ใน code** แต่เกิดจาก App พังทั้งหมดเพราะ React hooks ไม่ทำงาน ทำให้อาจเห็น error message แปลกๆ หรือหน้าว่างเปล่า
 
-ทั้งหมดนี้เป็น **enhancement** ไม่ใช่ bug fixes และสามารถ implement ได้ตามความต้องการ
+---
+
+### แผนการแก้ไข
+
+#### ขั้นตอนที่ 1: Revert main.tsx กลับไปเป็นรูปแบบเดิม
+
+**ก่อนแก้ไข (ปัจจุบัน - มีปัญหา):**
+```typescript
+import * as React from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+
+const container = document.getElementById("root");
+if (!container) throw new Error("Root element not found");
+
+const root = createRoot(container);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+**หลังแก้ไข (กลับไปรูปแบบมาตรฐาน):**
+```typescript
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+---
+
+### ไฟล์ที่ต้องแก้ไข
+
+| ไฟล์ | การเปลี่ยนแปลง | ความเสี่ยง |
+|------|---------------|-----------|
+| `src/main.tsx` | Revert กลับไปรูปแบบมาตรฐาน | ต่ำมาก - เป็น standard pattern |
+
+---
+
+### ผลลัพธ์ที่คาดหวัง
+
+1. **React hooks ทำงานปกติ** - QueryClientProvider, PortalProvider ทำงานได้
+2. **App ไม่พังอีกต่อไป** - ผู้ใช้เข้าถึง Portal, Check-in/out ได้
+3. **ไม่มี "Invalid hook call" errors** - Console สะอาด
+
+---
+
+### การป้องกันปัญหาในอนาคต
+
+**หมายเหตุสำคัญ:** การแก้ไข main.tsx ที่ผ่านมาทำให้ App พังเพราะ:
+
+1. **`import * as React`** - อาจทำให้ bundler สร้าง duplicate React instances
+2. **การเปลี่ยน createRoot pattern** - ไม่จำเป็นต้องเปลี่ยน เพราะ `document.getElementById("root")!` ทำงานได้ปกติ
+
+**ไฟล์ที่ไม่ควรแก้ไขโดยไม่จำเป็น:**
+- `src/main.tsx` - Entry point หลัก
+- `src/App.tsx` - Root component
+
+---
+
+### สรุป
+
+**ปัญหาที่แท้จริง:** ไม่ใช่ timezone แต่เป็น React hooks พังจากการแก้ไข main.tsx
+
+**วิธีแก้:** Revert main.tsx กลับไปรูปแบบมาตรฐาน
+
+**เวลาที่ใช้:** ไม่กี่วินาที
+
+**ความเสี่ยง:** ต่ำมาก
