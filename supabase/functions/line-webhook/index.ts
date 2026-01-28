@@ -3459,19 +3459,30 @@ async function getLineProfile(userId: string, groupId?: string) {
     if (!response.ok) {
       console.error(`[getLineProfile] LINE API error: ${response.status}`);
       
-      // Log to alerts table for monitoring
+      // Log to alerts table for monitoring (with 24h rate limiting to prevent spam)
+      // IMPORTANT: Rate limit check added to prevent duplicate alerts for same user
       if (groupId) {
-        await supabase.from('alerts').insert({
-          type: 'error',
-          severity: 'low',
-          summary: `Failed to fetch LINE profile for user ${userId.slice(-6)}`,
-          details: { 
-            user_id: userId,
-            status: response.status,
-            error: 'LINE API returned non-OK status'
-          },
-          group_id: groupId
-        });
+        const alertSummary = `Failed to fetch LINE profile for user ${userId.slice(-6)}`;
+        const { data: existingAlert } = await supabase
+          .from('alerts')
+          .select('id')
+          .eq('summary', alertSummary)
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .maybeSingle();
+        
+        if (!existingAlert) {
+          await supabase.from('alerts').insert({
+            type: 'error',
+            severity: 'low',
+            summary: alertSummary,
+            details: { 
+              user_id: userId,
+              status: response.status,
+              error: 'LINE API returned non-OK status'
+            },
+            group_id: groupId
+          });
+        }
       }
       
       return null;
@@ -3487,18 +3498,29 @@ async function getLineProfile(userId: string, groupId?: string) {
   } catch (error) {
     console.error(`[getLineProfile] Error fetching profile:`, error);
     
-    // Log to alerts table for monitoring
+    // Log to alerts table for monitoring (with 24h rate limiting to prevent spam)
+    // IMPORTANT: Rate limit check added to prevent duplicate alerts for same user
     if (groupId) {
-      await supabase.from('alerts').insert({
-        type: 'error',
-        severity: 'low',
-        summary: `Failed to fetch LINE profile for user ${userId.slice(-6)}`,
-        details: { 
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error)
-        },
-        group_id: groupId
-      });
+      const alertSummary = `Failed to fetch LINE profile for user ${userId.slice(-6)}`;
+      const { data: existingAlert } = await supabase
+        .from('alerts')
+        .select('id')
+        .eq('summary', alertSummary)
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .maybeSingle();
+      
+      if (!existingAlert) {
+        await supabase.from('alerts').insert({
+          type: 'error',
+          severity: 'low',
+          summary: alertSummary,
+          details: { 
+            user_id: userId,
+            error: error instanceof Error ? error.message : String(error)
+          },
+          group_id: groupId
+        });
+      }
     }
     
     return null;
