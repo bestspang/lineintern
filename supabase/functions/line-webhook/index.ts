@@ -2036,7 +2036,7 @@ async function handleCancelOTCommand(
           : `✅ OT request cancelled\n\n📅 Date: ${formattedDate}\n⏰ Time: ${timeRange}\n🕐 Hours: ${matchingRequest.hours || '-'}`;
         return { detected: true, message };
       } else {
-        const formattedDate = formatDate(parsedDate.toISOString().split('T')[0]);
+        const formattedDate = formatDate(dateStr);
         const message = locale === 'th'
           ? `❌ ไม่พบคำขอ OT วันที่ ${formattedDate} ที่รออนุมัติ`
           : `❌ No pending OT request found for ${formattedDate}`;
