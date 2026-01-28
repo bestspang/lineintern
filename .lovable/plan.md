@@ -1,194 +1,179 @@
 
 
-## แผนการแก้ไขและเพิ่มฟีเจอร์ LINE Intern Portal
+## แผนแก้ไข Timezone Bugs (Verified)
 
-### ภาพรวม
+### สถานะการตรวจสอบ
 
-แผนนี้ครอบคลุม 3 งานหลัก:
-1. ปรับ FAQ sort_order ที่ซ้ำกัน
-2. เพิ่ม LINE Push Notification เมื่อยกเลิกคำขอจาก Portal
-3. แสดง Pending Count แยกตามประเภทบน Badge
+หลังจากตรวจสอบ code อย่างละเอียดแล้ว พบว่า:
 
----
-
-### Task 1: FAQ sort_order Cleanup
-
-**ปัญหา:** มี sort_order ซ้ำกัน (5, 10) ทำให้ลำดับการแสดงผลไม่ชัดเจน
-
-**Solution:** รัน SQL Migration เพื่อปรับ sort_order ให้ไม่ซ้ำ
-
-```sql
--- ปรับ sort_order ให้ไม่ซ้ำกัน
-UPDATE portal_faqs SET sort_order = 4.5 
-WHERE question_th = 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?';
-
-UPDATE portal_faqs SET sort_order = 10.1 
-WHERE question_th = 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?';
-
-UPDATE portal_faqs SET sort_order = 10.2 
-WHERE question_th = 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?';
-
-UPDATE portal_faqs SET sort_order = 10.3 
-WHERE question_th = 'ฉันจะยกเลิกคำขอลางานได้อย่างไร?';
-```
-
-**ความเสี่ยง:** ต่ำมาก - ปรับ display order เท่านั้น
+| ปัญหา | ตรวจสอบแล้ว | ควรแก้ไข? |
+|-------|-------------|----------|
+| Frontend: Attendance.tsx (line 83) | ✅ มีจริง | ✅ ใช่ |
+| Frontend: PointRules.tsx (line 224) | ✅ มีจริง | ✅ ใช่ |
+| Frontend: ConfigurationValidator.tsx (line 142) | ⚠️ มี แต่ไม่กระทบ | ❌ ไม่จำเป็น |
+| Frontend: Memory.tsx (line 722) | ❌ ไม่มีปัญหา | ❌ ไม่ควรแก้ |
+| Edge: birthday-reminder (line 43-46) | ⚠️ ทำงานได้ แต่ไม่ consistent | ✅ ใช่ (consistency) |
+| Edge: sentiment-tracker (line 265) | ✅ มีจริง | ✅ ใช่ |
+| Edge: sentiment-tracker (line 322-323) | ✅ มีจริง | ✅ ใช่ |
+| ErrorBoundary placeholder | ✅ มีจริง | ⚙️ Optional |
 
 ---
 
-### Task 2: LINE Push Notification เมื่อยกเลิกคำขอ
+### สิ่งที่จะไม่แก้ไข (และเหตุผล)
 
-**ปัญหา:** เมื่อพนักงานยกเลิกคำขอจาก Portal ไม่มี LINE notification ยืนยัน
-
-**Solution:** เพิ่มการส่ง LINE Push ใน `portal-data/index.ts` สำหรับ:
-- `cancel-my-request` (OT / Day-Off)
-- `cancel-leave-request` (Leave)
-
-**การ Implementation:**
-
-1. **ดึง employee info ก่อน update:**
-   ```typescript
-   // ดึง line_user_id และชื่อ
-   const { data: employee } = await supabase
-     .from('employees')
-     .select('line_user_id, full_name')
-     .eq('id', employee_id)
-     .maybeSingle();
-   ```
-
-2. **ส่ง LINE Push หลัง cancel สำเร็จ:**
-   ```typescript
-   // ส่ง LINE notification ยืนยันการยกเลิก
-   const LINE_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
-   if (LINE_ACCESS_TOKEN && employee?.line_user_id) {
-     const message = requestType === 'ot'
-       ? `🚫 คำขอ OT ของคุณถูกยกเลิกแล้ว\n\nหากต้องการขอใหม่ สามารถทำได้ที่ Portal`
-       : `🚫 คำขอวันหยุดของคุณถูกยกเลิกแล้ว\n\nหากต้องการขอใหม่ สามารถทำได้ที่ Portal`;
-     
-     await fetch('https://api.line.me/v2/bot/message/push', {
-       method: 'POST',
-       headers: {
-         'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
-         'Content-Type': 'application/json',
-       },
-       body: JSON.stringify({
-         to: employee.line_user_id,
-         messages: [{ type: 'text', text: message }]
-       })
-     }).catch(e => console.error('[portal-data] LINE push error:', e));
-   }
-   ```
-
-**ไฟล์ที่แก้ไข:** `supabase/functions/portal-data/index.ts`
-- Lines 1320-1365 (cancel-my-request) - เพิ่ม LINE push
-- Lines 1406-1443 (cancel-leave-request) - เพิ่ม LINE push
-
-**ความเสี่ยง:** ต่ำ - เพิ่ม notification หลัง cancel logic เสร็จ, ไม่กระทบ existing logic
-
----
-
-### Task 3: Pending Count Breakdown Badge
-
-**ปัญหา:** Badge แสดง totalPending รวมกัน ไม่ทราบว่ามีกี่ OT, Day-Off, Leave
-
-**Solution:** เพิ่ม Tooltip ที่แสดง breakdown เมื่อ hover/tap บน badge
-
-**การ Implementation ใน PortalHome.tsx:**
+#### 1. Memory.tsx (line 722) - ไม่ควรแก้
 
 ```typescript
-// เพิ่ม Tooltip component
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+// Line 719-723 ปัจจุบัน:
+const last30Days = Array.from({ length: 30 }, (_, i) => {
+  const date = new Date(now);
+  date.setDate(date.getDate() - (29 - i));
+  return date.toISOString().split('T')[0];  // ← ดูเหมือนผิด แต่...
+});
 
-// ในส่วน Pending Badge (lines 469-473)
-{showPendingBadge && (
-  <TooltipProvider>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge className="absolute top-2 right-8 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 z-10 cursor-help">
-          {totalPending}
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent side="left" className="text-xs">
-        <div className="space-y-1">
-          {pendingCounts?.ot > 0 && (
-            <p>🕐 OT: {pendingCounts.ot}</p>
-          )}
-          {pendingCounts?.dayoff > 0 && (
-            <p>📅 Day-Off: {pendingCounts.dayoff}</p>
-          )}
-          {pendingCounts?.leave > 0 && (
-            <p>🏖️ Leave: {pendingCounts.leave}</p>
-          )}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-)}
+// Line 730-732:
+const createdDate = memory.created_at.split('T')[0];  // ← UTC จาก DB
+const updatedDate = memory.updated_at.split('T')[0];  // ← UTC จาก DB
 ```
 
-**ความเสี่ยง:** ต่ำมาก - เปลี่ยน UI display เท่านั้น
+**เหตุผล:** Logic นี้ **ถูกต้องแล้ว** เพราะ:
+- `memory.created_at` และ `memory.updated_at` เป็น UTC ISO string จาก database
+- การใช้ `toISOString().split('T')[0]` ทั้งสองฝั่งทำให้เป็น UTC กับ UTC ซึ่ง compare ได้ถูกต้อง
+- ถ้าแก้เฉพาะ line 722 เป็น Bangkok แต่ไม่แก้ line 730-732 จะทำให้ chart ผิดแทน
+
+#### 2. ConfigurationValidator.tsx (line 142) - ไม่จำเป็น
+
+```typescript
+.lt('work_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+```
+
+**เหตุผล:** 
+- ใช้หา orphaned sessions ที่เก่ากว่า 7 วัน
+- ความแตกต่าง UTC/Bangkok มีผลแค่ 1 วันเท่านั้น
+- ไม่กระทบ functionality หลัก
 
 ---
 
-### สรุปไฟล์ที่จะแก้ไข
+### สิ่งที่จะแก้ไข
 
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| Database (SQL) | ปรับ sort_order ใน portal_faqs |
-| `supabase/functions/portal-data/index.ts` | เพิ่ม LINE push notification ใน cancel endpoints |
-| `src/pages/portal/PortalHome.tsx` | เพิ่ม Tooltip แสดง pending breakdown |
+#### Task 1: Frontend Timezone Fixes (2 files)
+
+**ไฟล์ 1: src/pages/Attendance.tsx (line 83)**
+
+```typescript
+// ก่อน
+const today = new Date().toISOString().split('T')[0];
+
+// หลัง
+import { formatBangkokISODate } from '@/lib/timezone';
+// ...
+const today = formatBangkokISODate(new Date());
+```
+
+**ไฟล์ 2: src/pages/attendance/PointRules.tsx (line 224)**
+
+```typescript
+// ก่อน
+const today = new Date().toISOString().split('T')[0];
+
+// หลัง
+import { formatBangkokISODate } from '@/lib/timezone';
+// ...
+const today = formatBangkokISODate(new Date());
+```
+
+---
+
+#### Task 2: Edge Function Timezone Fixes (2 files)
+
+**ไฟล์ 1: supabase/functions/birthday-reminder/index.ts (lines 42-46)**
+
+```typescript
+// ก่อน
+const now = new Date();
+const bangkokOffset = 7 * 60 * 60 * 1000;
+const bangkokNow = new Date(now.getTime() + bangkokOffset);
+const todayStr = bangkokNow.toISOString().split("T")[0];
+
+// หลัง
+import { getBangkokDateString, getBangkokNow } from '../_shared/timezone.ts';
+// ...
+const todayStr = getBangkokDateString();
+const bangkokNow = getBangkokNow();
+```
+
+**หมายเหตุ:** `bangkokNow` ยังต้องใช้สำหรับ line 97 ในการคำนวณ future dates
+
+**ไฟล์ 2: supabase/functions/sentiment-tracker/index.ts**
+
+Line 265:
+```typescript
+// ก่อน
+const prevDateStr = prevDate.toISOString().split("T")[0];
+
+// หลัง
+const prevDateStr = getBangkokDateString(prevDate);
+```
+
+Lines 322-323:
+```typescript
+// ก่อน
+const periodStart = weekAgo.toISOString().split("T")[0];
+const periodEnd = now.toISOString().split("T")[0];
+
+// หลัง
+const periodStart = getBangkokDateString(weekAgo);
+const periodEnd = getBangkokDateString(now);
+```
+
+---
+
+#### Task 3: ErrorBoundary (Optional)
+
+**สถานะ:** จะ **ไม่ดำเนินการ** ในรอบนี้ เพราะ:
+1. ต้องสร้าง table ใหม่ใน database
+2. ต้องสร้าง edge function ใหม่
+3. ผลกระทบต่ำ - admin สามารถดู console ได้อยู่แล้ว
+
+**หากต้องการในอนาคต:** สามารถแจ้งให้ implement เพิ่มได้
 
 ---
 
 ### ลำดับการ Implementation
 
 ```text
-1. Database Migration (FAQ sort_order)
-   └── ปรับ sort_order ให้ไม่ซ้ำ
+1. Frontend Fixes
+   ├── Attendance.tsx - เพิ่ม import + แก้ line 83
+   └── PointRules.tsx - เพิ่ม import + แก้ line 224
 
-2. portal-data/index.ts
-   ├── เพิ่ม LINE push ใน cancel-my-request
-   └── เพิ่ม LINE push ใน cancel-leave-request
-
-3. PortalHome.tsx
-   ├── Import Tooltip components
-   └── เพิ่ม Tooltip wrapper รอบ Badge
+2. Edge Function Fixes
+   ├── birthday-reminder/index.ts - แก้ lines 1-4, 42-46
+   └── sentiment-tracker/index.ts - แก้ lines 265, 322-323
 ```
 
 ---
 
 ### Regression Prevention
 
-- **Task 1:** ไม่แตะ content หรือ category ของ FAQ
-- **Task 2:** เพิ่ม notification หลัง existing cancel logic (ไม่แก้ไข logic เดิม)
-- **Task 3:** ห่อ Badge ด้วย Tooltip เท่านั้น (ไม่แตะ logic อื่น)
+| ไฟล์ | สิ่งที่ต้องตรวจสอบหลังแก้ไข |
+|------|---------------------------|
+| Attendance.tsx | Holiday banner ยังแสดงวันนี้ถูกต้อง |
+| PointRules.tsx | Admin rollback ยังทำงานปกติ |
+| birthday-reminder | Cron job ยังส่ง birthday notification ถูกคน |
+| sentiment-tracker | Sentiment calculation ยังทำงานถูกต้อง |
 
 ---
 
-### Technical Details
+### สรุปไฟล์ที่จะแก้ไข
 
-**LINE Push API Pattern (จาก overtime-approval/index.ts):**
-```typescript
-if (LINE_ACCESS_TOKEN && employee.line_user_id) {
-  try {
-    await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: employee.line_user_id,
-        messages: [{ type: 'text', text: message }]
-      })
-    });
-  } catch (e) {
-    console.error('Failed to notify employee', e);
-  }
-}
-```
+| ไฟล์ | บรรทัดที่แก้ | ความเสี่ยง |
+|------|-------------|-----------|
+| `src/pages/Attendance.tsx` | 1 (import), 83 | ต่ำมาก |
+| `src/pages/attendance/PointRules.tsx` | 1 (import), 224 | ต่ำมาก |
+| `supabase/functions/birthday-reminder/index.ts` | 1-4, 42-46 | ต่ำ |
+| `supabase/functions/sentiment-tracker/index.ts` | 265, 322-323 | ต่ำมาก |
 
-**Tooltip Pattern (จาก existing UI components):**
-- ใช้ `@/components/ui/tooltip` ที่มีอยู่แล้ว
-- รองรับทั้ง mobile (tap) และ desktop (hover)
+**จำนวนไฟล์:** 4 ไฟล์
+**จำนวนบรรทัดที่แก้:** ประมาณ 10-15 บรรทัด
+**Logic ที่เปลี่ยน:** ไม่มี - เปลี่ยนเฉพาะ date string generation
 
