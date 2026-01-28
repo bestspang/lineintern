@@ -262,7 +262,8 @@ serve(async (req) => {
           // Get previous day's message count for burnout detection
           const prevDate = new Date(targetDate);
           prevDate.setDate(prevDate.getDate() - 1);
-          const prevDateStr = prevDate.toISOString().split("T")[0];
+          // ⚠️ TIMEZONE: Use shared utility - NEVER use toISOString().split('T')[0]
+          const prevDateStr = getBangkokDateString(prevDate);
           
           const { data: prevSentiment } = await supabase
             .from("user_sentiment_history")
@@ -319,8 +320,9 @@ serve(async (req) => {
         
         const now = getBangkokNow();
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const periodStart = weekAgo.toISOString().split("T")[0];
-        const periodEnd = now.toISOString().split("T")[0];
+        // ⚠️ TIMEZONE: Use shared utility - NEVER use toISOString().split('T')[0]
+        const periodStart = getBangkokDateString(weekAgo);
+        const periodEnd = getBangkokDateString(now);
         
         // Get messages from the past week
         // SCHEMA: messages.direction is 'human' or 'bot', NOT 'incoming'

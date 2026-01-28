@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { formatBangkokISODate } from '@/lib/timezone';
 import { useSearchParams } from 'react-router-dom';
 import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -80,7 +81,8 @@ export default function Attendance() {
     // Fetch today's holidays for cute quotes
     const fetchTodayHolidays = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+        const today = formatBangkokISODate(new Date());
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/holidays?date=eq.${today}&select=id`,
           {
