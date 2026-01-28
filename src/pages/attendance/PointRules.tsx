@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatBangkokISODate } from '@/lib/timezone';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -221,7 +222,8 @@ export default function PointRules() {
   };
 
   const handleRollbackResponsePoints = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // ⚠️ TIMEZONE: Use Bangkok date - NEVER use toISOString().split('T')[0]
+    const today = formatBangkokISODate(new Date());
     rollbackMutation.mutate({
       date: today,
       reason: 'Response rules disabled but points awarded - admin manual rollback'

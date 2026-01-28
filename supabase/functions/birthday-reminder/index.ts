@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logBotMessage } from "../_shared/bot-logger.ts";
+import { getBangkokDateString, getBangkokNow } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,11 +40,9 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get Bangkok date
-    const now = new Date();
-    const bangkokOffset = 7 * 60 * 60 * 1000;
-    const bangkokNow = new Date(now.getTime() + bangkokOffset);
-    const todayStr = bangkokNow.toISOString().split("T")[0];
+    // ⚠️ TIMEZONE: Use shared utility - NEVER use manual offset calculation
+    const todayStr = getBangkokDateString();
+    const bangkokNow = getBangkokNow();
 
     console.log(`[birthday-reminder] Running for date: ${todayStr}`);
 
