@@ -735,8 +735,9 @@ serve(async (req) => {
           const shiftEndTime = token.employee.shift_end_time;
           
           if (shiftEndTime) {
-            const bangkokNow = getBangkokNow();
-            const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
+            // ⚠️ CRITICAL: Use new Date() with formatBangkokTime - NOT getBangkokNow()!
+            // getBangkokNow() returns a "zoned" Date, formatBangkokTime would add +7 again
+            const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
             
             // Parse shift end time and subtract 15 min grace
             const [endH, endM] = shiftEndTime.split(':').map(Number);
