@@ -165,6 +165,18 @@ serve(async (req) => {
       }
     }
 
+    // ✅ Fetch notification settings BEFORE the loop
+    const { data: notifySettings } = await supabase
+      .from('attendance_settings')
+      .select('auto_checkout_notify_dm, auto_checkout_notify_group')
+      .eq('scope', 'global')
+      .maybeSingle();
+
+    const notifyDM = (notifySettings as any)?.auto_checkout_notify_dm ?? true;
+    const notifyGroup = (notifySettings as any)?.auto_checkout_notify_group ?? true;
+
+    console.log(`[auto-checkout-midnight] Notification settings: DM=${notifyDM}, Group=${notifyGroup}`);
+
     let autoCheckouts = 0;
     let skippedOT = 0;
     const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
@@ -297,8 +309,8 @@ serve(async (req) => {
         console.warn(`[auto-checkout-midnight] No active session found for ${employee.full_name} on ${targetDate}`);
       }
 
-      // Send LINE notification
-      if (employee.line_user_id) {
+      // Send LINE notification to employee (only if enabled)
+      if (notifyDM && employee.line_user_id) {
         let message = `🌙 Check Out อัตโนมัติ\n\n`;
         message += `👤 คุณ ${employee.full_name}\n`;
         message += `⏰ เวลา: 23:59 (เที่ยงคืน)\n`;
@@ -340,11 +352,11 @@ serve(async (req) => {
         );
       }
 
-      // Post to announcement group
+      // Post to announcement group (only if enabled)
       const announcementGroupId = employee.announcement_group_line_id || 
                                    employee.branches?.line_group_id;
 
-      if (announcementGroupId) {
+      if (notifyGroup && announcementGroupId) {
         let groupMessage = `🌙 Auto Check Out: ${employee.full_name}\n`;
         groupMessage += `⏰ 23:59 (ไม่ได้ Check Out ตามปกติ)\n`;
         groupMessage += `📊 เวลาทำงาน: ${hoursWorked.toFixed(1)} ชม.`;
