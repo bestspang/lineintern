@@ -258,6 +258,45 @@ serve(async (req) => {
       autoCheckouts++;
       console.log(`[auto-checkout-midnight] Auto checked out ${employee.full_name}`);
 
+      // ✅ NEW: Update work_session to mark as auto_closed
+      // Find active session for this employee on target date
+      const { data: activeSession, error: sessionFetchError } = await supabase
+        .from('work_sessions')
+        .select('id, actual_start_time, break_minutes')
+        .eq('employee_id', empId)
+        .eq('work_date', targetDate)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .maybeSingle();
+
+      if (activeSession && !sessionFetchError) {
+        // Calculate work duration
+        const actualStartTime = new Date(activeSession.actual_start_time);
+        const totalMinutes = Math.floor((midnightTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
+        const breakMinutes = activeSession.break_minutes || 60;
+        const netWorkMinutes = Math.max(0, totalMinutes - breakMinutes);
+        
+        const { error: updateError } = await supabase
+          .from('work_sessions')
+          .update({
+            checkout_log_id: checkoutLog.id,
+            actual_end_time: midnightTime.toISOString(),
+            total_minutes: totalMinutes,
+            net_work_minutes: netWorkMinutes,
+            status: 'auto_closed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', activeSession.id);
+        
+        if (updateError) {
+          console.error(`[auto-checkout-midnight] Error updating work session for ${employee.full_name}:`, updateError);
+        } else {
+          console.log(`[auto-checkout-midnight] Updated work session ${activeSession.id} for ${employee.full_name}: ${(netWorkMinutes / 60).toFixed(1)}h net`);
+        }
+      } else {
+        console.warn(`[auto-checkout-midnight] No active session found for ${employee.full_name} on ${targetDate}`);
+      }
+
       // Send LINE notification
       if (employee.line_user_id) {
         let message = `🌙 Check Out อัตโนมัติ\n\n`;
