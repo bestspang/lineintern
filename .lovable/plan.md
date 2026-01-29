@@ -1,125 +1,118 @@
 
-## แผนแก้ไข: auto-checkout-midnight ไม่ได้ update work_sessions
+## แผนแก้ไข: ระบบตั้งค่า Notification สำหรับ Auto Checkout
 
-### 🎯 Root Cause Analysis
-
-**ปัญหา:**
-`auto-checkout-midnight` สร้าง `attendance_logs` (check_out) แต่**ไม่ได้ update `work_sessions`** เลย!
-
-**เปรียบเทียบ 3 Functions:**
-
-| Function | สร้าง attendance_logs | update work_sessions |
-|----------|---------------------|---------------------|
-| `attendance-submit` (checkout ปกติ) | ✅ บรรทัด 1051-1123 | ✅ ครบ |
-| `auto-checkout-grace` (hours_based) | ✅ บรรทัด 188-199 | ✅ บรรทัด 214-224 |
-| `auto-checkout-midnight` (time_based) | ✅ บรรทัด 236-251 | ❌ **ขาดหายไป!** |
-
-**ผลกระทบ:**
-- `work_sessions` ค้างเป็น `active` ตลอดไป
-- `actual_end_time`, `total_minutes`, `net_work_minutes` เป็น null
-- Dashboard แสดงพนักงานเข้างานอยู่ทั้งที่ checkout แล้ว
+### ปัญหา
+ข้อความ Auto Checkout ถูกส่งไปยังกลุ่ม LINE โดยอัตโนมัติทุกครั้งโดยไม่มีตัวเลือกเปิด/ปิด
 
 ---
 
-### 📋 การแก้ไข
+### การแก้ไข
 
-#### ไฟล์ที่ต้องแก้: `supabase/functions/auto-checkout-midnight/index.ts`
+#### 1. Database Migration - เพิ่ม columns ใหม่
 
-**เพิ่ม Logic Update Work Sessions (หลังบรรทัด 258):**
+**ตาราง:** `attendance_settings`
 
+```sql
+ALTER TABLE attendance_settings
+ADD COLUMN IF NOT EXISTS auto_checkout_notify_dm BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS auto_checkout_notify_group BOOLEAN DEFAULT true;
+
+COMMENT ON COLUMN attendance_settings.auto_checkout_notify_dm IS 
+  'Send auto-checkout notification to employee DM';
+COMMENT ON COLUMN attendance_settings.auto_checkout_notify_group IS 
+  'Send auto-checkout notification to announcement group';
+```
+
+| Column | Type | Default | คำอธิบาย |
+|--------|------|---------|---------|
+| `auto_checkout_notify_dm` | boolean | true | ส่งแจ้งเตือนไปหาพนักงาน |
+| `auto_checkout_notify_group` | boolean | true | ส่งแจ้งเตือนไปกลุ่มประกาศ |
+
+---
+
+#### 2. แก้ไข Edge Function - `auto-checkout-midnight`
+
+**ไฟล์:** `supabase/functions/auto-checkout-midnight/index.ts`
+
+**เพิ่ม Query ดึง settings (ก่อน loop):**
 ```typescript
-// ✅ NEW: Update work_session to mark as auto_closed
-// Find active session for this employee on target date
-const { data: activeSession, error: sessionFetchError } = await supabase
-  .from('work_sessions')
-  .select('id, actual_start_time, break_minutes')
-  .eq('employee_id', empId)
-  .eq('work_date', targetDate)
-  .eq('status', 'active')
-  .order('created_at', { ascending: false })
+// Fetch notification settings
+const { data: notifySettings } = await supabase
+  .from('attendance_settings')
+  .select('auto_checkout_notify_dm, auto_checkout_notify_group')
+  .eq('scope', 'global')
   .maybeSingle();
 
-if (activeSession && !sessionFetchError) {
-  // Calculate work duration
-  const actualStartTime = new Date(activeSession.actual_start_time);
-  const totalMinutes = Math.floor((midnightTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
-  const breakMinutes = activeSession.break_minutes || 60;
-  const netWorkMinutes = Math.max(0, totalMinutes - breakMinutes);
-  
-  const { error: updateError } = await supabase
-    .from('work_sessions')
-    .update({
-      checkout_log_id: checkoutLog.id,
-      actual_end_time: midnightTime.toISOString(),
-      total_minutes: totalMinutes,
-      net_work_minutes: netWorkMinutes,
-      status: 'auto_closed', // Use auto_closed status same as auto-checkout-grace
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', activeSession.id);
-  
-  if (updateError) {
-    console.error(`[auto-checkout-midnight] Error updating work session for ${employee.full_name}:`, updateError);
-  } else {
-    console.log(`[auto-checkout-midnight] Updated work session ${activeSession.id} for ${employee.full_name}: ${(netWorkMinutes / 60).toFixed(1)}h net`);
-  }
-} else {
-  console.warn(`[auto-checkout-midnight] No active session found for ${employee.full_name} on ${targetDate}`);
+const notifyDM = notifySettings?.auto_checkout_notify_dm ?? true;
+const notifyGroup = notifySettings?.auto_checkout_notify_group ?? true;
+```
+
+**แก้ไข LINE notification section (บรรทัด ~300-374):**
+```typescript
+// Send LINE notification to employee (only if enabled)
+if (notifyDM && employee.line_user_id) {
+  // ... existing DM code ...
+}
+
+// Post to announcement group (only if enabled)
+if (notifyGroup && announcementGroupId) {
+  // ... existing group code ...
 }
 ```
 
-**ตำแหน่งที่เพิ่ม:**
-- หลังบรรทัด 258 (`console.log(\`[auto-checkout-midnight] Auto checked out ${employee.full_name}\`);`)
-- ก่อนการส่ง LINE notification
+---
+
+#### 3. แก้ไข UI Settings Page
+
+**ไฟล์:** `src/pages/attendance/Settings.tsx`
+
+**เพิ่มใน formData state:**
+```typescript
+auto_checkout_notify_dm: true,
+auto_checkout_notify_group: true,
+```
+
+**เพิ่ม UI Card ใหม่:**
+```text
+┌─────────────────────────────────────────────────────┐
+│ 🌙 Auto Checkout Notification Settings              │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│ [✓] Send to Employee DM                             │
+│     Notify employee when auto-checkout occurs       │
+│                                                     │
+│ [  ] Send to Announcement Group                     │
+│     Post auto-checkout info to LINE group           │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
-### 🔍 Technical Details
+### Technical Details
 
-**Work Session Fields ที่ต้อง Update:**
+**Behavior Matrix:**
 
-| Field | Value | คำอธิบาย |
-|-------|-------|---------|
-| `checkout_log_id` | `checkoutLog.id` | Link ไปยัง attendance_log ที่เพิ่งสร้าง |
-| `actual_end_time` | `midnightTime.toISOString()` | 23:59:59 Bangkok (16:59:59 UTC) |
-| `total_minutes` | คำนวณจาก start → end | รวมเวลาทำงานทั้งหมด |
-| `net_work_minutes` | `total_minutes - break_minutes` | หลังหักพัก |
-| `status` | `'auto_closed'` | สถานะ auto checkout |
-| `updated_at` | `new Date().toISOString()` | Timestamp update |
+| DM | Group | ผลลัพธ์ |
+|----|-------|--------|
+| ✓ | ✓ | ส่งทั้ง DM และ Group (default) |
+| ✓ | ✗ | ส่งเฉพาะ DM |
+| ✗ | ✓ | ส่งเฉพาะ Group |
+| ✗ | ✗ | ไม่ส่ง notification ใดๆ |
 
-**Pattern เดียวกับ `auto-checkout-grace` (บรรทัด 206-229):**
-- ใช้ `maybeSingle()` เพื่อป้องกัน error ถ้าไม่มี session
-- ใช้ status `auto_closed` แทน `completed` เพื่อแยก manual vs auto
-- Log warning ถ้าไม่เจอ session
+**Files to modify:**
+1. **Database Migration** - เพิ่ม 2 columns
+2. `supabase/functions/auto-checkout-midnight/index.ts` - เพิ่ม settings check
+3. `src/pages/attendance/Settings.tsx` - เพิ่ม UI controls
 
 ---
 
-### ⚠️ ความเสี่ยงและการป้องกัน
-
-| ความเสี่ยง | การป้องกัน |
-|-----------|-----------|
-| Session ไม่มี | ใช้ `maybeSingle()` + log warning |
-| Error update | Try-catch + log error |
-| Duplicate update | Query `status: 'active'` เท่านั้น |
-| เวลาคำนวณผิด | ใช้ `midnightTime` เดียวกับ checkout log |
-
----
-
-### 📊 สรุปการเปลี่ยนแปลง
+### สรุปการเปลี่ยนแปลง
 
 | รายการ | รายละเอียด |
 |--------|-----------|
-| **ไฟล์** | `supabase/functions/auto-checkout-midnight/index.ts` |
-| **ตำแหน่ง** | หลังบรรทัด 258 |
-| **เพิ่ม** | ~35 บรรทัด (query + update work_sessions) |
-| **Pattern** | คัดลอกจาก `auto-checkout-grace` บรรทัด 206-229 |
-| **Impact** | แก้ bug work_sessions ค้าง active หลัง midnight auto-checkout |
-
----
-
-### ✅ หลังแก้ไข
-
-1. **Deploy** edge function `auto-checkout-midnight`
-2. **Manual Fix** สำหรับ 3 พนักงานที่ยังค้าง (Noey, Pass, ntp.冬至)
-3. **Test** รอวันถัดไปดู cron job ทำงานถูกต้อง
-
+| **Migration** | เพิ่ม 2 columns ใน attendance_settings |
+| **Edge Function** | เพิ่ม 10 บรรทัด (query + condition checks) |
+| **Settings UI** | เพิ่ม ~50 บรรทัด (Card + 2 switches) |
+| **Impact** | Admin สามารถเปิด/ปิด notification แต่ละช่องทาง |
+| **Default** | ทั้งสอง option เปิดอยู่ (backward compatible) |
