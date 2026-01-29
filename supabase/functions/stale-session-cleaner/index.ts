@@ -8,27 +8,12 @@
 // ============================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getBangkokNow, getBangkokDateString, formatBangkokTime } from '../_shared/timezone.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Bangkok timezone offset: UTC+7
-const BANGKOK_OFFSET_HOURS = 7;
-
-function getBangkokNow(): Date {
-  const now = new Date();
-  return new Date(now.getTime() + BANGKOK_OFFSET_HOURS * 60 * 60 * 1000);
-}
-
-function getBangkokDateString(date?: Date): string {
-  const d = date || getBangkokNow();
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -37,10 +22,10 @@ Deno.serve(async (req) => {
   }
 
   const startTime = Date.now();
-  const bangkokNow = getBangkokNow();
   const today = getBangkokDateString();
   
-  console.log(`[stale-session-cleaner] Starting cleanup at ${bangkokNow.toISOString()} (Bangkok: ${today})`);
+  // ⚠️ CRITICAL: Use formatBangkokTime(new Date()) instead of getBangkokNow() to avoid double conversion
+  console.log(`[stale-session-cleaner] Starting cleanup at ${formatBangkokTime(new Date())} (Bangkok: ${today})`);
 
   try {
     // Initialize Supabase client

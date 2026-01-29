@@ -73,6 +73,20 @@ Deno.serve(async (req) => {
       throw new Error('LINE_CHANNEL_ACCESS_TOKEN not configured');
     }
     
+    // ========================================
+    // Fetch notification settings (sync with auto-checkout-midnight)
+    // ========================================
+    const { data: notifySettings } = await supabase
+      .from('attendance_settings')
+      .select('auto_checkout_notify_dm, auto_checkout_notify_group, auto_checkout_notify_admin_group, admin_line_group_id')
+      .eq('scope', 'global')
+      .maybeSingle();
+
+    const notifyDM = notifySettings?.auto_checkout_notify_dm ?? true;
+    const notifyGroup = notifySettings?.auto_checkout_notify_group ?? true;
+    const notifyAdminGroup = notifySettings?.auto_checkout_notify_admin_group ?? false;
+    const adminGroupId = notifySettings?.admin_line_group_id;
+    
     // ใช้ timezone utility แทนการ manual conversion
     const bangkokNow = getBangkokNow();
     const bangkokDateStr = getBangkokDateString();
@@ -238,8 +252,8 @@ Deno.serve(async (req) => {
         message += `📌 ระบบทำการ check-out อัตโนมัติเนื่องจากพ้นช่วง grace period แล้ว\n`;
         message += `Grace Period หมดเวลา: ${formatBangkokTime(session.auto_checkout_grace_expires_at, 'HH:mm')} น.`;
         
-        // ส่งไปพนักงาน
-        if (employee.line_user_id) {
+        // ส่งไปพนักงาน (only if enabled in settings)
+        if (notifyDM && employee.line_user_id) {
           try {
             await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
               method: 'POST',
@@ -279,8 +293,8 @@ Deno.serve(async (req) => {
           }
         }
         
-        // ส่งไปกลุ่มประกาศ (ถ้ามี)
-        if (employee.announcement_group_line_id) {
+        // ส่งไปกลุ่มประกาศ (only if enabled in settings)
+        if (notifyGroup && employee.announcement_group_line_id) {
           try {
             await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
               method: 'POST',
@@ -314,6 +328,52 @@ Deno.serve(async (req) => {
             });
           } catch (error) {
             logger.error('Failed to send notification to announcement group', { 
+              error, 
+              employeeId: employee.id 
+            });
+          }
+        }
+        
+        // ส่งไป Admin Group (only if enabled and different from announcement group)
+        if (notifyAdminGroup && adminGroupId && adminGroupId !== employee.announcement_group_line_id) {
+          try {
+            let adminMessage = `🚪 Auto Check-out (Grace Period)\n\n`;
+            adminMessage += `พนักงาน: ${employee.full_name} (${employee.code})\n`;
+            adminMessage += `เวลาออก: ${formatBangkokTime(checkoutLog.server_time, 'HH:mm')} น.\n`;
+            adminMessage += `ชั่วโมงทำงาน: ${hoursWorked} ชม.`;
+            
+            await fetchWithRetry('https://api.line.me/v2/bot/message/push', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${lineAccessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: adminGroupId,
+                messages: [{ type: 'text', text: adminMessage }]
+              })
+            });
+            
+            // Log bot message
+            await logBotMessage({
+              destinationType: 'group',
+              destinationId: adminGroupId,
+              destinationName: 'Admin Group',
+              messageType: 'notification',
+              messageText: adminMessage,
+              edgeFunctionName: 'auto-checkout-grace',
+              recipientEmployeeId: employee.id,
+              commandType: 'auto_checkout',
+              triggeredBy: 'cron',
+              deliveryStatus: 'sent'
+            });
+            
+            logger.info('Auto-checkout notification sent to admin group', { 
+              employeeId: employee.id,
+              adminGroupId 
+            });
+          } catch (error) {
+            logger.error('Failed to send notification to admin group', { 
               error, 
               employeeId: employee.id 
             });

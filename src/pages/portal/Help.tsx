@@ -16,9 +16,10 @@ import {
 } from 'lucide-react';
 
 // Static fallback FAQs (used when database is empty or has errors)
+// ⚠️ SYNC NOTE: Keep in sync with portal_faqs table content
 const STATIC_FAQS_TH = [
   { question: 'ฉันจะเช็คอินได้อย่างไร?', answer: 'กดปุ่ม "เช็คอิน/เอาท์" จาก Rich Menu หรือเมนูหลัก จากนั้นอนุญาตให้แอปเข้าถึงตำแหน่งและกล้อง แล้วถ่ายรูปยืนยัน' },
-  { question: 'ฉันลืมเช็คเอาท์ ต้องทำอย่างไร?', answer: 'ระบบจะเช็คเอาท์อัตโนมัติตอนเที่ยงคืน แต่ถ้าต้องการแก้ไขเวลา กรุณาติดต่อหัวหน้างานหรือ HR' },
+  { question: 'ฉันลืมเช็คเอาท์ ต้องทำอย่างไร?', answer: 'ไม่ต้องกังวล! ระบบจะ Check Out ให้อัตโนมัติ:\n• พนักงาน hours_based: หลัง grace period หมด\n• พนักงาน time_based: ตอนเที่ยงคืน (23:59)\n\nหากต้องการแก้ไขเวลาย้อนหลัง กรุณาติดต่อหัวหน้างานหรือ HR' },
   { question: 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?', answer: 'ระบบจะแสดง dialog ให้กรอกเหตุผล ส่งคำขอไปยังหัวหน้าอนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ' },
   { question: 'Happy Points คืออะไร?', answer: 'คะแนนสะสมจากการมาทำงานตรงเวลา ทำ OT และกิจกรรมต่างๆ สามารถนำไปแลกของรางวัลได้' },
   { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-ot ใน LINE Chat กับบอท' },
@@ -28,7 +29,7 @@ const STATIC_FAQS_TH = [
 
 const STATIC_FAQS_EN = [
   { question: 'How do I check in?', answer: 'Press "Check In/Out" from Rich Menu or main menu, allow location and camera access, then take a photo to confirm.' },
-  { question: 'I forgot to check out, what should I do?', answer: 'The system will auto check-out at midnight. If you need to modify the time, please contact your supervisor or HR.' },
+  { question: 'I forgot to check out, what should I do?', answer: 'Don\'t worry! The system will auto check-out:\n• Hours-based employees: after grace period expires\n• Time-based employees: at midnight (23:59)\n\nIf you need to modify the time retroactively, please contact your supervisor or HR.' },
   { question: 'How can I check out from outside the office?', answer: 'The system will show a dialog to enter your reason. The request will be sent to your manager for approval. Once approved, the system will automatically check you out.' },
   { question: 'What are Happy Points?', answer: 'Points earned from on-time attendance, OT, and various activities. Can be redeemed for rewards.' },
   { question: 'How can I cancel an OT request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-ot in LINE Chat.' },
