@@ -42,7 +42,8 @@ export default function AttendanceSettings() {
     birthday_reminder_line_group_id: '' as string | null,
     // Auto Checkout Notification Settings
     auto_checkout_notify_dm: true,
-    auto_checkout_notify_group: true
+    auto_checkout_notify_group: true,
+    auto_checkout_notify_admin_group: false
   });
   const [isTestingBirthday, setIsTestingBirthday] = useState(false);
 
@@ -130,7 +131,8 @@ export default function AttendanceSettings() {
         birthday_reminder_line_group_id: (settings as any).birthday_reminder_line_group_id || null,
         // Auto Checkout Notification Settings
         auto_checkout_notify_dm: (settings as any).auto_checkout_notify_dm ?? true,
-        auto_checkout_notify_group: (settings as any).auto_checkout_notify_group ?? true
+        auto_checkout_notify_group: (settings as any).auto_checkout_notify_group ?? true,
+        auto_checkout_notify_admin_group: (settings as any).auto_checkout_notify_admin_group ?? false
       });
     }
   }, [settings]);
@@ -555,6 +557,27 @@ export default function AttendanceSettings() {
               onCheckedChange={(checked) => setFormData({ ...formData, auto_checkout_notify_group: checked })}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto_checkout_notify_admin_group">ส่งแจ้งเตือนไป Admin Group</Label>
+              <p className="text-sm text-muted-foreground">
+                ส่งข้อมูล Auto Checkout ไปยัง Admin LINE Group (สำหรับ HR/Manager)
+              </p>
+            </div>
+            <Switch
+              id="auto_checkout_notify_admin_group"
+              checked={formData.auto_checkout_notify_admin_group}
+              onCheckedChange={(checked) => setFormData({ ...formData, auto_checkout_notify_admin_group: checked })}
+              disabled={!formData.admin_line_group_id}
+            />
+          </div>
+
+          {!formData.admin_line_group_id && formData.auto_checkout_notify_admin_group === false && (
+            <p className="text-sm text-amber-600">
+              ⚠️ กรุณาตั้งค่า Admin LINE Group ด้านล่างก่อนใช้งาน option นี้
+            </p>
+          )}
 
           <div className="bg-muted/50 p-4 rounded-lg space-y-2">
             <h4 className="font-medium text-sm">การตั้งค่านี้มีผลต่อ:</h4>
