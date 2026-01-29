@@ -1,169 +1,125 @@
 
-## แผนแก้ไข: Double Timezone Conversion Bug
+## แผนแก้ไข: auto-checkout-midnight ไม่ได้ update work_sessions
 
-### สรุปปัญหา
+### 🎯 Root Cause Analysis
 
-**ปัญหาที่พบ (จาก Screenshot):**
-- ระบบแสดง "เวลาปัจจุบัน: 02:02 น." 
-- แต่เวลาจริงคือ 19:03 น. Bangkok
-- ต่างกัน +7 ชั่วโมง (ข้ามวัน!)
+**ปัญหา:**
+`auto-checkout-midnight` สร้าง `attendance_logs` (check_out) แต่**ไม่ได้ update `work_sessions`** เลย!
 
-**Root Cause: Double Timezone Conversion**
+**เปรียบเทียบ 3 Functions:**
 
-```typescript
-// ❌ BUG - Double conversion!
-const bangkokNow = getBangkokNow();           // Returns "zoned" Date (19:03 internal)
-const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');  // Adds +7 again!
-// Result: 19:03 + 7 = 02:03 (next day)
+| Function | สร้าง attendance_logs | update work_sessions |
+|----------|---------------------|---------------------|
+| `attendance-submit` (checkout ปกติ) | ✅ บรรทัด 1051-1123 | ✅ ครบ |
+| `auto-checkout-grace` (hours_based) | ✅ บรรทัด 188-199 | ✅ บรรทัด 214-224 |
+| `auto-checkout-midnight` (time_based) | ✅ บรรทัด 236-251 | ❌ **ขาดหายไป!** |
 
-// ✅ CORRECT - Single conversion
-const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');  // UTC → Bangkok once
-// Result: 12:03 UTC → 19:03 Bangkok
-```
-
-**คำอธิบาย:**
-1. `getBangkokNow()` ใช้ `toZonedTime()` ซึ่ง shift internal value ของ Date object ให้เป็น Bangkok time
-2. `formatBangkokTime()` ใช้ `formatInTimeZone()` ซึ่งคาดหวัง UTC Date และ convert อีกครั้ง
-3. ผล: Convert 2 ครั้ง → เวลาผิด +7 ชั่วโมง!
+**ผลกระทบ:**
+- `work_sessions` ค้างเป็น `active` ตลอดไป
+- `actual_end_time`, `total_minutes`, `net_work_minutes` เป็น null
+- Dashboard แสดงพนักงานเข้างานอยู่ทั้งที่ checkout แล้ว
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข
+### 📋 การแก้ไข
 
-| ไฟล์ | บรรทัด | การเปลี่ยนแปลง |
-|------|--------|---------------|
-| `attendance-submit/index.ts` | 738-739 | แก้ double conversion |
-| `attendance-submit/validation.ts` | 17-19, 58-60, 119-121 | แก้ double conversion |
-| `auto-checkout-grace/index.ts` | 81-84, 332-344 | แก้ double conversion |
-| `_shared/timezone.ts` | เพิ่มใหม่ | เพิ่ม warning comments |
+#### ไฟล์ที่ต้องแก้: `supabase/functions/auto-checkout-midnight/index.ts`
+
+**เพิ่ม Logic Update Work Sessions (หลังบรรทัด 258):**
+
+```typescript
+// ✅ NEW: Update work_session to mark as auto_closed
+// Find active session for this employee on target date
+const { data: activeSession, error: sessionFetchError } = await supabase
+  .from('work_sessions')
+  .select('id, actual_start_time, break_minutes')
+  .eq('employee_id', empId)
+  .eq('work_date', targetDate)
+  .eq('status', 'active')
+  .order('created_at', { ascending: false })
+  .maybeSingle();
+
+if (activeSession && !sessionFetchError) {
+  // Calculate work duration
+  const actualStartTime = new Date(activeSession.actual_start_time);
+  const totalMinutes = Math.floor((midnightTime.getTime() - actualStartTime.getTime()) / (1000 * 60));
+  const breakMinutes = activeSession.break_minutes || 60;
+  const netWorkMinutes = Math.max(0, totalMinutes - breakMinutes);
+  
+  const { error: updateError } = await supabase
+    .from('work_sessions')
+    .update({
+      checkout_log_id: checkoutLog.id,
+      actual_end_time: midnightTime.toISOString(),
+      total_minutes: totalMinutes,
+      net_work_minutes: netWorkMinutes,
+      status: 'auto_closed', // Use auto_closed status same as auto-checkout-grace
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', activeSession.id);
+  
+  if (updateError) {
+    console.error(`[auto-checkout-midnight] Error updating work session for ${employee.full_name}:`, updateError);
+  } else {
+    console.log(`[auto-checkout-midnight] Updated work session ${activeSession.id} for ${employee.full_name}: ${(netWorkMinutes / 60).toFixed(1)}h net`);
+  }
+} else {
+  console.warn(`[auto-checkout-midnight] No active session found for ${employee.full_name} on ${targetDate}`);
+}
+```
+
+**ตำแหน่งที่เพิ่ม:**
+- หลังบรรทัด 258 (`console.log(\`[auto-checkout-midnight] Auto checked out ${employee.full_name}\`);`)
+- ก่อนการส่ง LINE notification
 
 ---
 
-### รายละเอียดการแก้ไข
+### 🔍 Technical Details
 
-#### 1. แก้ `attendance-submit/index.ts` (บรรทัด 738-739)
+**Work Session Fields ที่ต้อง Update:**
 
-**ก่อน:**
-```typescript
-const bangkokNow = getBangkokNow();
-const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
-```
+| Field | Value | คำอธิบาย |
+|-------|-------|---------|
+| `checkout_log_id` | `checkoutLog.id` | Link ไปยัง attendance_log ที่เพิ่งสร้าง |
+| `actual_end_time` | `midnightTime.toISOString()` | 23:59:59 Bangkok (16:59:59 UTC) |
+| `total_minutes` | คำนวณจาก start → end | รวมเวลาทำงานทั้งหมด |
+| `net_work_minutes` | `total_minutes - break_minutes` | หลังหักพัก |
+| `status` | `'auto_closed'` | สถานะ auto checkout |
+| `updated_at` | `new Date().toISOString()` | Timestamp update |
 
-**หลัง:**
-```typescript
-// ⚠️ Use new Date() with formatBangkokTime - NOT getBangkokNow()!
-const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
-```
-
-#### 2. แก้ `attendance-submit/validation.ts`
-
-**บรรทัด 17-19:**
-```typescript
-// ก่อน
-const bangkokNow = getBangkokNow();
-const currentTimeStr = formatBangkokTime(bangkokNow, 'HH:mm:ss');
-
-// หลัง
-const currentTimeStr = formatBangkokTime(new Date(), 'HH:mm:ss');
-```
-
-**บรรทัด 58-60:**
-```typescript
-// ก่อน
-const bangkokNow = getBangkokNow();
-const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
-
-// หลัง
-const bangkokDate = formatBangkokTime(new Date(), 'yyyy-MM-dd');
-```
-
-**บรรทัด 119-121:**
-```typescript
-// ก่อน
-const bangkokNow = toBangkokTime(new Date());
-const bangkokDate = formatBangkokTime(bangkokNow, 'yyyy-MM-dd');
-
-// หลัง
-const bangkokDate = formatBangkokTime(new Date(), 'yyyy-MM-dd');
-```
-
-#### 3. แก้ `auto-checkout-grace/index.ts`
-
-ใช้ pattern เดียวกัน - ใช้ `new Date()` แทน `getBangkokNow()` เมื่อต้อง format
-
-#### 4. เพิ่ม Warning Comments ใน `_shared/timezone.ts`
-
-```typescript
-/**
- * ⚠️⚠️⚠️ CRITICAL: DO NOT combine getBangkokNow() with formatBangkokTime() ⚠️⚠️⚠️
- * 
- * WRONG (Double conversion):
- *   const bangkokNow = getBangkokNow();
- *   formatBangkokTime(bangkokNow, 'HH:mm:ss'); // ❌ Will add +7 hours AGAIN!
- * 
- * CORRECT:
- *   formatBangkokTime(new Date(), 'HH:mm:ss'); // ✅ Single conversion
- * 
- * OR:
- *   const bangkokNow = getBangkokNow();
- *   const hours = bangkokNow.getHours();      // ✅ Direct access to zoned values
- */
-```
+**Pattern เดียวกับ `auto-checkout-grace` (บรรทัด 206-229):**
+- ใช้ `maybeSingle()` เพื่อป้องกัน error ถ้าไม่มี session
+- ใช้ status `auto_closed` แทน `completed` เพื่อแยก manual vs auto
+- Log warning ถ้าไม่เจอ session
 
 ---
 
-### Action Items เพิ่มเติม
+### ⚠️ ความเสี่ยงและการป้องกัน
 
-#### Manual Checkout สำหรับ Fern
-
-หลังแก้ bug แล้ว ต้อง manual checkout ให้ Fern ที่เวลา 19:03 (เวลาที่เธอพยายาม checkout จริง)
-
-```sql
--- Insert checkout log
-INSERT INTO attendance_logs (employee_id, branch_id, event_type, server_time, device_time, timezone, source, admin_notes)
-VALUES (
-  '0dd289e5-53ce-4928-aac6-1ba5e72c1331',
-  'd7c5e9b3-8fb4-45a6-82bb-ec2a5aca28b5',
-  'check_out',
-  '2026-01-28 12:03:00+00',  -- 19:03 Bangkok
-  '2026-01-28 12:03:00+00',
-  'Asia/Bangkok',
-  'admin',
-  'Manual checkout - System timezone bug prevented normal checkout'
-);
-
--- Update work session
-UPDATE work_sessions 
-SET actual_end_time = '2026-01-28 12:03:00+00', status = 'completed'
-WHERE id = '0f869d9d-a73f-4661-8e6f-82c33885eb05';
-```
+| ความเสี่ยง | การป้องกัน |
+|-----------|-----------|
+| Session ไม่มี | ใช้ `maybeSingle()` + log warning |
+| Error update | Try-catch + log error |
+| Duplicate update | Query `status: 'active'` เท่านั้น |
+| เวลาคำนวณผิด | ใช้ `midnightTime` เดียวกับ checkout log |
 
 ---
 
-### การป้องกันในอนาคต
-
-1. **Code Pattern Rule:**
-   - ❌ Never: `formatBangkokTime(getBangkokNow(), ...)`
-   - ❌ Never: `formatBangkokTime(toBangkokTime(...), ...)`
-   - ✅ Always: `formatBangkokTime(new Date(), ...)`
-   - ✅ Always: `formatBangkokTime(utcDate, ...)`
-
-2. **Testing:**
-   - ทดสอบ checkout หลัง deploy
-   - ตรวจสอบว่าเวลาที่แสดงตรงกับเวลาจริง
-
-3. **Deploy Edge Functions:**
-   - attendance-submit
-   - attendance-validate-token
-   - auto-checkout-grace
-
----
-
-### สรุป
+### 📊 สรุปการเปลี่ยนแปลง
 
 | รายการ | รายละเอียด |
 |--------|-----------|
-| **สาเหตุ** | Double timezone conversion (getBangkokNow + formatBangkokTime) |
-| **ผลกระทบ** | เวลาแสดงผิด +7 ชั่วโมง ทำให้ checkout ไม่ได้ |
-| **วิธีแก้** | ใช้ `formatBangkokTime(new Date(), ...)` แทน `formatBangkokTime(getBangkokNow(), ...)` |
-| **ความเสี่ยง** | ต่ำ - เป็นการ fix pattern ที่ผิด ไม่กระทบ logic อื่น |
+| **ไฟล์** | `supabase/functions/auto-checkout-midnight/index.ts` |
+| **ตำแหน่ง** | หลังบรรทัด 258 |
+| **เพิ่ม** | ~35 บรรทัด (query + update work_sessions) |
+| **Pattern** | คัดลอกจาก `auto-checkout-grace` บรรทัด 206-229 |
+| **Impact** | แก้ bug work_sessions ค้าง active หลัง midnight auto-checkout |
+
+---
+
+### ✅ หลังแก้ไข
+
+1. **Deploy** edge function `auto-checkout-midnight`
+2. **Manual Fix** สำหรับ 3 พนักงานที่ยังค้าง (Noey, Pass, ntp.冬至)
+3. **Test** รอวันถัดไปดู cron job ทำงานถูกต้อง
+
