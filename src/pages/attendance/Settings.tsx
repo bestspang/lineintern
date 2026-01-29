@@ -173,11 +173,15 @@ export default function AttendanceSettings() {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, savedData) => {
       queryClient.invalidateQueries({ queryKey: ['attendance-settings-global'] });
+      
+      // Build detailed confirmation for Auto Checkout settings
+      const autoCheckoutStatus = `Auto Checkout: ${savedData.auto_checkout_notify_dm ? 'DM ✓' : 'DM ✗'} | ${savedData.auto_checkout_notify_group ? 'Group ✓' : 'Group ✗'} | ${savedData.auto_checkout_notify_admin_group ? 'Admin ✓' : 'Admin ✗'}`;
+      
       toast({
-        title: 'Success',
-        description: 'Settings updated successfully',
+        title: 'บันทึกสำเร็จ',
+        description: autoCheckoutStatus,
       });
     },
     onError: (error: any) => {
@@ -582,7 +586,7 @@ export default function AttendanceSettings() {
           <div className="bg-muted/50 p-4 rounded-lg space-y-2">
             <h4 className="font-medium text-sm">การตั้งค่านี้มีผลต่อ:</h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-              <li>ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน</li>
+              <li>ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)</li>
               <li>เฉพาะพนักงานที่ลืม Check Out และไม่ได้ขอ OT</li>
               <li>ไม่มีผลต่อการ Checkout ปกติหรือ OT ที่อนุมัติแล้ว</li>
             </ul>
