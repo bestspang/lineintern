@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare, Cake, Send } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare, Cake, Send, Moon } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
@@ -39,7 +39,10 @@ export default function AttendanceSettings() {
     birthday_reminder_enabled: true,
     birthday_reminder_days_ahead: 7,
     birthday_reminder_time: '08:00',
-    birthday_reminder_line_group_id: '' as string | null
+    birthday_reminder_line_group_id: '' as string | null,
+    // Auto Checkout Notification Settings
+    auto_checkout_notify_dm: true,
+    auto_checkout_notify_group: true
   });
   const [isTestingBirthday, setIsTestingBirthday] = useState(false);
 
@@ -124,7 +127,10 @@ export default function AttendanceSettings() {
         birthday_reminder_enabled: (settings as any).birthday_reminder_enabled ?? true,
         birthday_reminder_days_ahead: (settings as any).birthday_reminder_days_ahead ?? 7,
         birthday_reminder_time: (settings as any).birthday_reminder_time?.substring(0, 5) || '08:00',
-        birthday_reminder_line_group_id: (settings as any).birthday_reminder_line_group_id || null
+        birthday_reminder_line_group_id: (settings as any).birthday_reminder_line_group_id || null,
+        // Auto Checkout Notification Settings
+        auto_checkout_notify_dm: (settings as any).auto_checkout_notify_dm ?? true,
+        auto_checkout_notify_group: (settings as any).auto_checkout_notify_group ?? true
       });
     }
   }, [settings]);
@@ -507,6 +513,62 @@ export default function AttendanceSettings() {
               <li>Other branches follow global settings</li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Auto Checkout Notification Settings */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Moon className="h-4 w-4 sm:h-5 sm:w-5" />
+            Auto Checkout Notification Settings
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            ควบคุมการแจ้งเตือนเมื่อระบบ Auto Checkout พนักงานตอนเที่ยงคืน
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto_checkout_notify_dm">ส่งแจ้งเตือนไปหาพนักงาน (DM)</Label>
+              <p className="text-sm text-muted-foreground">
+                แจ้งเตือนพนักงานทาง LINE เมื่อถูก Auto Checkout
+              </p>
+            </div>
+            <Switch
+              id="auto_checkout_notify_dm"
+              checked={formData.auto_checkout_notify_dm}
+              onCheckedChange={(checked) => setFormData({ ...formData, auto_checkout_notify_dm: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto_checkout_notify_group">ส่งแจ้งเตือนไปกลุ่มประกาศ</Label>
+              <p className="text-sm text-muted-foreground">
+                โพสต์ข้อมูล Auto Checkout ในกลุ่ม LINE (Branch / Announcement Group)
+              </p>
+            </div>
+            <Switch
+              id="auto_checkout_notify_group"
+              checked={formData.auto_checkout_notify_group}
+              onCheckedChange={(checked) => setFormData({ ...formData, auto_checkout_notify_group: checked })}
+            />
+          </div>
+
+          <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+            <h4 className="font-medium text-sm">การตั้งค่านี้มีผลต่อ:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li>ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน</li>
+              <li>เฉพาะพนักงานที่ลืม Check Out และไม่ได้ขอ OT</li>
+              <li>ไม่มีผลต่อการ Checkout ปกติหรือ OT ที่อนุมัติแล้ว</li>
+            </ul>
+          </div>
+
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Save className="h-4 w-4 mr-2" />
+            {saveMutation.isPending ? 'Saving...' : 'บันทึกการตั้งค่า'}
+          </Button>
         </CardContent>
       </Card>
 
