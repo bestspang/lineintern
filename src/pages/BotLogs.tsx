@@ -239,6 +239,8 @@ export default function BotLogs() {
                     <SelectItem value="attendance-reminder">attendance-reminder</SelectItem>
                     <SelectItem value="work-reminder">work-reminder</SelectItem>
                     <SelectItem value="work-summary">work-summary</SelectItem>
+                    <SelectItem value="auto-checkout-midnight">auto-checkout-midnight</SelectItem>
+                    <SelectItem value="auto-checkout-grace">auto-checkout-grace</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

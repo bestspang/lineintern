@@ -65,76 +65,35 @@ import { getBangkokNow, getBangkokDateString, formatBangkokTime } from '../_shar
 
 ---
 
-### ⚠️ Potential Issues Identified (All Low Priority)
+### ✅ Improvements Implemented (v2)
 
-#### 1. **Settings UI Description Could Be Clearer**
+#### 1. **Settings UI Description - UPDATED** ✅
 
-**Current:** "ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน"
+**Before:** "ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน"
 
-**Issue:** Doesn't mention Grace Period (hours_based employees)
+**After:** "ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)"
 
-**Suggested Update (line 585-587):**
-```typescript
-<li>ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)</li>
-```
-
-**Risk:** Very Low - Cosmetic improvement only
+**File:** `src/pages/attendance/Settings.tsx` (line 585)
 
 ---
 
-### 💡 Safe Feature Suggestions
+#### 2. **Bot Logs - Auto Checkout Filter Added** ✅
 
-#### Suggestion 1: Add "Auto Checkout Notification History" Log View
+เพิ่ม filter options สำหรับ edge functions:
+- `auto-checkout-midnight`
+- `auto-checkout-grace`
 
-**เหตุผล:** Admin อาจต้องการตรวจสอบว่าระบบส่ง notification ไปแล้วหรือยัง
-
-**Implementation:**
-- Add filter to `bot_message_logs` for `command_type = 'auto_checkout'`
-- Display in existing Bot Logs page
-
-**Risk:** Very Low - Read-only feature, uses existing data
+**File:** `src/pages/BotLogs.tsx` (line 237-244)
 
 ---
 
-#### Suggestion 2: Add Confirmation Message When Settings Saved
+#### 3. **Settings Save Confirmation - Enhanced** ✅
 
-**เหตุผล:** ปัจจุบันเมื่อ save settings จะแสดงแค่ toast ทั่วไป
+**Before:** Generic "Settings updated successfully"
 
-**Suggested Enhancement:**
-```typescript
-toast({
-  title: 'บันทึกสำเร็จ',
-  description: `Auto Checkout: ${formData.auto_checkout_notify_dm ? 'DM ✓' : 'DM ✗'} | ${formData.auto_checkout_notify_group ? 'Group ✓' : 'Group ✗'} | ${formData.auto_checkout_notify_admin_group ? 'Admin ✓' : 'Admin ✗'}`,
-});
-```
+**After:** Detailed status `Auto Checkout: DM ✓ | Group ✗ | Admin ✓`
 
-**Risk:** Very Low - UI feedback only
-
----
-
-#### Suggestion 3: Add Test Button for Auto Checkout Notification
-
-**เหตุผล:** Admin ต้องการทดสอบว่า notification ทำงานได้ก่อนใช้งานจริง (เหมือนปุ่ม "ทดสอบส่ง" ของ Birthday Reminder)
-
-**Implementation:**
-- Add "ทดสอบส่ง" button in Auto Checkout Settings card
-- Call edge function with `test: true` parameter
-- Send sample notification to Admin only
-
-**Risk:** Low - Similar pattern exists for Birthday Reminder
-
----
-
-### 📊 Summary - No Action Required
-
-| Category | Status | Notes |
-|----------|--------|-------|
-| Core Functions | ✅ All Synced | midnight + grace both respect settings |
-| Database | ✅ Up-to-date | 34 FAQs, settings columns exist |
-| UI Settings | ✅ Complete | 3 toggles functional |
-| Help/FAQs | ✅ Synced | Static fallback matches DB |
-| Routes | ✅ Valid | All Quick Actions point to valid paths |
-| Timezone | ✅ Correct | Shared utilities used properly |
+**File:** `src/pages/attendance/Settings.tsx` (line 176-186)
 
 ---
 
@@ -154,4 +113,18 @@ toast({
 - `Settings.tsx` - UI improvements, text changes
 - `Help.tsx` - Adding new Quick Actions
 - `portal_faqs` - Adding new FAQ entries
+- `BotLogs.tsx` - Adding filters
 
+---
+
+### 📊 Summary - All Improvements Complete
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Core Functions | ✅ All Synced | midnight + grace both respect settings |
+| Database | ✅ Up-to-date | 34 FAQs, settings columns exist |
+| UI Settings | ✅ Enhanced | Description clearer, toast detailed |
+| Help/FAQs | ✅ Synced | Static fallback matches DB |
+| Routes | ✅ Valid | All Quick Actions point to valid paths |
+| Timezone | ✅ Correct | Shared utilities used properly |
+| Bot Logs | ✅ Enhanced | Auto Checkout filters added |
