@@ -441,6 +441,7 @@ export type Database = {
       attendance_settings: {
         Row: {
           admin_line_group_id: string | null
+          auto_checkout_notify_admin_group: boolean | null
           auto_checkout_notify_dm: boolean | null
           auto_checkout_notify_group: boolean | null
           birthday_reminder_days_ahead: number | null
@@ -465,6 +466,7 @@ export type Database = {
         }
         Insert: {
           admin_line_group_id?: string | null
+          auto_checkout_notify_admin_group?: boolean | null
           auto_checkout_notify_dm?: boolean | null
           auto_checkout_notify_group?: boolean | null
           birthday_reminder_days_ahead?: number | null
@@ -489,6 +491,7 @@ export type Database = {
         }
         Update: {
           admin_line_group_id?: string | null
+          auto_checkout_notify_admin_group?: boolean | null
           auto_checkout_notify_dm?: boolean | null
           auto_checkout_notify_group?: boolean | null
           birthday_reminder_days_ahead?: number | null

@@ -168,14 +168,16 @@ serve(async (req) => {
     // ✅ Fetch notification settings BEFORE the loop
     const { data: notifySettings } = await supabase
       .from('attendance_settings')
-      .select('auto_checkout_notify_dm, auto_checkout_notify_group')
+      .select('auto_checkout_notify_dm, auto_checkout_notify_group, auto_checkout_notify_admin_group, admin_line_group_id')
       .eq('scope', 'global')
       .maybeSingle();
 
     const notifyDM = (notifySettings as any)?.auto_checkout_notify_dm ?? true;
     const notifyGroup = (notifySettings as any)?.auto_checkout_notify_group ?? true;
+    const notifyAdminGroup = (notifySettings as any)?.auto_checkout_notify_admin_group ?? false;
+    const adminGroupId = (notifySettings as any)?.admin_line_group_id;
 
-    console.log(`[auto-checkout-midnight] Notification settings: DM=${notifyDM}, Group=${notifyGroup}`);
+    console.log(`[auto-checkout-midnight] Notification settings: DM=${notifyDM}, Group=${notifyGroup}, AdminGroup=${notifyAdminGroup}`);
 
     let autoCheckouts = 0;
     let skippedOT = 0;
@@ -378,6 +380,36 @@ serve(async (req) => {
               messages: [{
                 type: 'text',
                 text: groupMessage
+              }]
+            })
+          },
+          { maxRetries: 2 }
+        );
+      }
+
+      // Post to Admin Group (only if enabled and different from announcement group)
+      if (notifyAdminGroup && adminGroupId && adminGroupId !== announcementGroupId) {
+        let adminMessage = `🌙 Auto Check Out: ${employee.full_name}\n`;
+        adminMessage += `⏰ 23:59 (ไม่ได้ Check Out ตามปกติ)\n`;
+        adminMessage += `📊 เวลาทำงาน: ${hoursWorked.toFixed(1)} ชม.`;
+        
+        if (overtimeHours > 0) {
+          adminMessage += `\n⚠️ OT ไม่ได้รับอนุมัติ: ${overtimeHours.toFixed(1)} ชม.`;
+        }
+
+        await fetchWithRetry(
+          'https://api.line.me/v2/bot/message/push',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${lineAccessToken}`
+            },
+            body: JSON.stringify({
+              to: adminGroupId,
+              messages: [{
+                type: 'text',
+                text: adminMessage
               }]
             })
           },
