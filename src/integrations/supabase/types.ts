@@ -5065,6 +5065,9 @@ export type Database = {
       }
       shift_assignments: {
         Row: {
+          approved_by_user_id: string | null
+          approved_late_reason: string | null
+          approved_late_start: boolean | null
           created_at: string | null
           custom_end_time: string | null
           custom_start_time: string | null
@@ -5080,6 +5083,9 @@ export type Database = {
           work_date: string
         }
         Insert: {
+          approved_by_user_id?: string | null
+          approved_late_reason?: string | null
+          approved_late_start?: boolean | null
           created_at?: string | null
           custom_end_time?: string | null
           custom_start_time?: string | null
@@ -5095,6 +5101,9 @@ export type Database = {
           work_date: string
         }
         Update: {
+          approved_by_user_id?: string | null
+          approved_late_reason?: string | null
+          approved_late_start?: boolean | null
           created_at?: string | null
           custom_end_time?: string | null
           custom_start_time?: string | null

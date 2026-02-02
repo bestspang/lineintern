@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { format, isToday, isWeekend } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
-import { Clock, Plus, MoreVertical, X, Trash2 } from 'lucide-react';
+import { Clock, Plus, MoreVertical, X, Trash2, ShieldCheck } from 'lucide-react';
 import { AttendanceMap, AttendanceByDay } from '@/hooks/useScheduleAttendance';
 import { AttendanceStatusBadge, AttendanceTimeDisplay } from '@/components/attendance/AttendanceStatusBadge';
 
@@ -47,6 +49,10 @@ type ShiftAssignment = {
   note: string | null;
   is_borrowed?: boolean;
   shift_templates?: ShiftTemplate | null;
+  // Approved Late Start feature
+  approved_late_start?: boolean;
+  approved_late_reason?: string | null;
+  approved_by_user_id?: string | null;
 };
 
 export interface ScheduleCalendarHandle {
@@ -86,6 +92,8 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
     const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
     const [customStartTime, setCustomStartTime] = useState('09:00');
     const [customEndTime, setCustomEndTime] = useState('18:00');
+    const [approvedLateStart, setApprovedLateStart] = useState(false);
+    const [approvedLateReason, setApprovedLateReason] = useState('');
     const tableRef = useRef<HTMLDivElement>(null);
     const [employeeMenuOpen, setEmployeeMenuOpen] = useState<string | null>(null);
     const exportToImage = async () => {
@@ -195,6 +203,15 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
       return assignments.find(a => a.employee_id === employeeId && a.work_date === dateStr);
     };
 
+    // Initialize approved late values when opening edit cell
+    const handleOpenEditCell = (employeeId: string, dateStr: string) => {
+      const date = new Date(dateStr);
+      const existingAssignment = getAssignment(employeeId, date);
+      setApprovedLateStart(existingAssignment?.approved_late_start || false);
+      setApprovedLateReason(existingAssignment?.approved_late_reason || '');
+      setEditingCell({ employeeId, date: dateStr });
+    };
+
     const handleShiftSelect = (employeeId: string, date: Date, value: string) => {
       const dateStr = format(date, 'yyyy-MM-dd');
       const existingAssignment = getAssignment(employeeId, date);
@@ -209,6 +226,8 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
           custom_end_time: null,
           is_day_off: true,
           day_off_type: 'regular',
+          approved_late_start: false,
+          approved_late_reason: null,
         });
       } else {
         onAssignmentChange({
@@ -220,9 +239,13 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
           custom_end_time: null,
           is_day_off: false,
           day_off_type: null,
+          approved_late_start: approvedLateStart,
+          approved_late_reason: approvedLateStart ? approvedLateReason : null,
         });
       }
       setEditingCell(null);
+      setApprovedLateStart(false);
+      setApprovedLateReason('');
     };
 
     const handleCustomTimeSelect = (employeeId: string, date: Date) => {
@@ -239,6 +262,8 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
         is_day_off: false,
         day_off_type: null,
         note: null,
+        approved_late_start: approvedLateStart,
+        approved_late_reason: approvedLateStart ? approvedLateReason : null,
       });
       setEditingCell(null);
     };
@@ -252,12 +277,46 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
 
       if (isEditing && isEditable) {
         return (
-          <Popover open={true} onOpenChange={() => setEditingCell(null)}>
+          <Popover open={true} onOpenChange={() => {
+            setEditingCell(null);
+            setApprovedLateStart(false);
+            setApprovedLateReason('');
+          }}>
             <PopoverTrigger asChild>
               <div className="w-full h-full" />
             </PopoverTrigger>
-            <PopoverContent className="w-56 p-2">
+            <PopoverContent className="w-64 p-2">
               <div className="space-y-2">
+                {/* Approved Late Start Toggle */}
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>อนุญาตเข้าสาย</span>
+                    </div>
+                    <Switch
+                      checked={approvedLateStart}
+                      onCheckedChange={setApprovedLateStart}
+                    />
+                  </div>
+                  {approvedLateStart && (
+                    <div>
+                      <Label className="text-xs text-emerald-600">เหตุผล</Label>
+                      <Textarea
+                        value={approvedLateReason}
+                        onChange={(e) => setApprovedLateReason(e.target.value)}
+                        placeholder="เช่น ทำงานกะพิเศษถึงเที่ยงคืน"
+                        className="h-16 text-sm mt-1"
+                      />
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    ⚠️ จะยังได้คะแนน Punctuality และ Streak ต่อเนื่อง
+                  </p>
+                </div>
+
+                <hr className="my-1" />
+
                 {/* Shift Templates */}
                 {shiftTemplates.length > 0 && (
                   <>
@@ -353,7 +412,7 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
               'w-full h-full flex items-center justify-center text-muted-foreground cursor-pointer hover:bg-muted/50 transition-colors',
               !isEditable && 'cursor-default'
             )}
-            onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
+            onClick={() => isEditable && handleOpenEditCell(employee.id, dateStr)}
           >
             -
           </div>
@@ -373,7 +432,7 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                     isWarning ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
                     !isEditable && 'cursor-default'
                   )}
-                  onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
+                  onClick={() => isEditable && handleOpenEditCell(employee.id, dateStr)}
                 >
                   {isWarning ? '⚠️' : '🕐'}
                 </div>
@@ -396,7 +455,7 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                     'w-full h-full flex items-center justify-center bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium cursor-pointer',
                     !isEditable && 'cursor-default'
                   )}
-                  onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
+                  onClick={() => isEditable && handleOpenEditCell(employee.id, dateStr)}
                 >
                   OFF
                 </div>
@@ -414,6 +473,7 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
       const startTime = assignment.custom_start_time || template?.start_time;
       const endTime = assignment.custom_end_time || template?.end_time;
       const isCustomTime = assignment.custom_start_time && !assignment.shift_template_id;
+      const hasApprovedLate = assignment.approved_late_start === true;
 
       // Get attendance status if enabled
       const attendanceStatus = showAttendance && getAttendanceStatus
@@ -434,13 +494,14 @@ const ScheduleCalendar = forwardRef<ScheduleCalendarHandle, ScheduleCalendarProp
                 className={cn(
                   'w-full h-full flex flex-col items-center justify-center cursor-pointer transition-colors relative',
                   !isEditable && 'cursor-default',
-                  isCustomTime && 'bg-violet-100 dark:bg-violet-900/30'
+                  isCustomTime && 'bg-violet-100 dark:bg-violet-900/30',
+                  hasApprovedLate && 'ring-2 ring-emerald-400 ring-inset'
                 )}
                 style={{
                   backgroundColor: template?.color ? `${template.color}20` : undefined,
                   color: template?.color,
                 }}
-                onClick={() => isEditable && setEditingCell({ employeeId: employee.id, date: dateStr })}
+                onClick={() => isEditable && handleOpenEditCell(employee.id, dateStr)}
               >
                 {template?.short_code ? (
                   <span className="font-medium">{template.short_code}</span>
