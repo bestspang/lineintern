@@ -386,7 +386,7 @@ serve(async (req) => {
         // Get employee's branch first
         const empResult = await supabase
           .from('employees')
-          .select('branch_id, role:employee_roles(role_name)')
+          .select('branch_id, role:employee_roles(role_key)')
           .eq('id', employee_id)
           .maybeSingle();
 

@@ -259,7 +259,7 @@ export default function EmployeeSettings() {
             id,
             name
           ),
-          employee_role:employee_roles!role_id(id, name, priority)
+          employee_role:employee_roles!role_id(id, role_key, priority)
         `)
         .eq("id", id)
         .single();
