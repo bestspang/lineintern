@@ -1,117 +1,149 @@
 
 
-## แผนดำเนินการ - แก้ไข Points Noey + ส่งประกาศ + Feature ป้องกันอนาคต
+## แผนแก้ไข - เพิ่ม Toggle "อนุญาตเข้าสาย" ใน AttendanceEditDialog
 
-### ส่วนที่ 1: Database Migration - แก้ไขคะแนน Noey
+### ปัญหาที่พบ
+Toggle "อนุญาตเข้าสาย" ถูกเพิ่มใน `ScheduleCalendar.tsx` (หน้าจัดกะล่วงหน้า) แต่ไม่ได้เพิ่มใน `AttendanceEditDialog.tsx` (หน้าแก้ไขข้อมูลย้อนหลัง) ที่ user กำลังใช้งาน
 
-```sql
--- 1. เพิ่ม Attendance Adjustment สำหรับวันที่ 30 ม.ค.
-INSERT INTO attendance_adjustments (
-  employee_id,
-  adjustment_date,
-  override_status,
-  reason,
-  adjusted_by_user_id
-) VALUES (
-  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
-  '2026-01-30',
-  'on_time',
-  'Owner approved late start - ทำงานกะพิเศษถึงเที่ยงคืน',
-  (SELECT id FROM auth.users LIMIT 1)
-);
+| Component | มี Toggle? | ใช้สำหรับ |
+|-----------|-----------|----------|
+| ScheduleCalendar | ✅ มี | จัดกะล่วงหน้า |
+| AttendanceEditDialog | ❌ ไม่มี | แก้ไขข้อมูลย้อนหลัง (screenshot) |
 
--- 2. เพิ่ม Punctuality Bonus ย้อนหลัง
-INSERT INTO point_transactions (
-  employee_id,
-  transaction_type,
-  category,
-  amount,
-  description,
-  metadata
-) VALUES (
-  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
-  'bonus',
-  'attendance',
-  10,
-  '🕐 Punctuality bonus - 30 ม.ค. 69',
-  '{"reference_date": "2026-01-30", "manual_adjustment": true}'
-);
+---
 
--- 3. เพิ่ม Streak Bonus 15 วัน
-INSERT INTO point_transactions (
-  employee_id,
-  transaction_type,
-  category,
-  amount,
-  description,
-  metadata
-) VALUES (
-  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
-  'bonus',
-  'streak',
-  50,
-  '🔥 มาเช้าต่อเนื่อง 15 วัน! (30 ม.ค.)',
-  '{"streak_days": 15, "manual_adjustment": true, "original_date": "2026-01-30"}'
-);
+### การแก้ไข
 
--- 4. อัพเดท happy_points
-UPDATE happy_points
-SET 
-  point_balance = point_balance + 60,
-  total_earned = total_earned + 60,
-  current_punctuality_streak = 4,
-  longest_punctuality_streak = GREATEST(longest_punctuality_streak, 15),
-  updated_at = NOW()
-WHERE employee_id = 'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af';
+#### 1. เพิ่ม State และ Import ใน AttendanceEditDialog.tsx
+
+```tsx
+// เพิ่ม import
+import { Switch } from "@/components/ui/switch";
+import { ShieldCheck } from "lucide-react";
+
+// เพิ่ม state
+const [approvedLateStart, setApprovedLateStart] = useState(false);
+const [approvedLateReason, setApprovedLateReason] = useState('');
+```
+
+#### 2. เพิ่ม UI Section (หลัง Status Selection, ก่อน Time Fields)
+
+```tsx
+{/* Approved Late Start Toggle - แสดงเมื่อเลือกสถานะ "มาทำงาน" */}
+{selectedStatus === 'present' && (
+  <>
+    <Separator />
+    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            อนุญาตเข้าสาย
+          </Label>
+        </div>
+        <Switch
+          checked={approvedLateStart}
+          onCheckedChange={setApprovedLateStart}
+        />
+      </div>
+      {approvedLateStart && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-emerald-600">เหตุผล</Label>
+          <Textarea
+            value={approvedLateReason}
+            onChange={(e) => setApprovedLateReason(e.target.value)}
+            placeholder="เช่น ทำงานกะพิเศษถึงเที่ยงคืน"
+            className="min-h-[60px] text-sm"
+          />
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        ⚠️ พนักงานจะยังได้รับคะแนน Punctuality และ Streak ต่อเนื่อง
+      </p>
+    </div>
+  </>
+)}
+```
+
+#### 3. อัพเดท Save Logic
+
+เพิ่ม `approved_late_start` และ `approved_late_reason` ใน adjustment data:
+
+```tsx
+const adjustmentData = {
+  // ... existing fields
+  override_status: approvedLateStart ? 'on_time' : (selectedStatus || null),
+  approved_late_start: approvedLateStart,
+  approved_late_reason: approvedLateStart ? approvedLateReason : null,
+};
+```
+
+#### 4. อัพเดท useEffect - Initialize State
+
+```tsx
+useEffect(() => {
+  if (existingAdjustment) {
+    // ... existing code
+    setApprovedLateStart(existingAdjustment.approved_late_start || false);
+    setApprovedLateReason(existingAdjustment.approved_late_reason || '');
+  } else {
+    // ... reset
+    setApprovedLateStart(false);
+    setApprovedLateReason('');
+  }
+}, [existingAdjustment, currentData, open]);
 ```
 
 ---
 
-### ส่วนที่ 2: ส่งประกาศ LINE (ตามที่ user ระบุ)
+### ไฟล์ที่ต้องแก้ไข
 
-**สร้าง Broadcast Entry:**
-
-| Field | Value |
-|-------|-------|
-| title | สรุป Points - Noey |
-| message_type | text |
-| content | `📢 สรุป Points\n\n👤 Noey\n📅 วันที่ 30 ม.ค. 2569\n\n✅ น่ารักที่สุด!!!! \n✅ มาเช้าต่อเนื่องเป๊ะๆครบ 15 วัน เอาไปเลย +50 คะแนน\n` |
-| status | scheduled |
-| recipients | Group: Glowfish Office |
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|---------------|
+| `src/components/attendance/AttendanceEditDialog.tsx` | เพิ่ม toggle, state, และ save logic |
 
 ---
 
-### ส่วนที่ 3: Feature "Approved Late Start"
+### ผลลัพธ์ที่คาดหวัง
 
-#### 3.1 Database Schema Change
-
-```sql
-ALTER TABLE shift_assignments
-ADD COLUMN IF NOT EXISTS approved_late_start BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS approved_late_reason TEXT,
-ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES auth.users(id);
+**Before:**
+```
+┌─────────────────────────────────────┐
+│ แก้ไขข้อมูลวันที่ 30 มกราคม         │
+├─────────────────────────────────────┤
+│ สถานะ: [○ มาทำงาน] [○ ลา...]       │
+├─────────────────────────────────────┤
+│ เวลาเข้า-ออก: [____] [____]        │  ← ไม่มี toggle
+├─────────────────────────────────────┤
+│ เหตุผล: [________________]          │
+└─────────────────────────────────────┘
 ```
 
-#### 3.2 Edge Functions Updates
-
-| File | Changes |
-|------|---------|
-| `point-attendance-calculator/index.ts` | Check `approved_late_start` flag |
-| `point-streak-calculator/index.ts` | Don't break streak if approved |
-
-#### 3.3 UI Updates
-
-| File | Changes |
-|------|---------|
-| `src/pages/attendance/Schedules.tsx` | เพิ่ม toggle "อนุญาตเข้างานสาย" |
-| `src/components/attendance/ScheduleCalendar.tsx` | แสดง indicator เมื่อมีการอนุญาต |
+**After:**
+```
+┌─────────────────────────────────────┐
+│ แก้ไขข้อมูลวันที่ 30 มกราคม         │
+├─────────────────────────────────────┤
+│ สถานะ: [● มาทำงาน] [○ ลา...]       │
+├─────────────────────────────────────┤
+│ ┌───────────────────────────────┐   │
+│ │ 🛡️ อนุญาตเข้าสาย      [ON] │   │  ← Toggle ใหม่!
+│ │ เหตุผล: [กะพิเศษถึงเที่ยงคืน]│   │
+│ │ ⚠️ ยังได้คะแนน Punctuality  │   │
+│ └───────────────────────────────┘   │
+├─────────────────────────────────────┤
+│ เวลาเข้า-ออก: [13:30] [00:15]      │
+├─────────────────────────────────────┤
+│ เหตุผล: [________________]          │
+└─────────────────────────────────────┘
+```
 
 ---
 
-### ลำดับการทำงาน
+### หมายเหตุ
 
-1. **Database Migration** - แก้ไขคะแนน Noey + เพิ่ม columns ใหม่
-2. **Broadcast** - สร้าง broadcast entry และ trigger ส่ง
-3. **Edge Functions** - อัพเดท logic
-4. **UI** - เพิ่มฟีเจอร์ approve late ในหน้า Schedules
+เมื่อเปิด toggle "อนุญาตเข้าสาย":
+- `override_status` จะถูกบันทึกเป็น `on_time` (แทนที่ `present` ปกติ)
+- ระบบคำนวณ points จะมองว่าพนักงานมาตรงเวลา
+- Streak จะไม่ถูก reset
 
