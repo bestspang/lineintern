@@ -1269,10 +1269,25 @@ serve(async (req) => {
     const announcementGroupId = token.employee.announcement_group_line_id || 
                                  token.employee.branch?.line_group_id;
 
+    // Fetch streak info for checkout message
+    let streakInfo = '';
+    if (token.type === 'check_out') {
+      const { data: happyPointsData } = await supabase
+        .from('happy_points')
+        .select('current_punctuality_streak')
+        .eq('employee_id', token.employee.id)
+        .maybeSingle();
+      
+      const currentStreak = happyPointsData?.current_punctuality_streak || 0;
+      if (currentStreak > 0) {
+        streakInfo = `\n🔥 มาตรงเวลา ${currentStreak} days streak!`;
+      }
+    }
+
     if (announcementGroupId) {
       const flagIcon = isFlagged ? '⚠️ ' : '';
       const remoteIcon = isRemoteCheckin ? '🌐 ' : '';
-      let groupMessage = `${flagIcon}${remoteIcon}คุณ ${token.employee.full_name} ${actionText}${isRemoteCheckin ? ' (Remote)' : ''} เวลา ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}`;
+      let groupMessage = `${flagIcon}${remoteIcon}คุณ ${token.employee.full_name} ${actionText}${isRemoteCheckin ? ' (Remote)' : ''} เวลา ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${streakInfo}`;
       
       // Add Google Maps link for remote check-ins
       if (isRemoteCheckin && latitude && longitude) {
