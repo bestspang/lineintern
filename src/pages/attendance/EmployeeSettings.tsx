@@ -210,7 +210,32 @@ export default function EmployeeSettings() {
   const [workSchedule, setWorkSchedule] = useState<WorkScheduleDay[]>([...defaultWorkSchedule]);
 
   // Check if current user is admin/owner
-  const { hasFullAccess } = useUserRole();
+  const { hasFullAccess, canManageEmployee } = useUserRole();
+
+  // Query current user's employee ID for permission check
+  const { data: currentUserEmployee } = useQuery({
+    queryKey: ['current-user-employee-settings'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('line_user_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (lineUser?.line_user_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('line_user_id', lineUser.line_user_id)
+          .maybeSingle();
+        return employee;
+      }
+      return null;
+    }
+  });
 
   // Fetch employee data
   const { data: employee, isLoading } = useQuery({
@@ -223,7 +248,8 @@ export default function EmployeeSettings() {
           branch:branches!branch_id (
             id,
             name
-          )
+          ),
+          employee_role:employee_roles!role_id(id, name, priority)
         `)
         .eq("id", id)
         .single();
@@ -232,6 +258,20 @@ export default function EmployeeSettings() {
       return data;
     },
   });
+
+  // Permission check - redirect if not allowed
+  useEffect(() => {
+    if (employee && currentUserEmployee !== undefined) {
+      const isSelf = currentUserEmployee?.id === employee.id;
+      const empPriority = (employee as any).employee_role?.priority ?? 0;
+      const { canView } = canManageEmployee(empPriority, isSelf);
+      
+      if (!canView) {
+        toast.error("คุณไม่มีสิทธิ์เข้าถึงข้อมูลของพนักงานท่านนี้");
+        navigate('/attendance/employees');
+      }
+    }
+  }, [employee, currentUserEmployee, canManageEmployee, navigate]);
 
   // Fetch payroll settings
   const { data: payrollSettings } = useQuery({

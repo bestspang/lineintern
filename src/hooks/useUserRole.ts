@@ -151,10 +151,11 @@ export function useUserRole() {
     const myMaxPriority = userToMaxEmployeeRolePriority[roleData];
     const targetPriority = employeeRolePriority ?? 0;
     
-    // If self: can view but not edit
-    if (isSelf) {
-      return { canEdit: false, canView: true };
-    }
+  // For other roles: if self, cannot view or edit (audit control)
+  // Admin/Owner already handled above, so they CAN manage themselves
+  if (isSelf) {
+    return { canEdit: false, canView: false };
+  }
     
     // If target priority is higher than what we can manage: no access
     if (targetPriority > myMaxPriority) {

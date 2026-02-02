@@ -1,6 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserRole } from '@/hooks/useUserRole';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +46,32 @@ export default function EmployeeDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { canManageEmployee } = useUserRole();
+
+  // Query current user's employee ID for permission check
+  const { data: currentUserEmployee } = useQuery({
+    queryKey: ['current-user-employee-detail'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('line_user_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (lineUser?.line_user_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('line_user_id', lineUser.line_user_id)
+          .maybeSingle();
+        return employee;
+      }
+      return null;
+    }
+  });
 
   const { data: employee, isLoading: employeeLoading } = useQuery({
     queryKey: ['employee', id],
@@ -51,7 +80,8 @@ export default function EmployeeDetail() {
         .from('employees')
         .select(`
           *,
-          branch:branches!branch_id(id, name, address)
+          branch:branches!branch_id(id, name, address),
+          employee_role:employee_roles!role_id(id, name, priority)
         `)
         .eq('id', id)
         .maybeSingle();
@@ -60,6 +90,24 @@ export default function EmployeeDetail() {
       return data;
     }
   });
+
+  // Permission check - redirect if not allowed
+  useEffect(() => {
+    if (employee && currentUserEmployee !== undefined) {
+      const isSelf = currentUserEmployee?.id === employee.id;
+      const empPriority = (employee as any).employee_role?.priority ?? 0;
+      const { canView } = canManageEmployee(empPriority, isSelf);
+      
+      if (!canView) {
+        toast({
+          title: "ไม่มีสิทธิ์เข้าถึง",
+          description: "คุณไม่มีสิทธิ์เข้าถึงข้อมูลของพนักงานท่านนี้",
+          variant: "destructive"
+        });
+        navigate('/attendance/employees');
+      }
+    }
+  }, [employee, currentUserEmployee, canManageEmployee, navigate, toast]);
 
   const { data: lineUser } = useQuery({
     queryKey: ['line-user', employee?.line_user_id],
