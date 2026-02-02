@@ -1,249 +1,117 @@
 
 
-## แผนปรับปรุง Direct Messages - แก้ปัญหาความซ้ำซ้อนและพื้นที่เสียเปล่า
+## แผนดำเนินการ - แก้ไข Points Noey + ส่งประกาศ + Feature ป้องกันอนาคต
 
-### ปัญหาที่พบจาก Screenshot
+### ส่วนที่ 1: Database Migration - แก้ไขคะแนน Noey
 
-| ปัญหา | รายละเอียด | ความรุนแรง |
-|-------|-----------|-----------|
-| **Header ซ้ำซ้อน** | "แชท" แสดง 2 ครั้งพร้อม icon เดียวกัน | สูง |
-| **พื้นที่ว่างด้านบน** | Header รวม ~150px ก่อนถึงเนื้อหา | สูง |
-| **Empty state ซ้ำ** | แสดงข้อความ "เลือกการสนทนา" ทั้งกลางและขวา | กลาง |
-| **Info panel ว่างเปล่า** | แสดงแม้ไม่ได้เลือกการสนทนา | กลาง |
-| **Double border** | border-r ซ้ำทั้งใน List และ wrapper | ต่ำ |
+```sql
+-- 1. เพิ่ม Attendance Adjustment สำหรับวันที่ 30 ม.ค.
+INSERT INTO attendance_adjustments (
+  employee_id,
+  adjustment_date,
+  override_status,
+  reason,
+  adjusted_by_user_id
+) VALUES (
+  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
+  '2026-01-30',
+  'on_time',
+  'Owner approved late start - ทำงานกะพิเศษถึงเที่ยงคืน',
+  (SELECT id FROM auth.users LIMIT 1)
+);
 
----
+-- 2. เพิ่ม Punctuality Bonus ย้อนหลัง
+INSERT INTO point_transactions (
+  employee_id,
+  transaction_type,
+  category,
+  amount,
+  description,
+  metadata
+) VALUES (
+  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
+  'bonus',
+  'attendance',
+  10,
+  '🕐 Punctuality bonus - 30 ม.ค. 69',
+  '{"reference_date": "2026-01-30", "manual_adjustment": true}'
+);
 
-### การออกแบบใหม่
+-- 3. เพิ่ม Streak Bonus 15 วัน
+INSERT INTO point_transactions (
+  employee_id,
+  transaction_type,
+  category,
+  amount,
+  description,
+  metadata
+) VALUES (
+  'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af',
+  'bonus',
+  'streak',
+  50,
+  '🔥 มาเช้าต่อเนื่อง 15 วัน! (30 ม.ค.)',
+  '{"streak_days": 15, "manual_adjustment": true, "original_date": "2026-01-30"}'
+);
 
-**Before (ปัจจุบัน):**
-```
-┌────────────────────────────────────────────────────────┐
-│ 💬 แชท                                  [ซ่อนข้อมูล]  │  ← Header #1
-│ สนทนากับผู้ใช้ LINE พร้อมบันทึก...                      │
-├────────────────────────────────────────────────────────┤
-│ 💬 แชท  (10)                                          │  ← Header #2 (ซ้ำ!)
-│ [🔍 ค้นหา...]                                          │
-│ [ทั้งหมด] [พนักงาน] [ภายนอก]                           │
-├────────┬─────────────────────────┬─────────────────────┤
-│ List   │  เลือกการสนทนา...       │ เลือกการสนทนา...    │  ← Empty ซ้ำกัน!
-└────────┴─────────────────────────┴─────────────────────┘
-```
-
-**After (ใหม่):**
-```
-┌────────────────────────────────────────────────────────┐
-│ 💬 แชท (10)    [🔍 ค้นหา...]    [ซ่อน/แสดงข้อมูล] │  ← Compact header
-│ [ทั้งหมด] [พนักงาน] [ภายนอก]                           │
-├────────┬───────────────────────────────────────────────┤
-│        │                                               │
-│  List  │         เลือกการสนทนาเพื่อเริ่มแชท            │  ← Empty เดียว
-│        │                                               │    (Info panel ซ่อนไว้)
-│        │                                               │
-└────────┴───────────────────────────────────────────────┘
-```
-
----
-
-### การเปลี่ยนแปลง
-
-#### 1. DirectMessages.tsx - ลบ Page Header
-
-**ลบทิ้ง:**
-```tsx
-// ลบ header section นี้ทั้งหมด (line 187-209)
-<div className="flex items-center justify-between px-6 py-4 border-b">
-  <div>
-    <h1>แชท</h1>
-    <p>สนทนากับ...</p>
-  </div>
-  <Button>ซ่อนข้อมูล</Button>
-</div>
-```
-
-**เหลือแค่:**
-```tsx
-<div className="h-[calc(100vh-64px)] flex overflow-hidden">
-  {/* 3 columns layout โดยไม่มี header */}
-</div>
-```
-
-#### 2. ConversationList.tsx - ปรับเป็น Compact Header
-
-**รวม toggle button เข้ามาใน ConversationList:**
-```tsx
-interface ConversationListProps {
-  // ... existing props
-  showInfoPanel?: boolean;
-  onToggleInfoPanel?: () => void;
-}
-
-// Header section ใหม่
-<div className="p-3 space-y-2">
-  {/* Row 1: Title + Search + Toggle */}
-  <div className="flex items-center gap-2">
-    <div className="flex items-center gap-2 shrink-0">
-      <MessageSquare className="h-5 w-5 text-primary" />
-      <span className="font-semibold">แชท</span>
-      <Badge variant="secondary">{conversations.length}</Badge>
-    </div>
-    
-    {/* Compact search */}
-    <div className="relative flex-1">
-      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5" />
-      <Input placeholder="ค้นหา..." className="h-8 pl-7 text-sm" />
-    </div>
-    
-    {/* Toggle button (desktop only) */}
-    {onToggleInfoPanel && (
-      <Button variant="ghost" size="icon" className="h-8 w-8">
-        {showInfoPanel ? <PanelRightClose /> : <PanelRight />}
-      </Button>
-    )}
-  </div>
-  
-  {/* Row 2: Filter tabs */}
-  <Tabs ...>
-    <TabsList className="h-7">
-      <TabsTrigger className="text-xs h-6">ทั้งหมด</TabsTrigger>
-      ...
-    </TabsList>
-  </Tabs>
-</div>
-```
-
-#### 3. Info Panel - ซ่อนเมื่อไม่มี Selection
-
-**ก่อน:**
-```tsx
-{showInfoPanel && (
-  <div className="w-80 ...">
-    <EmployeeInfoCard conversation={selectedConversation} />  {/* แสดง empty state */}
-  </div>
-)}
-```
-
-**หลัง:**
-```tsx
-{showInfoPanel && selectedConversation && (
-  <div className="w-80 ...">
-    <EmployeeInfoCard conversation={selectedConversation} />
-  </div>
-)}
-```
-
-#### 4. EmployeeInfoCard.tsx - ลบ Empty State
-
-**ลบ section นี้:**
-```tsx
-// ลบออก - ไม่จำเป็นเพราะจะไม่แสดง component เลยถ้าไม่มี conversation
-if (!conversation) {
-  return (
-    <div className="p-4 text-center ...">
-      <User className="h-8 w-8 ..." />
-      <p>เลือกการสนทนาเพื่อดูข้อมูล</p>
-    </div>
-  );
-}
-```
-
-#### 5. ConversationList.tsx - ลบ border-r ที่ซ้ำ
-
-**ก่อน:**
-```tsx
-<div className="flex flex-col h-full border-r">  {/* ซ้ำกับ parent */}
-```
-
-**หลัง:**
-```tsx
-<div className="flex flex-col h-full">  {/* ลบ border-r */}
+-- 4. อัพเดท happy_points
+UPDATE happy_points
+SET 
+  point_balance = point_balance + 60,
+  total_earned = total_earned + 60,
+  current_punctuality_streak = 4,
+  longest_punctuality_streak = GREATEST(longest_punctuality_streak, 15),
+  updated_at = NOW()
+WHERE employee_id = 'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af';
 ```
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข
+### ส่วนที่ 2: ส่งประกาศ LINE (ตามที่ user ระบุ)
 
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `src/pages/DirectMessages.tsx` | ลบ page header, ปรับ layout, pass toggle props |
-| `src/components/dm/ConversationList.tsx` | รับ toggle props, compact header, ลบ border-r |
-| `src/components/dm/EmployeeInfoCard.tsx` | ลบ empty state (return null แทน) |
+**สร้าง Broadcast Entry:**
 
----
-
-### Visual Comparison
-
-**พื้นที่ที่ได้คืน:**
-
-| ส่วน | Before | After | ประหยัด |
-|------|--------|-------|--------|
-| Page header | 80px | 0px | 80px |
-| List header | 110px | 70px | 40px |
-| **รวม** | **190px** | **70px** | **120px** |
-
-**ลดความซ้ำซ้อน:**
-- ❌ "แชท" แสดง 2 ครั้ง → ✅ แสดง 1 ครั้ง
-- ❌ Empty state 2 ที่ → ✅ แสดง 1 ที่ (กลางเท่านั้น)
-- ❌ Double border → ✅ Single border
+| Field | Value |
+|-------|-------|
+| title | สรุป Points - Noey |
+| message_type | text |
+| content | `📢 สรุป Points\n\n👤 Noey\n📅 วันที่ 30 ม.ค. 2569\n\n✅ น่ารักที่สุด!!!! \n✅ มาเช้าต่อเนื่องเป๊ะๆครบ 15 วัน เอาไปเลย +50 คะแนน\n` |
+| status | scheduled |
+| recipients | Group: Glowfish Office |
 
 ---
 
-### รายละเอียดทางเทคนิค
+### ส่วนที่ 3: Feature "Approved Late Start"
 
-#### ConversationList Props Update
-```typescript
-interface ConversationListProps {
-  conversations: ConversationItem[];
-  selectedId: string | null;
-  onSelect: (conversation: ConversationItem) => void;
-  isLoading: boolean;
-  // New props
-  showInfoPanel?: boolean;
-  onToggleInfoPanel?: () => void;
-}
+#### 3.1 Database Schema Change
+
+```sql
+ALTER TABLE shift_assignments
+ADD COLUMN IF NOT EXISTS approved_late_start BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS approved_late_reason TEXT,
+ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES auth.users(id);
 ```
 
-#### DirectMessages Layout Update
-```tsx
-// Desktop view
-<div className="h-[calc(100vh-64px)] flex overflow-hidden">
-  {/* Left: Conversation list with integrated header */}
-  <div className="w-80 shrink-0 border-r">
-    <ConversationList
-      conversations={conversations}
-      selectedId={selectedConversation?.id || null}
-      onSelect={handleSelectConversation}
-      isLoading={isLoading}
-      showInfoPanel={showInfoPanel}
-      onToggleInfoPanel={() => setShowInfoPanel(!showInfoPanel)}
-    />
-  </div>
+#### 3.2 Edge Functions Updates
 
-  {/* Center: Chat panel */}
-  <div className="flex-1 flex flex-col min-w-0">
-    <ChatPanel conversation={selectedConversation} />
-  </div>
+| File | Changes |
+|------|---------|
+| `point-attendance-calculator/index.ts` | Check `approved_late_start` flag |
+| `point-streak-calculator/index.ts` | Don't break streak if approved |
 
-  {/* Right: Info panel - ONLY when has selection */}
-  {showInfoPanel && selectedConversation && (
-    <div className="w-72 shrink-0 border-l bg-muted/30 overflow-y-auto">
-      <EmployeeInfoCard conversation={selectedConversation} />
-      <EmployeeNotes conversation={selectedConversation} />
-    </div>
-  )}
-</div>
-```
+#### 3.3 UI Updates
+
+| File | Changes |
+|------|---------|
+| `src/pages/attendance/Schedules.tsx` | เพิ่ม toggle "อนุญาตเข้างานสาย" |
+| `src/components/attendance/ScheduleCalendar.tsx` | แสดง indicator เมื่อมีการอนุญาต |
 
 ---
 
-### ผลลัพธ์ที่คาดหวัง
+### ลำดับการทำงาน
 
-| ด้าน | Before | After |
-|------|--------|-------|
-| **Header** | ซ้ำ 2 ชั้น | 1 ชั้น compact |
-| **พื้นที่แนวตั้ง** | เสีย ~120px | ได้คืน |
-| **Empty state** | ซ้ำ 2 ที่ | 1 ที่ (center only) |
-| **Info panel ว่าง** | แสดงตลอด | ซ่อนเมื่อไม่มี selection |
-| **ความซับซ้อน** | สูง | ลดลง |
-| **First impression** | ดูรก | สะอาดตา |
+1. **Database Migration** - แก้ไขคะแนน Noey + เพิ่ม columns ใหม่
+2. **Broadcast** - สร้าง broadcast entry และ trigger ส่ง
+3. **Edge Functions** - อัพเดท logic
+4. **UI** - เพิ่มฟีเจอร์ approve late ในหน้า Schedules
 
