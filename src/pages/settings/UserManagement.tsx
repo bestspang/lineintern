@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User, Briefcase, Eye, Mail, Copy, Check, ChevronsUpDown } from 'lucide-react';
+import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User, Briefcase, Eye, Mail, Copy, Check, ChevronsUpDown, Plus, KeyRound } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { format } from 'date-fns';
@@ -44,12 +44,22 @@ export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCreateAccountDialogOpen, setIsCreateAccountDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [selectedRole, setSelectedRole] = useState<AppRole>('admin');
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [userSelectorOpen, setUserSelectorOpen] = useState(false);
+  
+  // Create account form state
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  const [employeeSelectorOpen, setEmployeeSelectorOpen] = useState(false);
+  const [createEmail, setCreateEmail] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [createConfirmPassword, setCreateConfirmPassword] = useState('');
+  const [createRole, setCreateRole] = useState<AppRole>('field');
+  
   const queryClient = useQueryClient();
   const { isAdmin } = useAdminRole();
 
@@ -69,6 +79,20 @@ export default function UserManagement() {
       const { data, error } = await supabase.rpc('get_all_webapp_users');
       if (error) throw error;
       return data as UserWithRole[];
+    },
+  });
+
+  // Fetch employees for create account dropdown
+  const { data: employees } = useQuery({
+    queryKey: ['employees-for-account-creation'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, code, full_name, is_active')
+        .eq('is_active', true)
+        .order('code', { ascending: true });
+      if (error) throw error;
+      return data as Array<{ id: string; code: string | null; full_name: string; is_active: boolean }>;
     },
   });
 
@@ -143,7 +167,83 @@ export default function UserManagement() {
     },
   });
 
-  const filteredUsers = usersWithRoles?.filter(user => 
+  // Create account from employee mutation
+  const createAccountMutation = useMutation({
+    mutationFn: async ({ employee_id, email, password, role }: { 
+      employee_id: string; 
+      email: string; 
+      password: string; 
+      role: AppRole;
+    }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      const response = await supabase.functions.invoke('admin-create-user', {
+        body: { employee_id, email, password, role },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'ไม่สามารถสร้าง Account ได้');
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(`สร้าง Account สำเร็จสำหรับ ${data.user?.employee?.full_name || data.user?.email}`);
+      queryClient.invalidateQueries({ queryKey: ['webapp-users-with-roles'] });
+      resetCreateAccountForm();
+      setIsCreateAccountDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(`เกิดข้อผิดพลาด: ${error.message}`);
+    },
+  });
+
+  const resetCreateAccountForm = () => {
+    setSelectedEmployeeId('');
+    setCreateEmail('');
+    setCreatePassword('');
+    setCreateConfirmPassword('');
+    setCreateRole('field');
+  };
+
+  const handleCreateAccount = () => {
+    if (!selectedEmployeeId) {
+      toast.error('กรุณาเลือกพนักงาน');
+      return;
+    }
+    if (!createEmail) {
+      toast.error('กรุณากรอก Email');
+      return;
+    }
+    if (!createPassword) {
+      toast.error('กรุณากรอก Password');
+      return;
+    }
+    if (createPassword.length < 6) {
+      toast.error('Password ต้องมีอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+    if (createPassword !== createConfirmPassword) {
+      toast.error('Password และ Confirm Password ไม่ตรงกัน');
+      return;
+    }
+    
+    createAccountMutation.mutate({
+      employee_id: selectedEmployeeId,
+      email: createEmail,
+      password: createPassword,
+      role: createRole,
+    });
+  };
+
+  const filteredUsers = usersWithRoles?.filter(user =>
     user.user_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.role && user.role.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -207,20 +307,25 @@ export default function UserManagement() {
                 กำหนด Role สำหรับผู้ใช้งานระบบ Admin Dashboard
               </CardDescription>
             </div>
-            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-              setIsAddDialogOpen(open);
-              if (!open) {
-                setSelectedUserId('');
-                setNewUserEmail('');
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  เพิ่มผู้ใช้
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsCreateAccountDialogOpen(true)}>
+                <KeyRound className="h-4 w-4 mr-2" />
+                สร้าง Account จากพนักงาน
+              </Button>
+              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                setIsAddDialogOpen(open);
+                if (!open) {
+                  setSelectedUserId('');
+                  setNewUserEmail('');
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    เพิ่มผู้ใช้
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
                 <DialogHeader>
                   <DialogTitle>เพิ่ม Role ให้ผู้ใช้</DialogTitle>
                   <DialogDescription>
@@ -314,6 +419,7 @@ export default function UserManagement() {
               </DialogContent>
             </Dialog>
           </div>
+        </div>
         </CardHeader>
         <CardContent>
           {/* Search */}
@@ -516,6 +622,145 @@ export default function UserManagement() {
             </Button>
             <Button onClick={handleEditRole} disabled={updateRoleMutation.isPending}>
               {updateRoleMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Account from Employee Dialog */}
+      <Dialog open={isCreateAccountDialogOpen} onOpenChange={(open) => {
+        setIsCreateAccountDialogOpen(open);
+        if (!open) resetCreateAccountForm();
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              สร้าง Account จากพนักงาน
+            </DialogTitle>
+            <DialogDescription>
+              สร้าง Account สำหรับเข้าใช้งาน Dashboard จากรายชื่อพนักงานในระบบ
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>เลือกพนักงาน</Label>
+              <Popover open={employeeSelectorOpen} onOpenChange={setEmployeeSelectorOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={employeeSelectorOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {selectedEmployeeId ? (
+                      <span className="truncate">
+                        {(() => {
+                          const emp = employees?.find(e => e.id === selectedEmployeeId);
+                          return emp ? `${emp.code || '-'} - ${emp.full_name}` : 'เลือกพนักงาน...';
+                        })()}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">เลือกพนักงาน...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[350px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="ค้นหารหัสหรือชื่อพนักงาน..." />
+                    <CommandList>
+                      <CommandEmpty>ไม่พบพนักงาน</CommandEmpty>
+                      <CommandGroup>
+                        {employees?.map(emp => (
+                          <CommandItem
+                            key={emp.id}
+                            value={`${emp.code || ''} ${emp.full_name}`}
+                            onSelect={() => {
+                              setSelectedEmployeeId(emp.id);
+                              setEmployeeSelectorOpen(false);
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{emp.full_name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                รหัส: {emp.code || '-'}
+                              </span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-email">Email</Label>
+              <Input
+                id="create-email"
+                type="email"
+                placeholder="example@company.com"
+                value={createEmail}
+                onChange={(e) => setCreateEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-password">Password</Label>
+              <Input
+                id="create-password"
+                type="password"
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-confirm-password">ยืนยัน Password</Label>
+              <Input
+                id="create-confirm-password"
+                type="password"
+                placeholder="กรอก Password อีกครั้ง"
+                value={createConfirmPassword}
+                onChange={(e) => setCreateConfirmPassword(e.target.value)}
+              />
+              {createPassword && createConfirmPassword && createPassword !== createConfirmPassword && (
+                <p className="text-xs text-destructive">Password ไม่ตรงกัน</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={createRole} onValueChange={(v) => setCreateRole(v as AppRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(roleConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center gap-2">
+                        <config.icon className={`h-4 w-4 ${config.color}`} />
+                        <span>{config.label}</span>
+                        <span className="text-muted-foreground">({config.labelTh})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateAccountDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button 
+              onClick={handleCreateAccount} 
+              disabled={createAccountMutation.isPending || !selectedEmployeeId || !createEmail || !createPassword || createPassword !== createConfirmPassword}
+            >
+              {createAccountMutation.isPending ? 'กำลังสร้าง...' : 'สร้าง Account'}
             </Button>
           </DialogFooter>
         </DialogContent>
