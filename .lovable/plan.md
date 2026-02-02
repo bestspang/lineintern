@@ -1,217 +1,155 @@
 
-## 🔍 System Audit Report - Comprehensive Analysis
+## 🔍 วิเคราะห์ปัญหา "ไม่มีสิทธิ์เข้าถึง" ที่ /overview
 
-### วิเคราะห์จากมุมมอง: User, Tester, และ Programmer
+### Root Cause Analysis
 
----
+| ปัญหา | รายละเอียด |
+|-------|-----------|
+| **Route Mismatch** | `getMenuGroupFromPath()` มีเฉพาะ `/` ไม่มี `/overview` |
+| **Database Config** | `webapp_page_config.page_path = '/'` แต่ route จริงคือ `/overview` |
+| **Redirect Logic** | `RootRedirect.tsx` ส่งทุกคนไป `/overview` โดยไม่เช็ค role |
+| **Error Handling** | `ProtectedRoute.tsx` แสดง error แทนที่จะ redirect ไปหน้าที่มีสิทธิ์ |
 
-## ✅ ส่วนที่ทำงานปกติ (ไม่ต้องแก้ไข)
+### Flow ที่ทำให้เกิดปัญหา
 
-| ส่วน | สถานะ | หมายเหตุ |
-|------|--------|---------|
-| Auto Checkout Settings | ✅ Synced | ทั้ง midnight + grace ใช้ settings เดียวกัน |
-| Portal Routes | ✅ Valid | 36+ routes ตรงกับ Quick Actions |
-| Help.tsx Quick Actions | ✅ 20 items | All paths valid |
-| PortalHome Quick Actions | ✅ 21 items | Role-based correctly |
-| Portal FAQs | ✅ 34 entries | รวม Auto Checkout FAQ |
-| Timezone utilities | ✅ Correct | ใช้ shared utilities ถูกต้อง |
+```text
+1. User sasikan.j (role: field) login
+2. RootRedirect → Navigate to /overview
+3. ProtectedRoute → canAccessPage('/overview')
+4. isAdmin/isOwner? → NO (field role)
+5. Find pageConfig for '/overview'? → NOT FOUND (DB มีแค่ '/')
+6. getMenuGroupFromPath('/overview')? → return NULL (ไม่มี /overview)
+7. NULL → DENY ACCESS → แสดง "ไม่มีสิทธิ์เข้าถึง"
+```
 
----
+### Database Settings สำหรับ Role `field`
 
-## ⚠️ ปัญหาที่พบ (ต้องแก้ไข)
+| Menu Group | Can Access |
+|------------|-----------|
+| Dashboard | ❌ FALSE |
+| Attendance | ✅ TRUE |
+| Deposits | ✅ TRUE |
+| Overtime | ✅ TRUE |
+| Payroll | ✅ TRUE |
 
-### Issue #1: Cron Jobs ซ้ำซ้อนที่ Schedule เดียวกัน (LOW PRIORITY)
-
-**พบ:** มี cron jobs หลายตัวรันเวลาเดียวกัน
-
-| Schedule | Jobs ที่รันพร้อมกัน |
-|----------|-------------------|
-| `0 11 * * 5` (Fri 18:00 BKK) | `point-streak-weekly`, `point-weekly-summary` |
-| `0 17 * * *` (Daily 00:00 BKK) | `auto-checkout-midnight`, `point-daily-reset` |
-| `0 2 * * *` (Daily 09:00 BKK) | `work-check-in-daily`, `work-summary-morning` |
-
-**การวิเคราะห์:**
-- `point-streak-weekly` = Backup cron สำหรับ streak bonus (comment line 6-15 บอกว่าเป็น backup)
-- `point-weekly-summary` = ส่ง summary ให้พนักงาน
-- **ทั้งสองไม่ซ้ำซ้อน** - ทำคนละหน้าที่ (คำนวณ bonus vs ส่ง notification)
-
-**สถานะ:** ⚠️ **FALSE ALARM** - ไม่ใช่ปัญหา แค่รันเวลาเดียวกันแต่ทำงานคนละอย่าง
+**หน้าที่ field เข้าได้:** `/attendance/logs`, `/attendance/live-tracking`, `/attendance/employees`, etc.
 
 ---
 
-### Issue #2: `work-check-in` ใช้ `getBangkokNow().toISOString()` (LOW PRIORITY)
+## 📋 แผนการแก้ไข
 
-**พบ:** Line 193 ใน `work-check-in/index.ts`
+### Fix #1: เพิ่ม `/overview` ใน Route Mapping (CRITICAL)
 
+**ไฟล์:** `src/hooks/usePageAccess.ts`
+
+**ปัจจุบัน (line 117):**
 ```typescript
-last_check_in_at: getBangkokNow().toISOString()
+if (path === '/' || path === '/health' || path === '/config-validator') {
+  return 'Dashboard';
+}
 ```
 
-**การวิเคราะห์:**
-- ใช้สำหรับ metadata/logging เท่านั้น
-- ไม่ได้ใช้ใน date boundary comparison
-- **ความเสี่ยงต่ำ** - แค่ timestamp สำหรับ reference
-
-**สถานะ:** ⚠️ **ACCEPTABLE** - ไม่กระทบ business logic แต่ควรแก้เพื่อความสอดคล้อง
-
----
-
-### Issue #3: Missing "Approval Logs" link ใน Sidebar สำหรับ Receipts (ALREADY FIXED)
-
-**ตรวจสอบแล้ว:** Line 221 ใน `DashboardLayout.tsx` มี:
+**แก้ไขเป็น:**
 ```typescript
-{ title: 'Approval Logs', titleTh: 'บันทึกการอนุมัติ', url: '/receipts/approval-logs', icon: FileText }
+if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator') {
+  return 'Dashboard';
+}
 ```
 
-**สถานะ:** ✅ **ALREADY FIXED** - ไม่ต้องแก้ไข
+**Risk:** Very Low - เพิ่ม path matching เท่านั้น
 
 ---
 
-### Issue #4: Portal Settings.tsx - Auto Checkout Description ยังไม่ครบ (COSMETIC)
+### Fix #2: แก้ ProtectedRoute ให้ Redirect เมื่อไม่มีสิทธิ์ (IMPORTANT)
 
-**พบ:** Line 585-587 ใน Settings.tsx (จากการแก้ไขครั้งก่อน ยังไม่ได้อัพเดท description ใน list)
+**ไฟล์:** `src/components/ProtectedRoute.tsx`
 
-**ปัจจุบัน:**
+**ปัญหา:** เมื่อ user เข้า `/overview` แต่ไม่มีสิทธิ์ → แสดง error
+**ควรจะ:** Redirect ไปหน้าแรกที่มีสิทธิ์
+
+**แก้ไข (line 25-33):**
 ```typescript
-<li>ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน</li>
+// Check page-level access
+if (!canAccessPage(location.pathname)) {
+  // For any restricted page, redirect to first accessible page
+  const firstAccessiblePage = getFirstAccessiblePage();
+  if (firstAccessiblePage) {
+    return <Navigate to={firstAccessiblePage} replace />;
+  }
+  
+  // If no accessible page found, show error
+  return (
+    <div className="flex items-center justify-center min-h-screen p-4">
+      {/* existing error UI */}
+    </div>
+  );
+}
 ```
 
-**ควรเป็น:**
-```typescript
-<li>ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)</li>
-```
-
-**สถานะ:** 🟡 **COSMETIC FIX** - ปรับปรุงความชัดเจนของ description
+**Risk:** Low - ปรับปรุง UX ให้ดีขึ้น
 
 ---
 
-### Issue #5: Static FAQs มี 7 entries แต่ DB มี 34 entries (INTENTIONAL)
+### Fix #3: อัพเดท Database Config (OPTIONAL)
 
-**การวิเคราะห์:**
-- Static FAQs ใน Help.tsx เป็น **fallback** เมื่อ DB ไม่พร้อม
-- ไม่จำเป็นต้อง sync ทั้งหมด - แค่ keep common questions
-- **ปัจจุบันถูกต้องแล้ว** (7 FAQs พื้นฐานที่สำคัญที่สุด)
+**SQL:**
+```sql
+-- เพิ่ม /overview ใน webapp_page_config สำหรับทุก role
+INSERT INTO webapp_page_config (role, menu_group, page_path, page_name, can_access)
+SELECT role, 'Dashboard', '/overview', 'Overview', 
+  CASE WHEN role IN ('owner', 'admin', 'executive', 'manager', 'moderator', 'user') THEN true ELSE false END
+FROM (SELECT DISTINCT role FROM webapp_page_config) r
+ON CONFLICT DO NOTHING;
+```
 
-**สถานะ:** ✅ **INTENTIONAL DESIGN** - ไม่ต้องแก้ไข
+**Risk:** Low - เพิ่ม config ใหม่ ไม่แก้ไขของเดิม
 
 ---
 
-## 📋 รายการแก้ไขที่แนะนำ (Safe to Implement)
+### Fix #4: อัพเดท RootRedirect ให้ Role-Aware (OPTIONAL ENHANCEMENT)
 
-### Fix #1: อัพเดท Auto Checkout Description ใน Settings.tsx
+**ไฟล์:** `src/components/RootRedirect.tsx`
 
-**ไฟล์:** `src/pages/attendance/Settings.tsx`  
-**Priority:** Low (Cosmetic)  
-**Risk:** None - เปลี่ยน text เท่านั้น
+**แนวคิด:** แทนที่จะส่งทุกคนไป `/overview` ควรใช้ `getFirstAccessiblePage()`
 
-**เปลี่ยนจาก:**
-```
-ระบบ Auto Checkout ที่ทำงานตอนเที่ยงคืนทุกวัน
-```
-
-**เป็น:**
-```
-ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)
-```
+**ความท้าทาย:** RootRedirect อาจไม่มี access ถึง role hooks (ต้องตรวจสอบเพิ่ม)
 
 ---
 
-### Fix #2: Standardize `work-check-in` metadata timestamp
+## 📊 สรุปลำดับความสำคัญ
 
-**ไฟล์:** `supabase/functions/work-check-in/index.ts`  
-**Priority:** Low (Consistency)  
-**Risk:** Very Low - metadata only
+| Priority | Fix | Impact | Risk |
+|----------|-----|--------|------|
+| 🔴 **CRITICAL** | Fix #1: เพิ่ม `/overview` ใน getMenuGroupFromPath | แก้ปัญหาทันที | Very Low |
+| 🟡 **IMPORTANT** | Fix #2: แก้ ProtectedRoute redirect | UX ดีขึ้น | Low |
+| 🟢 **OPTIONAL** | Fix #3: อัพเดท Database | Completeness | Low |
 
-**เปลี่ยนจาก:**
-```typescript
-last_check_in_at: getBangkokNow().toISOString()
+---
+
+## 🛡️ ผลลัพธ์หลังแก้ไข
+
+**Before:**
+```text
+field user → /overview → "ไม่มีสิทธิ์เข้าถึง" ❌
 ```
 
-**เป็น:**
-```typescript
-last_check_in_at: new Date().toISOString()  // Store UTC consistently
+**After:**
+```text
+field user → /overview → redirect to /attendance/logs ✅
+admin user → /overview → เข้าได้ปกติ ✅
 ```
 
 ---
 
-## 💡 Feature Suggestions (Safe to Implement)
+## ⚠️ Files ที่จะแก้ไข
 
-### Suggestion 1: Test Button สำหรับ Auto Checkout Notification
+| File | การเปลี่ยนแปลง | Lines Affected |
+|------|--------------|----------------|
+| `usePageAccess.ts` | เพิ่ม `/overview` ใน path matching | Line 117 |
+| `ProtectedRoute.tsx` | เพิ่ม auto-redirect logic | Lines 25-33 |
 
-**เหตุผล:** Admin ต้องการทดสอบว่า notification ทำงานได้ก่อนใช้งานจริง
-
-**Implementation:**
-- เพิ่มปุ่ม "ทดสอบส่ง" ใน Auto Checkout Settings card
-- เรียก edge function แบบ test mode (ส่งไป admin เท่านั้น)
-
-**Risk:** Low - Pattern เดียวกับ Birthday Reminder Test Button ที่มีอยู่แล้ว
-
----
-
-### Suggestion 2: Cron Job Health Dashboard Card
-
-**เหตุผล:** ดู status ของ cron jobs ทั้งหมดแบบ real-time
-
-**Implementation:**
-- เพิ่ม card ใน Overview.tsx แสดง last run time และ status ของ critical crons
-- ใช้ `cron.job_run_details` table
-
-**Risk:** Low - Read-only feature
-
----
-
-### Suggestion 3: Notification History Filter ใน Bot Logs
-
-**เหตุผล:** Admin ต้องการดู auto-checkout notifications ย้อนหลัง
-
-**หมายเหตุ:** **แก้ไขแล้ว** - เพิ่ม filter `auto-checkout-midnight` และ `auto-checkout-grace` ใน BotLogs.tsx
-
----
-
-## 🛡️ AI Regression Prevention Checklist
-
-**Files ที่ห้ามแก้ไขโดยไม่จำเป็น:**
-
-| File | Reason | Last Verified |
-|------|--------|---------------|
-| `_shared/timezone.ts` | Core timezone logic | ✅ 2026-01-29 |
-| `auto-checkout-midnight/index.ts` | Just updated | ✅ 2026-01-29 |
-| `auto-checkout-grace/index.ts` | Just updated | ✅ 2026-01-29 |
-| `command-parser.ts` | Command routing | 🔒 Protected |
-| `App.tsx` routes | Portal routing | 🔒 Protected |
-| `portal-data/index.ts` | Data fetching | 🔒 Protected |
-
-**Safe to Modify:**
-
-| File | Type of Change |
-|------|----------------|
-| `Settings.tsx` | UI text/descriptions |
-| `Help.tsx` | Adding Quick Actions |
-| `portal_faqs` DB | Adding new FAQ entries |
-| `BotLogs.tsx` | Adding filters |
-
----
-
-## 📊 สรุปผลการ Audit
-
-| Category | Issues Found | Status |
-|----------|-------------|--------|
-| Cron Job Conflicts | 0 | ✅ All intentional |
-| Timezone Bugs | 0 critical | ✅ Minor consistency fix |
-| Route Mismatches | 0 | ✅ All valid |
-| FAQ Sync Issues | 0 | ✅ Synced correctly |
-| Missing Features | 0 | ✅ All implemented |
-| UI Inconsistencies | 1 | 🟡 Cosmetic fix needed |
-
-**Overall System Health:** ✅ **STABLE - No Critical Issues Found**
-
----
-
-## 📝 Implementation Summary
-
-| Priority | Fix | Impact |
-|----------|-----|--------|
-| Low | Update Auto Checkout description in Settings.tsx | Cosmetic |
-| Low | Standardize work-check-in timestamp | Consistency |
-
-**ทั้งสองการแก้ไขเป็น low-risk และไม่กระทบ business logic**
+**Protected Files (ไม่แตะ):**
+- `_shared/timezone.ts`
+- `command-parser.ts`
+- `auto-checkout-midnight/index.ts`
+- `auto-checkout-grace/index.ts`
