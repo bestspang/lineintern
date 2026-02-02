@@ -1,142 +1,142 @@
 
+## แผนปรับ Payroll Dashboard ให้ตรงกับ Employees
 
-## แผนแก้ไข: HR กด Action แล้วไม่เห็นข้อมูล
+### สรุปปัญหาปัจจุบัน
 
-### สาเหตุของปัญหา
+| ส่วน | Employees.tsx | Payroll.tsx |
+|------|---------------|-------------|
+| Permission check | ✅ `{ canView, canEdit }` | ❌ `{ canView }` เท่านั้น |
+| ปุ่ม Edit | ✅ disabled เมื่อ `!canEdit` | ❌ ไม่ได้เช็ค |
+| Mini Calendar click | - | ❌ เปิด dialog ได้แม้ไม่มีสิทธิ์แก้ |
+| Bulk mode | - | ❌ ใช้ได้แม้ไม่มีสิทธิ์แก้ |
 
-ปัญหาเกิดจาก **Query ใช้ชื่อ column ที่ไม่มีอยู่ในตาราง `employee_roles`**
-
-| Column ที่ใช้ใน Query | สถานะ | Column ที่ถูกต้อง |
-|------------------------|--------|-------------------|
-| `name` | ❌ ไม่มี | `role_key` หรือ `display_name_th` |
-| `role_name` | ❌ ไม่มี | `role_key` หรือ `display_name_th` |
-
-**Schema จริงของ `employee_roles`:**
-- `id` (UUID)
-- `role_key` (เช่น 'admin', 'hr', 'manager')
-- `display_name_th` (เช่น 'ผู้ดูแลระบบ', 'ฝ่ายบุคคล')
-- `display_name_en` (เช่น 'Admin', 'HR')
-- `priority` (ตัวเลข)
+**ผลลัพธ์ที่ต้องการ:**
+- HR ดูได้หมดทุกคน (รวมตัวเอง)
+- HR แก้ไขได้เฉพาะ Manager และต่ำกว่า
+- HR แก้ไขตัวเองไม่ได้
+- Admin/Owner ทำได้ทุกอย่าง
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข (6 ไฟล์)
+### การเปลี่ยนแปลง
 
-#### กลุ่ม 1: ใช้ `name` (ไม่มี) → แก้เป็น `role_key`
+#### 1. ดึง `canEdit` จาก `canManageEmployee` (บรรทัด 2320)
 
-| ไฟล์ | บรรทัด | Query ที่ผิด |
-|------|--------|-------------|
-| `src/pages/attendance/Payroll.tsx` | 257 | `employee_roles!role_id(id, name, priority)` |
-| `src/pages/attendance/EmployeeSettings.tsx` | 262 | `employee_roles!role_id(id, name, priority)` |
-| `src/pages/attendance/EmployeeHistory.tsx` | 101 | `employee_roles!role_id(id, name, priority)` |
-| `src/pages/attendance/EmployeeDetail.tsx` | 94 | `employee_roles!role_id(id, name, priority)` |
-
-**แก้เป็น:**
 ```typescript
-employee_role:employee_roles!role_id(id, role_key, priority)
-```
+// ก่อน
+const { canView } = canManageEmployee(empPriority, isSelf);
 
-#### กลุ่ม 2: ใช้ `role_name` (ไม่มี) → แก้เป็น `role_key`
-
-| ไฟล์ | บรรทัด | Query ที่ผิด |
-|------|--------|-------------|
-| `src/pages/portal/PortalEmployees.tsx` | 39 | `role:employee_roles(role_name)` |
-| `supabase/functions/portal-data/index.ts` | 389 | `role:employee_roles(role_name)` |
-
-**แก้เป็น:**
-```typescript
-role:employee_roles(role_key)
+// หลัง
+const { canView, canEdit } = canManageEmployee(empPriority, isSelf);
 ```
 
 ---
 
-### การเปลี่ยนแปลงโดยละเอียด
-
-#### 1. `src/pages/attendance/EmployeeDetail.tsx` (บรรทัด 94)
+#### 2. Disable ปุ่ม Edit เมื่อไม่มีสิทธิ์ (บรรทัด ~2505)
 
 ```typescript
 // ก่อน
-employee_role:employee_roles!role_id(id, name, priority)
+disabled={currentPeriod?.status === 'completed'}
 
 // หลัง
-employee_role:employee_roles!role_id(id, role_key, priority)
+disabled={currentPeriod?.status === 'completed' || !canEdit}
 ```
 
-#### 2. `src/pages/attendance/EmployeeSettings.tsx` (บรรทัด 262)
+---
+
+#### 3. Disable ปุ่ม Bulk Mode เมื่อไม่มีสิทธิ์ (บรรทัด ~2437)
 
 ```typescript
 // ก่อน
-employee_role:employee_roles!role_id(id, name, priority)
+disabled={currentPeriod?.status === 'completed'}
 
 // หลัง
-employee_role:employee_roles!role_id(id, role_key, priority)
+disabled={currentPeriod?.status === 'completed' || !canEdit}
 ```
 
-#### 3. `src/pages/attendance/EmployeeHistory.tsx` (บรรทัด 101)
+---
+
+#### 4. ป้องกัน Mini Calendar click เมื่อไม่มีสิทธิ์ (บรรทัด ~2419-2423)
 
 ```typescript
 // ก่อน
-employee_role:employee_roles!role_id(id, name, priority)
+onDayClick={(date, data) => {
+  setEditingEmployeeId(emp.id);
+  setEditingDate(date);
+  setAttendanceEditDialogOpen(true);
+}}
 
 // หลัง
-employee_role:employee_roles!role_id(id, role_key, priority)
+onDayClick={(date, data) => {
+  if (!canEdit) return; // ป้องกันเปิด dialog
+  setEditingEmployeeId(emp.id);
+  setEditingDate(date);
+  setAttendanceEditDialogOpen(true);
+}}
 ```
 
-#### 4. `src/pages/attendance/Payroll.tsx` (บรรทัด 257)
+---
+
+#### 5. ป้องกัน Start Date Warning click เมื่อไม่มีสิทธิ์ (บรรทัด ~2369-2380)
 
 ```typescript
 // ก่อน
-employee_role:employee_roles!role_id(id, name, priority)
+onClick={(e) => {
+  e.stopPropagation();
+  if (w.type === 'no_start_date') {
+    // Open dialog...
+  }
+}}
 
 // หลัง
-employee_role:employee_roles!role_id(id, role_key, priority)
+onClick={(e) => {
+  e.stopPropagation();
+  if (!canEdit) return; // ป้องกันเปิด dialog
+  if (w.type === 'no_start_date') {
+    // Open dialog...
+  }
+}}
 ```
 
-#### 5. `src/pages/portal/PortalEmployees.tsx` (บรรทัด 39 และ 57)
+---
+
+#### 6. Visual feedback: ซ่อน/ลดความชัดของปุ่มที่ disabled
+
+เพิ่ม visual cue เมื่อไม่มีสิทธิ์แก้ไข:
 
 ```typescript
-// บรรทัด 39 - Query
-// ก่อน
-role:employee_roles(role_name),
-
-// หลัง
-role:employee_roles(role_key),
-
-// บรรทัด 57 - Mapping
-// ก่อน
-role: e.role?.role_name || 'พนักงาน',
-
-// หลัง
-role: e.role?.role_key || 'พนักงาน',
+// ปุ่ม Edit
+<Button
+  variant="ghost"
+  size="icon"
+  className={cn("h-7 w-7", !canEdit && "opacity-50")}
+  disabled={currentPeriod?.status === 'completed' || !canEdit}
+>
 ```
 
-#### 6. `supabase/functions/portal-data/index.ts` (บรรทัด 389)
+---
 
-```typescript
-// ก่อน
-.select('branch_id, role:employee_roles(role_name)')
+### ไฟล์ที่แก้ไข
 
-// หลัง
-.select('branch_id, role:employee_roles(role_key)')
-```
+| ไฟล์ | จำนวนจุดที่แก้ |
+|------|---------------|
+| `src/pages/attendance/Payroll.tsx` | 5 จุด |
 
 ---
 
 ### ผลลัพธ์ที่คาดหวัง
 
-| สถานการณ์ | ก่อนแก้ไข | หลังแก้ไข |
-|-----------|-----------|-----------|
-| HR กดดูรายละเอียดพนักงาน | ❌ Employee Not Found | ✅ เห็นข้อมูล |
-| HR กดดู Settings พนักงาน | ❌ column does not exist | ✅ เห็นข้อมูล |
-| HR ดู Payroll | ❌ ไม่พบข้อมูลพนักงาน | ✅ เห็นข้อมูล |
-| HR กดดูประวัติ (History) | ❌ Error | ✅ เห็นข้อมูล |
-| Portal Employees | ❌ Error | ✅ แสดง role ถูกต้อง |
+| สถานการณ์ | ดูข้อมูล | แก้ไข Payroll | แก้ Attendance | Bulk Edit |
+|-----------|---------|---------------|----------------|-----------|
+| HR ดู Owner/Admin | ✅ | ❌ disabled | ❌ disabled | ❌ disabled |
+| HR ดูตัวเอง | ✅ | ❌ disabled | ❌ disabled | ❌ disabled |
+| HR ดู Manager/Field/Employee | ✅ | ✅ | ✅ | ✅ |
+| Admin/Owner ดูทุกคน | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
 ### หมายเหตุ
 
-- นี่ไม่ใช่ปัญหา Permission แต่เป็นปัญหา **Query ผิด column name**
-- เมื่อ Query ล้มเหลว → `employee = null` → หน้า render "Not Found"
-- การแก้ไขนี้จะไม่กระทบ Permission logic ที่ implement ไว้แล้ว
-
+- Logic permission ใน `useUserRole.ts` ถูกต้องแล้ว ไม่ต้องแก้ไข
+- แก้เฉพาะ UI ใน Payroll.tsx ให้เช็ค `canEdit` ก่อนอนุญาตการแก้ไข
+- ไม่กระทบ functionality ที่ทำงานอยู่ เพิ่มเฉพาะการตรวจสอบสิทธิ์
