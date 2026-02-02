@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Settings as SettingsIcon, Save, Building2, BarChart3, MessageSquare, Cake, Send, Moon } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -25,6 +26,7 @@ const queryOptions = {
 export default function AttendanceSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { hasFullAccess } = useUserRole();
   const [formData, setFormData] = useState({
     enable_attendance: true,
     require_location: true,
@@ -716,70 +718,72 @@ export default function AttendanceSettings() {
       </Card>
 
 
-      {/* Admin LINE Group Configuration */}
-      <Card>
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
-            Admin LINE Group
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            Select LINE group for admin notifications (Team Health Reports, Alerts)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>LINE Group for Notifications</Label>
-            <Select 
-              value={formData.admin_line_group_id || 'none'} 
-              onValueChange={(value) => setFormData({ 
-                ...formData, 
-                admin_line_group_id: value === 'none' ? null : value 
-              })}
-            >
-              <SelectTrigger className="max-w-md">
-                <SelectValue placeholder="Select a LINE group" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No group selected</SelectItem>
-                {lineGroups?.map((group) => (
-                  <SelectItem key={group.id} value={group.line_group_id}>
-                    {group.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              Weekly Team Health Reports and system alerts will be sent to this group
-            </p>
-          </div>
-
-          {formData.admin_line_group_id ? (
-            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
-              <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
-                Configured
-              </Badge>
-              <span className="text-sm text-green-700 dark:text-green-400">
-                Team Health Reports will be sent every Monday at 09:00 Bangkok time
-              </span>
+      {/* Admin LINE Group Configuration - Only visible to admin/owner */}
+      {hasFullAccess && (
+        <Card>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+              Admin LINE Group
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Select LINE group for admin notifications (Team Health Reports, Alerts)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>LINE Group for Notifications</Label>
+              <Select 
+                value={formData.admin_line_group_id || 'none'} 
+                onValueChange={(value) => setFormData({ 
+                  ...formData, 
+                  admin_line_group_id: value === 'none' ? null : value 
+                })}
+              >
+                <SelectTrigger className="max-w-md">
+                  <SelectValue placeholder="Select a LINE group" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No group selected</SelectItem>
+                  {lineGroups?.map((group) => (
+                    <SelectItem key={group.id} value={group.line_group_id}>
+                      {group.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Weekly Team Health Reports and system alerts will be sent to this group
+              </p>
             </div>
-          ) : (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
-              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
-                Not Set
-              </Badge>
-              <span className="text-sm text-amber-700 dark:text-amber-400">
-                Please select a LINE group to receive Team Health Reports
-              </span>
-            </div>
-          )}
 
-          <Button onClick={handleSave} disabled={saveMutation.isPending}>
-            <Save className="h-4 w-4 mr-2" />
-            {saveMutation.isPending ? 'Saving...' : 'Save Admin Group Setting'}
-          </Button>
-        </CardContent>
-      </Card>
+            {formData.admin_line_group_id ? (
+              <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                  Configured
+                </Badge>
+                <span className="text-sm text-green-700 dark:text-green-400">
+                  Team Health Reports will be sent every Monday at 09:00 Bangkok time
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+                <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
+                  Not Set
+                </Badge>
+                <span className="text-sm text-amber-700 dark:text-amber-400">
+                  Please select a LINE group to receive Team Health Reports
+                </span>
+              </div>
+            )}
+
+            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+              <Save className="h-4 w-4 mr-2" />
+              {saveMutation.isPending ? 'Saving...' : 'Save Admin Group Setting'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
