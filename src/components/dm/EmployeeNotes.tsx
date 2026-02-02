@@ -17,8 +17,7 @@ import {
   StickyNote, Plus, Pin, PinOff, Pencil, Trash2, 
   AlertTriangle, CheckCircle, Clock, MessageSquare, Loader2 
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatSmartTime } from '@/lib/timezone';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { ConversationItem } from './ConversationList';
@@ -99,7 +98,7 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
       setIsAddDialogOpen(false);
       setNoteContent('');
       setNoteCategory('general');
-      toast.success('เพิ่ม Note สำเร็จ');
+      toast.success('เพิ่มบันทึกสำเร็จ');
     },
     onError: (error: any) => {
       toast.error(`เพิ่มไม่สำเร็จ: ${error.message}`);
@@ -191,7 +190,7 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <StickyNote className="h-4 w-4" />
-              Notes
+              บันทึก
             </CardTitle>
             <Button 
               variant="ghost" 
@@ -212,10 +211,10 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
           ) : notes?.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">
               <StickyNote className="h-6 w-6 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">ยังไม่มี Notes</p>
+              <p className="text-sm">ยังไม่มีบันทึก</p>
             </div>
           ) : (
-            <ScrollArea className="h-[200px]">
+            <ScrollArea className="max-h-[250px]">
               <div className="space-y-2">
                 {notes?.map((note) => {
                   const config = categoryConfig[note.category as keyof typeof categoryConfig] 
@@ -237,8 +236,8 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
                         </Badge>
                         <div className="flex items-center gap-1">
                           {note.is_pinned && <Pin className="h-3 w-3 text-primary" />}
-                          <span className="text-[10px] text-muted-foreground">
-                            {format(new Date(note.created_at), 'dd MMM', { locale: th })}
+                          <span className="text-[10px] text-muted-foreground tabular-nums">
+                            {formatSmartTime(note.created_at)}
                           </span>
                         </div>
                       </div>
@@ -301,7 +300,7 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingNote ? 'แก้ไข Note' : 'เพิ่ม Note ใหม่'}
+              {editingNote ? 'แก้ไขบันทึก' : 'เพิ่มบันทึกใหม่'}
             </DialogTitle>
             <DialogDescription>
               บันทึกข้อมูลเกี่ยวกับพนักงาน {conversation?.employee_name || ''}
@@ -331,7 +330,7 @@ export function EmployeeNotes({ conversation }: EmployeeNotesProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium">เนื้อหา</label>
               <Textarea
-                placeholder="เขียน note..."
+                placeholder="เขียนบันทึก..."
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
                 rows={4}

@@ -9,8 +9,7 @@ import {
   Building, Briefcase, MapPin, 
   ExternalLink, MessageSquare, Clock, User
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatSmartTime } from '@/lib/timezone';
 import { Link } from 'react-router-dom';
 import type { ConversationItem } from './ConversationList';
 
@@ -56,7 +55,7 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4" />
-            ผู้ใช้ทั่วไป
+            บุคคลภายนอก
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -68,7 +67,7 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-semibold">{conversation.user_display_name || 'Unknown'}</p>
+              <p className="font-semibold">{conversation.user_display_name || 'ไม่ทราบชื่อ'}</p>
               <Badge variant="secondary">ไม่ใช่พนักงาน</Badge>
             </div>
           </div>
@@ -76,13 +75,13 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <MessageSquare className="h-4 w-4" />
-              <span>{conversation.message_count} ข้อความ</span>
+              <span className="tabular-nums">{conversation.message_count} ข้อความ</span>
             </div>
             {conversation.last_activity && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="h-4 w-4" />
-                <span className="truncate">
-                  {format(new Date(conversation.last_activity), 'dd MMM', { locale: th })}
+                <span className="truncate tabular-nums">
+                  {formatSmartTime(conversation.last_activity)}
                 </span>
               </div>
             )}
@@ -141,9 +140,9 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="font-semibold truncate">{employee.full_name}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant={employee.is_active ? "default" : "secondary"}>
-                {employee.is_active ? 'Active' : 'Inactive'}
+                {employee.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
               </Badge>
               {(employee.employee_roles as any)?.name && (
                 <Badge variant="outline">
@@ -158,14 +157,14 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
         <div className="space-y-2 text-sm">
           {(employee.branches as any)?.name && (
             <div className="flex items-center gap-2">
-              <Building className="h-4 w-4 text-muted-foreground" />
+              <Building className="h-4 w-4 text-muted-foreground shrink-0" />
               <span>{(employee.branches as any).name}</span>
             </div>
           )}
 
           {(employee.branches as any)?.address && (
             <div className="flex items-start gap-2">
-              <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
               <span className="text-xs text-muted-foreground line-clamp-2">
                 {(employee.branches as any).address}
               </span>
@@ -176,22 +175,17 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-2 pt-2 border-t">
           <div className="text-center p-2 bg-muted/50 rounded-lg">
-            <p className="text-lg font-bold">{conversation.message_count}</p>
+            <p className="text-lg font-bold tabular-nums">{conversation.message_count}</p>
             <p className="text-xs text-muted-foreground">ข้อความ</p>
           </div>
           <div className="text-center p-2 bg-muted/50 rounded-lg">
-            <p className="text-lg font-bold">
+            <p className="text-sm font-medium tabular-nums">
               {conversation.last_activity 
-                ? format(new Date(conversation.last_activity), 'dd', { locale: th })
+                ? formatSmartTime(conversation.last_activity)
                 : '-'
               }
             </p>
-            <p className="text-xs text-muted-foreground">
-              {conversation.last_activity 
-                ? format(new Date(conversation.last_activity), 'MMM', { locale: th })
-                : 'ล่าสุด'
-              }
-            </p>
+            <p className="text-xs text-muted-foreground">ล่าสุด</p>
           </div>
         </div>
 

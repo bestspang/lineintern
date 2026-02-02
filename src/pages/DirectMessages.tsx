@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, PanelRightClose, PanelRight } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { MessageSquare, PanelRightClose, PanelRight, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ConversationList, ConversationItem } from '@/components/dm/ConversationList';
@@ -14,6 +15,7 @@ import { EmployeeNotes } from '@/components/dm/EmployeeNotes';
 export default function DirectMessages() {
   const [selectedConversation, setSelectedConversation] = useState<ConversationItem | null>(null);
   const [showInfoPanel, setShowInfoPanel] = useState(true);
+  const [showInfoSheet, setShowInfoSheet] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
@@ -101,7 +103,7 @@ export default function DirectMessages() {
           id: group.id,
           line_group_id: group.line_group_id,
           user_id: user?.id || null,
-          user_display_name: user?.display_name || group.display_name || 'Unknown User',
+          user_display_name: user?.display_name || group.display_name || 'ไม่ทราบชื่อ',
           user_avatar_url: user?.avatar_url || null,
           employee_id: employeeInfo?.employee_id || null,
           employee_name: employeeInfo?.employee_name || null,
@@ -135,19 +137,24 @@ export default function DirectMessages() {
                 size="sm" 
                 onClick={() => setSelectedConversation(null)}
               >
-                ← กลับ
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                กลับ
               </Button>
             )}
             <h1 className="text-lg font-bold flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              {selectedConversation ? selectedConversation.user_display_name : 'Direct Messages'}
+              {selectedConversation ? selectedConversation.user_display_name : 'แชท'}
             </h1>
           </div>
         </div>
 
         {/* Content */}
         {selectedConversation ? (
-          <ChatPanel conversation={selectedConversation} />
+          <ChatPanel 
+            conversation={selectedConversation} 
+            onShowInfo={() => setShowInfoSheet(true)}
+            showInfoButton={!!selectedConversation.employee_id}
+          />
         ) : (
           <ConversationList
             conversations={conversations}
@@ -156,6 +163,19 @@ export default function DirectMessages() {
             isLoading={isLoading}
           />
         )}
+
+        {/* Mobile Info Sheet */}
+        <Sheet open={showInfoSheet} onOpenChange={setShowInfoSheet}>
+          <SheetContent side="bottom" className="h-[75vh]">
+            <SheetHeader>
+              <SheetTitle>ข้อมูลและบันทึก</SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="h-[calc(100%-60px)] mt-4">
+              <EmployeeInfoCard conversation={selectedConversation} />
+              <EmployeeNotes conversation={selectedConversation} />
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
       </div>
     );
   }
@@ -168,10 +188,10 @@ export default function DirectMessages() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <MessageSquare className="h-6 w-6" />
-            Direct Messages
+            แชท
           </h1>
           <p className="text-muted-foreground text-sm">
-            แชทกับผู้ใช้ LINE โดยตรง พร้อมบันทึก Notes พนักงาน
+            สนทนากับผู้ใช้ LINE พร้อมบันทึกข้อมูลพนักงาน
           </p>
         </div>
         <Button

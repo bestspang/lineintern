@@ -181,3 +181,62 @@ export function bangkokLocalToUTC(localDatetime: string): string {
     return '';
   }
 }
+
+/**
+ * Smart format time based on how recent it is
+ * - Today: "10:30"
+ * - This week: "จันทร์ 10:30"
+ * - This year: "2 ก.พ. 10:30"
+ * - Older: "2 ก.พ. 68"
+ * @param date - Date string or Date object
+ * @returns Smart formatted time string
+ */
+export function formatSmartTime(date: string | Date | null | undefined): string {
+  if (!date) return '-';
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const now = new Date();
+    
+    // Get Bangkok time components
+    const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: BANGKOK_TIMEZONE }));
+    const bangkokDate = new Date(d.toLocaleString('en-US', { timeZone: BANGKOK_TIMEZONE }));
+    
+    // Same day check
+    const isToday = bangkokNow.toDateString() === bangkokDate.toDateString();
+    if (isToday) {
+      return formatBangkokTimeShort(d);
+    }
+    
+    // Days difference
+    const diffMs = bangkokNow.getTime() - bangkokDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // Within 7 days - show weekday + time
+    if (diffDays < 7 && diffDays >= 0) {
+      const weekday = d.toLocaleDateString('th-TH', { 
+        weekday: 'short', 
+        timeZone: BANGKOK_TIMEZONE 
+      });
+      return `${weekday} ${formatBangkokTimeShort(d)}`;
+    }
+    
+    // Same year - show date + time
+    if (bangkokNow.getFullYear() === bangkokDate.getFullYear()) {
+      return d.toLocaleDateString('th-TH', {
+        day: 'numeric',
+        month: 'short',
+        timeZone: BANGKOK_TIMEZONE
+      }) + ' ' + formatBangkokTimeShort(d);
+    }
+    
+    // Different year - show date + short year
+    return d.toLocaleDateString('th-TH', {
+      day: 'numeric',
+      month: 'short',
+      year: '2-digit',
+      timeZone: BANGKOK_TIMEZONE
+    });
+  } catch {
+    return '-';
+  }
+}
