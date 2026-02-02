@@ -1,18 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'hr' | 'field' | 'moderator' | 'user';
+export type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'hr' | 'field' | 'moderator' | 'user' | 'employee';
 
 // Role priority: lower number = higher authority
 const rolePriority: Record<AppRole, number> = {
   owner: 1,
   admin: 2,
-  hr: 3,          // NEW: HR role
+  hr: 3,
   executive: 4,
   manager: 5,
   moderator: 6,
   field: 7,
   user: 8,
+  employee: 9,    // Lowest priority
 };
 
 // Mapping user role to max employee role priority they can manage
@@ -26,6 +27,7 @@ const userToMaxEmployeeRolePriority: Record<AppRole, number> = {
   moderator: 0,   // Employee only (priority 0)
   field: 0,       // Can only view employees with priority 0
   user: 0,        // Employee only
+  employee: 0,    // No management access
 };
 
 interface EmployeeManagePermission {
