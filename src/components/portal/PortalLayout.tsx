@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer, RefreshCw, Loader2 } from 'lucide-react';
+import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer, RefreshCw, Loader2, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortal } from '@/contexts/PortalContext';
 import { useLiffOptional } from '@/contexts/LiffContext';
@@ -32,8 +32,13 @@ const navItems: NavItem[] = [
 export function PortalLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { employee, loading, error, locale, isManager, refreshData } = usePortal();
+  const { employee, loading, error, locale, setLocale, isManager, refreshData } = usePortal();
   const liff = useLiffOptional();
+
+  // Toggle language
+  const toggleLocale = () => {
+    setLocale(locale === 'th' ? 'en' : 'th');
+  };
 
   // Filter nav items based on role
   const filteredNavItems = navItems.filter((item) => {
@@ -138,11 +143,23 @@ export function PortalLayout({ children }: { children: ReactNode }) {
                   </p>
                 </div>
               </div>
-              {employee?.branch && (
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                  📍 {employee.branch.name}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {employee?.branch && (
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                    📍 {employee.branch.name}
+                  </span>
+                )}
+                {/* Language Toggle */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleLocale}
+                  className="h-8 w-8"
+                  title={locale === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
+                >
+                  <Globe className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </header>

@@ -37,6 +37,7 @@ import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
 import { useAdminRole } from '@/hooks/useAdminRole';
+import { useLocale } from '@/contexts/LocaleContext';
 
 const BANGKOK_TZ = 'Asia/Bangkok';
 
@@ -54,6 +55,7 @@ interface EmployeeStatus {
 }
 
 export default function AttendanceDashboard() {
+  const { t } = useLocale();
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeStatus | null>(null);
   const [checkoutNotes, setCheckoutNotes] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -456,8 +458,8 @@ export default function AttendanceDashboard() {
     return (
       <div className="container mx-auto py-3 sm:py-6 space-y-4 sm:space-y-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Attendance Dashboard</h1>
-          <p className="text-muted-foreground text-sm sm:text-base mt-1">กำลังโหลดข้อมูล...</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('Dashboard การลงเวลา', 'Attendance Dashboard')}</h1>
+          <p className="text-muted-foreground text-sm sm:text-base mt-1">{t('กำลังโหลดข้อมูล...', 'Loading data...')}</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {[...Array(5)].map((_, i) => (

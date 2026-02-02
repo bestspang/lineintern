@@ -17,10 +17,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useLocale } from '@/contexts/LocaleContext';
 import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
+  const { t } = useLocale();
   const { toast } = useToast();
   const { canAssignEmployeeRole, canManageEmployee } = useUserRole();
   const queryClient = useQueryClient();
@@ -317,10 +319,10 @@ export default function AttendanceEmployees() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
                 <Users className="h-4 w-4 sm:h-5 sm:w-5" />
-                Employees
+                {t('พนักงาน', 'Employees')}
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Manage employee records and LINE account linking
+                {t('จัดการข้อมูลพนักงานและเชื่อมต่อ LINE', 'Manage employee records and LINE account linking')}
               </CardDescription>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
@@ -332,7 +334,7 @@ export default function AttendanceEmployees() {
                 <DialogTrigger asChild>
                   <Button variant="outline" disabled={unlinkedLineUsers.length === 0} className="flex-1 sm:flex-none">
                     <Download className="h-4 w-4 mr-2" />
-                    Import LINE ({unlinkedLineUsers.length})
+                    {t('Import LINE', 'Import LINE')} ({unlinkedLineUsers.length})
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[80vh] overflow-y-auto">
@@ -408,7 +410,7 @@ export default function AttendanceEmployees() {
                 <DialogTrigger asChild>
                   <Button className="flex-1 sm:flex-none">
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Employee
+                    {t('เพิ่มพนักงาน', 'Add Employee')}
                   </Button>
                 </DialogTrigger>
               <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto">

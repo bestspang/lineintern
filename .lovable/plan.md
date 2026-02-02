@@ -9,47 +9,44 @@
 | `LocaleContext` | ✅ มีแล้ว | มี `t(th, en)` function |
 | `DashboardLayout` Navigation | ✅ มีแล้ว | มี `titleTh/title` ทุก item |
 | Language Toggle (Admin) | ✅ มีแล้ว | Globe button ที่ header |
+| Language Toggle (Portal) | ✅ เสร็จแล้ว | เพิ่ม Globe button ที่ header |
 | Portal Pages | ✅ บางส่วน | ใช้ `locale` จาก PortalContext |
-| Admin Pages (~50 หน้า) | ❌ ส่วนใหญ่ hardcode EN | ต้องเพิ่ม translation |
+| Admin Pages (~50 หน้า) | 🔄 กำลังดำเนินการ | ต้องเพิ่ม translation |
+| Translations File | ✅ เสร็จแล้ว | `src/lib/translations.ts` |
 
 ---
 
-### แผนการ Implementation
-
-#### Phase 1: ปรับ Portal ให้มี Language Toggle (ยังไม่มี UI สำหรับเปลี่ยนภาษา)
+### ✅ Phase 1: Portal Language Toggle - เสร็จแล้ว
 
 **ไฟล์:** `src/components/portal/PortalLayout.tsx`
-
-- เพิ่มปุ่ม Globe สำหรับ toggle ภาษาใน header
-- PortalContext มี `setLocale` อยู่แล้ว แค่ต้องเพิ่ม UI
+- เพิ่มปุ่ม Globe สำหรับ toggle ภาษาใน header ✅
 
 ---
 
-#### Phase 2: สร้าง Shared Translation Constants
+### ✅ Phase 2: Shared Translation Constants - เสร็จแล้ว
 
-**สร้างไฟล์ใหม่:** `src/lib/translations.ts`
+**สร้างไฟล์:** `src/lib/translations.ts` ✅
 
-```typescript
-// Common UI labels used across pages
-export const translations = {
-  // Actions
-  save: { th: 'บันทึก', en: 'Save' },
-  cancel: { th: 'ยกเลิก', en: 'Cancel' },
-  edit: { th: 'แก้ไข', en: 'Edit' },
-  delete: { th: 'ลบ', en: 'Delete' },
-  add: { th: 'เพิ่ม', en: 'Add' },
-  search: { th: 'ค้นหา', en: 'Search' },
-  filter: { th: 'Filter', en: 'Filter' }, // EN เข้าใจง่ายกว่า
-  export: { th: 'Export', en: 'Export' },
-  import: { th: 'Import', en: 'Import' },
-  refresh: { th: 'Refresh', en: 'Refresh' },
-  
-  // Status
-  active: { th: 'ใช้งาน', en: 'Active' },
-  inactive: { th: 'ไม่ใช้งาน', en: 'Inactive' },
-  pending: { th: 'รอดำเนินการ', en: 'Pending' },
-  approved: { th: 'อนุมัติแล้ว', en: 'Approved' },
-  rejected: { th: 'ปฏิเสธ', en: 'Rejected' },
+---
+
+### 🔄 Phase 3: ปรับ Admin Pages (ทีละกลุ่ม)
+
+##### ✅ กลุ่ม 1: Attendance Module - เสร็จแล้ว
+
+| ไฟล์ | สถานะ | หมายเหตุ |
+|------|-------|----------|
+| `Employees.tsx` | ✅ เสร็จ | title, buttons, labels |
+| `Payroll.tsx` | ✅ เสร็จ | header, description |
+| `Dashboard.tsx` | ✅ เสร็จ | title, loading state |
+| `Logs.tsx` | ✅ เสร็จ | title, pagination, filters |
+
+##### กลุ่ม 2-6: รอดำเนินการ
+
+- Dashboard & Overview
+- Points & Rewards
+- Receipts Module
+- Settings & Configuration
+- Other Admin Pages
   
   // Common
   loading: { th: 'กำลังโหลด...', en: 'Loading...' },
