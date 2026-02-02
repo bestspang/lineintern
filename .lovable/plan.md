@@ -1,63 +1,67 @@
 
 
-## แผนแก้ไข - AttendanceEditDialog ไม่สามารถบันทึกได้
+## แผนเพิ่ม Streak Info ในข้อความ Checkout
 
-### ปัญหาที่พบ
+### ตัวอย่างผลลัพธ์ที่ต้องการ
 
-| ปัญหา | สาเหตุ |
-|-------|--------|
-| กดปุ่มบันทึกไม่ได้ | ช่อง "เหตุผลในการแก้ไข" (required) อยู่ด้านล่างสุดและถูกซ่อน → user กรอกไม่ได้ → ปุ่มยังคง disabled |
-| ช่องเวลาเข้า-ออกหายไป | ScrollArea ไม่ทำงานถูกต้อง → content ถูกตัดออก |
-| เปิด "อนุญาตเข้าสาย" แล้วช่องเวลาหาย | เหตุผลเดียวกัน - content overflow ถูกซ่อน |
-
-### Root Cause
-
-บรรทัด 362 และ 346 ของ `AttendanceEditDialog.tsx`:
-
-```tsx
-// บรรทัด 346 - DialogContent overflow setting
-<DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-y-auto">
-
-// บรรทัด 362 - ScrollArea ไม่มี explicit height ที่ชัดเจน
-<ScrollArea className="max-h-[calc(90vh-200px)] pr-4">
+**ก่อน:**
+```
+คุณ ntp.冬至 เช็คเอาต์ เวลา 18:18
+📍 สาขา: Glowfish Office
 ```
 
-**ปัญหา:**
-1. `DialogContent` มี `overflow-y-auto` แต่ `ScrollArea` ข้างในก็มี scroll อีก → เกิด nested scroll ที่ทำให้ height calculation ผิดพลาด
-2. `ScrollArea` ต้องการ **explicit height** ไม่ใช่แค่ `max-height` เพื่อให้ scroll bar แสดงถูกต้อง
-
-### การแก้ไข
-
-**บรรทัด 346 - DialogContent:**
-```tsx
-// เปลี่ยนเป็น
-<DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+**หลัง:**
 ```
-(ลบ `overflow-y-auto` ออก ให้ ScrollArea จัดการ scroll เอง)
-
-**บรรทัด 362 - ScrollArea:**
-```tsx
-// เปลี่ยนเป็น
-<ScrollArea className="flex-1 min-h-0 pr-4">
+คุณ ntp.冬至 เช็คเอาต์ เวลา 18:18
+📍 สาขา: Glowfish Office
+🔥 มาตรงเวลา 21 days streak!
 ```
-(`flex-1 min-h-0` จะทำให้ ScrollArea เติมพื้นที่ว่างและมี height ที่ชัดเจนสำหรับ scrolling)
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข
+### การเปลี่ยนแปลง
 
-| ไฟล์ | บรรทัด | การเปลี่ยนแปลง |
-|------|--------|---------------|
-| `AttendanceEditDialog.tsx` | 346 | ลบ `overflow-y-auto` ออกจาก DialogContent |
-| `AttendanceEditDialog.tsx` | 362 | เปลี่ยน `max-h-[calc(90vh-200px)]` เป็น `flex-1 min-h-0` |
+**ไฟล์:** `supabase/functions/attendance-submit/index.ts`
+
+#### 1. เพิ่มการดึง Streak Data (ก่อนบรรทัด 1269)
+
+```typescript
+// Fetch streak info for checkout message
+let streakInfo = '';
+if (token.type === 'check_out') {
+  const { data: happyPointsData } = await supabase
+    .from('happy_points')
+    .select('current_punctuality_streak')
+    .eq('employee_id', token.employee.id)
+    .maybeSingle();
+  
+  const currentStreak = happyPointsData?.current_punctuality_streak || 0;
+  if (currentStreak > 0) {
+    streakInfo = `\n🔥 มาตรงเวลา ${currentStreak} days streak!`;
+  }
+}
+```
+
+#### 2. แก้ไข Group Message (บรรทัด 1275)
+
+**จาก:**
+```typescript
+let groupMessage = `${flagIcon}${remoteIcon}คุณ ${token.employee.full_name} ${actionText}${isRemoteCheckin ? ' (Remote)' : ''} เวลา ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}`;
+```
+
+**เป็น:**
+```typescript
+let groupMessage = `${flagIcon}${remoteIcon}คุณ ${token.employee.full_name} ${actionText}${isRemoteCheckin ? ' (Remote)' : ''} เวลา ${timeStr}\n📍 สาขา: ${token.employee.branch?.name || 'ไม่ระบุ'}${streakInfo}`;
+```
 
 ---
 
-### ผลลัพธ์ที่คาดหวัง
+### สรุป
 
-**Before:** 
-- Dialog content ถูกตัด → ช่อง reason และ input เวลาไม่แสดง → บันทึกไม่ได้
-
-**After:** 
-- ScrollArea ทำงานถูกต้อง → เลื่อนดูได้ทั้งหมด → เห็นช่อง "เหตุผลในการแก้ไข" → กรอกได้ → บันทึกได้
+| รายการ | รายละเอียด |
+|--------|-----------|
+| ไฟล์ | `attendance-submit/index.ts` |
+| เพิ่ม | Query ดึง `current_punctuality_streak` จาก `happy_points` |
+| แก้ไข | เพิ่ม `${streakInfo}` ท้าย group message |
+| แสดงเมื่อ | Checkout + streak > 0 |
 
