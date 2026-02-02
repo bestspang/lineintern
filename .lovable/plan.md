@@ -1,54 +1,77 @@
 
-## แผนแก้ไข - Dialog Scroll ไม่ทำงาน
 
-### ปัญหาที่พบ
+## แผนดำเนินการ (แก้ไขตามคำขอ - ไม่เพิ่ม Point ให้ Noey)
 
-ใน `AttendanceEditDialog.tsx` บรรทัด 362:
+### 1. อัพเดท Streak Noey (ไม่เพิ่ม Point)
 
-```tsx
-<ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
+```sql
+-- อัพเดทเฉพาะ streak (point_balance คงเดิมที่ 295)
+UPDATE happy_points
+SET 
+  current_punctuality_streak = 21,
+  longest_punctuality_streak = 21,
+  updated_at = NOW()
+WHERE employee_id = 'a76b9d7f-1f70-4b31-a6b5-bcb2c81cd1af';
 ```
 
-**ปัญหา:**
-- `flex-1` และ `h-[calc(...)]` ขัดแย้งกัน ทำให้ Radix ScrollArea ไม่สามารถคำนวณ height ได้ถูกต้อง
-- `DialogContent` มี `overflow-hidden` ซึ่งตัด content ที่เกินออก
-- ScrollArea ต้องการ **fixed height** หรือ **max-height** ที่ชัดเจนเพื่อให้ scroll ทำงาน
+**ผลลัพธ์ Noey:**
+| Field | Before | After |
+|-------|--------|-------|
+| Point Balance | 295 | **295** (ไม่เปลี่ยน) |
+| Current Streak | 4 | **21** |
+| Longest Streak | 15 | **21** |
 
 ---
 
-### การแก้ไข
+### 2. แก้ไข Logic Punctuality ใน attendance-submit
 
-**บรรทัด 346 - DialogContent:**
-```tsx
-// จาก
-<DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+**ไฟล์:** `supabase/functions/attendance-submit/index.ts`
 
-// เป็น  
-<DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-y-auto">
+**บรรทัด 963-979 เปลี่ยนจาก:**
+```typescript
+// Get grace period from settings (default 15 minutes)
+const { data: gracePeriodSettings } = await supabase
+  .from('attendance_settings')
+  .select('grace_period_minutes')
+  .eq('scope', 'global')
+  .maybeSingle();
+const gracePeriodMinutes = gracePeriodSettings?.grace_period_minutes || 15;
+
+// Add grace period to shift start for on-time calculation
+const [shiftH, shiftM] = shiftStart.split(':').map(Number);
+const totalMinutes = shiftH * 60 + shiftM + gracePeriodMinutes;
+const deadlineH = Math.floor(totalMinutes / 60);
+const deadlineM = totalMinutes % 60;
+const deadlineStr = `${String(deadlineH).padStart(2, '0')}:${String(deadlineM).padStart(2, '0')}:00`;
+
+const isOnTime = hasApprovedLateStart || bangkokTimeStr <= deadlineStr;
 ```
 
-**บรรทัด 362 - ScrollArea:**
-```tsx
-// จาก
-<ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
+**เป็น:**
+```typescript
+// NEW RULE: Punctuality/Streak requires check-in at or BEFORE shift start time
+// Grace period is ONLY for not counting as "late" status, NOT for points/streak
+// Example: shift 09:00 → must check in ≤ 09:00:00 to get punctuality bonus
+//          check in at 09:01 = no bonus, streak resets (unless has Shield)
 
-// เป็น
-<ScrollArea className="max-h-[calc(90vh-200px)] pr-4">
+// If approved_late_start is true, treat as on-time regardless of actual time
+const isOnTime = hasApprovedLateStart || bangkokTimeStr <= shiftStart;
 ```
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข
+### สรุปไฟล์ที่ต้องแก้ไข
 
-| ไฟล์ | บรรทัด | การเปลี่ยนแปลง |
-|------|--------|---------------|
-| `AttendanceEditDialog.tsx` | 346 | เปลี่ยน `overflow-hidden` เป็น `overflow-y-auto` |
-| `AttendanceEditDialog.tsx` | 362 | เปลี่ยน `flex-1 h-[calc...]` เป็น `max-h-[calc(90vh-200px)]` |
+| รายการ | ประเภท | รายละเอียด |
+|--------|--------|-----------|
+| Database | SQL Update | อัพเดท streak Noey เป็น 21 (ไม่เพิ่ม points) |
+| `attendance-submit/index.ts` | Code | ลบ grace period ออกจาก punctuality logic |
 
 ---
 
-### ผลลัพธ์
+### กฎหลังจากนี้
 
-**Before:** Dialog เกินหน้าจอ → scroll ไม่ได้ → เนื้อหาหายไป
+- ✅ มาตรงเวลาหรือก่อนเวลา → ได้ Punctuality (+10) และ Streak ต่อเนื่อง
+- ❌ มาสาย 1 นาที (09:01) → ไม่ได้ Points และ Streak reset
+- 🛡️ ยกเว้น: มี approved_late_start หรือ Streak Shield
 
-**After:** Dialog มี scrollbar → เลื่อนดูเนื้อหาได้ทั้งหมด → สามารถกดปุ่ม "บันทึก" และ "ยกเลิก" ได้
