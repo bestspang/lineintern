@@ -960,23 +960,13 @@ serve(async (req) => {
         
         const hasApprovedLateStart = shiftAssignment?.approved_late_start === true;
         
-        // Get grace period from settings (default 15 minutes)
-        const { data: gracePeriodSettings } = await supabase
-          .from('attendance_settings')
-          .select('grace_period_minutes')
-          .eq('scope', 'global')
-          .maybeSingle();
-        const gracePeriodMinutes = gracePeriodSettings?.grace_period_minutes || 15;
-        
-        // Add grace period to shift start for on-time calculation
-        const [shiftH, shiftM] = shiftStart.split(':').map(Number);
-        const totalMinutes = shiftH * 60 + shiftM + gracePeriodMinutes;
-        const deadlineH = Math.floor(totalMinutes / 60);
-        const deadlineM = totalMinutes % 60;
-        const deadlineStr = `${String(deadlineH).padStart(2, '0')}:${String(deadlineM).padStart(2, '0')}:00`;
+        // NEW RULE: Punctuality/Streak requires check-in at or BEFORE shift start time
+        // Grace period is ONLY for not counting as "late" status, NOT for points/streak
+        // Example: shift 09:00 → must check in ≤ 09:00:00 to get punctuality bonus
+        //          check in at 09:01 = no bonus, streak resets (unless has Shield)
         
         // If approved_late_start is true, treat as on-time regardless of actual time
-        const isOnTime = hasApprovedLateStart || bangkokTimeStr <= deadlineStr;
+        const isOnTime = hasApprovedLateStart || bangkokTimeStr <= shiftStart;
         
         if (hasApprovedLateStart) {
           logger.info('Approved late start - treating as on-time for points', {
