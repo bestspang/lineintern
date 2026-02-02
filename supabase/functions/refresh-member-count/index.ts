@@ -97,9 +97,9 @@ serve(async (req) => {
           continue;
         }
 
-        // Fetch group summary from LINE API
+        // Fetch member count from LINE API (correct endpoint)
         const response = await fetch(
-          `https://api.line.me/v2/bot/group/${group.line_group_id}/summary`,
+          `https://api.line.me/v2/bot/group/${group.line_group_id}/members/count`,
           {
             headers: {
               'Authorization': `Bearer ${lineToken}`,
@@ -111,9 +111,9 @@ serve(async (req) => {
         console.log(`[${group.display_name}] LINE API status: ${response.status}, response: ${responseText}`);
 
         if (response.ok) {
-          const summary = JSON.parse(responseText);
-          const memberCount = summary.memberCount || summary.count || 0;
-          console.log(`[${group.display_name}] Parsed memberCount: ${memberCount}`);
+          const countData = JSON.parse(responseText);
+          const memberCount = countData.count || 0;
+          console.log(`[${group.display_name}] Member count: ${memberCount}`);
 
           // Update member_count in database
           const { error: updateError } = await supabase

@@ -11,7 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User, Briefcase, Eye, Mail, Copy, Check } from 'lucide-react';
+import { UserPlus, Shield, Trash2, Edit2, Search, Users, Crown, ShieldCheck, User, Briefcase, Eye, Mail, Copy, Check, ChevronsUpDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useAdminRole } from '@/hooks/useAdminRole';
@@ -46,6 +48,8 @@ export default function UserManagement() {
   const [selectedRole, setSelectedRole] = useState<AppRole>('admin');
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [userSelectorOpen, setUserSelectorOpen] = useState(false);
   const queryClient = useQueryClient();
   const { isAdmin } = useAdminRole();
 
@@ -141,22 +145,19 @@ export default function UserManagement() {
 
   const filteredUsers = usersWithRoles?.filter(user => 
     user.user_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.role && user.role.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Users without a role assigned yet
+  const usersWithoutRole = usersWithRoles?.filter(u => !u.role) || [];
+
   const handleAddByUserId = () => {
-    if (!newUserEmail.trim()) {
-      toast.error('กรุณาใส่ User ID');
+    if (!selectedUserId) {
+      toast.error('กรุณาเลือกผู้ใช้');
       return;
     }
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(newUserEmail.trim())) {
-      toast.error('รูปแบบ User ID ไม่ถูกต้อง (ต้องเป็น UUID)');
-      return;
-    }
-    addRoleMutation.mutate({ userId: newUserEmail.trim(), role: selectedRole });
+    addRoleMutation.mutate({ userId: selectedUserId, role: selectedRole });
   };
 
   const handleEditRole = () => {
@@ -206,7 +207,13 @@ export default function UserManagement() {
                 กำหนด Role สำหรับผู้ใช้งานระบบ Admin Dashboard
               </CardDescription>
             </div>
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+              setIsAddDialogOpen(open);
+              if (!open) {
+                setSelectedUserId('');
+                setNewUserEmail('');
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button>
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -217,21 +224,64 @@ export default function UserManagement() {
                 <DialogHeader>
                   <DialogTitle>เพิ่ม Role ให้ผู้ใช้</DialogTitle>
                   <DialogDescription>
-                    ใส่ User ID ของผู้ใช้ที่ต้องการเพิ่ม Role
+                    เลือกผู้ใช้ที่ต้องการกำหนด Role
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>User ID</Label>
-                    <Input
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      value={newUserEmail}
-                      onChange={(e) => setNewUserEmail(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      UUID ของ user ที่ได้จากการสมัครสมาชิก
-                    </p>
+                    <Label>เลือกผู้ใช้</Label>
+                    <Popover open={userSelectorOpen} onOpenChange={setUserSelectorOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={userSelectorOpen}
+                          className="w-full justify-between font-normal"
+                        >
+                          {selectedUserId ? (
+                            <span className="truncate">
+                              {usersWithoutRole.find(u => u.user_id === selectedUserId)?.email || 
+                               `${selectedUserId.slice(0,8)}...${selectedUserId.slice(-4)}`}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">เลือกผู้ใช้...</span>
+                          )}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="ค้นหา email..." />
+                          <CommandList>
+                            <CommandEmpty>ไม่พบผู้ใช้</CommandEmpty>
+                            <CommandGroup>
+                              {usersWithoutRole.map(user => (
+                                <CommandItem
+                                  key={user.user_id}
+                                  value={user.email || user.user_id}
+                                  onSelect={() => {
+                                    setSelectedUserId(user.user_id);
+                                    setUserSelectorOpen(false);
+                                  }}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{user.email || 'ไม่มี email'}</span>
+                                    <span className="text-xs text-muted-foreground font-mono">
+                                      {user.user_id.slice(0,8)}...{user.user_id.slice(-4)}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {usersWithoutRole.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        ผู้ใช้ทุกคนมี Role แล้ว
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Role</Label>
@@ -257,7 +307,7 @@ export default function UserManagement() {
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     ยกเลิก
                   </Button>
-                  <Button onClick={handleAddByUserId} disabled={addRoleMutation.isPending}>
+                  <Button onClick={handleAddByUserId} disabled={addRoleMutation.isPending || !selectedUserId}>
                     {addRoleMutation.isPending ? 'กำลังเพิ่ม...' : 'เพิ่ม Role'}
                   </Button>
                 </DialogFooter>
@@ -384,7 +434,7 @@ export default function UserManagement() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  setNewUserEmail(user.user_id);
+                                  setSelectedUserId(user.user_id);
                                   setSelectedRole('field');
                                   setIsAddDialogOpen(true);
                                 }}
