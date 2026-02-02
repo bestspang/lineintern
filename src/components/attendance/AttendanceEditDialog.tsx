@@ -3,7 +3,7 @@
  * Allows admins to edit historical attendance data with audit logging
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -89,6 +89,7 @@ export function AttendanceEditDialog({
   const [reason, setReason] = useState<string>('');
   const [approvedLateStart, setApprovedLateStart] = useState<boolean>(false);
   const [approvedLateReason, setApprovedLateReason] = useState<string>('');
+  const isInitializedRef = useRef(false);
   
   // Fetch existing adjustment (use enabled to prevent fetch when date invalid)
   const { data: existingAdjustment, isLoading } = useQuery({
@@ -129,7 +130,21 @@ export function AttendanceEditDialog({
   });
   
   // Initialize form when dialog opens or data changes
+  // Skip re-initialization from query refetches to preserve user input
   useEffect(() => {
+    if (!open) {
+      isInitializedRef.current = false;
+      return;
+    }
+    
+    if (isInitializedRef.current) {
+      // Already initialized - don't reset user's input on query refetch
+      return;
+    }
+    
+    // Mark as initialized
+    isInitializedRef.current = true;
+    
     if (existingAdjustment) {
       setSelectedStatus(existingAdjustment.override_status || '');
       setCheckInTime(existingAdjustment.override_check_in || '');
@@ -137,8 +152,8 @@ export function AttendanceEditDialog({
       setOtHours(String(existingAdjustment.override_ot_hours || 0));
       setWorkHours(existingAdjustment.override_work_hours ? String(existingAdjustment.override_work_hours) : '');
       setReason('');
-      setApprovedLateStart((existingAdjustment as any).approved_late_start || false);
-      setApprovedLateReason((existingAdjustment as any).approved_late_reason || '');
+      setApprovedLateStart(existingAdjustment.approved_late_start || false);
+      setApprovedLateReason(existingAdjustment.approved_late_reason || '');
     } else if (currentData) {
       // Map current status to form values
       let mappedStatus = currentData.status;
