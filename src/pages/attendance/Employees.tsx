@@ -71,7 +71,16 @@ export default function AttendanceEmployees() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
       
-      // Try to find employee linked via users table (LINE account)
+      // Method 1: Direct link via auth_user_id (preferred)
+      const { data: directLink } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      
+      if (directLink) return directLink;
+      
+      // Method 2: Fallback to LINE ID link
       const { data: lineUser } = await supabase
         .from('users')
         .select('line_user_id')
