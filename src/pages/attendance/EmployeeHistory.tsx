@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useParams } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserRole } from '@/hooks/useUserRole';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertTriangle, CheckCircle, Calendar, Clock, TrendingUp } from 'lucide-react';
@@ -10,9 +13,51 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function EmployeeHistory() {
   const [searchParams] = useSearchParams();
   const { id: employeeId } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
+  
+  const { canManageEmployee } = useUserRole();
+
+  // Query current user's employee ID for permission check
+  const { data: currentUserEmployee } = useQuery({
+    queryKey: ['current-user-employee-history'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('line_user_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (lineUser?.line_user_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('line_user_id', lineUser.line_user_id)
+          .maybeSingle();
+        return employee;
+      }
+      return null;
+    }
+  });
+
+  // Permission check effect - redirect if not allowed (for ID-based access)
+  useEffect(() => {
+    if (data?.employee && currentUserEmployee !== undefined && !searchParams.get('token')) {
+      const isSelf = currentUserEmployee?.id === data.employee.id;
+      const empPriority = data.employee.employee_role?.priority ?? 0;
+      const { canView } = canManageEmployee(empPriority, isSelf);
+      
+      if (!canView) {
+        toast.error("คุณไม่มีสิทธิ์เข้าถึงข้อมูลของพนักงานท่านนี้");
+        navigate('/attendance/employees');
+      }
+    }
+  }, [data, currentUserEmployee, canManageEmployee, navigate, searchParams]);
 
   useEffect(() => {
     const tokenId = searchParams.get('token');
@@ -38,10 +83,13 @@ export default function EmployeeHistory() {
         } 
         // ID-based access (from admin dashboard)
         else if (employeeId) {
-          // Fetch employee data
+          // Fetch employee data with role for permission check
           const { data: employee, error: empErr } = await supabase
             .from('employees')
-            .select('*')
+            .select(`
+              *,
+              employee_role:employee_roles!role_id(id, name, priority)
+            `)
             .eq('id', employeeId)
             .single();
 

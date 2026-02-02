@@ -29,6 +29,8 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { cn } from "@/lib/utils";
 import { getBangkokNow, formatBangkokISODate, getBangkokHoursMinutes } from "@/lib/timezone";
 import { getEffectiveSchedule, type ShiftAssignment, type ShiftTemplate, type WorkSchedule, type EffectiveSchedule } from "@/lib/schedule-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,6 +129,7 @@ interface DailyAttendance {
 
 export default function Payroll() {
   const queryClient = useQueryClient();
+  const { canManageEmployee } = useUserRole();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
@@ -191,6 +194,31 @@ export default function Payroll() {
     },
   });
 
+  // Fetch current user's employee ID for permission check
+  const { data: currentUserEmployee } = useQuery({
+    queryKey: ['current-user-employee-payroll'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      const { data: lineUser } = await supabase
+        .from('users')
+        .select('line_user_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (lineUser?.line_user_id) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('line_user_id', lineUser.line_user_id)
+          .maybeSingle();
+        return employee;
+      }
+      return null;
+    }
+  });
+
   // Fetch employees with payroll settings
   const { data: employees, isLoading: isEmployeesLoading } = useQuery({
     queryKey: ["employees-payroll"],
@@ -213,7 +241,8 @@ export default function Payroll() {
           exclude_from_points,
           employment_start_date,
           branches:branches!branch_id(name),
-          employee_payroll_settings (*)
+          employee_payroll_settings (*),
+          employee_role:employee_roles!role_id(id, name, priority)
         `)
         .eq("is_active", true)
         .order("full_name");
@@ -2272,12 +2301,22 @@ export default function Payroll() {
                         const isSelected = selectedEmployee === emp.id;
                         const isExpanded = expandedRows.has(emp.id);
                         const empAttendance = employeeAttendanceMap.get(emp.id) || [];
+                        
+                        // Permission check
+                        const isSelf = currentUserEmployee?.id === emp.id;
+                        const empPriority = (emp as any).employee_role?.priority ?? 0;
+                        const { canView } = canManageEmployee(empPriority, isSelf);
                       
                       return (
                         <React.Fragment key={emp.id}>
                           <tr 
-                            className={`hover:bg-muted/50 cursor-pointer transition-colors ${isSelected ? 'bg-primary/10' : ''}`}
+                            className={cn(
+                              "hover:bg-muted/50 cursor-pointer transition-colors",
+                              isSelected && "bg-primary/10",
+                              !canView && "opacity-40 pointer-events-none select-none"
+                            )}
                             onClick={() => {
+                              if (!canView) return;
                               toggleRowExpansion(emp.id);
                               setSelectedEmployee(emp.id);
                             }}
