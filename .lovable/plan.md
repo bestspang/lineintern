@@ -1,58 +1,53 @@
 
 
-## แผนแก้ไข: Sync ชื่อหน้าใน webapp_page_config ให้ตรงกับ Sidebar
+## แผนแก้ไข: จำกัด Admin LINE Group ให้เห็นเฉพาะ Admin/Owner
 
 ### ปัญหาที่พบ
 
-ชื่อหน้าใน `webapp_page_config` ไม่ตรงกับชื่อใน sidebar (`DashboardLayout.tsx`):
-
-| page_path | Database (ผิด) | Sidebar (ถูก) |
-|-----------|----------------|---------------|
-| `/attendance/roles` | Roles | **Employee Roles** |
-| `/attendance/summaries` | Summaries | **Daily Summaries** |
-
-### หน้าเพิ่มเติมใน Database
-
-หน้าเหล่านี้เป็น **dynamic routes** (child pages) ที่ไม่แสดงใน sidebar แต่ต้องมี permission config:
-- `Employee Detail` → `/attendance/employees/:id`
-- `Employee History` → `/attendance/employee-history/:id`
-- `Employee Settings` → `/attendance/employee-settings/:id`
-
-→ **ไม่ต้องแก้ชื่อ** เพราะเป็น sub-pages ที่ถูกต้องแล้ว
-
----
+ส่วน **"Admin LINE Group"** ใน `/attendance/settings` แสดงให้ทุก role เห็นและแก้ไขได้ แต่ควรจำกัดให้เฉพาะ **admin** และ **owner** เท่านั้น
 
 ### วิธีแก้ไข
 
-**Database Migration** เพื่อ UPDATE page_name ให้ตรงกับ sidebar:
+**แก้ไขไฟล์:** `src/pages/attendance/Settings.tsx`
 
-```sql
--- 1. แก้ Roles → Employee Roles
-UPDATE webapp_page_config 
-SET page_name = 'Employee Roles'
-WHERE page_path = '/attendance/roles';
+1. **Import** `useUserRole` hook
+2. **เรียกใช้** `hasFullAccess` จาก hook
+3. **Conditional render** Card "Admin LINE Group" เฉพาะเมื่อ `hasFullAccess === true`
 
--- 2. แก้ Summaries → Daily Summaries
-UPDATE webapp_page_config 
-SET page_name = 'Daily Summaries'
-WHERE page_path = '/attendance/summaries';
+```typescript
+// เพิ่ม import
+import { useUserRole } from '@/hooks/useUserRole';
+
+// ใน component
+const { hasFullAccess } = useUserRole();
+
+// Conditional render
+{hasFullAccess && (
+  <Card>
+    {/* Admin LINE Group Configuration */}
+    ...
+  </Card>
+)}
 ```
 
 ---
 
-### ผลลัพธ์หลังแก้ไข
+### รายละเอียดทางเทคนิค
 
-| page_path | ก่อนแก้ไข | หลังแก้ไข |
-|-----------|-----------|-----------|
-| `/attendance/roles` | Roles | Employee Roles ✅ |
-| `/attendance/summaries` | Summaries | Daily Summaries ✅ |
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|---------------|
+| `src/pages/attendance/Settings.tsx` | Import hook + wrap Card ด้วย condition |
 
-### ไฟล์ที่ต้องแก้ไข
+### ผลลัพธ์
 
-1. **Database Migration** - UPDATE page_name ให้ตรงกับ sidebar
+| Role | เห็น Admin LINE Group |
+|------|----------------------|
+| owner | ✅ เห็น |
+| admin | ✅ เห็น |
+| hr, manager, field, etc. | ❌ ไม่เห็น |
 
 ### หมายเหตุ
 
-- การแก้ไขนี้จะ apply กับ **ทุก role** โดยอัตโนมัติ
-- ไม่กระทบ code frontend
+- ใช้ `hasFullAccess` จาก `useUserRole` ที่มีอยู่แล้ว
+- ไม่กระทบส่วนอื่นของหน้า Settings
 
