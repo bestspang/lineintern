@@ -2144,6 +2144,7 @@ export type Database = {
           allowed_work_end_time: string | null
           allowed_work_start_time: string | null
           announcement_group_line_id: string | null
+          auth_user_id: string | null
           auto_checkout_grace_period_minutes: number | null
           auto_ot_enabled: boolean | null
           bank_account_number: string | null
@@ -2195,6 +2196,7 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auth_user_id?: string | null
           auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
           bank_account_number?: string | null
@@ -2246,6 +2248,7 @@ export type Database = {
           allowed_work_end_time?: string | null
           allowed_work_start_time?: string | null
           announcement_group_line_id?: string | null
+          auth_user_id?: string | null
           auto_checkout_grace_period_minutes?: number | null
           auto_ot_enabled?: boolean | null
           bank_account_number?: string | null
