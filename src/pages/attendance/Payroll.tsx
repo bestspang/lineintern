@@ -2317,7 +2317,7 @@ export default function Payroll() {
                         // Permission check
                         const isSelf = currentUserEmployee?.id === emp.id;
                         const empPriority = (emp as any).employee_role?.priority ?? 0;
-                        const { canView } = canManageEmployee(empPriority, isSelf);
+                        const { canView, canEdit } = canManageEmployee(empPriority, isSelf);
                       
                       return (
                         <React.Fragment key={emp.id}>
@@ -2365,6 +2365,7 @@ export default function Payroll() {
                                               }`}
                                               onClick={(e) => {
                                                 e.stopPropagation();
+                                                if (!canEdit) return; // ป้องกันเปิด dialog ถ้าไม่มีสิทธิ์แก้
                                                 // If it's a no_start_date warning, open the start date dialog
                                                 if (w.type === 'no_start_date') {
                                                   const suggestion = getFirstCheckInSuggestion(emp.id);
@@ -2416,7 +2417,8 @@ export default function Payroll() {
                                   bulkSelectMode={bulkModeEmployee === emp.id}
                                   selectedDates={bulkModeEmployee === emp.id ? bulkSelectedDates : undefined}
                                   onDateSelect={bulkModeEmployee === emp.id ? handleBulkDateSelect : undefined}
-                                  onDayClick={(date, data) => {
+                                onDayClick={(date, data) => {
+                                    if (!canEdit) return; // ป้องกันเปิด dialog ถ้าไม่มีสิทธิ์แก้
                                     setEditingEmployeeId(emp.id);
                                     setEditingDate(date);
                                     setAttendanceEditDialogOpen(true);
@@ -2434,7 +2436,7 @@ export default function Payroll() {
                                           e.stopPropagation();
                                           toggleBulkMode(emp.id);
                                         }}
-                                        disabled={currentPeriod?.status === 'completed'}
+                                        disabled={currentPeriod?.status === 'completed' || !canEdit}
                                       >
                                         {bulkModeEmployee === emp.id ? <CheckSquare className="h-3 w-3" /> : <List className="h-3 w-3" />}
                                       </Button>
@@ -2497,12 +2499,12 @@ export default function Payroll() {
                                           <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7"
+                                            className={cn("h-7 w-7", !canEdit && "opacity-50")}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               handleOpenEdit(record);
                                             }}
-                                            disabled={currentPeriod?.status === 'completed'}
+                                            disabled={currentPeriod?.status === 'completed' || !canEdit}
                                           >
                                             <Edit className="h-3 w-3" />
                                           </Button>
