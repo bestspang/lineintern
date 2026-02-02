@@ -24,14 +24,13 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   // Check page-level access
   if (!canAccessPage(location.pathname)) {
-    // If user lands on root and doesn't have access, redirect to first accessible page
-    if (location.pathname === '/') {
-      const firstAccessiblePage = getFirstAccessiblePage();
-      if (firstAccessiblePage) {
-        return <Navigate to={firstAccessiblePage} replace />;
-      }
+    // For any restricted page, redirect to first accessible page
+    const firstAccessiblePage = getFirstAccessiblePage();
+    if (firstAccessiblePage) {
+      return <Navigate to={firstAccessiblePage} replace />;
     }
     
+    // If no accessible page found, show error
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
         <Card className="max-w-md w-full">
