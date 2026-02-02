@@ -712,6 +712,7 @@ export default function Payroll() {
         if (adjustment?.override_status) {
           const statusMapping: Record<string, DayStatus['status']> = {
             'present': 'present',
+            'on_time': 'present',
             'day_off': 'day_off',
             'vacation': 'leave',
             'sick': 'leave',
