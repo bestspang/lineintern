@@ -116,6 +116,12 @@ const roleDefinitions: Record<AppRole, {
 const menuGroupLabels: Record<string, { label: string; description: string }> = {
   'Dashboard': { label: 'Dashboard', description: 'หน้าแรก ภาพรวมระบบ' },
   'Attendance': { label: 'Attendance', description: 'ระบบลงเวลา พนักงาน สาขา' },
+  'Schedule & Leaves': { label: 'Schedule & Leaves', description: 'กะงาน วันหยุด วันลา' },
+  'Overtime': { label: 'Overtime', description: 'การทำงานล่วงเวลา OT' },
+  'Payroll': { label: 'Payroll', description: 'เงินเดือน ประวัติการทำงาน' },
+  'Points & Rewards': { label: 'Points & Rewards', description: 'แต้มสะสม รางวัล' },
+  'Deposits': { label: 'Deposits', description: 'เงินมัดจำพนักงาน' },
+  'Receipts': { label: 'Receipts', description: 'ใบเสร็จ การอนุมัติ' },
   'Management': { label: 'Management', description: 'จัดการงาน คำสั่ง การแจ้งเตือน' },
   'AI Features': { label: 'AI Features', description: 'ความจำ บุคลิกภาพ การวิเคราะห์' },
   'Content & Knowledge': { label: 'Content & Knowledge', description: 'FAQ Knowledge Base การฝึกอบรม' },
