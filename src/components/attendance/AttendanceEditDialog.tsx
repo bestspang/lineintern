@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { th } from "date-fns/locale";
+import { Switch } from "@/components/ui/switch";
 import { 
   Calendar,
   Clock,
@@ -32,7 +33,8 @@ import {
   RotateCcw,
   History,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  ShieldCheck
 } from "lucide-react";
 
 interface AttendanceEditDialogProps {
@@ -85,6 +87,8 @@ export function AttendanceEditDialog({
   const [otHours, setOtHours] = useState<string>('0');
   const [workHours, setWorkHours] = useState<string>('');
   const [reason, setReason] = useState<string>('');
+  const [approvedLateStart, setApprovedLateStart] = useState<boolean>(false);
+  const [approvedLateReason, setApprovedLateReason] = useState<string>('');
   
   // Fetch existing adjustment (use enabled to prevent fetch when date invalid)
   const { data: existingAdjustment, isLoading } = useQuery({
@@ -133,6 +137,8 @@ export function AttendanceEditDialog({
       setOtHours(String(existingAdjustment.override_ot_hours || 0));
       setWorkHours(existingAdjustment.override_work_hours ? String(existingAdjustment.override_work_hours) : '');
       setReason('');
+      setApprovedLateStart((existingAdjustment as any).approved_late_start || false);
+      setApprovedLateReason((existingAdjustment as any).approved_late_reason || '');
     } else if (currentData) {
       // Map current status to form values
       let mappedStatus = currentData.status;
@@ -171,6 +177,8 @@ export function AttendanceEditDialog({
       setWorkHours('');
       setOtHours('0');
       setReason('');
+      setApprovedLateStart(false);
+      setApprovedLateReason('');
     }
   }, [existingAdjustment, currentData, open]);
   
@@ -187,7 +195,7 @@ export function AttendanceEditDialog({
       const adjustmentData = {
         employee_id: employeeId,
         adjustment_date: date,
-        override_status: selectedStatus || null,
+        override_status: approvedLateStart ? 'on_time' : (selectedStatus || null),
         override_check_in: checkInTime || null,
         override_check_out: checkOutTime || null,
         override_work_hours: workHours ? parseFloat(workHours) : null,
@@ -195,6 +203,8 @@ export function AttendanceEditDialog({
         leave_type: ['vacation', 'sick', 'personal'].includes(selectedStatus) ? selectedStatus : null,
         reason: reason.trim(),
         adjusted_by_user_id: user?.id || null,
+        approved_late_start: approvedLateStart,
+        approved_late_reason: approvedLateStart ? approvedLateReason : null,
       };
       
       // Check if adjustment exists
@@ -370,6 +380,41 @@ export function AttendanceEditDialog({
                 ))}
               </RadioGroup>
             </div>
+            
+            {/* Approved Late Start Toggle - แสดงเมื่อเลือกสถานะ "มาทำงาน" */}
+            {selectedStatus === 'present' && (
+              <>
+                <Separator />
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                        อนุญาตเข้าสาย
+                      </Label>
+                    </div>
+                    <Switch
+                      checked={approvedLateStart}
+                      onCheckedChange={setApprovedLateStart}
+                    />
+                  </div>
+                  {approvedLateStart && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-emerald-600">เหตุผล</Label>
+                      <Textarea
+                        value={approvedLateReason}
+                        onChange={(e) => setApprovedLateReason(e.target.value)}
+                        placeholder="เช่น ทำงานกะพิเศษถึงเที่ยงคืน"
+                        className="min-h-[60px] text-sm"
+                      />
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    ⚠️ พนักงานจะยังได้รับคะแนน Punctuality และ Streak ต่อเนื่อง
+                  </p>
+                </div>
+              </>
+            )}
             
             <Separator />
             
