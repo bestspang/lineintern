@@ -4,9 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Building, User, MessageSquare } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { Search, Building, UserX, MessageSquare } from 'lucide-react';
+import { formatSmartTime } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 
 export interface ConversationItem {
@@ -69,9 +68,9 @@ export function ConversationList({
         <div className="flex items-center justify-between">
           <h2 className="font-semibold flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
-            Chats
+            แชท
           </h2>
-          <Badge variant="secondary">{conversations.length}</Badge>
+          <Badge variant="secondary" className="tabular-nums">{conversations.length}</Badge>
         </div>
         
         {/* Search */}
@@ -90,7 +89,7 @@ export function ConversationList({
           <TabsList className="w-full grid grid-cols-3 h-8">
             <TabsTrigger value="all" className="text-xs">ทั้งหมด</TabsTrigger>
             <TabsTrigger value="employees" className="text-xs">พนักงาน</TabsTrigger>
-            <TabsTrigger value="non-employees" className="text-xs">อื่นๆ</TabsTrigger>
+            <TabsTrigger value="non-employees" className="text-xs">ภายนอก</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -129,16 +128,17 @@ export function ConversationList({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="font-medium text-sm truncate">
-                      {conv.user_display_name || 'Unknown'}
+                      {conv.user_display_name || 'ไม่ทราบชื่อ'}
                     </span>
                     {conv.employee_id ? (
                       <Badge variant="default" className="h-5 px-1.5 text-[10px] shrink-0">
                         <Building className="h-2.5 w-2.5 mr-0.5" />
-                        {conv.branch_name?.substring(0, 6) || 'Staff'}
+                        {conv.branch_name?.substring(0, 6) || 'พนง.'}
                       </Badge>
                     ) : (
                       <Badge variant="secondary" className="h-5 px-1.5 text-[10px] shrink-0">
-                        <User className="h-2.5 w-2.5" />
+                        <UserX className="h-2.5 w-2.5 mr-0.5" />
+                        ภายนอก
                       </Badge>
                     )}
                   </div>
@@ -156,16 +156,13 @@ export function ConversationList({
                   )}
                 </div>
 
-                <div className="text-right shrink-0">
-                  <span className="text-[10px] text-muted-foreground">
-                    {conv.message_count}
-                  </span>
+                <div className="text-right shrink-0 space-y-1">
+                  <Badge variant="outline" className="text-[10px] tabular-nums px-1.5">
+                    {conv.message_count} 💬
+                  </Badge>
                   {conv.last_activity && (
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(conv.last_activity), {
-                        addSuffix: false,
-                        locale: th,
-                      })}
+                    <p className="text-[10px] text-muted-foreground tabular-nums">
+                      {formatSmartTime(conv.last_activity)}
                     </p>
                   )}
                 </div>

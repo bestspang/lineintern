@@ -6,8 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Bot, User, Shield, Loader2, MessageSquare } from 'lucide-react';
-import { formatBangkokDateTime } from '@/lib/timezone';
+import { Send, Bot, User, Shield, Loader2, MessageSquare, Info } from 'lucide-react';
+import { formatSmartTime } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { ConversationItem } from './ConversationList';
@@ -22,9 +22,11 @@ interface Message {
 
 interface ChatPanelProps {
   conversation: ConversationItem | null;
+  onShowInfo?: () => void;
+  showInfoButton?: boolean;
 }
 
-export function ChatPanel({ conversation }: ChatPanelProps) {
+export function ChatPanel({ conversation, onShowInfo, showInfoButton }: ChatPanelProps) {
   const [messageInput, setMessageInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -119,23 +121,12 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
     }
   };
 
-  const getMessageStyle = (direction: string) => {
-    switch (direction) {
-      case 'bot_reply':
-        return 'bg-muted text-foreground justify-start';
-      case 'admin_reply':
-        return 'bg-blue-500/10 text-foreground border border-blue-500/20 justify-start';
-      default: // incoming from user
-        return 'bg-primary text-primary-foreground justify-end';
-    }
-  };
-
   const getMessageIcon = (direction: string) => {
     switch (direction) {
       case 'bot_reply':
         return <Bot className="h-3 w-3" />;
       case 'admin_reply':
-        return <Shield className="h-3 w-3 text-blue-500" />;
+        return <Shield className="h-3 w-3 text-accent-foreground" />;
       default:
         return <User className="h-3 w-3" />;
     }
@@ -144,13 +135,16 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
   const getMessageLabel = (direction: string) => {
     switch (direction) {
       case 'bot_reply':
-        return 'Bot';
+        return 'บอท';
       case 'admin_reply':
-        return 'Admin';
+        return 'แอดมิน';
       default:
-        return 'User';
+        return 'ผู้ใช้';
     }
   };
+
+  // User messages on LEFT, Bot/Admin on RIGHT (from admin's perspective)
+  const isOutgoing = (direction: string) => direction === 'bot_reply' || direction === 'admin_reply';
 
   if (!conversation) {
     return (
@@ -177,7 +171,7 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold truncate">
-              {conversation.user_display_name || 'Unknown'}
+              {conversation.user_display_name || 'ไม่ทราบชื่อ'}
             </h3>
             {conversation.employee_id && (
               <Badge variant="default" className="shrink-0">พนักงาน</Badge>
@@ -187,7 +181,14 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
             <p className="text-xs text-muted-foreground">{conversation.branch_name}</p>
           )}
         </div>
-        <Badge variant="outline">{messages?.length || 0} ข้อความ</Badge>
+        <Badge variant="outline" className="tabular-nums">
+          {messages?.length || 0} ข้อความ
+        </Badge>
+        {showInfoButton && onShowInfo && (
+          <Button variant="ghost" size="icon" onClick={onShowInfo}>
+            <Info className="h-5 w-5" />
+          </Button>
+        )}
       </div>
 
       {/* Messages area */}
@@ -203,21 +204,21 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
         ) : (
           <div className="space-y-3">
             {messages?.map((msg) => {
-              const isUserMessage = msg.direction === 'incoming';
+              const outgoing = isOutgoing(msg.direction);
               return (
                 <div
                   key={msg.id}
                   className={cn(
                     "flex",
-                    isUserMessage ? "justify-end" : "justify-start"
+                    outgoing ? "justify-end" : "justify-start"
                   )}
                 >
                   <div
                     className={cn(
                       "max-w-[75%] rounded-2xl px-4 py-2",
-                      msg.direction === 'bot_reply' && "bg-muted",
-                      msg.direction === 'admin_reply' && "bg-blue-500/10 border border-blue-500/20",
-                      msg.direction === 'incoming' && "bg-primary text-primary-foreground"
+                      msg.direction === 'incoming' && "bg-muted",
+                      msg.direction === 'bot_reply' && "bg-primary/10 border border-primary/20",
+                      msg.direction === 'admin_reply' && "bg-accent border border-accent/50"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -232,8 +233,8 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
                       )}
                     </div>
                     <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
-                    <p className="text-[10px] opacity-50 mt-1 text-right">
-                      {formatBangkokDateTime(msg.sent_at)}
+                    <p className="text-[10px] opacity-50 mt-1 text-right tabular-nums">
+                      {formatSmartTime(msg.sent_at)}
                     </p>
                   </div>
                 </div>
@@ -247,7 +248,7 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
       <div className="p-4 border-t bg-background">
         <div className="flex gap-2">
           <Textarea
-            placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
+            placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง)"
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
             onKeyDown={handleKeyDown}
