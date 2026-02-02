@@ -6626,6 +6626,7 @@ export type Database = {
         | "hr"
         | "field"
         | "owner"
+        | "employee"
       group_mode: "helper" | "faq" | "report" | "fun" | "safety" | "magic"
       group_status: "active" | "left" | "error" | "pending"
       knowledge_scope: "global" | "group"
@@ -6778,6 +6779,7 @@ export const Constants = {
         "hr",
         "field",
         "owner",
+        "employee",
       ],
       group_mode: ["helper", "faq", "report", "fun", "safety", "magic"],
       group_status: ["active", "left", "error", "pending"],

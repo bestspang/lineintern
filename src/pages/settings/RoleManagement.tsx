@@ -103,6 +103,14 @@ const roleDefinitions: Record<AppRole, {
     icon: User,
     priority: 8,
   },
+  employee: { 
+    label: 'Employee', 
+    labelTh: 'พนักงาน',
+    description: 'สิทธิ์พื้นฐานสำหรับพนักงานทั่วไป',
+    color: 'bg-slate-500', 
+    icon: User,
+    priority: 9,
+  },
 };
 
 const menuGroupLabels: Record<string, { label: string; description: string }> = {
