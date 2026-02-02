@@ -231,3 +231,6 @@ verify_jwt = false
 
 [functions.unregistered-user-alert-summary]
 verify_jwt = false
+
+[functions.admin-create-user]
+verify_jwt = false
