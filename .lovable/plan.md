@@ -1,149 +1,142 @@
 
 
-## แผน Implementation: Permission HR + Link Webapp User
+## แผนแก้ไข: HR กด Action แล้วไม่เห็นข้อมูล
 
-### สรุปความต้องการ (ปรับปรุง)
+### สาเหตุของปัญหา
 
-| Role | ดูตัวเอง | แก้ไขตัวเอง | ดูคนอื่น | แก้ไขคนอื่น |
-|------|---------|------------|---------|------------|
-| **Owner/Admin** | ✅ ได้ | ✅ ได้ | ✅ ทุกคน | ✅ ทุกคน |
-| **HR** | ✅ ได้ | ❌ ไม่ได้ | ✅ ทุกคน | เฉพาะ role ≤ Manager |
-| **Manager/Field** | ❌ ไม่ได้ | ❌ ไม่ได้ | ตาม priority | ตาม priority |
+ปัญหาเกิดจาก **Query ใช้ชื่อ column ที่ไม่มีอยู่ในตาราง `employee_roles`**
+
+| Column ที่ใช้ใน Query | สถานะ | Column ที่ถูกต้อง |
+|------------------------|--------|-------------------|
+| `name` | ❌ ไม่มี | `role_key` หรือ `display_name_th` |
+| `role_name` | ❌ ไม่มี | `role_key` หรือ `display_name_th` |
+
+**Schema จริงของ `employee_roles`:**
+- `id` (UUID)
+- `role_key` (เช่น 'admin', 'hr', 'manager')
+- `display_name_th` (เช่น 'ผู้ดูแลระบบ', 'ฝ่ายบุคคล')
+- `display_name_en` (เช่น 'Admin', 'HR')
+- `priority` (ตัวเลข)
 
 ---
 
-### การเปลี่ยนแปลง
+### ไฟล์ที่ต้องแก้ไข (6 ไฟล์)
 
-#### 1. Database Migration: เพิ่ม `auth_user_id` column
+#### กลุ่ม 1: ใช้ `name` (ไม่มี) → แก้เป็น `role_key`
 
-```sql
-ALTER TABLE employees ADD COLUMN auth_user_id UUID REFERENCES auth.users(id);
-CREATE INDEX idx_employees_auth_user_id ON employees(auth_user_id);
+| ไฟล์ | บรรทัด | Query ที่ผิด |
+|------|--------|-------------|
+| `src/pages/attendance/Payroll.tsx` | 257 | `employee_roles!role_id(id, name, priority)` |
+| `src/pages/attendance/EmployeeSettings.tsx` | 262 | `employee_roles!role_id(id, name, priority)` |
+| `src/pages/attendance/EmployeeHistory.tsx` | 101 | `employee_roles!role_id(id, name, priority)` |
+| `src/pages/attendance/EmployeeDetail.tsx` | 94 | `employee_roles!role_id(id, name, priority)` |
 
--- Link mefonn กับ webapp user
-UPDATE employees 
-SET auth_user_id = '2b67767d-67cb-4f02-bf9f-e0f166cc7a18'
-WHERE full_name = 'mefonn';
+**แก้เป็น:**
+```typescript
+employee_role:employee_roles!role_id(id, role_key, priority)
+```
+
+#### กลุ่ม 2: ใช้ `role_name` (ไม่มี) → แก้เป็น `role_key`
+
+| ไฟล์ | บรรทัด | Query ที่ผิด |
+|------|--------|-------------|
+| `src/pages/portal/PortalEmployees.tsx` | 39 | `role:employee_roles(role_name)` |
+| `supabase/functions/portal-data/index.ts` | 389 | `role:employee_roles(role_name)` |
+
+**แก้เป็น:**
+```typescript
+role:employee_roles(role_key)
 ```
 
 ---
 
-#### 2. แก้ไข `src/hooks/useUserRole.ts`
+### การเปลี่ยนแปลงโดยละเอียด
 
-**เพิ่ม priority maps แยก View/Edit:**
+#### 1. `src/pages/attendance/EmployeeDetail.tsx` (บรรทัด 94)
 
 ```typescript
-const userToMaxViewPriority: Record<AppRole, number> = {
-  owner: 999, admin: 999, hr: 999,
-  executive: 5, manager: 1, moderator: 0, field: 0, user: 0, employee: 0,
-};
+// ก่อน
+employee_role:employee_roles!role_id(id, name, priority)
 
-const userToMaxEditPriority: Record<AppRole, number> = {
-  owner: 999, admin: 999, hr: 5,  // HR แก้ไขได้แค่ Manager ลงไป
-  executive: 5, manager: 1, moderator: 0, field: 0, user: 0, employee: 0,
-};
+// หลัง
+employee_role:employee_roles!role_id(id, role_key, priority)
 ```
 
-**ปรับ `canManageEmployee` function:**
+#### 2. `src/pages/attendance/EmployeeSettings.tsx` (บรรทัด 262)
 
 ```typescript
-const canManageEmployee = (...): EmployeeManagePermission => {
-  // Admin/Owner: ทำได้ทุกอย่างรวมตัวเอง
-  if (roleData === 'admin' || roleData === 'owner') {
-    return { canEdit: true, canView: true };
-  }
-  
-  // HR: ดูตัวเองได้ แก้ไขไม่ได้
-  if (isSelf && roleData === 'hr') {
-    return { canEdit: false, canView: true };
-  }
-  
-  // Other roles: ถ้าเป็นตัวเอง ดูและแก้ไขไม่ได้
-  if (isSelf) {
-    return { canEdit: false, canView: false };
-  }
-  
-  // เช็ค priority สำหรับคนอื่น
-  return {
-    canView: targetPriority <= userToMaxViewPriority[roleData],
-    canEdit: targetPriority <= userToMaxEditPriority[roleData],
-  };
-};
+// ก่อน
+employee_role:employee_roles!role_id(id, name, priority)
+
+// หลัง
+employee_role:employee_roles!role_id(id, role_key, priority)
 ```
 
----
-
-#### 3. ปรับ Query หา Current User Employee (6 ไฟล์)
-
-**ไฟล์:** `Employees.tsx`, `Payroll.tsx`, `EmployeeDetail.tsx`, `EmployeeSettings.tsx`, `EmployeeHistory.tsx`
+#### 3. `src/pages/attendance/EmployeeHistory.tsx` (บรรทัด 101)
 
 ```typescript
-const { data: currentUserEmployee } = useQuery({
-  queryKey: ['current-user-employee'],
-  queryFn: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    
-    // Method 1: Direct link via auth_user_id
-    const { data: directLink } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .maybeSingle();
-    
-    if (directLink) return directLink;
-    
-    // Method 2: Fallback via LINE ID
-    const { data: lineUser } = await supabase
-      .from('users')
-      .select('line_user_id')
-      .eq('id', user.id)
-      .maybeSingle();
-    
-    if (lineUser?.line_user_id) {
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('line_user_id', lineUser.line_user_id)
-        .maybeSingle();
-      return employee;
-    }
-    return null;
-  }
-});
+// ก่อน
+employee_role:employee_roles!role_id(id, name, priority)
+
+// หลัง
+employee_role:employee_roles!role_id(id, role_key, priority)
+```
+
+#### 4. `src/pages/attendance/Payroll.tsx` (บรรทัด 257)
+
+```typescript
+// ก่อน
+employee_role:employee_roles!role_id(id, name, priority)
+
+// หลัง
+employee_role:employee_roles!role_id(id, role_key, priority)
+```
+
+#### 5. `src/pages/portal/PortalEmployees.tsx` (บรรทัด 39 และ 57)
+
+```typescript
+// บรรทัด 39 - Query
+// ก่อน
+role:employee_roles(role_name),
+
+// หลัง
+role:employee_roles(role_key),
+
+// บรรทัด 57 - Mapping
+// ก่อน
+role: e.role?.role_name || 'พนักงาน',
+
+// หลัง
+role: e.role?.role_key || 'พนักงาน',
+```
+
+#### 6. `supabase/functions/portal-data/index.ts` (บรรทัด 389)
+
+```typescript
+// ก่อน
+.select('branch_id, role:employee_roles(role_name)')
+
+// หลัง
+.select('branch_id, role:employee_roles(role_key)')
 ```
 
 ---
 
-#### 4. ปรับ UI แสดงสถานะ View-only (Payroll, Employees)
+### ผลลัพธ์ที่คาดหวัง
 
-สำหรับ rows ที่ `canView: true, canEdit: false` จะแสดงข้อมูลได้แต่ปุ่ม Edit จะ disabled
-
----
-
-### ไฟล์ที่จะแก้ไข
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| **Database** | เพิ่ม `auth_user_id` + link mefonn |
-| `src/hooks/useUserRole.ts` | แยก view/edit priority + ปรับ logic |
-| `src/pages/attendance/Employees.tsx` | ปรับ query + UI |
-| `src/pages/attendance/Payroll.tsx` | ปรับ query + UI |
-| `src/pages/attendance/EmployeeDetail.tsx` | ปรับ query + redirect logic |
-| `src/pages/attendance/EmployeeSettings.tsx` | ปรับ query + redirect logic |
-| `src/pages/attendance/EmployeeHistory.tsx` | ปรับ query + redirect logic |
+| สถานการณ์ | ก่อนแก้ไข | หลังแก้ไข |
+|-----------|-----------|-----------|
+| HR กดดูรายละเอียดพนักงาน | ❌ Employee Not Found | ✅ เห็นข้อมูล |
+| HR กดดู Settings พนักงาน | ❌ column does not exist | ✅ เห็นข้อมูล |
+| HR ดู Payroll | ❌ ไม่พบข้อมูลพนักงาน | ✅ เห็นข้อมูล |
+| HR กดดูประวัติ (History) | ❌ Error | ✅ เห็นข้อมูล |
+| Portal Employees | ❌ Error | ✅ แสดง role ถูกต้อง |
 
 ---
 
-### ผลลัพธ์
+### หมายเหตุ
 
-| สถานการณ์ | ผลลัพธ์ |
-|-----------|--------|
-| HR (mefonn) ดูตัวเอง | ✅ ได้ (view-only) |
-| HR (mefonn) แก้ไขตัวเอง | ❌ ไม่ได้ |
-| HR ดู Owner/Admin | ✅ ได้ (view-only) |
-| HR แก้ไข Owner/Admin | ❌ ไม่ได้ |
-| HR แก้ไข Manager/Field/Employee | ✅ ได้ |
-| Manager ดู/แก้ไขตัวเอง | ❌ ไม่ได้ (grayed) |
-| Admin/Owner ดู/แก้ไขทุกคน | ✅ ได้ |
+- นี่ไม่ใช่ปัญหา Permission แต่เป็นปัญหา **Query ผิด column name**
+- เมื่อ Query ล้มเหลว → `employee = null` → หน้า render "Not Found"
+- การแก้ไขนี้จะไม่กระทบ Permission logic ที่ implement ไว้แล้ว
 
