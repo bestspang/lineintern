@@ -1,27 +1,84 @@
 
-## อัพเดทชื่อกลุ่ม GC_Operation
+## แผนสร้างระบบ Admin สร้าง Account ให้พนักงาน
 
-### ปัญหา
-กลุ่ม LINE มีชื่อใน database เป็น `Nk 🐮, Best, Wariss, mefonn` แต่ต้องการให้แสดงเป็น `GC_Operation`
+### ปัญหาปัจจุบัน
+ระบบ User Management ปัจจุบันทำได้แค่กำหนด Role ให้ผู้ใช้ที่ลงทะเบียน (Sign Up) เองแล้วเท่านั้น ทำให้ Admin ไม่สามารถสร้าง account ให้พนักงานได้โดยตรง
 
-### ข้อมูลปัจจุบัน
-| Field | Value |
-|-------|-------|
-| ID | `b36e22b1-34fe-4ba1-b8d9-e2b10f56f4d6` |
-| display_name | Nk 🐮, Best, Wariss, mefonn |
-| line_group_id | Cbfe73d0a69e576d3ef182f6282635c05 |
-| status | active |
+### สิ่งที่จะสร้าง
 
-### วิธีแก้ไข
-ใช้ Database Migration เพื่ออัพเดทชื่อกลุ่ม
+**1. Edge Function `admin-create-user`**
+- รับข้อมูล: employee_id, email, password, role
+- ใช้ Supabase Admin API สร้าง auth user
+- บันทึก role ลง `user_roles` table
+- ส่งผลลัพธ์กลับ
 
-### SQL
-```sql
-UPDATE groups 
-SET display_name = 'GC_Operation', updated_at = NOW()
-WHERE id = 'b36e22b1-34fe-4ba1-b8d9-e2b10f56f4d6';
+**2. ปรับปรุงหน้า User Management**
+- เพิ่มปุ่ม "สร้าง Account จากพนักงาน"
+- Dialog ใหม่ที่มี:
+  - Searchable dropdown เลือกพนักงานจากระบบ (employees table)
+  - ช่อง Email
+  - ช่อง Password + Confirm Password
+  - เลือก Role
+- เรียก edge function เมื่อกด Submit
+
+### ข้อมูลที่จะแสดงใน Dropdown
+| รหัส | ชื่อพนักงาน |
+|------|-------------|
+| 001 | Baze |
+| 000 | Best |
+| 002 | Fern |
+| ... | ... |
+
+### Flow การทำงาน
+
+```text
++---------------------------+
+|   Admin กดปุ่ม            |
+|  "สร้าง Account จากพนักงาน" |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|   Dialog เปิดขึ้น          |
+| - เลือกพนักงานจากระบบ      |
+| - กรอก Email              |
+| - กรอก Password           |
+| - เลือก Role              |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|  Edge Function            |
+|  admin-create-user        |
+| - สร้าง auth user         |
+| - เพิ่ม role              |
++-------------+-------------+
+              |
+              v
++---------------------------+
+|  แสดงผลสำเร็จ              |
+|  รายชื่อ update อัตโนมัติ   |
++---------------------------+
 ```
 
-### ผลลัพธ์
-- ชื่อกลุ่มจะเปลี่ยนจาก `Nk 🐮, Best, Wariss, mefonn` → `GC_Operation`
-- กลุ่มจะแสดงในหน้า Employees dropdown ด้วยชื่อ GC_Operation
+### ความปลอดภัย
+- Edge function ตรวจสอบสิทธิ์ admin/owner ก่อนสร้าง user
+- Password ถูก hash โดย Supabase Auth โดยอัตโนมัติ
+- ไม่เก็บ password ใน database อื่น
+
+### Technical Details
+
+**Edge Function Structure:**
+```typescript
+// supabase/functions/admin-create-user/index.ts
+- Validate caller has admin/owner role
+- Use supabase.auth.admin.createUser()
+- Insert into user_roles table
+- Return created user info
+```
+
+**UI Changes:**
+- New state for create dialog
+- Fetch employees query
+- Form validation (email format, password match)
+- Call edge function on submit
