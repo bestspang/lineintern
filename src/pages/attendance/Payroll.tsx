@@ -30,6 +30,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useLocale } from "@/contexts/LocaleContext";
 import { cn } from "@/lib/utils";
 import { getBangkokNow, formatBangkokISODate, getBangkokHoursMinutes } from "@/lib/timezone";
 import { getEffectiveSchedule, type ShiftAssignment, type ShiftTemplate, type WorkSchedule, type EffectiveSchedule } from "@/lib/schedule-utils";
@@ -128,6 +129,7 @@ interface DailyAttendance {
 }
 
 export default function Payroll() {
+  const { t } = useLocale();
   const queryClient = useQueryClient();
   const { canManageEmployee } = useUserRole();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -1934,17 +1936,17 @@ export default function Payroll() {
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <DollarSign className="h-8 w-8 text-primary" />
-              Payroll Dashboard
+              {t('Payroll Dashboard', 'Payroll Dashboard')}
             </h1>
             <Link to="/attendance/payroll/ytd">
               <Button variant="outline" size="sm">
                 <TrendingUp className="h-4 w-4 mr-2" />
-                Year-to-Date
+                {t('สรุปรายปี', 'Year-to-Date')}
               </Button>
             </Link>
           </div>
           <p className="text-muted-foreground mt-1">
-            จัดการเงินเดือนและสรุปการทำงานพนักงาน
+            {t('จัดการเงินเดือนและสรุปการทำงานพนักงาน', 'Manage payroll and employee work summaries')}
           </p>
         </div>
         

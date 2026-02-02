@@ -31,8 +31,10 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { CheckCircle2, XCircle, AlertTriangle, MapPin, Camera, RefreshCw, Clock } from 'lucide-react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export default function AttendanceLogs() {
+  const { t } = useLocale();
   const [dateFrom, setDateFrom] = useState<Date | undefined>(new Date());
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
   const [employeeId, setEmployeeId] = useState<string>('');
@@ -148,15 +150,15 @@ export default function AttendanceLogs() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Attendance Logs</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('ประวัติการลงเวลา', 'Attendance Logs')}</h1>
           <p className="text-muted-foreground mt-1">
-            ประวัติการเข้า-ออกงานทั้งหมด
+            {t('ประวัติการเข้า-ออกงานทั้งหมด', 'Complete check-in/out history')}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => refetch()} size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            {t('Refresh', 'Refresh')}
           </Button>
           <AttendanceLogExport 
             logs={logs?.logs || []}
@@ -196,20 +198,20 @@ export default function AttendanceLogs() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
-              แสดง {logs?.logs?.length || 0} รายการ จากทั้งหมด {logs?.count || 0} รายการ
+              {t('แสดง', 'Showing')} {logs?.logs?.length || 0} {t('รายการจากทั้งหมด', 'of')} {logs?.count || 0} {t('รายการ', 'items')}
             </span>
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
-                <Button
+              <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
-                  Previous
+                  {t('ก่อนหน้า', 'Previous')}
                 </Button>
                 <span className="text-muted-foreground">
-                  Page {page} of {totalPages}
+                  {t('หน้า', 'Page')} {page} {t('จาก', 'of')} {totalPages}
                 </span>
                 <Button
                   variant="outline"
@@ -217,7 +219,7 @@ export default function AttendanceLogs() {
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                 >
-                  Next
+                  {t('ถัดไป', 'Next')}
                 </Button>
               </div>
             )}
@@ -321,7 +323,7 @@ export default function AttendanceLogs() {
             <CardContent className="pt-6">
               <div className="text-center py-12 text-muted-foreground">
                 <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No attendance logs found for selected filters</p>
+                <p>{t('ไม่พบประวัติการลงเวลาตาม filter ที่เลือก', 'No attendance logs found for selected filters')}</p>
               </div>
             </CardContent>
           </Card>
@@ -337,17 +339,17 @@ export default function AttendanceLogs() {
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
             >
-              Previous
+              {t('ก่อนหน้า', 'Previous')}
             </Button>
             <span className="text-sm text-muted-foreground px-4">
-              Page {page} of {totalPages}
+              {t('หน้า', 'Page')} {page} {t('จาก', 'of')} {totalPages}
             </span>
             <Button
               variant="outline"
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
             >
-              Next
+              {t('ถัดไป', 'Next')}
             </Button>
           </div>
         </div>
