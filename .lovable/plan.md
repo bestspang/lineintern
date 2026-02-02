@@ -1,84 +1,68 @@
 
-## แผนสร้างระบบ Admin สร้าง Account ให้พนักงาน
+## แผนแก้ไข: เพิ่มสิทธิ์เข้าใช้งานสำหรับ HR role
 
-### ปัญหาปัจจุบัน
-ระบบ User Management ปัจจุบันทำได้แค่กำหนด Role ให้ผู้ใช้ที่ลงทะเบียน (Sign Up) เองแล้วเท่านั้น ทำให้ Admin ไม่สามารถสร้าง account ให้พนักงานได้โดยตรง
+### ปัญหาที่พบ
+ผู้ใช้ `khwanchanok.p@goodchoose.com` มี role เป็น `hr` แต่ไม่สามารถเข้าใช้งานระบบได้เพราะ:
 
-### สิ่งที่จะสร้าง
+1. **ชื่อ menu_group ผิด**: ตั้งค่าเป็น `dashboard`, `attendance`, `schedules` แทนที่จะเป็น `Dashboard`, `Attendance`, `Schedule & Leaves`
+2. **ไม่มี page configs**: role อื่นมี 59 pages แต่ `hr` มี 0 pages
 
-**1. Edge Function `admin-create-user`**
-- รับข้อมูล: employee_id, email, password, role
-- ใช้ Supabase Admin API สร้าง auth user
-- บันทึก role ลง `user_roles` table
-- ส่งผลลัพธ์กลับ
+### วิธีแก้ไข
 
-**2. ปรับปรุงหน้า User Management**
-- เพิ่มปุ่ม "สร้าง Account จากพนักงาน"
-- Dialog ใหม่ที่มี:
-  - Searchable dropdown เลือกพนักงานจากระบบ (employees table)
-  - ช่อง Email
-  - ช่อง Password + Confirm Password
-  - เลือก Role
-- เรียก edge function เมื่อกด Submit
-
-### ข้อมูลที่จะแสดงใน Dropdown
-| รหัส | ชื่อพนักงาน |
-|------|-------------|
-| 001 | Baze |
-| 000 | Best |
-| 002 | Fern |
-| ... | ... |
-
-### Flow การทำงาน
-
-```text
-+---------------------------+
-|   Admin กดปุ่ม            |
-|  "สร้าง Account จากพนักงาน" |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|   Dialog เปิดขึ้น          |
-| - เลือกพนักงานจากระบบ      |
-| - กรอก Email              |
-| - กรอก Password           |
-| - เลือก Role              |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|  Edge Function            |
-|  admin-create-user        |
-| - สร้าง auth user         |
-| - เพิ่ม role              |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|  แสดงผลสำเร็จ              |
-|  รายชื่อ update อัตโนมัติ   |
-+---------------------------+
+**Step 1: ลบ menu config เก่าของ HR**
+```sql
+DELETE FROM webapp_menu_config WHERE role = 'hr';
 ```
 
-### ความปลอดภัย
-- Edge function ตรวจสอบสิทธิ์ admin/owner ก่อนสร้าง user
-- Password ถูก hash โดย Supabase Auth โดยอัตโนมัติ
-- ไม่เก็บ password ใน database อื่น
+**Step 2: เพิ่ม menu config ใหม่ (ชื่อถูกต้อง)**
+```sql
+INSERT INTO webapp_menu_config (role, menu_group, can_access) VALUES
+  ('hr', 'Dashboard', true),
+  ('hr', 'Attendance', true),
+  ('hr', 'Schedule & Leaves', true),
+  ('hr', 'Overtime', true),
+  ('hr', 'Payroll', true),
+  ('hr', 'Points & Rewards', true),
+  ('hr', 'Deposits', true),
+  ('hr', 'Receipts', true),
+  ('hr', 'Management', false),
+  ('hr', 'Content & Knowledge', false),
+  ('hr', 'AI Features', false),
+  ('hr', 'Monitoring & Tools', false),
+  ('hr', 'Configuration', false);
+```
+
+**Step 3: เพิ่ม page configs (copy จาก executive)**
+```sql
+INSERT INTO webapp_page_config (role, menu_group, page_path, page_name, can_access)
+SELECT 'hr', menu_group, page_path, page_name, can_access
+FROM webapp_page_config
+WHERE role = 'executive';
+```
+
+### ผลลัพธ์
+- ผู้ใช้ HR จะสามารถเข้าหน้า Dashboard, Attendance, Schedule & Leaves, Payroll ได้
+- ระบบจะ redirect ไปหน้า Dashboard หลัง login แทนที่จะแสดง "ไม่มีสิทธิ์เข้าถึง"
 
 ### Technical Details
-
-**Edge Function Structure:**
-```typescript
-// supabase/functions/admin-create-user/index.ts
-- Validate caller has admin/owner role
-- Use supabase.auth.admin.createUser()
-- Insert into user_roles table
-- Return created user info
+```text
++---------------------+     +----------------------+     +------------------+
+|  User login         | --> |  ProtectedRoute      | --> | canAccessPage()  |
+|  role = 'hr'        |     |  check access        |     | check menu_group |
++---------------------+     +----------+-----------+     +--------+---------+
+                                       |                          |
+                                       v                          v
+                            +----------+-----------+    +---------+----------+
+                            | getFirstAccessiblePage| <--| webapp_menu_config |
+                            | returns Dashboard     |    | role='hr'          |
+                            +----------+-----------+    | menu_group matching |
+                                       |                 +--------------------+
+                                       v
+                            +----------------------+
+                            |  Redirect to         |
+                            |  /attendance/dashboard|
+                            +----------------------+
 ```
 
-**UI Changes:**
-- New state for create dialog
-- Fetch employees query
-- Form validation (email format, password match)
-- Call edge function on submit
+### ไฟล์ที่ต้องแก้ไข
+- ไม่มี code changes - เป็นการ fix database configuration เท่านั้น
