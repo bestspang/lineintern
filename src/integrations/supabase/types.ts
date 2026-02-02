@@ -207,6 +207,8 @@ export type Database = {
         Row: {
           adjusted_by_user_id: string | null
           adjustment_date: string
+          approved_late_reason: string | null
+          approved_late_start: boolean | null
           created_at: string | null
           employee_id: string
           id: string
@@ -222,6 +224,8 @@ export type Database = {
         Insert: {
           adjusted_by_user_id?: string | null
           adjustment_date: string
+          approved_late_reason?: string | null
+          approved_late_start?: boolean | null
           created_at?: string | null
           employee_id: string
           id?: string
@@ -237,6 +241,8 @@ export type Database = {
         Update: {
           adjusted_by_user_id?: string | null
           adjustment_date?: string
+          approved_late_reason?: string | null
+          approved_late_start?: boolean | null
           created_at?: string | null
           employee_id?: string
           id?: string
