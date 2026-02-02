@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Building, UserX, MessageSquare } from 'lucide-react';
+import { Search, Building, UserX, MessageSquare, PanelRightClose, PanelRight } from 'lucide-react';
 import { formatSmartTime } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 
@@ -28,13 +29,17 @@ interface ConversationListProps {
   selectedId: string | null;
   onSelect: (conversation: ConversationItem) => void;
   isLoading: boolean;
+  showInfoPanel?: boolean;
+  onToggleInfoPanel?: () => void;
 }
 
 export function ConversationList({ 
   conversations, 
   selectedId, 
   onSelect, 
-  isLoading 
+  isLoading,
+  showInfoPanel,
+  onToggleInfoPanel
 }: ConversationListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'employees' | 'non-employees'>('all');
@@ -62,34 +67,53 @@ export function ConversationList({
   };
 
   return (
-    <div className="flex flex-col h-full border-r">
-      {/* Header */}
-      <div className="p-4 border-b space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            แชท
-          </h2>
-          <Badge variant="secondary" className="tabular-nums">{conversations.length}</Badge>
-        </div>
-        
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="ค้นหาชื่อ, สาขา..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-9"
-          />
+    <div className="flex flex-col h-full">
+      {/* Compact Header */}
+      <div className="p-3 border-b space-y-2">
+        {/* Row 1: Title + Search + Toggle */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <MessageSquare className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm">แชท</span>
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs tabular-nums">
+              {conversations.length}
+            </Badge>
+          </div>
+          
+          {/* Compact search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="ค้นหา..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-8 pl-7 text-sm"
+            />
+          </div>
+          
+          {/* Toggle button (desktop only) */}
+          {onToggleInfoPanel && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 shrink-0"
+              onClick={onToggleInfoPanel}
+            >
+              {showInfoPanel ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRight className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
 
-        {/* Filter tabs */}
+        {/* Row 2: Filter tabs */}
         <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="w-full">
-          <TabsList className="w-full grid grid-cols-3 h-8">
-            <TabsTrigger value="all" className="text-xs">ทั้งหมด</TabsTrigger>
-            <TabsTrigger value="employees" className="text-xs">พนักงาน</TabsTrigger>
-            <TabsTrigger value="non-employees" className="text-xs">ภายนอก</TabsTrigger>
+          <TabsList className="w-full grid grid-cols-3 h-7">
+            <TabsTrigger value="all" className="text-xs h-6">ทั้งหมด</TabsTrigger>
+            <TabsTrigger value="employees" className="text-xs h-6">พนักงาน</TabsTrigger>
+            <TabsTrigger value="non-employees" className="text-xs h-6">ภายนอก</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

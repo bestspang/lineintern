@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Bot, User, Shield, Loader2, MessageSquare, Info } from 'lucide-react';
+import { Send, Bot, User, Shield, Loader2, MessageSquare } from 'lucide-react';
 import { formatSmartTime } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -22,11 +22,9 @@ interface Message {
 
 interface ChatPanelProps {
   conversation: ConversationItem | null;
-  onShowInfo?: () => void;
-  showInfoButton?: boolean;
 }
 
-export function ChatPanel({ conversation, onShowInfo, showInfoButton }: ChatPanelProps) {
+export function ChatPanel({ conversation }: ChatPanelProps) {
   const [messageInput, setMessageInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -184,11 +182,6 @@ export function ChatPanel({ conversation, onShowInfo, showInfoButton }: ChatPane
         <Badge variant="outline" className="tabular-nums">
           {messages?.length || 0} ข้อความ
         </Badge>
-        {showInfoButton && onShowInfo && (
-          <Button variant="ghost" size="icon" onClick={onShowInfo}>
-            <Info className="h-5 w-5" />
-          </Button>
-        )}
       </div>
 
       {/* Messages area */}

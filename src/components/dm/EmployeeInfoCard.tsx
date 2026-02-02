@@ -40,13 +40,9 @@ export function EmployeeInfoCard({ conversation }: EmployeeInfoCardProps) {
     enabled: !!conversation?.employee_id,
   });
 
+  // Return null if no conversation - parent handles empty state
   if (!conversation) {
-    return (
-      <div className="p-4 text-center text-muted-foreground">
-        <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">เลือกการสนทนาเพื่อดูข้อมูล</p>
-      </div>
-    );
+    return null;
   }
 
   if (!conversation.employee_id) {
