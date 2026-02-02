@@ -530,7 +530,7 @@ export default function AttendanceSettings() {
             Auto Checkout Notification Settings
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            ควบคุมการแจ้งเตือนเมื่อระบบ Auto Checkout พนักงานตอนเที่ยงคืน
+            ควบคุมการแจ้งเตือนเมื่อระบบ Auto Checkout ทำงาน (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
