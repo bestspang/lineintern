@@ -114,7 +114,7 @@ export function usePageAccess() {
 
 // Helper to determine menu group from path
 function getMenuGroupFromPath(path: string): string | null {
-  if (path === '/' || path === '/health' || path === '/config-validator') {
+  if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator') {
     return 'Dashboard';
   }
   if (path.startsWith('/attendance')) {
