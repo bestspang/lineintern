@@ -1,68 +1,76 @@
 
-## แผนแก้ไข: เพิ่มสิทธิ์เข้าใช้งานสำหรับ HR role
+
+## แผนแก้ไข: เพิ่ม "Employee" Role ในหน้าจัดการสิทธิ์
 
 ### ปัญหาที่พบ
-ผู้ใช้ `khwanchanok.p@goodchoose.com` มี role เป็น `hr` แต่ไม่สามารถเข้าใช้งานระบบได้เพราะ:
+หน้า `/settings/roles` (RoleManagement.tsx) มี `roleDefinitions` เป็น object ที่กำหนดไว้ใน code แบบ hardcoded ไม่ได้ดึงจากฐานข้อมูล `employee_roles` table
 
-1. **ชื่อ menu_group ผิด**: ตั้งค่าเป็น `dashboard`, `attendance`, `schedules` แทนที่จะเป็น `Dashboard`, `Attendance`, `Schedule & Leaves`
-2. **ไม่มี page configs**: role อื่นมี 59 pages แต่ `hr` มี 0 pages
+**Roles ใน code:**
+```text
+owner, admin, hr, executive, manager, moderator, field, user
+```
+
+**Roles ใน employee_roles table:**
+```text
+owner, hr, admin, manager, field, employee
+```
+
+ขาด **"employee"** role ในหน้า RoleManagement
 
 ### วิธีแก้ไข
 
-**Step 1: ลบ menu config เก่าของ HR**
-```sql
-DELETE FROM webapp_menu_config WHERE role = 'hr';
+**Step 1: เพิ่ม 'employee' ใน AppRole type**
+ไฟล์: `src/hooks/useUserRole.ts`
+```typescript
+export type AppRole = 'admin' | 'owner' | 'executive' | 'manager' | 'hr' | 'field' | 'moderator' | 'user' | 'employee';
 ```
 
-**Step 2: เพิ่ม menu config ใหม่ (ชื่อถูกต้อง)**
-```sql
-INSERT INTO webapp_menu_config (role, menu_group, can_access) VALUES
-  ('hr', 'Dashboard', true),
-  ('hr', 'Attendance', true),
-  ('hr', 'Schedule & Leaves', true),
-  ('hr', 'Overtime', true),
-  ('hr', 'Payroll', true),
-  ('hr', 'Points & Rewards', true),
-  ('hr', 'Deposits', true),
-  ('hr', 'Receipts', true),
-  ('hr', 'Management', false),
-  ('hr', 'Content & Knowledge', false),
-  ('hr', 'AI Features', false),
-  ('hr', 'Monitoring & Tools', false),
-  ('hr', 'Configuration', false);
+**Step 2: เพิ่ม employee ใน roleDefinitions**
+ไฟล์: `src/pages/settings/RoleManagement.tsx`
+```typescript
+employee: {
+  label: 'Employee',
+  labelTh: 'พนักงาน',
+  description: 'สิทธิ์พื้นฐานสำหรับพนักงานทั่วไป',
+  color: 'bg-slate-500',
+  icon: User,
+  priority: 9, // ต่ำสุด
+},
 ```
 
-**Step 3: เพิ่ม page configs (copy จาก executive)**
+**Step 3: เพิ่ม employee ใน rolePriority**
+ไฟล์: `src/hooks/useUserRole.ts`
+```typescript
+const rolePriority = {
+  // ...existing
+  employee: 9,
+};
+```
+
+**Step 4: เพิ่ม webapp_menu_config สำหรับ employee role**
+```sql
+INSERT INTO webapp_menu_config (role, menu_group, can_access)
+SELECT 'employee', menu_group, false
+FROM webapp_menu_config
+WHERE role = 'user'
+ON CONFLICT DO NOTHING;
+```
+
+**Step 5: เพิ่ม webapp_page_config สำหรับ employee role**
 ```sql
 INSERT INTO webapp_page_config (role, menu_group, page_path, page_name, can_access)
-SELECT 'hr', menu_group, page_path, page_name, can_access
+SELECT 'employee', menu_group, page_path, page_name, false
 FROM webapp_page_config
-WHERE role = 'executive';
-```
-
-### ผลลัพธ์
-- ผู้ใช้ HR จะสามารถเข้าหน้า Dashboard, Attendance, Schedule & Leaves, Payroll ได้
-- ระบบจะ redirect ไปหน้า Dashboard หลัง login แทนที่จะแสดง "ไม่มีสิทธิ์เข้าถึง"
-
-### Technical Details
-```text
-+---------------------+     +----------------------+     +------------------+
-|  User login         | --> |  ProtectedRoute      | --> | canAccessPage()  |
-|  role = 'hr'        |     |  check access        |     | check menu_group |
-+---------------------+     +----------+-----------+     +--------+---------+
-                                       |                          |
-                                       v                          v
-                            +----------+-----------+    +---------+----------+
-                            | getFirstAccessiblePage| <--| webapp_menu_config |
-                            | returns Dashboard     |    | role='hr'          |
-                            +----------+-----------+    | menu_group matching |
-                                       |                 +--------------------+
-                                       v
-                            +----------------------+
-                            |  Redirect to         |
-                            |  /attendance/dashboard|
-                            +----------------------+
+WHERE role = 'user'
+ON CONFLICT DO NOTHING;
 ```
 
 ### ไฟล์ที่ต้องแก้ไข
-- ไม่มี code changes - เป็นการ fix database configuration เท่านั้น
+1. `src/hooks/useUserRole.ts` - เพิ่ม type และ priority
+2. `src/pages/settings/RoleManagement.tsx` - เพิ่ม roleDefinitions
+3. Database migration - เพิ่ม config entries
+
+### ผลลัพธ์
+- หน้า `/settings/roles` จะแสดง **Employee** role ในรายการ
+- Admin สามารถกำหนดสิทธิ์เมนู/หน้าย่อยให้ Employee role ได้
+
