@@ -1,155 +1,223 @@
 
-## 🔍 วิเคราะห์ปัญหา "ไม่มีสิทธิ์เข้าถึง" ที่ /overview
+## 📋 แผนการแก้ไข 3 ปัญหา
 
-### Root Cause Analysis
+### สรุปปัญหาที่พบ
 
-| ปัญหา | รายละเอียด |
-|-------|-----------|
-| **Route Mismatch** | `getMenuGroupFromPath()` มีเฉพาะ `/` ไม่มี `/overview` |
-| **Database Config** | `webapp_page_config.page_path = '/'` แต่ route จริงคือ `/overview` |
-| **Redirect Logic** | `RootRedirect.tsx` ส่งทุกคนไป `/overview` โดยไม่เช็ค role |
-| **Error Handling** | `ProtectedRoute.tsx` แสดง error แทนที่จะ redirect ไปหน้าที่มีสิทธิ์ |
-
-### Flow ที่ทำให้เกิดปัญหา
-
-```text
-1. User sasikan.j (role: field) login
-2. RootRedirect → Navigate to /overview
-3. ProtectedRoute → canAccessPage('/overview')
-4. isAdmin/isOwner? → NO (field role)
-5. Find pageConfig for '/overview'? → NOT FOUND (DB มีแค่ '/')
-6. getMenuGroupFromPath('/overview')? → return NULL (ไม่มี /overview)
-7. NULL → DENY ACCESS → แสดง "ไม่มีสิทธิ์เข้าถึง"
-```
-
-### Database Settings สำหรับ Role `field`
-
-| Menu Group | Can Access |
-|------------|-----------|
-| Dashboard | ❌ FALSE |
-| Attendance | ✅ TRUE |
-| Deposits | ✅ TRUE |
-| Overtime | ✅ TRUE |
-| Payroll | ✅ TRUE |
-
-**หน้าที่ field เข้าได้:** `/attendance/logs`, `/attendance/live-tracking`, `/attendance/employees`, etc.
+| ปัญหา | รายละเอียด | Priority |
+|-------|-----------|----------|
+| **1. Invalid Groups** | "Test Team (Work Reminders)" และ "Test Group" มี LINE Group ID ไม่ถูกต้อง | Medium |
+| **2. Wrong LINE API** | `refresh-member-count` ใช้ Group Summary API แทน Members Count API | High |
+| **3. User Selection UX** | ต้องใส่ UUID แทนที่จะเลือกจาก dropdown | Medium |
 
 ---
 
-## 📋 แผนการแก้ไข
+## Fix #1: ลบ/อัพเดท Invalid Test Groups
 
-### Fix #1: เพิ่ม `/overview` ใน Route Mapping (CRITICAL)
+**ปัญหา:**
+- `Test Team (Work Reminders)` - line_group_id: `C1234567890abcdefTEST` (fake ID)
+- `Test Group` - line_group_id: `test-group` (invalid format)
 
-**ไฟล์:** `src/hooks/usePageAccess.ts`
-
-**ปัจจุบัน (line 117):**
-```typescript
-if (path === '/' || path === '/health' || path === '/config-validator') {
-  return 'Dashboard';
-}
-```
-
-**แก้ไขเป็น:**
-```typescript
-if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator') {
-  return 'Dashboard';
-}
-```
-
-**Risk:** Very Low - เพิ่ม path matching เท่านั้น
-
----
-
-### Fix #2: แก้ ProtectedRoute ให้ Redirect เมื่อไม่มีสิทธิ์ (IMPORTANT)
-
-**ไฟล์:** `src/components/ProtectedRoute.tsx`
-
-**ปัญหา:** เมื่อ user เข้า `/overview` แต่ไม่มีสิทธิ์ → แสดง error
-**ควรจะ:** Redirect ไปหน้าแรกที่มีสิทธิ์
-
-**แก้ไข (line 25-33):**
-```typescript
-// Check page-level access
-if (!canAccessPage(location.pathname)) {
-  // For any restricted page, redirect to first accessible page
-  const firstAccessiblePage = getFirstAccessiblePage();
-  if (firstAccessiblePage) {
-    return <Navigate to={firstAccessiblePage} replace />;
-  }
-  
-  // If no accessible page found, show error
-  return (
-    <div className="flex items-center justify-center min-h-screen p-4">
-      {/* existing error UI */}
-    </div>
-  );
-}
-```
-
-**Risk:** Low - ปรับปรุง UX ให้ดีขึ้น
-
----
-
-### Fix #3: อัพเดท Database Config (OPTIONAL)
+**วิธีแก้ไข:** Set status เป็น `inactive` แทนการลบ (เก็บ history ไว้)
 
 **SQL:**
 ```sql
--- เพิ่ม /overview ใน webapp_page_config สำหรับทุก role
-INSERT INTO webapp_page_config (role, menu_group, page_path, page_name, can_access)
-SELECT role, 'Dashboard', '/overview', 'Overview', 
-  CASE WHEN role IN ('owner', 'admin', 'executive', 'manager', 'moderator', 'user') THEN true ELSE false END
-FROM (SELECT DISTINCT role FROM webapp_page_config) r
-ON CONFLICT DO NOTHING;
+UPDATE groups 
+SET status = 'inactive', updated_at = NOW()
+WHERE id IN (
+  'd871dcd7-9c91-4f5b-aa1c-5eadab53c524',  -- Test Team (Work Reminders)
+  'ff0fc26e-47c7-4dd8-a0b6-b52883c5cf06'   -- Test Group
+);
 ```
 
-**Risk:** Low - เพิ่ม config ใหม่ ไม่แก้ไขของเดิม
+---
+
+## Fix #2: แก้ไข refresh-member-count API Endpoint
+
+**ปัญหา:** ใช้ `/v2/bot/group/{groupId}/summary` ซึ่ง **ไม่มี memberCount** ใน response
+
+**LINE API Response จาก Group Summary:**
+```json
+{
+  "groupId": "C...",
+  "groupName": "...",
+  "pictureUrl": "..."
+}
+```
+
+**API ที่ถูกต้อง:** `/v2/bot/group/{groupId}/members/count`
+
+**Response:**
+```json
+{
+  "count": 5
+}
+```
+
+**ไฟล์:** `supabase/functions/refresh-member-count/index.ts`
+
+**การเปลี่ยนแปลง (Lines 100-116):**
+
+```typescript
+// Before (WRONG):
+const response = await fetch(
+  `https://api.line.me/v2/bot/group/${group.line_group_id}/summary`,
+  ...
+);
+const summary = JSON.parse(responseText);
+const memberCount = summary.memberCount || summary.count || 0;
+
+// After (CORRECT):
+const response = await fetch(
+  `https://api.line.me/v2/bot/group/${group.line_group_id}/members/count`,
+  ...
+);
+const countData = JSON.parse(responseText);
+const memberCount = countData.count || 0;
+```
 
 ---
 
-### Fix #4: อัพเดท RootRedirect ให้ Role-Aware (OPTIONAL ENHANCEMENT)
+## Fix #3: เปลี่ยน User ID Input เป็น User Selector
 
-**ไฟล์:** `src/components/RootRedirect.tsx`
+**ปัญหา:** User ต้องใส่ UUID แทนที่จะเลือกจาก dropdown
 
-**แนวคิด:** แทนที่จะส่งทุกคนไป `/overview` ควรใช้ `getFirstAccessiblePage()`
+**วิธีแก้ไข:** เปลี่ยนจาก Input เป็น Searchable Combobox
 
-**ความท้าทาย:** RootRedirect อาจไม่มี access ถึง role hooks (ต้องตรวจสอบเพิ่ม)
+**ไฟล์:** `src/pages/settings/UserManagement.tsx`
 
----
+**การเปลี่ยนแปลง:**
 
-## 📊 สรุปลำดับความสำคัญ
+1. **เพิ่ม State:**
+```typescript
+const [selectedUserId, setSelectedUserId] = useState<string>('');
+const [userSearchTerm, setUserSearchTerm] = useState('');
+```
 
-| Priority | Fix | Impact | Risk |
-|----------|-----|--------|------|
-| 🔴 **CRITICAL** | Fix #1: เพิ่ม `/overview` ใน getMenuGroupFromPath | แก้ปัญหาทันที | Very Low |
-| 🟡 **IMPORTANT** | Fix #2: แก้ ProtectedRoute redirect | UX ดีขึ้น | Low |
-| 🟢 **OPTIONAL** | Fix #3: อัพเดท Database | Completeness | Low |
+2. **กรอง Users ที่ยังไม่มี Role:**
+```typescript
+const usersWithoutRole = usersWithRoles?.filter(u => !u.role) || [];
+```
 
----
-
-## 🛡️ ผลลัพธ์หลังแก้ไข
+3. **เปลี่ยน Dialog Content (Lines 223-235):**
 
 **Before:**
-```text
-field user → /overview → "ไม่มีสิทธิ์เข้าถึง" ❌
+```tsx
+<Label>User ID</Label>
+<Input
+  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  value={newUserEmail}
+  onChange={(e) => setNewUserEmail(e.target.value)}
+  className="font-mono text-sm"
+/>
+<p className="text-xs text-muted-foreground">
+  UUID ของ user ที่ได้จากการสมัครสมาชิก
+</p>
 ```
 
 **After:**
-```text
-field user → /overview → redirect to /attendance/logs ✅
-admin user → /overview → เข้าได้ปกติ ✅
+```tsx
+<Label>เลือกผู้ใช้</Label>
+<Popover>
+  <PopoverTrigger asChild>
+    <Button variant="outline" className="w-full justify-between">
+      {selectedUserId ? (
+        usersWithoutRole.find(u => u.user_id === selectedUserId)?.email || selectedUserId.slice(0,8)+'...'
+      ) : (
+        "เลือกผู้ใช้..."
+      )}
+      <ChevronsUpDown className="ml-2 h-4 w-4" />
+    </Button>
+  </PopoverTrigger>
+  <PopoverContent className="w-full p-0">
+    <Command>
+      <CommandInput placeholder="ค้นหา email..." />
+      <CommandEmpty>ไม่พบผู้ใช้</CommandEmpty>
+      <CommandGroup>
+        {usersWithoutRole.filter(u => 
+          !userSearchTerm || 
+          u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())
+        ).map(user => (
+          <CommandItem
+            key={user.user_id}
+            onSelect={() => {
+              setSelectedUserId(user.user_id);
+              setNewUserEmail(user.user_id);
+            }}
+          >
+            <div className="flex flex-col">
+              <span>{user.email || 'ไม่มี email'}</span>
+              <span className="text-xs text-muted-foreground font-mono">
+                {user.user_id.slice(0,8)}...
+              </span>
+            </div>
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </Command>
+  </PopoverContent>
+</Popover>
+```
+
+4. **อัพเดท handleAddByUserId:**
+```typescript
+const handleAddByUserId = () => {
+  if (!selectedUserId) {
+    toast.error('กรุณาเลือกผู้ใช้');
+    return;
+  }
+  addRoleMutation.mutate({ userId: selectedUserId, role: selectedRole });
+};
+```
+
+5. **Reset state เมื่อปิด Dialog:**
+```typescript
+onOpenChange={(open) => {
+  setIsAddDialogOpen(open);
+  if (!open) {
+    setSelectedUserId('');
+    setNewUserEmail('');
+  }
+}}
 ```
 
 ---
 
-## ⚠️ Files ที่จะแก้ไข
+## 📁 Files ที่จะแก้ไข
 
-| File | การเปลี่ยนแปลง | Lines Affected |
-|------|--------------|----------------|
-| `usePageAccess.ts` | เพิ่ม `/overview` ใน path matching | Line 117 |
-| `ProtectedRoute.tsx` | เพิ่ม auto-redirect logic | Lines 25-33 |
+| File | การเปลี่ยนแปลง | Risk |
+|------|--------------|------|
+| `supabase/functions/refresh-member-count/index.ts` | เปลี่ยน API endpoint | Low |
+| `src/pages/settings/UserManagement.tsx` | เปลี่ยน Input เป็น Combobox | Low |
 
-**Protected Files (ไม่แตะ):**
+---
+
+## 🗄️ Database Changes
+
+```sql
+-- Mark invalid test groups as inactive
+UPDATE groups 
+SET status = 'inactive', updated_at = NOW()
+WHERE id IN (
+  'd871dcd7-9c91-4f5b-aa1c-5eadab53c524',
+  'ff0fc26e-47c7-4dd8-a0b6-b52883c5cf06'
+);
+```
+
+---
+
+## ✅ ผลลัพธ์หลังแก้ไข
+
+| Feature | Before | After |
+|---------|--------|-------|
+| Sync Member Count | ❌ Returns 0 for all groups | ✅ Returns actual count |
+| Test Groups | ❌ Cause errors | ✅ Marked inactive |
+| Add Role Dialog | ❌ Manual UUID input | ✅ Searchable user dropdown |
+
+---
+
+## 🛡️ Protected Files (ไม่แตะ)
+
 - `_shared/timezone.ts`
 - `command-parser.ts`
-- `auto-checkout-midnight/index.ts`
-- `auto-checkout-grace/index.ts`
+- `ProtectedRoute.tsx` (just updated)
+- `usePageAccess.ts` (just updated)
