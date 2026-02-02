@@ -1,193 +1,149 @@
 
 
-## แผนปรับระบบ Multi-Language (TH/EN) ทั้ง Web App
+## แผน Implementation: Permission HR + Link Webapp User
 
-### สถานะปัจจุบัน
+### สรุปความต้องการ (ปรับปรุง)
 
-| ส่วน | สถานะ | หมายเหตุ |
-|------|-------|----------|
-| `LocaleContext` | ✅ มีแล้ว | มี `t(th, en)` function |
-| `DashboardLayout` Navigation | ✅ มีแล้ว | มี `titleTh/title` ทุก item |
-| Language Toggle (Admin) | ✅ มีแล้ว | Globe button ที่ header |
-| Language Toggle (Portal) | ✅ เสร็จแล้ว | เพิ่ม Globe button ที่ header |
-| Portal Pages | ✅ บางส่วน | ใช้ `locale` จาก PortalContext |
-| Admin Pages (~50 หน้า) | 🔄 กำลังดำเนินการ | ต้องเพิ่ม translation |
-| Translations File | ✅ เสร็จแล้ว | `src/lib/translations.ts` |
+| Role | ดูตัวเอง | แก้ไขตัวเอง | ดูคนอื่น | แก้ไขคนอื่น |
+|------|---------|------------|---------|------------|
+| **Owner/Admin** | ✅ ได้ | ✅ ได้ | ✅ ทุกคน | ✅ ทุกคน |
+| **HR** | ✅ ได้ | ❌ ไม่ได้ | ✅ ทุกคน | เฉพาะ role ≤ Manager |
+| **Manager/Field** | ❌ ไม่ได้ | ❌ ไม่ได้ | ตาม priority | ตาม priority |
 
 ---
 
-### ✅ Phase 1: Portal Language Toggle - เสร็จแล้ว
+### การเปลี่ยนแปลง
 
-**ไฟล์:** `src/components/portal/PortalLayout.tsx`
-- เพิ่มปุ่ม Globe สำหรับ toggle ภาษาใน header ✅
+#### 1. Database Migration: เพิ่ม `auth_user_id` column
 
----
+```sql
+ALTER TABLE employees ADD COLUMN auth_user_id UUID REFERENCES auth.users(id);
+CREATE INDEX idx_employees_auth_user_id ON employees(auth_user_id);
 
-### ✅ Phase 2: Shared Translation Constants - เสร็จแล้ว
-
-**สร้างไฟล์:** `src/lib/translations.ts` ✅
-
----
-
-### 🔄 Phase 3: ปรับ Admin Pages (ทีละกลุ่ม)
-
-##### ✅ กลุ่ม 1: Attendance Module - เสร็จแล้ว
-
-| ไฟล์ | สถานะ | หมายเหตุ |
-|------|-------|----------|
-| `Employees.tsx` | ✅ เสร็จ | title, buttons, labels |
-| `Payroll.tsx` | ✅ เสร็จ | header, description |
-| `Dashboard.tsx` | ✅ เสร็จ | title, loading state |
-| `Logs.tsx` | ✅ เสร็จ | title, pagination, filters |
-
-##### กลุ่ม 2-6: รอดำเนินการ
-
-- Dashboard & Overview
-- Points & Rewards
-- Receipts Module
-- Settings & Configuration
-- Other Admin Pages
-  
-  // Common
-  loading: { th: 'กำลังโหลด...', en: 'Loading...' },
-  noData: { th: 'ไม่มีข้อมูล', en: 'No data' },
-  success: { th: 'สำเร็จ', en: 'Success' },
-  error: { th: 'เกิดข้อผิดพลาด', en: 'Error' },
-  
-  // Table headers
-  name: { th: 'ชื่อ', en: 'Name' },
-  status: { th: 'สถานะ', en: 'Status' },
-  date: { th: 'วันที่', en: 'Date' },
-  time: { th: 'เวลา', en: 'Time' },
-  actions: { th: 'Actions', en: 'Actions' },
-  branch: { th: 'สาขา', en: 'Branch' },
-  role: { th: 'Role', en: 'Role' },
-  employee: { th: 'พนักงาน', en: 'Employee' },
-  
-  // Specific modules (ใช้ EN สำหรับคำ technical)
-  payroll: { th: 'Payroll', en: 'Payroll' },
-  overtime: { th: 'OT', en: 'OT' },
-  checkIn: { th: 'Check-in', en: 'Check-in' },
-  checkOut: { th: 'Check-out', en: 'Check-out' },
-  dashboard: { th: 'Dashboard', en: 'Dashboard' },
-  analytics: { th: 'Analytics', en: 'Analytics' },
-} as const;
-
-// Helper type
-export type TranslationKey = keyof typeof translations;
+-- Link mefonn กับ webapp user
+UPDATE employees 
+SET auth_user_id = '2b67767d-67cb-4f02-bf9f-e0f166cc7a18'
+WHERE full_name = 'mefonn';
 ```
 
 ---
 
-#### Phase 3: ปรับ Admin Pages (ทีละกลุ่ม)
+#### 2. แก้ไข `src/hooks/useUserRole.ts`
 
-##### กลุ่ม 1: Attendance Module (สำคัญที่สุด - หน้าปัจจุบันของ user)
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `Employees.tsx` | แปลง title, buttons, labels |
-| `Payroll.tsx` | แปลง table headers, status |
-| `EmployeeDetail.tsx` | แปลง tabs, labels |
-| `Dashboard.tsx` | แปลง cards, stats |
-| `Logs.tsx` | แปลง filters, status |
-
-**ตัวอย่างการแปลง `Employees.tsx`:**
+**เพิ่ม priority maps แยก View/Edit:**
 
 ```typescript
-// ก่อน
-<CardTitle>Employees</CardTitle>
-<CardDescription>Manage employee records</CardDescription>
+const userToMaxViewPriority: Record<AppRole, number> = {
+  owner: 999, admin: 999, hr: 999,
+  executive: 5, manager: 1, moderator: 0, field: 0, user: 0, employee: 0,
+};
 
-// หลัง
-import { useLocale } from '@/contexts/LocaleContext';
-
-const { t } = useLocale();
-
-<CardTitle>{t('พนักงาน', 'Employees')}</CardTitle>
-<CardDescription>{t('จัดการข้อมูลพนักงาน', 'Manage employee records')}</CardDescription>
+const userToMaxEditPriority: Record<AppRole, number> = {
+  owner: 999, admin: 999, hr: 5,  // HR แก้ไขได้แค่ Manager ลงไป
+  executive: 5, manager: 1, moderator: 0, field: 0, user: 0, employee: 0,
+};
 ```
 
-##### กลุ่ม 2: Dashboard & Overview
+**ปรับ `canManageEmployee` function:**
 
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `Overview.tsx` | แปลง stat cards, system health |
-| `HealthMonitoring.tsx` | แปลง status indicators |
-
-##### กลุ่ม 3: Points & Rewards
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `HappyPoints.tsx` | แปลง leaderboard, stats |
-| `PointTransactions.tsx` | แปลง transaction types |
-| `Rewards.tsx` | แปลง reward items |
-
-##### กลุ่ม 4: Receipts Module
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `Receipts.tsx` | แปลง table, filters |
-| `ReceiptAnalytics.tsx` | แปลง charts |
-
-##### กลุ่ม 5: Settings & Configuration
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `Settings.tsx` | แปลง form labels |
-| `UserManagement.tsx` | แปลง user table |
-| `RoleManagement.tsx` | แปลง role permissions |
-
-##### กลุ่ม 6: Other Admin Pages
-
-- Groups, Users, Knowledge Base, Tasks, etc.
+```typescript
+const canManageEmployee = (...): EmployeeManagePermission => {
+  // Admin/Owner: ทำได้ทุกอย่างรวมตัวเอง
+  if (roleData === 'admin' || roleData === 'owner') {
+    return { canEdit: true, canView: true };
+  }
+  
+  // HR: ดูตัวเองได้ แก้ไขไม่ได้
+  if (isSelf && roleData === 'hr') {
+    return { canEdit: false, canView: true };
+  }
+  
+  // Other roles: ถ้าเป็นตัวเอง ดูและแก้ไขไม่ได้
+  if (isSelf) {
+    return { canEdit: false, canView: false };
+  }
+  
+  // เช็ค priority สำหรับคนอื่น
+  return {
+    canView: targetPriority <= userToMaxViewPriority[roleData],
+    canEdit: targetPriority <= userToMaxEditPriority[roleData],
+  };
+};
+```
 
 ---
 
-### หลักการเลือกภาษา
+#### 3. ปรับ Query หา Current User Employee (6 ไฟล์)
 
-| คำ/วลี | ใช้ภาษา | เหตุผล |
-|--------|---------|--------|
-| Dashboard, Analytics | EN | ศัพท์ tech คุ้นเคย |
-| Payroll, OT | EN | ใช้กันทั่วไป |
-| Check-in/out | EN | เข้าใจง่ายกว่า "ลงเวลาเข้า" |
-| Export, Import, Filter | EN | UI standard |
-| พนักงาน, สาขา, วันลา | TH | เข้าใจง่ายกว่า |
-| อนุมัติ, ปฏิเสธ, รอดำเนินการ | TH | context ชัดเจนกว่า |
-| บันทึก, ยกเลิก, แก้ไข | TH | actions พื้นฐาน |
+**ไฟล์:** `Employees.tsx`, `Payroll.tsx`, `EmployeeDetail.tsx`, `EmployeeSettings.tsx`, `EmployeeHistory.tsx`
+
+```typescript
+const { data: currentUserEmployee } = useQuery({
+  queryKey: ['current-user-employee'],
+  queryFn: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    
+    // Method 1: Direct link via auth_user_id
+    const { data: directLink } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+    
+    if (directLink) return directLink;
+    
+    // Method 2: Fallback via LINE ID
+    const { data: lineUser } = await supabase
+      .from('users')
+      .select('line_user_id')
+      .eq('id', user.id)
+      .maybeSingle();
+    
+    if (lineUser?.line_user_id) {
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('line_user_id', lineUser.line_user_id)
+        .maybeSingle();
+      return employee;
+    }
+    return null;
+  }
+});
+```
 
 ---
 
-### ไฟล์ที่ต้องแก้ไข (รวม ~60 ไฟล์)
+#### 4. ปรับ UI แสดงสถานะ View-only (Payroll, Employees)
 
-**สร้างใหม่:**
-- `src/lib/translations.ts`
-
-**แก้ไข:**
-1. `src/components/portal/PortalLayout.tsx` - เพิ่ม language toggle
-2. `src/pages/attendance/Employees.tsx` - แปลง UI
-3. `src/pages/attendance/Payroll.tsx` - แปลง UI
-4. `src/pages/attendance/Dashboard.tsx` - แปลง UI
-5. ... (และอีก ~55 ไฟล์)
+สำหรับ rows ที่ `canView: true, canEdit: false` จะแสดงข้อมูลได้แต่ปุ่ม Edit จะ disabled
 
 ---
 
-### แนะนำ: Implementation แบบ Incremental
+### ไฟล์ที่จะแก้ไข
 
-เนื่องจากมีหลายไฟล์ ขอเสนอให้ implement ทีละกลุ่ม:
-
-1. **รอบแรก**: Portal Language Toggle + Attendance Module (10 ไฟล์)
-2. **รอบสอง**: Dashboard & Overview (5 ไฟล์)
-3. **รอบสาม**: Points & Rewards (5 ไฟล์)
-4. ... ต่อไปเรื่อยๆ
-
-ต้องการให้เริ่มจากกลุ่มไหนก่อน?
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|---------------|
+| **Database** | เพิ่ม `auth_user_id` + link mefonn |
+| `src/hooks/useUserRole.ts` | แยก view/edit priority + ปรับ logic |
+| `src/pages/attendance/Employees.tsx` | ปรับ query + UI |
+| `src/pages/attendance/Payroll.tsx` | ปรับ query + UI |
+| `src/pages/attendance/EmployeeDetail.tsx` | ปรับ query + redirect logic |
+| `src/pages/attendance/EmployeeSettings.tsx` | ปรับ query + redirect logic |
+| `src/pages/attendance/EmployeeHistory.tsx` | ปรับ query + redirect logic |
 
 ---
 
-### หมายเหตุทางเทคนิค
+### ผลลัพธ์
 
-- ใช้ `t(th, en)` pattern จาก `useLocale()` ที่มีอยู่แล้ว
-- ไม่ต้องสร้าง i18n library ใหม่ (KISS principle)
-- Locale จะ persist ใน localStorage
-- Admin และ Portal ใช้ locale store เดียวกัน
+| สถานการณ์ | ผลลัพธ์ |
+|-----------|--------|
+| HR (mefonn) ดูตัวเอง | ✅ ได้ (view-only) |
+| HR (mefonn) แก้ไขตัวเอง | ❌ ไม่ได้ |
+| HR ดู Owner/Admin | ✅ ได้ (view-only) |
+| HR แก้ไข Owner/Admin | ❌ ไม่ได้ |
+| HR แก้ไข Manager/Field/Employee | ✅ ได้ |
+| Manager ดู/แก้ไขตัวเอง | ❌ ไม่ได้ (grayed) |
+| Admin/Owner ดู/แก้ไขทุกคน | ✅ ได้ |
 
