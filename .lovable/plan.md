@@ -1,120 +1,54 @@
 
-
-## แผนแก้ไข Points ntp.冬至 - วันที่ 30 ม.ค. 2569
+## แผนแก้ไข - Dialog Scroll ไม่ทำงาน
 
 ### ปัญหาที่พบ
 
-เช่นเดียวกับ Noey - ntp.冬至 ได้รับอนุญาตให้เข้างานสายวันที่ 30 ม.ค. แต่ระบบบันทึกว่าสาย ทำให้:
+ใน `AttendanceEditDialog.tsx` บรรทัด 362:
 
-| รายการ | ก่อนแก้ | หลังแก้ |
-|--------|--------|--------|
-| Punctuality bonus (30 ม.ค.) | ❌ ไม่ได้ | ✅ +10 |
-| 10-Day Streak bonus | ❌ ไม่ได้ | ✅ +50 |
-| **Point balance** | **140** | **200** |
-| Current streak | 1 | 10 |
-| Longest streak | 8 | 10 |
+```tsx
+<ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
+```
+
+**ปัญหา:**
+- `flex-1` และ `h-[calc(...)]` ขัดแย้งกัน ทำให้ Radix ScrollArea ไม่สามารถคำนวณ height ได้ถูกต้อง
+- `DialogContent` มี `overflow-hidden` ซึ่งตัด content ที่เกินออก
+- ScrollArea ต้องการ **fixed height** หรือ **max-height** ที่ชัดเจนเพื่อให้ scroll ทำงาน
 
 ---
 
-### การดำเนินการ
+### การแก้ไข
 
-#### 1. Database Migration - แก้ไขคะแนน
+**บรรทัด 346 - DialogContent:**
+```tsx
+// จาก
+<DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
 
-```sql
--- 1. เพิ่ม Attendance Adjustment สำหรับวันที่ 30 ม.ค.
-INSERT INTO attendance_adjustments (
-  employee_id,
-  adjustment_date,
-  override_status,
-  reason,
-  adjusted_by_user_id,
-  approved_late_start,
-  approved_late_reason
-) VALUES (
-  '0a9c61de-8482-49ac-8586-e7878a740812', -- ntp.冬至
-  '2026-01-30',
-  'on_time',
-  'Owner approved late start - ทำงานกะพิเศษถึงเที่ยงคืน',
-  (SELECT id FROM auth.users LIMIT 1),
-  true,
-  'ทำงานกะพิเศษถึงเที่ยงคืน'
-);
-
--- 2. เพิ่ม Punctuality Bonus ย้อนหลัง
-INSERT INTO point_transactions (
-  employee_id,
-  transaction_type,
-  category,
-  amount,
-  description,
-  metadata
-) VALUES (
-  '0a9c61de-8482-49ac-8586-e7878a740812',
-  'bonus',
-  'attendance',
-  10,
-  '🕐 Punctuality bonus - 30 ม.ค. 69',
-  '{"reference_date": "2026-01-30", "manual_adjustment": true}'
-);
-
--- 3. เพิ่ม Streak Bonus 10 วัน
-INSERT INTO point_transactions (
-  employee_id,
-  transaction_type,
-  category,
-  amount,
-  description,
-  metadata
-) VALUES (
-  '0a9c61de-8482-49ac-8586-e7878a740812',
-  'bonus',
-  'streak',
-  50,
-  '🔥 มาเช้าต่อเนื่อง 10 วัน! (ย้อนหลัง 30 ม.ค.)',
-  '{"streak_days": 10, "manual_adjustment": true, "original_date": "2026-01-30"}'
-);
-
--- 4. อัพเดท happy_points
-UPDATE happy_points
-SET 
-  point_balance = point_balance + 60,
-  total_earned = total_earned + 60,
-  current_punctuality_streak = 10,
-  longest_punctuality_streak = 10,
-  updated_at = NOW()
-WHERE employee_id = '0a9c61de-8482-49ac-8586-e7878a740812';
+// เป็น  
+<DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-y-auto">
 ```
 
-#### 2. ส่งประกาศ LINE (เหมือน Noey)
+**บรรทัด 362 - ScrollArea:**
+```tsx
+// จาก
+<ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
 
-สร้าง Broadcast ส่งไปยัง Glowfish Office Group:
-
-```
-📢 สรุป Points
-
-👤 ntp.冬至
-📅 วันที่ 30 ม.ค. 2569
-
-✅ น่ารักที่สุด!!!!
-✅ มาเช้าต่อเนื่องเป๊ะๆครบ 10 วัน เอาไปเลย +50 คะแนน
+// เป็น
+<ScrollArea className="max-h-[calc(90vh-200px)] pr-4">
 ```
 
 ---
 
-### ไฟล์ที่ต้องดำเนินการ
+### ไฟล์ที่ต้องแก้ไข
 
-| รายการ | ประเภท | รายละเอียด |
-|--------|--------|-----------|
-| Database Migration | SQL | เพิ่ม adjustment + transactions + update happy_points |
-| Broadcast | API Call | ส่งประกาศไปกลุ่ม LINE |
+| ไฟล์ | บรรทัด | การเปลี่ยนแปลง |
+|------|--------|---------------|
+| `AttendanceEditDialog.tsx` | 346 | เปลี่ยน `overflow-hidden` เป็น `overflow-y-auto` |
+| `AttendanceEditDialog.tsx` | 362 | เปลี่ยน `flex-1 h-[calc...]` เป็น `max-h-[calc(90vh-200px)]` |
 
 ---
 
-### ผลลัพธ์ที่คาดหวัง
+### ผลลัพธ์
 
-**ntp.冬至 หลังแก้ไข:**
-- Point balance: 140 → **200** (+60)
-- Current streak: 1 → **10**
-- Longest streak: 8 → **10**
-- มีบันทึก audit trail ว่าได้รับอนุญาตเข้าสาย
+**Before:** Dialog เกินหน้าจอ → scroll ไม่ได้ → เนื้อหาหายไป
 
+**After:** Dialog มี scrollbar → เลื่อนดูเนื้อหาได้ทั้งหมด → สามารถกดปุ่ม "บันทึก" และ "ยกเลิก" ได้
