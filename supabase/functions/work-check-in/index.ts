@@ -190,7 +190,7 @@ serve(async (req) => {
         const updatedMetadata = {
           ...metadata,
           check_in_count: (metadata.check_in_count || 0) + 1,
-          last_check_in_at: getBangkokNow().toISOString(),
+          last_check_in_at: new Date().toISOString(),  // Store UTC consistently
         };
         
         await supabase
