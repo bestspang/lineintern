@@ -2043,6 +2043,47 @@ export type Database = {
           },
         ]
       }
+      employee_notes: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string | null
+          created_by: string
+          employee_id: string
+          id: string
+          is_pinned: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string | null
+          created_by: string
+          employee_id: string
+          id?: string
+          is_pinned?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string | null
+          created_by?: string
+          employee_id?: string
+          id?: string
+          is_pinned?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_notes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_payroll_settings: {
         Row: {
           created_at: string | null
