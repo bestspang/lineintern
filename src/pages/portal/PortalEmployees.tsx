@@ -36,7 +36,7 @@ export default function PortalEmployees() {
           id,
           name,
           is_active,
-          role:employee_roles(role_name),
+          role:employee_roles(role_key),
           branch:branches!employees_branch_id_fkey(id, name)
         `)
         .eq('is_active', true)
@@ -54,7 +54,7 @@ export default function PortalEmployees() {
       setEmployees(data?.map((e: any) => ({
         id: e.id,
         name: e.name,
-        role: e.role?.role_name || 'พนักงาน',
+        role: e.role?.role_key || 'พนักงาน',
         branch: e.branch?.name || '-',
         branchId: e.branch?.id,
         isActive: e.is_active,

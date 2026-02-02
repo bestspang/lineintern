@@ -254,7 +254,7 @@ export default function Payroll() {
           employment_start_date,
           branches:branches!branch_id(name),
           employee_payroll_settings (*),
-          employee_role:employee_roles!role_id(id, name, priority)
+          employee_role:employee_roles!role_id(id, role_key, priority)
         `)
         .eq("is_active", true)
         .order("full_name");
