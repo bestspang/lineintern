@@ -343,7 +343,7 @@ export function AttendanceEditDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
@@ -359,7 +359,7 @@ export function AttendanceEditDialog({
           </DialogDescription>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
+        <ScrollArea className="max-h-[calc(90vh-200px)] pr-4">
           <div className="space-y-6 py-4">
             {/* Status Selection */}
             <div className="space-y-3">
