@@ -4,8 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { MessageSquare, PanelRightClose, PanelRight, ArrowLeft } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { MessageSquare, ArrowLeft, Info } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ConversationList, ConversationItem } from '@/components/dm/ConversationList';
 import { ChatPanel } from '@/components/dm/ChatPanel';
@@ -127,9 +126,9 @@ export default function DirectMessages() {
   // Mobile view - show list or chat
   if (isMobile) {
     return (
-      <div className="h-[calc(100vh-120px)] flex flex-col">
+      <div className="h-[calc(100vh-64px)] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-3 border-b">
           <div className="flex items-center gap-2">
             {selectedConversation && (
               <Button 
@@ -141,20 +140,25 @@ export default function DirectMessages() {
                 กลับ
               </Button>
             )}
-            <h1 className="text-lg font-bold flex items-center gap-2">
+            <h1 className="text-base font-semibold flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
               {selectedConversation ? selectedConversation.user_display_name : 'แชท'}
             </h1>
           </div>
+          {selectedConversation && (
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setShowInfoSheet(true)}
+            >
+              <Info className="h-5 w-5" />
+            </Button>
+          )}
         </div>
 
         {/* Content */}
         {selectedConversation ? (
-          <ChatPanel 
-            conversation={selectedConversation} 
-            onShowInfo={() => setShowInfoSheet(true)}
-            showInfoButton={!!selectedConversation.employee_id}
-          />
+          <ChatPanel conversation={selectedConversation} />
         ) : (
           <ConversationList
             conversations={conversations}
@@ -180,66 +184,33 @@ export default function DirectMessages() {
     );
   }
 
-  // Desktop view - 3 columns
+  // Desktop view - 3 columns (no redundant header)
   return (
-    <div className="h-[calc(100vh-120px)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <MessageSquare className="h-6 w-6" />
-            แชท
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            สนทนากับผู้ใช้ LINE พร้อมบันทึกข้อมูลพนักงาน
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowInfoPanel(!showInfoPanel)}
-          className="gap-2"
-        >
-          {showInfoPanel ? (
-            <><PanelRightClose className="h-4 w-4" /> ซ่อนข้อมูล</>
-          ) : (
-            <><PanelRight className="h-4 w-4" /> แสดงข้อมูล</>
-          )}
-        </Button>
+    <div className="h-[calc(100vh-64px)] flex overflow-hidden">
+      {/* Left: Conversation list with integrated header */}
+      <div className="w-80 shrink-0 border-r">
+        <ConversationList
+          conversations={conversations}
+          selectedId={selectedConversation?.id || null}
+          onSelect={handleSelectConversation}
+          isLoading={isLoading}
+          showInfoPanel={showInfoPanel}
+          onToggleInfoPanel={() => setShowInfoPanel(!showInfoPanel)}
+        />
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Conversation list */}
-        <div className="w-80 shrink-0 border-r">
-          <ConversationList
-            conversations={conversations}
-            selectedId={selectedConversation?.id || null}
-            onSelect={handleSelectConversation}
-            isLoading={isLoading}
-          />
-        </div>
-
-        {/* Center: Chat panel */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <ChatPanel conversation={selectedConversation} />
-        </div>
-
-        {/* Right: Info panel */}
-        {showInfoPanel && (
-          <div 
-            className={cn(
-              "w-80 shrink-0 border-l bg-muted/30 overflow-hidden transition-all",
-              selectedConversation ? "opacity-100" : "opacity-50"
-            )}
-          >
-            <ScrollArea className="h-full">
-              <EmployeeInfoCard conversation={selectedConversation} />
-              <EmployeeNotes conversation={selectedConversation} />
-            </ScrollArea>
-          </div>
-        )}
+      {/* Center: Chat panel */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <ChatPanel conversation={selectedConversation} />
       </div>
+
+      {/* Right: Info panel - ONLY when has selection */}
+      {showInfoPanel && selectedConversation && (
+        <div className="w-72 shrink-0 border-l bg-muted/30 overflow-y-auto">
+          <EmployeeInfoCard conversation={selectedConversation} />
+          <EmployeeNotes conversation={selectedConversation} />
+        </div>
+      )}
     </div>
   );
 }
