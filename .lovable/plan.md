@@ -1,253 +1,249 @@
 
 
-## 🎯 แผนปรับปรุง Direct Messages - UX/UI Redesign
+## แผนปรับปรุง Direct Messages - แก้ปัญหาความซ้ำซ้อนและพื้นที่เสียเปล่า
 
-### 📊 สรุปปัญหาที่พบจากการวิเคราะห์
+### ปัญหาที่พบจาก Screenshot
 
-| หมวด | ปัญหา | ความรุนแรง |
-|------|-------|-----------|
-| **ภาษา** | ปนกันไทย-อังกฤษไม่เป็นระบบ | 🔴 High |
-| **Message Direction** | ทิศทาง bubble สับสน (User ควรอยู่ซ้าย, Admin อยู่ขวา) | 🔴 High |
-| **Mobile** | ไม่มีทางเข้าถึง Employee Info และ Notes | 🔴 High |
-| **Visual** | ข้อมูลซ้ำซ้อน, hierarchy ไม่ชัด | 🟡 Medium |
-| **Feedback** | ไม่มี unread indicator, delivery status | 🟡 Medium |
-| **Timestamp** | แสดงยาวเกินไป, ไม่ smart format | 🟢 Low |
-
----
-
-### 🔧 การปรับปรุง
-
-#### 1. แก้ไข Message Direction (Critical Fix)
-
-**ปัญหา:** ปัจจุบัน User messages (incoming) อยู่ขวา ซึ่งสับสนเพราะเรา (Admin) กำลัง chat กับ User
-
-**แก้ไข:** 
-- **ข้อความจาก User (incoming)** → ฝั่ง**ซ้าย** (เหมือน LINE ปกติที่คู่สนทนาอยู่ซ้าย)
-- **ข้อความจาก Bot/Admin (reply)** → ฝั่ง**ขวา** (เราเป็นคนพิมพ์)
-
-```
-┌─────────────────────────────────────┐
-│  👤 User                            │  ← ซ้าย (สีเทา)
-│  สวัสดีครับ                         │
-│                          10:30      │
-│                                     │
-│                     🤖 Bot          │  → ขวา (สีเขียว)
-│              มีอะไรให้ช่วยครับ       │
-│                          10:31      │
-│                                     │
-│                     🛡️ Admin        │  → ขวา (สีน้ำเงิน)
-│              ได้ครับ รอสักครู่        │
-│                          10:32 ✓    │
-└─────────────────────────────────────┘
-```
+| ปัญหา | รายละเอียด | ความรุนแรง |
+|-------|-----------|-----------|
+| **Header ซ้ำซ้อน** | "แชท" แสดง 2 ครั้งพร้อม icon เดียวกัน | สูง |
+| **พื้นที่ว่างด้านบน** | Header รวม ~150px ก่อนถึงเนื้อหา | สูง |
+| **Empty state ซ้ำ** | แสดงข้อความ "เลือกการสนทนา" ทั้งกลางและขวา | กลาง |
+| **Info panel ว่างเปล่า** | แสดงแม้ไม่ได้เลือกการสนทนา | กลาง |
+| **Double border** | border-r ซ้ำทั้งใน List และ wrapper | ต่ำ |
 
 ---
 
-#### 2. ทำ Language Consistency ให้เป็นระบบ
+### การออกแบบใหม่
 
-**หลักการ:** ใช้ภาษาไทยเป็นหลัก ยกเว้น technical terms
-
-| ก่อน | หลัง |
-|------|------|
-| "Chats" | "แชท" |
-| "Notes" | "บันทึก" |
-| "User", "Bot", "Admin" | "ผู้ใช้", "บอท", "แอดมิน" |
-| "Active"/"Inactive" | "ใช้งาน"/"ปิดใช้งาน" |
-| "Unknown" | "ไม่ทราบชื่อ" |
-| Badge non-employee แค่ icon | "บุคคลภายนอก" |
-
----
-
-#### 3. เพิ่ม Mobile Bottom Sheet สำหรับ Info Panel
-
-**ปัญหา:** Mobile ไม่มีทางดู Employee Info และ Notes
-
-**แก้ไข:** เพิ่มปุ่ม info ที่ header → เปิด Bottom Sheet
-
+**Before (ปัจจุบัน):**
 ```
-┌─────────────────────────────┐
-│ ← กลับ  Pass     ℹ️  ···   │  ← เพิ่มปุ่ม info
-├─────────────────────────────┤
-│                             │
-│    [Chat Messages]          │
-│                             │
-├─────────────────────────────┤
-│ 💬 พิมพ์ข้อความ...    [ส่ง] │
-└─────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ 💬 แชท                                  [ซ่อนข้อมูล]  │  ← Header #1
+│ สนทนากับผู้ใช้ LINE พร้อมบันทึก...                      │
+├────────────────────────────────────────────────────────┤
+│ 💬 แชท  (10)                                          │  ← Header #2 (ซ้ำ!)
+│ [🔍 ค้นหา...]                                          │
+│ [ทั้งหมด] [พนักงาน] [ภายนอก]                           │
+├────────┬─────────────────────────┬─────────────────────┤
+│ List   │  เลือกการสนทนา...       │ เลือกการสนทนา...    │  ← Empty ซ้ำกัน!
+└────────┴─────────────────────────┴─────────────────────┘
+```
 
-     เมื่อกด ℹ️ → เปิด Sheet
-┌─────────────────────────────┐
-│ ═══════════════════════════ │
-│    ข้อมูลพนักงาน            │
-│    [Employee Card]          │
-│                             │
-│    บันทึก (Notes)           │
-│    [Notes List]             │
-└─────────────────────────────┘
+**After (ใหม่):**
+```
+┌────────────────────────────────────────────────────────┐
+│ 💬 แชท (10)    [🔍 ค้นหา...]    [ซ่อน/แสดงข้อมูล] │  ← Compact header
+│ [ทั้งหมด] [พนักงาน] [ภายนอก]                           │
+├────────┬───────────────────────────────────────────────┤
+│        │                                               │
+│  List  │         เลือกการสนทนาเพื่อเริ่มแชท            │  ← Empty เดียว
+│        │                                               │    (Info panel ซ่อนไว้)
+│        │                                               │
+└────────┴───────────────────────────────────────────────┘
 ```
 
 ---
 
-#### 4. Smart Timestamp Format
+### การเปลี่ยนแปลง
 
-**ปัญหา:** แสดง "2 ก.พ. 2569 10:30:00" ยาวเกินไป
+#### 1. DirectMessages.tsx - ลบ Page Header
 
-**แก้ไข:** 
-- **วันนี้:** แสดงแค่เวลา "10:30"
-- **สัปดาห์นี้:** "จันทร์ 10:30"
-- **ปีนี้:** "2 ก.พ. 10:30"
-- **ก่อนหน้า:** "2 ก.พ. 68"
-
----
-
-#### 5. ปรับ Visual Hierarchy
-
-**5.1 Conversation List:**
-```
-┌─────────────────────────────────┐
-│ 💬 แชท                     (12) │  ← เปลี่ยนเป็นไทย
-├─────────────────────────────────┤
-│ 🔍 ค้นหาชื่อ สาขา...            │
-│ [ทั้งหมด] [พนักงาน] [ภายนอก]   │  ← "อื่นๆ" → "ภายนอก"
-├─────────────────────────────────┤
-│ ┌───────────────────────────┐   │
-│ │ 👤 Pass          สาขา A   │   │
-│ │ 📍 พนักงาน               │   │
-│ │ สวัสดีครับ...      2 นาที │   │
-│ │                     12 💬 │   │  ← message count ชัดขึ้น
-│ └───────────────────────────┘   │
-│                                 │
-│ ┌───────────────────────────┐   │
-│ │ 👤 Unknown         ภายนอก │   │  ← badge มี label
-│ │ ขอสอบถาม...       1 ชม.   │   │
-│ │                      3 💬 │   │
-│ └───────────────────────────┘   │
-└─────────────────────────────────┘
+**ลบทิ้ง:**
+```tsx
+// ลบ header section นี้ทั้งหมด (line 187-209)
+<div className="flex items-center justify-between px-6 py-4 border-b">
+  <div>
+    <h1>แชท</h1>
+    <p>สนทนากับ...</p>
+  </div>
+  <Button>ซ่อนข้อมูล</Button>
+</div>
 ```
 
-**5.2 Employee Info Card:**
-```
-┌─────────────────────────────┐
-│ 💼 ข้อมูลพนักงาน           │
-├─────────────────────────────┤
-│      [Avatar]               │
-│    Pass Doe                 │
-│ [ใช้งาน] [พนักงานขาย]       │  ← เป็นไทย
-│                             │
-│ 🏢 สาขาเซ็นทรัล              │
-│ 📍 123 ถ.พหลโยธิน...        │
-│                             │
-│ ┌───────────┬───────────┐   │
-│ │ 💬 12     │ 🕐 ล่าสุด │   │  ← รวมข้อมูลล่าสุด
-│ │ ข้อความ   │ 2 ก.พ. 69 │   │
-│ └───────────┴───────────┘   │
-│                             │
-│ [🔗 ดูข้อมูลเพิ่มเติม]      │
-└─────────────────────────────┘
+**เหลือแค่:**
+```tsx
+<div className="h-[calc(100vh-64px)] flex overflow-hidden">
+  {/* 3 columns layout โดยไม่มี header */}
+</div>
 ```
 
----
+#### 2. ConversationList.tsx - ปรับเป็น Compact Header
 
-#### 6. ปรับ Notes Section
+**รวม toggle button เข้ามาใน ConversationList:**
+```tsx
+interface ConversationListProps {
+  // ... existing props
+  showInfoPanel?: boolean;
+  onToggleInfoPanel?: () => void;
+}
 
-**เปลี่ยนแปลง:**
-- Title: "Notes" → "📝 บันทึก"
-- Empty state: "ยังไม่มี Notes" → "ยังไม่มีบันทึก"
-- Scroll height: 200px → auto (max-h-[250px])
-
----
-
-#### 7. เพิ่ม Delivery Status (Optional Enhancement)
-
-แสดงสถานะข้อความที่ส่ง:
-- ✓ ส่งสำเร็จ (LINE ได้รับแล้ว)
-- ⏳ กำลังส่ง...
-- ✗ ส่งไม่สำเร็จ
-
----
-
-### 📁 ไฟล์ที่ต้องแก้ไข
-
-| ไฟล์ | การเปลี่ยนแปลง |
-|------|---------------|
-| `src/pages/DirectMessages.tsx` | เพิ่ม Mobile Info Sheet, ปรับ header labels |
-| `src/components/dm/ChatPanel.tsx` | แก้ message direction, smart timestamp, delivery status |
-| `src/components/dm/ConversationList.tsx` | ปรับ labels เป็นไทย, message count display |
-| `src/components/dm/EmployeeInfoCard.tsx` | แก้ Active → ใช้งาน, ปรับ Last Activity display |
-| `src/components/dm/EmployeeNotes.tsx` | แก้ labels เป็นไทย |
-| `src/lib/timezone.ts` | เพิ่ม smartFormatTime function |
-
----
-
-### 📐 Technical Details
-
-#### Smart Time Formatter
-```typescript
-export function formatSmartTime(date: string | Date): string {
-  const d = new Date(date);
-  const now = getBangkokNow();
+// Header section ใหม่
+<div className="p-3 space-y-2">
+  {/* Row 1: Title + Search + Toggle */}
+  <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
+      <MessageSquare className="h-5 w-5 text-primary" />
+      <span className="font-semibold">แชท</span>
+      <Badge variant="secondary">{conversations.length}</Badge>
+    </div>
+    
+    {/* Compact search */}
+    <div className="relative flex-1">
+      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5" />
+      <Input placeholder="ค้นหา..." className="h-8 pl-7 text-sm" />
+    </div>
+    
+    {/* Toggle button (desktop only) */}
+    {onToggleInfoPanel && (
+      <Button variant="ghost" size="icon" className="h-8 w-8">
+        {showInfoPanel ? <PanelRightClose /> : <PanelRight />}
+      </Button>
+    )}
+  </div>
   
-  // วันนี้ → "10:30"
-  if (isBangkokToday(d)) {
-    return formatBangkokTimeShort(d);
-  }
-  
-  // สัปดาห์นี้ → "จันทร์ 10:30"
-  const daysAgo = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (daysAgo < 7) {
-    return d.toLocaleDateString('th-TH', { 
-      weekday: 'short', 
-      timeZone: BANGKOK_TIMEZONE 
-    }) + ' ' + formatBangkokTimeShort(d);
-  }
-  
-  // ปีนี้ → "2 ก.พ. 10:30"
-  // ก่อนหน้า → "2 ก.พ. 68"
-  // ...
+  {/* Row 2: Filter tabs */}
+  <Tabs ...>
+    <TabsList className="h-7">
+      <TabsTrigger className="text-xs h-6">ทั้งหมด</TabsTrigger>
+      ...
+    </TabsList>
+  </Tabs>
+</div>
+```
+
+#### 3. Info Panel - ซ่อนเมื่อไม่มี Selection
+
+**ก่อน:**
+```tsx
+{showInfoPanel && (
+  <div className="w-80 ...">
+    <EmployeeInfoCard conversation={selectedConversation} />  {/* แสดง empty state */}
+  </div>
+)}
+```
+
+**หลัง:**
+```tsx
+{showInfoPanel && selectedConversation && (
+  <div className="w-80 ...">
+    <EmployeeInfoCard conversation={selectedConversation} />
+  </div>
+)}
+```
+
+#### 4. EmployeeInfoCard.tsx - ลบ Empty State
+
+**ลบ section นี้:**
+```tsx
+// ลบออก - ไม่จำเป็นเพราะจะไม่แสดง component เลยถ้าไม่มี conversation
+if (!conversation) {
+  return (
+    <div className="p-4 text-center ...">
+      <User className="h-8 w-8 ..." />
+      <p>เลือกการสนทนาเพื่อดูข้อมูล</p>
+    </div>
+  );
 }
 ```
 
-#### Mobile Info Sheet
-```typescript
-// ใน DirectMessages.tsx mobile view
-const [showInfoSheet, setShowInfoSheet] = useState(false);
+#### 5. ConversationList.tsx - ลบ border-r ที่ซ้ำ
 
-// Header
-<Button variant="ghost" size="icon" onClick={() => setShowInfoSheet(true)}>
-  <Info className="h-5 w-5" />
-</Button>
+**ก่อน:**
+```tsx
+<div className="flex flex-col h-full border-r">  {/* ซ้ำกับ parent */}
+```
 
-// Sheet
-<Sheet open={showInfoSheet} onOpenChange={setShowInfoSheet}>
-  <SheetContent side="bottom" className="h-[70vh]">
-    <ScrollArea className="h-full">
-      <EmployeeInfoCard conversation={selectedConversation} />
-      <EmployeeNotes conversation={selectedConversation} />
-    </ScrollArea>
-  </SheetContent>
-</Sheet>
+**หลัง:**
+```tsx
+<div className="flex flex-col h-full">  {/* ลบ border-r */}
 ```
 
 ---
 
-### ✅ ผลลัพธ์ที่คาดหวัง
+### ไฟล์ที่ต้องแก้ไข
 
-| ด้าน | Before | After |
-|------|--------|-------|
-| **ภาษา** | ปนกัน TH/EN | สม่ำเสมอ (ไทยเป็นหลัก) |
-| **Message Direction** | User ขวา (สับสน) | User ซ้าย, Admin ขวา (ถูกต้อง) |
-| **Mobile** | ไม่มี Info/Notes | มี Bottom Sheet |
-| **Timestamp** | ยาวเกินไป | Smart format ตามเวลา |
-| **Visual** | ข้อมูลซ้ำซ้อน | Hierarchy ชัดเจน |
-| **Status Badge** | Active/Inactive (EN) | ใช้งาน/ปิดใช้งาน (TH) |
+| ไฟล์ | การเปลี่ยนแปลง |
+|------|---------------|
+| `src/pages/DirectMessages.tsx` | ลบ page header, ปรับ layout, pass toggle props |
+| `src/components/dm/ConversationList.tsx` | รับ toggle props, compact header, ลบ border-r |
+| `src/components/dm/EmployeeInfoCard.tsx` | ลบ empty state (return null แทน) |
 
 ---
 
-### 📝 Implementation Order
+### Visual Comparison
 
-1. **Message Direction** - Critical fix ก่อน
-2. **Language Consistency** - ทำพร้อมกันทุกไฟล์
-3. **Mobile Info Sheet** - เพิ่ม Sheet component
-4. **Smart Timestamp** - เพิ่ม utility function
-5. **Visual Polish** - ปรับรายละเอียด UI
+**พื้นที่ที่ได้คืน:**
+
+| ส่วน | Before | After | ประหยัด |
+|------|--------|-------|--------|
+| Page header | 80px | 0px | 80px |
+| List header | 110px | 70px | 40px |
+| **รวม** | **190px** | **70px** | **120px** |
+
+**ลดความซ้ำซ้อน:**
+- ❌ "แชท" แสดง 2 ครั้ง → ✅ แสดง 1 ครั้ง
+- ❌ Empty state 2 ที่ → ✅ แสดง 1 ที่ (กลางเท่านั้น)
+- ❌ Double border → ✅ Single border
+
+---
+
+### รายละเอียดทางเทคนิค
+
+#### ConversationList Props Update
+```typescript
+interface ConversationListProps {
+  conversations: ConversationItem[];
+  selectedId: string | null;
+  onSelect: (conversation: ConversationItem) => void;
+  isLoading: boolean;
+  // New props
+  showInfoPanel?: boolean;
+  onToggleInfoPanel?: () => void;
+}
+```
+
+#### DirectMessages Layout Update
+```tsx
+// Desktop view
+<div className="h-[calc(100vh-64px)] flex overflow-hidden">
+  {/* Left: Conversation list with integrated header */}
+  <div className="w-80 shrink-0 border-r">
+    <ConversationList
+      conversations={conversations}
+      selectedId={selectedConversation?.id || null}
+      onSelect={handleSelectConversation}
+      isLoading={isLoading}
+      showInfoPanel={showInfoPanel}
+      onToggleInfoPanel={() => setShowInfoPanel(!showInfoPanel)}
+    />
+  </div>
+
+  {/* Center: Chat panel */}
+  <div className="flex-1 flex flex-col min-w-0">
+    <ChatPanel conversation={selectedConversation} />
+  </div>
+
+  {/* Right: Info panel - ONLY when has selection */}
+  {showInfoPanel && selectedConversation && (
+    <div className="w-72 shrink-0 border-l bg-muted/30 overflow-y-auto">
+      <EmployeeInfoCard conversation={selectedConversation} />
+      <EmployeeNotes conversation={selectedConversation} />
+    </div>
+  )}
+</div>
+```
+
+---
+
+### ผลลัพธ์ที่คาดหวัง
+
+| ด้าน | Before | After |
+|------|--------|-------|
+| **Header** | ซ้ำ 2 ชั้น | 1 ชั้น compact |
+| **พื้นที่แนวตั้ง** | เสีย ~120px | ได้คืน |
+| **Empty state** | ซ้ำ 2 ที่ | 1 ที่ (center only) |
+| **Info panel ว่าง** | แสดงตลอด | ซ่อนเมื่อไม่มี selection |
+| **ความซับซ้อน** | สูง | ลดลง |
+| **First impression** | ดูรก | สะอาดตา |
 
