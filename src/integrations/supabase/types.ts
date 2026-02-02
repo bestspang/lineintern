@@ -4824,6 +4824,42 @@ export type Database = {
         }
         Relationships: []
       }
+      role_access_levels: {
+        Row: {
+          can_view_all_data: boolean | null
+          created_at: string | null
+          description: string | null
+          has_admin_level: boolean | null
+          has_field_level: boolean | null
+          has_hr_level: boolean | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          can_view_all_data?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          has_admin_level?: boolean | null
+          has_field_level?: boolean | null
+          has_hr_level?: boolean | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          can_view_all_data?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          has_admin_level?: boolean | null
+          has_field_level?: boolean | null
+          has_hr_level?: boolean | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       role_menu_permissions: {
         Row: {
           created_at: string | null
@@ -6397,6 +6433,7 @@ export type Database = {
         Args: { p_employee_id: string }
         Returns: boolean
       }
+      can_view_all_data: { Args: { check_user_id: string }; Returns: boolean }
       can_view_employee_by_priority: {
         Args: { target_employee_id: string; viewer_user_id: string }
         Returns: boolean
