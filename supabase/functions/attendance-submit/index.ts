@@ -948,6 +948,17 @@ serve(async (req) => {
         const now = new Date();
         const bangkokTimeStr = formatBangkokTime(now, 'HH:mm:ss');
         const shiftStart = token.employee.shift_start_time || '09:00:00';
+        const today = getBangkokDateString();
+        
+        // Check if this date has approved_late_start in shift_assignments
+        const { data: shiftAssignment } = await supabase
+          .from('shift_assignments')
+          .select('approved_late_start, approved_late_reason')
+          .eq('employee_id', token.employee.id)
+          .eq('work_date', today)
+          .maybeSingle();
+        
+        const hasApprovedLateStart = shiftAssignment?.approved_late_start === true;
         
         // Get grace period from settings (default 15 minutes)
         const { data: gracePeriodSettings } = await supabase
@@ -964,7 +975,16 @@ serve(async (req) => {
         const deadlineM = totalMinutes % 60;
         const deadlineStr = `${String(deadlineH).padStart(2, '0')}:${String(deadlineM).padStart(2, '0')}:00`;
         
-        const isOnTime = bangkokTimeStr <= deadlineStr;
+        // If approved_late_start is true, treat as on-time regardless of actual time
+        const isOnTime = hasApprovedLateStart || bangkokTimeStr <= deadlineStr;
+        
+        if (hasApprovedLateStart) {
+          logger.info('Approved late start - treating as on-time for points', {
+            employee_id: token.employee.id,
+            actual_time: bangkokTimeStr,
+            reason: shiftAssignment?.approved_late_reason
+          });
+        }
         
         // Call point-attendance-calculator asynchronously (fire-and-forget)
         const pointCalcUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/point-attendance-calculator`;
