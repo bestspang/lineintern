@@ -401,7 +401,7 @@ export function AttendanceEditDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col">
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[85dvh] !grid !grid-rows-[auto_1fr_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
@@ -422,8 +422,9 @@ export function AttendanceEditDialog({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ScrollArea className="flex-1 min-h-0 pr-4">
-            <div className="space-y-6 py-4">
+          <div className="min-h-0 overflow-hidden">
+            <ScrollArea className="h-full max-h-[calc(85dvh-180px)] pr-4">
+              <div className="space-y-6 py-4">
               {/* Status Selection - Grouped */}
               <div className="space-y-4">
                 <Label className="text-sm font-medium">สถานะ</Label>
@@ -614,7 +615,8 @@ export function AttendanceEditDialog({
                 </>
               )}
             </div>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
         )}
         
         <DialogFooter className="flex gap-2 pt-4 border-t">
