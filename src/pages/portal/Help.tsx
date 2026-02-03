@@ -17,24 +17,41 @@ import {
 
 // Static fallback FAQs (used when database is empty or has errors)
 // ⚠️ SYNC NOTE: Keep in sync with portal_faqs table content
+// ⚠️ VERIFIED 2026-02-03: These are fallback FAQs - DB has 33+ items
 const STATIC_FAQS_TH = [
+  // Attendance
   { question: 'ฉันจะเช็คอินได้อย่างไร?', answer: 'กดปุ่ม "เช็คอิน/เอาท์" จาก Rich Menu หรือเมนูหลัก จากนั้นอนุญาตให้แอปเข้าถึงตำแหน่งและกล้อง แล้วถ่ายรูปยืนยัน' },
   { question: 'ฉันลืมเช็คเอาท์ ต้องทำอย่างไร?', answer: 'ไม่ต้องกังวล! ระบบจะ Check Out ให้อัตโนมัติ:\n• พนักงาน hours_based: หลัง grace period หมด\n• พนักงาน time_based: ตอนเที่ยงคืน (23:59)\n\nหากต้องการแก้ไขเวลาย้อนหลัง กรุณาติดต่อหัวหน้างานหรือ HR' },
   { question: 'ฉันจะ checkout นอกสถานที่ได้อย่างไร?', answer: 'ระบบจะแสดง dialog ให้กรอกเหตุผล ส่งคำขอไปยังหัวหน้าอนุมัติ เมื่ออนุมัติแล้วระบบจะ checkout ให้อัตโนมัติ' },
+  { question: 'ฉันจะขอกลับก่อนได้อย่างไร?', answer: 'เมื่อเช็คเอาต์ก่อนครบเวลา ระบบจะให้เลือกเหตุผล แล้วส่งคำขอไปหัวหน้าอนุมัติ หากอนุมัติแล้วระบบจะบันทึกเวลาออกงานให้' },
+  // Points
   { question: 'Happy Points คืออะไร?', answer: 'คะแนนสะสมจากการมาทำงานตรงเวลา ทำ OT และกิจกรรมต่างๆ สามารถนำไปแลกของรางวัลได้' },
-  { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-ot ใน LINE Chat กับบอท' },
-  { question: 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-dayoff ใน LINE Chat กับบอท' },
+  { question: 'Streak คืออะไร?', answer: 'Streak คือจำนวนวันที่คุณมาตรงเวลาติดต่อกัน เมื่อครบ 5 วันจะได้โบนัส 50 แต้ม และครบเดือนจะได้ 100 แต้ม' },
+  { question: 'Streak Shield คืออะไร?', answer: 'โล่ป้องกัน Streak จะใช้อัตโนมัติเมื่อคุณมาสายหรือขาดงาน ช่วยให้ Streak ไม่หายไป ได้รับจากการมาครบเดือนหรือเป็นโบนัส' },
+  // Leave/OT - ⚠️ Updated: clarify "DM only"
+  { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-ot ใน DM (แชทส่วนตัว) กับบอท' },
+  { question: 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-dayoff ใน DM (แชทส่วนตัว) กับบอท' },
   { question: 'ฉันจะยกเลิกคำขอลางานได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" ได้เลย ไม่สามารถยกเลิกคำขอที่อนุมัติแล้วได้' },
+  // General
+  { question: 'ทำไมฉันถึงไม่ต้อง Track เวลาหรือแต้ม?', answer: 'บางตำแหน่ง เช่น ผู้จัดการหรือเจ้าของกิจการ ถูกตั้งค่าให้ไม่ต้อง Track เวลาทำงาน หากมีข้อสงสัยกรุณาติดต่อ HR' },
 ];
 
 const STATIC_FAQS_EN = [
+  // Attendance
   { question: 'How do I check in?', answer: 'Press "Check In/Out" from Rich Menu or main menu, allow location and camera access, then take a photo to confirm.' },
   { question: 'I forgot to check out, what should I do?', answer: 'Don\'t worry! The system will auto check-out:\n• Hours-based employees: after grace period expires\n• Time-based employees: at midnight (23:59)\n\nIf you need to modify the time retroactively, please contact your supervisor or HR.' },
   { question: 'How can I check out from outside the office?', answer: 'The system will show a dialog to enter your reason. The request will be sent to your manager for approval. Once approved, the system will automatically check you out.' },
+  { question: 'How can I request early leave?', answer: 'When checking out early, the system will ask you to select a reason. The request will be sent to your manager for approval.' },
+  // Points
   { question: 'What are Happy Points?', answer: 'Points earned from on-time attendance, OT, and various activities. Can be redeemed for rewards.' },
-  { question: 'How can I cancel an OT request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-ot in LINE Chat.' },
-  { question: 'How can I cancel a day-off request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-dayoff in LINE Chat.' },
+  { question: 'What is Streak?', answer: 'Streak is the number of consecutive days you arrive on time. You get 50 bonus points at 5 days and 100 points for a full month.' },
+  { question: 'What is Streak Shield?', answer: 'A protective shield that automatically activates when you are late or absent, preventing your streak from resetting. Earned from monthly attendance or as bonuses.' },
+  // Leave/OT - ⚠️ Updated: clarify "DM only"
+  { question: 'How can I cancel an OT request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-ot in DM (direct message) with the bot.' },
+  { question: 'How can I cancel a day-off request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-dayoff in DM (direct message) with the bot.' },
   { question: 'How can I cancel a leave request?', answer: 'Go to Portal > Work History and click the "Cancel" button. Already approved requests cannot be cancelled.' },
+  // General
+  { question: 'Why don\'t I need to track time or points?', answer: 'Some positions such as managers or business owners are configured to not require time tracking. Please contact HR if you have questions.' },
 ];
 
 // ⚠️ PORTAL AUDIT: Verified 2026-01-28
