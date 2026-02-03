@@ -6,6 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ⚠️ SECURITY: HTML escape function to prevent XSS attacks
+// DO NOT REMOVE - Required for safe HTML generation
+function escapeHtml(unsafe: string | null | undefined): string {
+  if (unsafe == null) return '';
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -99,13 +111,22 @@ function generatePayslipHTML(record: any, period: any): string {
   const formatCurrency = (amount: number) => 
     new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2 }).format(amount || 0);
 
+  // ⚠️ SECURITY: All dynamic values are escaped to prevent XSS
+  const safeName = escapeHtml(employee.full_name);
+  const safeCode = escapeHtml(employee.code);
+  const safeBranchName = escapeHtml(employee.branches?.name) || '-';
+  const safeBankName = escapeHtml(employee.bank_name);
+  const safeBankAccountNumber = escapeHtml(employee.bank_account_number) || '-';
+  const safeBankBranch = escapeHtml(employee.bank_branch) || '-';
+  const safePeriodName = escapeHtml(period.name);
+
   return `
 <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>สลิปเงินเดือน - ${employee.full_name}</title>
+  <title>สลิปเงินเดือน - ${safeName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Sarabun', 'Segoe UI', sans-serif; font-size: 14px; background: #fff; color: #333; }
@@ -141,16 +162,16 @@ function generatePayslipHTML(record: any, period: any): string {
   <div class="payslip">
     <div class="header">
       <h1>สลิปเงินเดือน</h1>
-      <p>Pay Slip - ${period.name}</p>
+      <p>Pay Slip - ${safePeriodName}</p>
     </div>
     
     <div class="info-grid">
       <div class="info-box">
         <h3>ข้อมูลพนักงาน</h3>
-        <p>${employee.full_name}</p>
+        <p>${safeName}</p>
         <div style="margin-top: 10px;">
-          <span class="label">รหัสพนักงาน:</span> <span class="value">${employee.code}</span><br>
-          <span class="label">สาขา:</span> <span class="value">${employee.branches?.name || '-'}</span><br>
+          <span class="label">รหัสพนักงาน:</span> <span class="value">${safeCode}</span><br>
+          <span class="label">สาขา:</span> <span class="value">${safeBranchName}</span><br>
           <span class="label">ประเภท:</span> <span class="value">${record.pay_type === 'salary' ? 'รายเดือน' : 'รายชั่วโมง'}</span>
         </div>
       </div>
@@ -186,7 +207,7 @@ function generatePayslipHTML(record: any, period: any): string {
         ` : ''}
         ${allowances.map((a: any) => `
         <tr>
-          <td>${a.name}</td>
+          <td>${escapeHtml(a.name)}</td>
           <td class="amount">฿${formatCurrency(a.amount)}</td>
         </tr>
         `).join('')}
@@ -206,7 +227,7 @@ function generatePayslipHTML(record: any, period: any): string {
       <tbody>
         ${deductions.map((d: any) => `
         <tr>
-          <td>${d.name}</td>
+          <td>${escapeHtml(d.name)}</td>
           <td class="amount">฿${formatCurrency(d.amount)}</td>
         </tr>
         `).join('')}
@@ -231,9 +252,9 @@ function generatePayslipHTML(record: any, period: any): string {
     ${employee.bank_name ? `
     <div class="bank-info">
       <h4>🏦 ข้อมูลบัญชีธนาคาร</h4>
-      <span class="label">ธนาคาร:</span> ${employee.bank_name}<br>
-      <span class="label">เลขบัญชี:</span> ${employee.bank_account_number || '-'}<br>
-      <span class="label">สาขา:</span> ${employee.bank_branch || '-'}
+      <span class="label">ธนาคาร:</span> ${safeBankName}<br>
+      <span class="label">เลขบัญชี:</span> ${safeBankAccountNumber}<br>
+      <span class="label">สาขา:</span> ${safeBankBranch}
     </div>
     ` : ''}
     
