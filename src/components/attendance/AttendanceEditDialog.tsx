@@ -14,6 +14,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,9 +43,18 @@ import {
   Save,
   RotateCcw,
   History,
-  AlertTriangle,
+  MessageSquare,
   CheckCircle,
-  ShieldCheck
+  ShieldCheck,
+  XCircle,
+  Palmtree,
+  Thermometer,
+  User,
+  Ban,
+  CalendarOff,
+  Gift,
+  Star,
+  Loader2,
 } from "lucide-react";
 
 interface AttendanceEditDialogProps {
@@ -53,18 +73,41 @@ interface AttendanceEditDialogProps {
   onSaved?: () => void;
 }
 
-const STATUS_OPTIONS = [
-  { value: 'present', label: 'มาทำงาน', color: 'bg-emerald-500' },
-  { value: 'regular_weekend', label: 'วันหยุดประจำสัปดาห์', color: 'bg-slate-400' },
-  { value: 'day_off', label: 'วันหยุดพิเศษ', color: 'bg-gray-500' },
-  { value: 'holiday', label: 'วันหยุดนักขัตฤกษ์', color: 'bg-violet-400' },
-  { value: 'vacation', label: 'ลาพักร้อน', color: 'bg-sky-500' },
-  { value: 'sick', label: 'ลาป่วย', color: 'bg-amber-500' },
-  { value: 'personal', label: 'ลากิจ', color: 'bg-violet-500' },
-  { value: 'unpaid_leave', label: 'ลาไม่รับค่าจ้าง', color: 'bg-rose-400' },
-  { value: 'not_started', label: 'ยังไม่เริ่มงาน', color: 'bg-slate-400' },
-  { value: 'absent', label: 'ขาดงาน', color: 'bg-red-500' },
+// Grouped status options for better UX
+const STATUS_GROUPS = [
+  {
+    label: 'สถานะการทำงาน',
+    options: [
+      { value: 'present', label: 'มาทำงาน', icon: CheckCircle, color: 'bg-emerald-500' },
+      { value: 'absent', label: 'ขาดงาน', icon: XCircle, color: 'bg-red-500' },
+    ]
+  },
+  {
+    label: 'การลา',
+    options: [
+      { value: 'vacation', label: 'ลาพักร้อน', icon: Palmtree, color: 'bg-sky-500' },
+      { value: 'sick', label: 'ลาป่วย', icon: Thermometer, color: 'bg-amber-500' },
+      { value: 'personal', label: 'ลากิจ', icon: User, color: 'bg-violet-500' },
+      { value: 'unpaid_leave', label: 'ลาไม่รับค่าจ้าง', icon: Ban, color: 'bg-rose-400' },
+    ]
+  },
+  {
+    label: 'วันหยุด/อื่นๆ',
+    options: [
+      { value: 'regular_weekend', label: 'หยุดประจำสัปดาห์', icon: CalendarOff, color: 'bg-slate-400' },
+      { value: 'day_off', label: 'หยุดพิเศษ', icon: Gift, color: 'bg-gray-500' },
+      { value: 'holiday', label: 'วันหยุดนักขัตฤกษ์', icon: Star, color: 'bg-violet-400' },
+      { value: 'not_started', label: 'ยังไม่เริ่มงาน', icon: Clock, color: 'bg-slate-400' },
+    ]
+  }
 ];
+
+// Localized action labels for audit history
+const actionLabels: Record<string, string> = {
+  'create': 'สร้างใหม่',
+  'update': 'แก้ไข',
+  'delete': 'ลบ'
+};
 
 export function AttendanceEditDialog({
   open,
@@ -306,7 +349,7 @@ export function AttendanceEditDialog({
         resource_type: 'attendance_adjustment',
         resource_id: employeeId,
         old_values: existingAdjustment,
-        reason: 'ยกเลิกการแก้ไข - คืนค่าเดิม',
+        reason: 'ยกเลิกการแก้ไข - ใช้ข้อมูลจากการลงเวลาจริง',
         performed_by_user_id: user?.id,
         metadata: { 
           adjustment_date: date,
@@ -315,7 +358,7 @@ export function AttendanceEditDialog({
       });
     },
       onSuccess: () => {
-        toast.success('คืนค่าเดิมสำเร็จ');
+        toast.success('ยกเลิกการแก้ไขสำเร็จ');
         // Invalidate all related queries for immediate UI refresh
         queryClient.invalidateQueries({ queryKey: ['attendance-adjustment'] });
         queryClient.invalidateQueries({ queryKey: ['attendance-adjustments'] });
@@ -358,199 +401,253 @@ export function AttendanceEditDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            แก้ไขข้อมูลวันที่ {formattedDate.split(' ').slice(0, 2).join(' ')}
+            แก้ไขข้อมูล: {employeeName}
           </DialogTitle>
-          <DialogDescription>
-            {employeeName} • {formattedDate}
+          <DialogDescription className="flex items-center gap-2 flex-wrap">
+            <span>{formattedDate}</span>
             {existingAdjustment && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                มีการแก้ไขแล้ว
+              <Badge variant="secondary" className="text-xs">
+                แก้ไขแล้ว
               </Badge>
             )}
           </DialogDescription>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 min-h-0 pr-4">
-          <div className="space-y-6 py-4">
-            {/* Status Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">สถานะ</Label>
-              <RadioGroup 
-                value={selectedStatus} 
-                onValueChange={setSelectedStatus}
-                className="grid grid-cols-2 gap-2"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <div key={option.value} className="flex items-center space-x-2">
-                    <RadioGroupItem value={option.value} id={option.value} />
-                    <Label htmlFor={option.value} className="flex items-center gap-2 cursor-pointer">
-                      <div className={`w-2 h-2 rounded-full ${option.color}`} />
-                      {option.label}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
-            
-            {/* Approved Late Start Toggle - แสดงเมื่อเลือกสถานะ "มาทำงาน" */}
-            {selectedStatus === 'present' && (
-              <>
-                <Separator />
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                      <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                        อนุญาตเข้าสาย
-                      </Label>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <ScrollArea className="flex-1 min-h-0 pr-4">
+            <div className="space-y-6 py-4">
+              {/* Status Selection - Grouped */}
+              <div className="space-y-4">
+                <Label className="text-sm font-medium">สถานะ</Label>
+                <RadioGroup 
+                  value={selectedStatus} 
+                  onValueChange={setSelectedStatus}
+                >
+                  {STATUS_GROUPS.map((group) => (
+                    <div key={group.label} className="space-y-2">
+                      <p className="text-xs text-muted-foreground font-medium px-1">
+                        {group.label}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {group.options.map((option) => {
+                          const Icon = option.icon;
+                          return (
+                            <div 
+                              key={option.value} 
+                              className={`flex items-center space-x-2 p-2 rounded-md border transition-colors ${
+                                selectedStatus === option.value 
+                                  ? 'bg-accent border-primary' 
+                                  : 'border-transparent hover:bg-muted/50'
+                              }`}
+                            >
+                              <RadioGroupItem value={option.value} id={option.value} />
+                              <Label 
+                                htmlFor={option.value} 
+                                className="flex items-center gap-2 cursor-pointer flex-1"
+                              >
+                                <Icon className={`h-4 w-4 ${
+                                  option.color.replace('bg-', 'text-').replace('-500', '-600').replace('-400', '-500')
+                                }`} />
+                                <span className="text-sm">{option.label}</span>
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <Switch
-                      checked={approvedLateStart}
-                      onCheckedChange={setApprovedLateStart}
-                    />
-                  </div>
-                  {approvedLateStart && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-emerald-600">เหตุผล</Label>
-                      <Textarea
-                        value={approvedLateReason}
-                        onChange={(e) => setApprovedLateReason(e.target.value)}
-                        placeholder="เช่น ทำงานกะพิเศษถึงเที่ยงคืน"
-                        className="min-h-[60px] text-sm"
+                  ))}
+                </RadioGroup>
+              </div>
+              
+              {/* Approved Late Start Toggle - แสดงเมื่อเลือกสถานะ "มาทำงาน" */}
+              {selectedStatus === 'present' && (
+                <>
+                  <Separator />
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                        <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                          อนุญาตเข้าสาย
+                        </Label>
+                      </div>
+                      <Switch
+                        checked={approvedLateStart}
+                        onCheckedChange={setApprovedLateStart}
                       />
                     </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    ⚠️ พนักงานจะยังได้รับคะแนน Punctuality และ Streak ต่อเนื่อง
-                  </p>
-                </div>
-              </>
-            )}
-            
-            <Separator />
-            
-            {/* Time Fields - Only show if status is present */}
-            {(selectedStatus === 'present' || selectedStatus === '') && (
-              <div className="space-y-4">
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  เวลาเข้า-ออกงาน
-                </Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="checkIn" className="text-xs text-muted-foreground">เข้างาน</Label>
-                    <Input
-                      id="checkIn"
-                      type="time"
-                      value={checkInTime}
-                      onChange={(e) => setCheckInTime(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="checkOut" className="text-xs text-muted-foreground">ออกงาน</Label>
-                    <Input
-                      id="checkOut"
-                      type="time"
-                      value={checkOutTime}
-                      onChange={(e) => setCheckOutTime(e.target.value)}
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="workHours" className="text-xs text-muted-foreground">ชั่วโมงทำงาน</Label>
-                    <Input
-                      id="workHours"
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="24"
-                      value={workHours}
-                      onChange={(e) => setWorkHours(e.target.value)}
-                      placeholder="อัตโนมัติ"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="otHours" className="text-xs text-muted-foreground">ชั่วโมง OT</Label>
-                    <Input
-                      id="otHours"
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="12"
-                      value={otHours}
-                      onChange={(e) => setOtHours(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <Separator />
-            
-            {/* Reason Field */}
-            <div className="space-y-2">
-              <Label htmlFor="reason" className="text-sm font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                เหตุผลในการแก้ไข <span className="text-red-500">*</span>
-              </Label>
-              <Textarea
-                id="reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="กรุณาระบุเหตุผลในการแก้ไขข้อมูล..."
-                className="min-h-[80px]"
-              />
-            </div>
-            
-            {/* Audit History */}
-            {auditHistory && auditHistory.length > 0 && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <History className="h-4 w-4" />
-                    ประวัติการแก้ไข
-                  </Label>
-                  <div className="space-y-2 max-h-[150px] overflow-y-auto">
-                    {auditHistory.map((log) => (
-                      <div key={log.id} className="text-xs p-2 bg-muted/50 rounded-md space-y-1">
-                        <div className="flex justify-between">
-                          <Badge variant="outline" className="text-[10px]">
-                            {log.action_type}
-                          </Badge>
-                          <span className="text-muted-foreground">
-                            {format(parseISO(log.created_at || ''), 'd MMM HH:mm', { locale: th })}
-                          </span>
-                        </div>
-                        {log.reason && (
-                          <p className="text-muted-foreground">"{log.reason}"</p>
-                        )}
+                    {approvedLateStart && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-emerald-600">สาเหตุที่เข้าสาย</Label>
+                        <Textarea
+                          value={approvedLateReason}
+                          onChange={(e) => setApprovedLateReason(e.target.value)}
+                          placeholder="เช่น ทำงานกะพิเศษถึงเที่ยงคืน"
+                          className="min-h-[60px] text-sm"
+                        />
                       </div>
-                    ))}
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      ⚠️ พนักงานจะยังได้รับคะแนน Punctuality และ Streak ต่อเนื่อง
+                    </p>
+                  </div>
+                </>
+              )}
+              
+              <Separator />
+              
+              {/* Time Fields - Only show if status is present */}
+              {(selectedStatus === 'present' || selectedStatus === '') && (
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    เวลาเข้า-ออกงาน
+                  </Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="checkIn" className="text-xs text-muted-foreground">เข้างาน</Label>
+                      <Input
+                        id="checkIn"
+                        type="time"
+                        value={checkInTime}
+                        onChange={(e) => setCheckInTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="checkOut" className="text-xs text-muted-foreground">ออกงาน</Label>
+                      <Input
+                        id="checkOut"
+                        type="time"
+                        value={checkOutTime}
+                        onChange={(e) => setCheckOutTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="workHours" className="text-xs text-muted-foreground">ชั่วโมงทำงาน</Label>
+                      <Input
+                        id="workHours"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        value={workHours}
+                        onChange={(e) => setWorkHours(e.target.value)}
+                        placeholder="คำนวณจากเวลาเข้า-ออก"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="otHours" className="text-xs text-muted-foreground">ชั่วโมง OT</Label>
+                      <Input
+                        id="otHours"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="12"
+                        value={otHours}
+                        onChange={(e) => setOtHours(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </>
-            )}
-          </div>
-        </ScrollArea>
+              )}
+              
+              <Separator />
+              
+              {/* Reason Field */}
+              <div className="space-y-2">
+                <Label htmlFor="reason" className="text-sm font-medium flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  หมายเหตุการแก้ไข <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="เช่น แก้ไขเวลาผิดพลาดจากระบบ, ลืมลงเวลา"
+                  className="min-h-[80px]"
+                />
+                {!reason.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    กรุณาระบุเหตุผลเพื่อบันทึกการเปลี่ยนแปลง
+                  </p>
+                )}
+              </div>
+              
+              {/* Audit History */}
+              {auditHistory && auditHistory.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      ประวัติการแก้ไข
+                    </Label>
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                      {auditHistory.map((log) => (
+                        <div key={log.id} className="text-xs p-2 bg-muted/50 rounded-md space-y-1">
+                          <div className="flex justify-between items-center">
+                            <Badge variant="outline" className="text-xs">
+                              {actionLabels[log.action_type] || log.action_type}
+                            </Badge>
+                            <span className="text-muted-foreground">
+                              {format(parseISO(log.created_at || ''), 'd MMM HH:mm', { locale: th })}
+                            </span>
+                          </div>
+                          {log.reason && (
+                            <p className="text-muted-foreground">"{log.reason}"</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        )}
         
         <DialogFooter className="flex gap-2 pt-4 border-t">
           {existingAdjustment && (
-            <Button
-              variant="outline"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              className="mr-auto"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              คืนค่าเดิม
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="mr-auto text-destructive border-destructive/50 hover:bg-destructive/10"
+                  disabled={deleteMutation.isPending}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  ยกเลิกการแก้ไข
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการยกเลิก?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    ข้อมูลจะกลับไปใช้ค่าจากการลงเวลาจริง การแก้ไขทั้งหมดจะถูกลบ
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>ไม่ใช่</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    ยืนยัน
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             ยกเลิก
