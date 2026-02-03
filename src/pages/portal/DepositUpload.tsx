@@ -293,22 +293,33 @@ export default function DepositUpload() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">ยอดฝาก:</span>
+                <span className="text-muted-foreground">
+                  {locale === 'th' ? 'ยอดฝาก:' : 'Amount:'}
+                </span>
                 <span className="font-semibold">{formatCurrency(todayDeposit.amount)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">เลขบัญชี:</span>
+                <span className="text-muted-foreground">
+                  {locale === 'th' ? 'เลขบัญชี:' : 'Account:'}
+                </span>
                 <span>{todayDeposit.account_number || '-'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">เลขอ้างอิง:</span>
+                <span className="text-muted-foreground">
+                  {locale === 'th' ? 'เลขอ้างอิง:' : 'Reference:'}
+                </span>
                 <span>{todayDeposit.reference_number || '-'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">สถานะ:</span>
+                <span className="text-muted-foreground">
+                  {locale === 'th' ? 'สถานะ:' : 'Status:'}
+                </span>
                 <Badge variant={todayDeposit.status === 'verified' ? 'default' : 'secondary'}>
-                  {todayDeposit.status === 'verified' ? 'ตรวจสอบแล้ว' : 
-                   todayDeposit.status === 'rejected' ? 'ถูกปฏิเสธ' : 'รอตรวจสอบ'}
+                  {todayDeposit.status === 'verified' 
+                    ? (locale === 'th' ? 'ตรวจสอบแล้ว' : 'Verified')
+                    : todayDeposit.status === 'rejected' 
+                      ? (locale === 'th' ? 'ถูกปฏิเสธ' : 'Rejected')
+                      : (locale === 'th' ? 'รอตรวจสอบ' : 'Pending')}
                 </Badge>
               </div>
             </CardContent>

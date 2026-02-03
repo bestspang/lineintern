@@ -229,7 +229,9 @@ export default function MyPoints() {
             </div>
             <p className="text-2xl font-bold">{happyPoints?.current_punctuality_streak || 0}</p>
             <p className="text-xs text-muted-foreground">
-              Best: {happyPoints?.longest_punctuality_streak || 0} days
+              {locale === 'th' 
+                ? `สูงสุด: ${happyPoints?.longest_punctuality_streak || 0} วัน`
+                : `Best: ${happyPoints?.longest_punctuality_streak || 0} days`}
             </p>
           </CardContent>
         </Card>

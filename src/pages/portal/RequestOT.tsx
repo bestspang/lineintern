@@ -202,10 +202,15 @@ export default function RequestOT() {
 
         {requests.length === 0 ? (
           <Card>
-            <CardContent className="p-6 text-center">
-              <Clock className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-muted-foreground">
-                {locale === 'th' ? 'ยังไม่มีประวัติคำขอ OT' : 'No OT request history'}
+            <CardContent className="p-8 text-center">
+              <Clock className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
+              <p className="text-lg font-medium mb-2">
+                {locale === 'th' ? 'ยังไม่มีคำขอ OT' : 'No OT requests yet'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {locale === 'th' 
+                  ? 'เมื่อคุณส่งคำขอ OT จะแสดงที่นี่'
+                  : 'Your OT requests will appear here'}
               </p>
             </CardContent>
           </Card>

@@ -97,7 +97,7 @@ const quickActions: QuickAction[] = [
   },
   {
     icon: Trophy,
-    label: 'Leaderboard',
+    label: 'อันดับคะแนน',
     labelEn: 'Leaderboard',
     description: 'อันดับแต้มในทีม',
     descriptionEn: 'Team point rankings',
@@ -399,12 +399,12 @@ export default function PortalHome() {
               {canCheckIn ? (
                 <>
                   <LogIn className="h-4 w-4" />
-                  Check-in
+                  {locale === 'th' ? 'เช็คอิน' : 'Check-in'}
                 </>
               ) : (
                 <>
                   <LogOut className="h-4 w-4" />
-                  Check-out
+                  {locale === 'th' ? 'เช็คเอาท์' : 'Check-out'}
                 </>
               )}
             </Button>
