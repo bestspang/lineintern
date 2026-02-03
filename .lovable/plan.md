@@ -1,229 +1,122 @@
 
 
-## รายงานการตรวจสอบความ Sync ของระบบ LINE Intern
+## แผนแก้ไข: Streak ไม่คำนวณจาก Attendance Adjustments
 
-### 1. สรุปผลการตรวจสอบ
+### 1. Root Cause Analysis
 
-| หมวด | สถานะ | รายละเอียด |
-|------|-------|-----------|
-| Portal Routes vs Help.tsx | ✅ Synced | Quick Actions 20 รายการ ถูกต้องทั้งหมด |
-| Database FAQs | ✅ Synced | 33 FAQs active ใน portal_faqs |
-| Bot Commands | ⚠️ ต้องอัพเดท | มี 3 รายการที่ไม่ตรง |
-| Static FAQs | ⚠️ ต้องอัพเดท | ข้อมูลไม่ครบถ้วน |
+| Data Source | ถูกนับใน Streak? | ข้อมูล mefonn |
+|-------------|-----------------|---------------|
+| `attendance_logs` | ✅ ใช่ | 2026-02-03 เท่านั้น |
+| `attendance_adjustments` | ❌ ไม่ | 2026-02-02 (Admin เพิ่ม) |
 
----
-
-### 2. ปัญหาที่พบ (Verified Issues)
-
-#### 2.1 Static FAQs ใน Help.tsx ไม่ครบถ้วน
-
-**ไฟล์:** `src/pages/portal/Help.tsx` บรรทัด 20-38
-
-**ปัญหา:** Static FAQs มีเพียง 7 รายการ แต่ Database มี 33+ รายการ
-
-**ผลกระทบ:** หาก Database ไม่สามารถเข้าถึงได้ User จะเห็น FAQs น้อยกว่าปกติมาก
-
-**การแก้ไข:** เพิ่ม static FAQs สำรองให้ครอบคลุม categories หลัก:
-- Attendance: เพิ่ม 2 รายการ (ขอกลับก่อน, Location-based check-in)
-- Points: เพิ่ม 3 รายการ (Streak, Streak Shield, Leaderboard)
-- Leave-OT: เพิ่ม 2 รายการ (ประเภทการลา, การอนุมัติ OT)
-
-#### 2.2 Bot Command /status ไม่อยู่ใน Database
-
-**ไฟล์:** `supabase/functions/line-webhook/index.ts` บรรทัด 5591-5739
-
-**ปัญหา:** Function `handleStatusCommand` ทำงานได้ แต่ไม่มีใน `bot_commands` table
-
-**ผลกระทบ:** User ไม่เห็น /status ในรายการ /help
-
-**การแก้ไข:** เพิ่ม record ใน bot_commands:
-```sql
-INSERT INTO bot_commands (command_key, category, description_th, description_en, ...)
-VALUES ('status', 'general', 'ดูสถานะ AI และหน่วยความจำ', 'View AI status and memory', ...);
-```
-
-#### 2.3 FAQ ระบุผิดว่า /cancel-ot ใช้ได้ใน "LINE Chat กับบอท"
-
-**ไฟล์:** `src/pages/portal/Help.tsx` บรรทัด 25-26
-
-**ปัญหา:** คำตอบระบุว่า "พิมพ์ /cancel-ot ใน LINE Chat กับบอท" แต่ไม่ชี้แจงว่าต้องเป็น DM (Direct Message) เท่านั้น
-
-**ผลกระทบ:** User อาจพิมพ์ในกลุ่ม แล้วไม่ทำงาน
-
-**การแก้ไข:** ปรับ FAQ answer เป็น:
-```
-"ไปที่ Portal > ประวัติการทำงาน กดปุ่ม 'ยกเลิก' หรือพิมพ์ /cancel-ot ใน DM (แชทส่วนตัว) กับบอท"
-```
+**ผลลัพธ์:** Streak = 1 วัน (เฉพาะ 02-03) แทนที่จะเป็น 2 วัน (02-02 + 02-03)
 
 ---
 
-### 3. สิ่งที่ Verify แล้วว่าถูกต้อง (ไม่ต้องแก้)
+### 2. วิธีแก้ไข
 
-| Feature | Location | Status |
-|---------|----------|--------|
-| exclude_from_points FAQ | portal_faqs | ✅ มี "ทำไมฉันถึงไม่ต้อง Track เวลาหรือแต้ม?" |
-| Streak Shield FAQ | portal_faqs | ✅ มี "Streak Shield คืออะไร?" |
-| /cancel-ot command | line-webhook | ✅ ทำงานได้ใน DM |
-| /cancel-dayoff command | line-webhook | ✅ ทำงานได้ใน DM |
-| Quick Actions paths | App.tsx | ✅ ทุก path valid |
-| MyPoints UI | MyPoints.tsx | ✅ แสดง Streak Shield card |
+#### แก้ไข `streak-backfill/index.ts`
 
----
+ปรับ function `recalculateStreak` ให้รวม `attendance_adjustments` ที่:
+- `override_status = 'present'`
+- `override_check_in IS NOT NULL`
 
-### 4. Feature Suggestions (วิเคราะห์แล้วว่าปลอดภัย)
-
-#### 4.1 เพิ่ม /points command (DM only)
-
-**เหตุผล:** User สามารถเช็คแต้มผ่าน Portal ได้ แต่ไม่มีทาง quick-check ผ่าน LINE Bot
-
-**ผลกระทบต่อระบบเดิม:** ไม่มี - เป็น read-only command
-
-**Implementation:**
 ```typescript
-// ใน line-webhook/index.ts
-async function handlePointsCommand(lineUserId: string, locale: 'th' | 'en') {
-  const employee = await getEmployeeByLineId(lineUserId);
-  const points = await getEmployeePoints(employee.id);
-  return formatPointsSummary(points, locale);
+// เพิ่มหลังบรรทัด 173 (หลัง query attendance_logs)
+
+// Also get attendance adjustments (Admin manual entries)
+const { data: adjustments } = await supabase
+  .from('attendance_adjustments')
+  .select('adjustment_date, override_check_in, override_status')
+  .eq('employee_id', employeeId)
+  .eq('override_status', 'present')
+  .not('override_check_in', 'is', null)
+  .gte('adjustment_date', thirtyDaysAgoStr);
+
+// Merge adjustments into logs (adjustments override actual logs)
+const adjustmentMap = new Map();
+for (const adj of adjustments || []) {
+  if (adj.override_check_in) {
+    const checkInTime = `${adj.adjustment_date}T${adj.override_check_in}`;
+    adjustmentMap.set(adj.adjustment_date, {
+      server_time: checkInTime,
+      branch_id: null,
+      isFromAdjustment: true
+    });
+  }
 }
 ```
 
-#### 4.2 เพิ่ม /schedule command (DM only)
-
-**เหตุผล:** User ต้องเข้า Portal เพื่อดูตารางกะ แต่ควรมีทาง quick-check
-
-**ผลกระทบต่อระบบเดิม:** ไม่มี - เป็น read-only command
-
-#### 4.3 ปรับปรุง /help ให้แสดง command ตาม role
-
-**สถานะปัจจุบัน:** /help แสดง commands ทุกตัวโดยไม่ filter
-
-**ปัญหา:** User ธรรมดาเห็น command ที่ใช้ไม่ได้ (admin commands)
-
-**การแก้ไขที่ปลอดภัย:** ใช้ `min_role_priority` ที่มีอยู่แล้วใน bot_commands table
-
----
-
-### 5. ไฟล์ที่ต้องแก้ไข
-
-| ลำดับ | ไฟล์ | การแก้ไข | Risk Level |
-|-------|------|---------|------------|
-| 1 | `src/pages/portal/Help.tsx` | อัพเดท STATIC_FAQS | ต่ำ |
-| 2 | `portal_faqs` table | แก้ไข FAQ wording | ต่ำ |
-| 3 | `bot_commands` table | เพิ่ม /status command | ต่ำ |
-
----
-
-### 6. Code Changes แนะนำ
-
-#### 6.1 อัพเดท Static FAQs (Help.tsx บรรทัด 20-38)
+#### ปรับ Loop ที่สร้าง dailyLogs
 
 ```typescript
-const STATIC_FAQS_TH = [
-  // Existing 7 items...
-  { question: 'ฉันจะเช็คอินได้อย่างไร?', answer: '...' },
-  // ... existing items ...
+// ใน loop บรรทัด 183-189 - ให้ adjustment override attendance_logs
+for (const log of logs) {
+  const dateStr = log.server_time.split('T')[0];
+  // Skip if this date has an adjustment (adjustment takes priority)
+  if (adjustmentMap.has(dateStr)) continue;
   
-  // ADD: Points-related
-  { question: 'Streak คืออะไร?', answer: 'Streak คือจำนวนวันที่คุณมาตรงเวลาติดต่อกัน เมื่อครบ 5 วันจะได้โบนัส 50 แต้ม และครบเดือนจะได้ 100 แต้ม' },
-  { question: 'Streak Shield คืออะไร?', answer: 'โล่ป้องกัน Streak จะใช้อัตโนมัติเมื่อคุณมาสายหรือขาดงาน ช่วยให้ Streak ไม่หายไป' },
-  
-  // ADD: Attendance-related
-  { question: 'ฉันจะขอกลับก่อนได้อย่างไร?', answer: 'เมื่อเช็คเอาต์ก่อนครบเวลา ระบบจะให้เลือกเหตุผล แล้วส่งคำขอไปหัวหน้าอนุมัติ' },
-];
-```
+  if (!dailyLogs.has(dateStr)) {
+    const isOnTime = await isCheckInOnTime(supabase, employeeId, log.server_time, log.branch_id);
+    dailyLogs.set(dateStr, { log, isOnTime });
+  }
+}
 
-#### 6.2 Database Migration สำหรับ /status command
-
-```sql
-INSERT INTO bot_commands (
-  command_key, 
-  display_name_th, display_name_en,
-  description_th, description_en,
-  category, display_order, 
-  icon_name, is_enabled,
-  available_in_dm, available_in_group,
-  min_role_priority, require_mention_in_group
-) VALUES (
-  'status',
-  'สถานะ AI', 'AI Status',
-  'ดูสถานะบุคลิกภาพและหน่วยความจำของ AI', 'View AI personality and memory status',
-  'general', 3,
-  'Activity', true,
-  true, true,
-  0, false
-);
-
--- Add alias
-INSERT INTO command_aliases (command_id, alias_text, is_prefix, is_primary, language)
-SELECT id, '/status', true, true, 'en' FROM bot_commands WHERE command_key = 'status';
-
-INSERT INTO command_aliases (command_id, alias_text, is_prefix, is_primary, language)
-SELECT id, '/สถานะ', true, true, 'th' FROM bot_commands WHERE command_key = 'status';
-```
-
-#### 6.3 อัพเดท FAQ wording ใน Database
-
-```sql
-UPDATE portal_faqs 
-SET 
-  answer_th = 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-ot ใน DM (แชทส่วนตัว) กับบอท',
-  answer_en = 'Go to Portal > Work History, click "Cancel" button, or type /cancel-ot in DM (direct message) with the bot.'
-WHERE question_th = 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?';
-
-UPDATE portal_faqs 
-SET 
-  answer_th = 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-dayoff ใน DM (แชทส่วนตัว) กับบอท',
-  answer_en = 'Go to Portal > Work History, click "Cancel" button, or type /cancel-dayoff in DM (direct message) with the bot.'
-WHERE question_th = 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?';
+// Add adjustments to dailyLogs
+for (const [dateStr, adjLog] of adjustmentMap) {
+  // For adjustments, check if check_in time is on-time
+  const isOnTime = await isCheckInOnTime(supabase, employeeId, adjLog.server_time, null);
+  dailyLogs.set(dateStr, { log: adjLog, isOnTime });
+}
 ```
 
 ---
 
-### 7. Prevention Measures (ป้องกัน AI แก้ผิดจุด)
+### 3. ไฟล์ที่ต้องแก้ไข
 
-เพื่อป้องกันไม่ให้ AI แก้ไขส่วนที่ทำงานได้ดีอยู่แล้ว ควร:
-
-1. **อัพเดท Memory/Knowledge:**
-   ```markdown
-   # Memory: sync/documentation-audit-2026-02-03
-   
-   VERIFIED WORKING - DO NOT MODIFY:
-   - handleStatusCommand (line-webhook) - works correctly
-   - cancel_ot/cancel_dayoff commands - works in DM only
-   - Quick Actions in Help.tsx - all 20 paths valid
-   - MyPoints Streak Shield card - works correctly
-   
-   NEEDS UPDATE:
-   - STATIC_FAQS_TH/EN in Help.tsx - add fallback items
-   - portal_faqs wording - clarify "DM only" for cancel commands
-   - bot_commands table - add /status record
-   ```
-
-2. **Comment Guards ใน Code:**
-   ```typescript
-   // ⚠️ VERIFIED 2026-02-03: This function works correctly
-   // DO NOT REFACTOR unless explicitly requested
-   async function handleStatusCommand(...) { ... }
-   ```
+| ไฟล์ | การแก้ไข | Risk Level |
+|------|---------|------------|
+| `supabase/functions/streak-backfill/index.ts` | เพิ่ม query attendance_adjustments และ merge เข้า dailyLogs | กลาง |
 
 ---
 
-### 8. สรุปการดำเนินการ
+### 4. ผลกระทบและการทดสอบ
 
-**ต้องทำ (Low Risk):**
-1. ✏️ อัพเดท STATIC_FAQS ใน Help.tsx เพิ่ม 4-5 รายการ
-2. ✏️ อัพเดท portal_faqs ให้ระบุ "DM only" ชัดเจน
-3. ➕ เพิ่ม /status ใน bot_commands table
+**ผลกระทบ:**
+- ✅ ไม่กระทบ attendance_logs logic เดิม
+- ✅ ไม่กระทบ real-time check-in streak calculation
+- ✅ รองรับ Admin adjustment ย้อนหลังทุกกรณี
 
-**แนะนำเพิ่มเติม (Optional):**
-4. ➕ เพิ่ม /points command (DM only)
-5. ➕ เพิ่ม /schedule command (DM only)
-6. 🔧 ปรับ /help ให้ filter ตาม role
+**การทดสอบ:**
+1. เรียก `streak-backfill` function หลังแก้ไข
+2. ตรวจสอบว่า mefonn มี streak = 2 วัน
+3. ตรวจสอบพนักงานคนอื่นว่าไม่ได้รับผลกระทบ
 
-**ไม่ต้องแก้ไข:**
-- handleAttendanceCommand - ทำงานปกติ
-- cancel_ot/cancel_dayoff - ทำงานปกติ (DM)
-- Quick Actions routes - valid ทั้งหมด
-- Streak Shield UI - แสดงถูกต้อง
+---
+
+### 5. Prevention Measures
+
+เพิ่ม comment ใน `streak-backfill/index.ts`:
+
+```typescript
+// ⚠️ VERIFIED 2026-02-03: Streak calculation includes BOTH sources:
+// 1. attendance_logs (real check-ins)
+// 2. attendance_adjustments (Admin manual entries with override_status='present')
+// Adjustments take priority over logs for the same date
+// DO NOT remove adjustment handling without understanding impact on Admin-adjusted records
+```
+
+---
+
+### 6. ทางเลือกอื่น (ไม่แนะนำ)
+
+**ทางเลือก A:** สร้าง attendance_log record เมื่อ Admin เพิ่ม adjustment
+- ❌ ข้อมูลซ้ำซ้อน
+- ❌ ยากในการแยกว่าอันไหนจริง อันไหน Admin เพิ่ม
+
+**ทางเลือก B:** Run streak-backfill หลังทุกครั้งที่ Admin แก้ไข
+- ❌ Performance impact
+- ❌ ต้องแก้ AttendanceEditDialog ด้วย
+
+**วิธีที่เลือก:** แก้ `streak-backfill` ให้รวม adjustments เป็นวิธีที่ clean ที่สุด
 
