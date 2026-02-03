@@ -1,122 +1,257 @@
 
 
-## แผนแก้ไข: Streak ไม่คำนวณจาก Attendance Adjustments
+## Portal UX/UI Audit Report - รายงานการตรวจสอบ UX/UI ระบบพอร์ทัล
 
-### 1. Root Cause Analysis
+### สรุปการตรวจสอบ
 
-| Data Source | ถูกนับใน Streak? | ข้อมูล mefonn |
-|-------------|-----------------|---------------|
-| `attendance_logs` | ✅ ใช่ | 2026-02-03 เท่านั้น |
-| `attendance_adjustments` | ❌ ไม่ | 2026-02-02 (Admin เพิ่ม) |
-
-**ผลลัพธ์:** Streak = 1 วัน (เฉพาะ 02-03) แทนที่จะเป็น 2 วัน (02-02 + 02-03)
+ได้ทำการตรวจสอบ 15+ หน้า Portal อย่างละเอียด ตรวจพบทั้งจุดที่ดีมากและจุดที่ควรปรับปรุง
 
 ---
 
-### 2. วิธีแก้ไข
+### 1. ปัญหาที่พบ (Issues Found)
 
-#### แก้ไข `streak-backfill/index.ts`
+#### 1.1 การใช้ภาษาไม่สม่ำเสมอ (Language Inconsistency) - Priority: HIGH
 
-ปรับ function `recalculateStreak` ให้รวม `attendance_adjustments` ที่:
-- `override_status = 'present'`
-- `override_check_in IS NOT NULL`
+| หน้า | ปัญหา | ตัวอย่าง |
+|------|-------|---------|
+| PortalHome.tsx | ปุ่ม Check-in/out แสดงเป็น English เสมอ | `Check-in` แทนที่จะเป็น `เช็คอิน` |
+| PortalHome.tsx | Leaderboard ไม่แปลเป็นไทย | ควรเป็น `อันดับคะแนน` |
+| MyPoints.tsx | Label บางอันเป็น English | `Best: X days` ควรเป็น `สูงสุด: X วัน` |
+| DepositUpload.tsx | บางส่วนไม่มี locale support | `ยอดฝาก:`, `เลขบัญชี:` hardcoded |
 
+**แก้ไข:**
 ```typescript
-// เพิ่มหลังบรรทัด 173 (หลัง query attendance_logs)
+// PortalHome.tsx - แก้ปุ่ม Check-in/out
+{canCheckIn ? (
+  <>
+    <LogIn className="h-4 w-4" />
+    {locale === 'th' ? 'เช็คอิน' : 'Check-in'}
+  </>
+) : (
+  <>
+    <LogOut className="h-4 w-4" />
+    {locale === 'th' ? 'เช็คเอาท์' : 'Check-out'}
+  </>
+)}
 
-// Also get attendance adjustments (Admin manual entries)
-const { data: adjustments } = await supabase
-  .from('attendance_adjustments')
-  .select('adjustment_date, override_check_in, override_status')
-  .eq('employee_id', employeeId)
-  .eq('override_status', 'present')
-  .not('override_check_in', 'is', null)
-  .gte('adjustment_date', thirtyDaysAgoStr);
-
-// Merge adjustments into logs (adjustments override actual logs)
-const adjustmentMap = new Map();
-for (const adj of adjustments || []) {
-  if (adj.override_check_in) {
-    const checkInTime = `${adj.adjustment_date}T${adj.override_check_in}`;
-    adjustmentMap.set(adj.adjustment_date, {
-      server_time: checkInTime,
-      branch_id: null,
-      isFromAdjustment: true
-    });
-  }
+// Leaderboard label
+{
+  icon: Trophy,
+  label: 'อันดับคะแนน',  // เปลี่ยนจาก 'Leaderboard'
+  labelEn: 'Leaderboard',
+  ...
 }
 ```
 
-#### ปรับ Loop ที่สร้าง dailyLogs
+#### 1.2 Typography และ Spacing ไม่สม่ำเสมอ - Priority: MEDIUM
 
+| ปัญหา | ไฟล์ที่กระทบ |
+|-------|-------------|
+| Header H1 บางหน้าใช้ emoji บางหน้าไม่ใช้ | RequestOT, RequestLeave, MyLeaveBalance |
+| Font size ของ subheading ไม่เท่ากัน | หลายหน้า |
+
+**Pattern ที่แนะนำ:**
 ```typescript
-// ใน loop บรรทัด 183-189 - ให้ adjustment override attendance_logs
-for (const log of logs) {
-  const dateStr = log.server_time.split('T')[0];
-  // Skip if this date has an adjustment (adjustment takes priority)
-  if (adjustmentMap.has(dateStr)) continue;
-  
-  if (!dailyLogs.has(dateStr)) {
-    const isOnTime = await isCheckInOnTime(supabase, employeeId, log.server_time, log.branch_id);
-    dailyLogs.set(dateStr, { log, isOnTime });
-  }
-}
-
-// Add adjustments to dailyLogs
-for (const [dateStr, adjLog] of adjustmentMap) {
-  // For adjustments, check if check_in time is on-time
-  const isOnTime = await isCheckInOnTime(supabase, employeeId, adjLog.server_time, null);
-  dailyLogs.set(dateStr, { log: adjLog, isOnTime });
-}
+// Header Pattern - ทุกหน้าควรใช้รูปแบบเดียวกัน
+<div>
+  <h1 className="text-2xl font-bold">
+    {locale === 'th' ? '📋 ชื่อหน้า' : '📋 Page Title'}
+  </h1>
+  <p className="text-muted-foreground mt-1">
+    {locale === 'th' ? 'คำอธิบาย' : 'Description'}
+  </p>
+</div>
 ```
 
----
+#### 1.3 Bottom Navigation อาจแน่นเกินไป - Priority: LOW
 
-### 3. ไฟล์ที่ต้องแก้ไข
+ปัจจุบันมี 7 items ใน `navItems` ซึ่งอาจแน่นบนหน้าจอเล็ก
 
-| ไฟล์ | การแก้ไข | Risk Level |
-|------|---------|------------|
-| `supabase/functions/streak-backfill/index.ts` | เพิ่ม query attendance_adjustments และ merge เข้า dailyLogs | กลาง |
+**แนะนำ:** เก็บไว้ 5 items หลัก และย้าย "อนุมัติ" ไปไว้ใน PortalHome เท่านั้น
 
----
+#### 1.4 Empty States ยังไม่ดึงดูด - Priority: LOW
 
-### 4. ผลกระทบและการทดสอบ
-
-**ผลกระทบ:**
-- ✅ ไม่กระทบ attendance_logs logic เดิม
-- ✅ ไม่กระทบ real-time check-in streak calculation
-- ✅ รองรับ Admin adjustment ย้อนหลังทุกกรณี
-
-**การทดสอบ:**
-1. เรียก `streak-backfill` function หลังแก้ไข
-2. ตรวจสอบว่า mefonn มี streak = 2 วัน
-3. ตรวจสอบพนักงานคนอื่นว่าไม่ได้รับผลกระทบ
-
----
-
-### 5. Prevention Measures
-
-เพิ่ม comment ใน `streak-backfill/index.ts`:
+หลายหน้าแสดง empty state แบบธรรมดา ควรเพิ่มความน่าสนใจ
 
 ```typescript
-// ⚠️ VERIFIED 2026-02-03: Streak calculation includes BOTH sources:
-// 1. attendance_logs (real check-ins)
-// 2. attendance_adjustments (Admin manual entries with override_status='present')
-// Adjustments take priority over logs for the same date
-// DO NOT remove adjustment handling without understanding impact on Admin-adjusted records
+// ปัจจุบัน
+<p className="text-muted-foreground">
+  {locale === 'th' ? 'ยังไม่มีประวัติคำขอ OT' : 'No OT request history'}
+</p>
+
+// แนะนำ
+<div className="text-center py-8">
+  <Clock className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
+  <p className="text-lg font-medium mb-2">
+    {locale === 'th' ? 'ยังไม่มีคำขอ OT' : 'No OT requests yet'}
+  </p>
+  <p className="text-sm text-muted-foreground mb-4">
+    {locale === 'th' ? 'เมื่อคุณส่งคำขอ OT จะแสดงที่นี่' : 'Your OT requests will appear here'}
+  </p>
+  <Button variant="outline" size="sm">
+    {locale === 'th' ? 'เรียนรู้เพิ่มเติม' : 'Learn more'}
+  </Button>
+</div>
 ```
 
 ---
 
-### 6. ทางเลือกอื่น (ไม่แนะนำ)
+### 2. จุดที่ทำได้ดี (Good Practices)
 
-**ทางเลือก A:** สร้าง attendance_log record เมื่อ Admin เพิ่ม adjustment
-- ❌ ข้อมูลซ้ำซ้อน
-- ❌ ยากในการแยกว่าอันไหนจริง อันไหน Admin เพิ่ม
+| หมวด | รายละเอียด |
+|------|-----------|
+| Loading States | ใช้ Skeleton อย่างเหมาะสมทุกหน้า |
+| Error Handling | มี Error Boundary และ retry mechanism |
+| Executive Support | แสดงข้อความเฉพาะสำหรับผู้บริหารที่ไม่ต้อง track |
+| Timezone | ใช้ Bangkok timezone utilities อย่างถูกต้อง |
+| Mobile First | Card-based design เหมาะกับมือถือ |
+| Favorites | ระบบ pin favorite actions ดีมาก |
+| Gradients | ใช้ gradient สร้าง visual hierarchy ได้ดี |
+| Dark Mode | รองรับ dark mode ทุกหน้า |
 
-**ทางเลือก B:** Run streak-backfill หลังทุกครั้งที่ Admin แก้ไข
-- ❌ Performance impact
-- ❌ ต้องแก้ AttendanceEditDialog ด้วย
+---
 
-**วิธีที่เลือก:** แก้ `streak-backfill` ให้รวม adjustments เป็นวิธีที่ clean ที่สุด
+### 3. แผนการแก้ไข (Implementation Plan)
+
+#### Phase 1: Language Consistency (แก้ไขทันที)
+
+| ไฟล์ | การแก้ไข |
+|------|---------|
+| `src/pages/portal/PortalHome.tsx` | แก้ปุ่ม Check-in/out และ Leaderboard label |
+| `src/pages/portal/MyPoints.tsx` | แก้ "Best: X days" เป็น locale-aware |
+| `src/pages/portal/DepositUpload.tsx` | เพิ่ม locale support สำหรับ labels |
+
+#### Phase 2: Typography Standardization (ปรับปรุง)
+
+สร้าง consistent header pattern ทุกหน้า
+
+#### Phase 3: Enhanced Empty States (เสริมเพิ่ม)
+
+ปรับ empty states ให้น่าสนใจและมี call-to-action
+
+---
+
+### 4. ไฟล์ที่ต้องแก้ไข
+
+| ลำดับ | ไฟล์ | การแก้ไข | Risk |
+|-------|------|---------|------|
+| 1 | `src/pages/portal/PortalHome.tsx` | แก้ Check-in/out button text, Leaderboard label | ต่ำ |
+| 2 | `src/pages/portal/MyPoints.tsx` | แก้ "Best: X days" | ต่ำ |
+| 3 | `src/pages/portal/DepositUpload.tsx` | เพิ่ม locale สำหรับ labels | ต่ำ |
+| 4 | `src/pages/portal/RequestOT.tsx` | ปรับ empty state | ต่ำ |
+| 5 | `src/pages/portal/RequestLeave.tsx` | ปรับ empty state | ต่ำ |
+
+---
+
+### 5. รายละเอียดการแก้ไขแต่ละไฟล์
+
+#### 5.1 PortalHome.tsx
+
+**Line 399-409 - Check-in/out Button:**
+```typescript
+// BEFORE
+{canCheckIn ? (
+  <>
+    <LogIn className="h-4 w-4" />
+    Check-in
+  </>
+) : (
+  <>
+    <LogOut className="h-4 w-4" />
+    Check-out
+  </>
+)}
+
+// AFTER
+{canCheckIn ? (
+  <>
+    <LogIn className="h-4 w-4" />
+    {locale === 'th' ? 'เช็คอิน' : 'Check-in'}
+  </>
+) : (
+  <>
+    <LogOut className="h-4 w-4" />
+    {locale === 'th' ? 'เช็คเอาท์' : 'Check-out'}
+  </>
+)}
+```
+
+**Line 98-106 - Leaderboard Label:**
+```typescript
+// BEFORE
+{
+  icon: Trophy,
+  label: 'Leaderboard',
+  labelEn: 'Leaderboard',
+  ...
+}
+
+// AFTER
+{
+  icon: Trophy,
+  label: 'อันดับคะแนน',
+  labelEn: 'Leaderboard',
+  ...
+}
+```
+
+#### 5.2 MyPoints.tsx
+
+**Line 230-234 - Best Streak:**
+```typescript
+// BEFORE
+<p className="text-xs text-muted-foreground">
+  Best: {happyPoints?.longest_punctuality_streak || 0} days
+</p>
+
+// AFTER
+<p className="text-xs text-muted-foreground">
+  {locale === 'th' 
+    ? `สูงสุด: ${happyPoints?.longest_punctuality_streak || 0} วัน`
+    : `Best: ${happyPoints?.longest_punctuality_streak || 0} days`}
+</p>
+```
+
+#### 5.3 DepositUpload.tsx
+
+**Line 296-305 - Today's Deposit Info Labels:**
+```typescript
+// BEFORE
+<div className="flex justify-between">
+  <span className="text-muted-foreground">ยอดฝาก:</span>
+  ...
+</div>
+
+// AFTER
+<div className="flex justify-between">
+  <span className="text-muted-foreground">
+    {locale === 'th' ? 'ยอดฝาก:' : 'Amount:'}
+  </span>
+  ...
+</div>
+```
+
+---
+
+### 6. ผลกระทบ
+
+| การแก้ไข | ผลกระทบ |
+|---------|---------|
+| Language fixes | ไม่กระทบ logic - เปลี่ยนแค่ text display |
+| Empty states | ไม่กระทบ data flow - เปลี่ยนแค่ UI |
+| Typography | ไม่กระทบ functionality |
+
+**Risk Assessment: ต่ำมาก** - ทุกการแก้ไขเป็น UI text เท่านั้น
+
+---
+
+### 7. Verification Checklist
+
+หลังแก้ไข ต้องตรวจสอบ:
+
+1. [ ] Toggle ภาษา TH/EN แล้ว text เปลี่ยนถูกต้อง
+2. [ ] ทดสอบบน mobile viewport (375px width)
+3. [ ] ทดสอบ dark mode
+4. [ ] ตรวจสอบว่าไม่มี console errors
+5. [ ] ตรวจสอบ typography consistency
 
