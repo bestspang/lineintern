@@ -95,18 +95,21 @@ async function findPreviousWorkDay(
 }
 
 /**
- * Check if a check-in was on time based on shift or default schedule
+ * Check if a check-in was on time based on shift, work_schedule, or default settings
+ * Priority: shift_assignments > work_schedules > attendance_settings
  */
 async function isCheckInOnTime(
   supabase: any,
   employeeId: string,
-  checkInTime: string, // ISO timestamp
+  checkInTime: string, // ISO timestamp or "YYYY-MM-DDTHH:mm:ss"
   branchId: string | null
 ): Promise<boolean> {
   const checkInDate = new Date(checkInTime);
   const dateStr = checkInTime.split('T')[0];
+  const checkInTimeOnly = checkInTime.split('T')[1]?.substring(0, 8) || '00:00:00';
+  const dayOfWeek = new Date(dateStr).getDay(); // 0 = Sunday
   
-  // Get shift assignment for this date
+  // Priority 1: Check shift_assignments for this specific date
   const { data: shift } = await supabase
     .from('shift_assignments')
     .select('shift_templates(start_time)')
@@ -119,19 +122,32 @@ async function isCheckInOnTime(
   if (shift?.shift_templates?.start_time) {
     expectedStartTime = shift.shift_templates.start_time;
   } else {
-    // Get from branch or global settings
-    const { data: settings } = await supabase
-      .from('attendance_settings')
-      .select('standard_start_time, grace_period_minutes')
-      .or(`scope.eq.global,branch_id.eq.${branchId}`)
-      .order('scope', { ascending: false })
-      .limit(1)
+    // Priority 2: Check work_schedules for this day of week
+    const { data: workSchedule } = await supabase
+      .from('work_schedules')
+      .select('start_time')
+      .eq('employee_id', employeeId)
+      .eq('day_of_week', dayOfWeek)
+      .eq('is_working_day', true)
       .maybeSingle();
+    
+    if (workSchedule?.start_time) {
+      expectedStartTime = workSchedule.start_time;
+    } else {
+      // Priority 3: Check branch or global attendance_settings
+      const { data: settings } = await supabase
+        .from('attendance_settings')
+        .select('standard_start_time')
+        .or(`scope.eq.global${branchId ? `,branch_id.eq.${branchId}` : ''}`)
+        .order('scope', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    expectedStartTime = settings?.standard_start_time || '09:00:00';
+      expectedStartTime = settings?.standard_start_time || '09:00:00';
+    }
   }
 
-  // Get grace period
+  // Get grace period from global settings
   const { data: globalSettings } = await supabase
     .from('attendance_settings')
     .select('grace_period_minutes')
@@ -140,17 +156,23 @@ async function isCheckInOnTime(
 
   const gracePeriod = globalSettings?.grace_period_minutes || 15;
 
-  // Parse times and compare
+  // Compare check-in time with expected start + grace
   const startTime = expectedStartTime || '09:00:00';
-  const [hours, minutes] = startTime.split(':').map(Number);
-  const expectedTime = new Date(checkInDate);
-  expectedTime.setHours(hours, minutes + gracePeriod, 0, 0);
-
-  return checkInDate <= expectedTime;
+  
+  // For streak/punctuality, we check if check-in <= shift_start (NOT including grace)
+  // Grace period is only for "not marked as late" - punctuality requires <= shift_start
+  const isOnTime = checkInTimeOnly <= startTime;
+  
+  return isOnTime;
 }
 
 /**
- * Recalculate streak for an employee based on attendance logs
+ * Recalculate streak for an employee based on attendance logs AND attendance_adjustments
+ * ⚠️ VERIFIED 2026-02-03: Streak calculation includes BOTH sources:
+ * 1. attendance_logs (real check-ins)
+ * 2. attendance_adjustments (Admin manual entries with override_status='present')
+ * Adjustments take priority over logs for the same date
+ * DO NOT remove adjustment handling without understanding impact on Admin-adjusted records
  */
 async function recalculateStreak(
   supabase: any,
@@ -172,20 +194,58 @@ async function recalculateStreak(
     .gte('server_time', thirtyDaysAgoStr + 'T00:00:00')
     .order('server_time', { ascending: false });
 
-  if (error || !logs || logs.length === 0) {
-    console.log(`No check-in logs found for ${employeeName}`);
+  // Also get attendance adjustments (Admin manual entries)
+  const { data: adjustments } = await supabase
+    .from('attendance_adjustments')
+    .select('adjustment_date, override_check_in, override_status')
+    .eq('employee_id', employeeId)
+    .eq('override_status', 'present')
+    .not('override_check_in', 'is', null)
+    .gte('adjustment_date', thirtyDaysAgoStr);
+
+  // Build adjustment map (adjustments take priority over actual logs)
+  const adjustmentMap = new Map<string, { server_time: string; branch_id: null; isFromAdjustment: boolean }>();
+  for (const adj of adjustments || []) {
+    if (adj.override_check_in) {
+      const checkInTime = `${adj.adjustment_date}T${adj.override_check_in}`;
+      adjustmentMap.set(adj.adjustment_date, {
+        server_time: checkInTime,
+        branch_id: null,
+        isFromAdjustment: true
+      });
+    }
+  }
+
+  // Check if we have any data (logs or adjustments)
+  const hasLogs = logs && logs.length > 0;
+  const hasAdjustments = adjustmentMap.size > 0;
+  
+  if (error || (!hasLogs && !hasAdjustments)) {
+    console.log(`No check-in logs or adjustments found for ${employeeName}`);
     return { currentStreak: 0, longestStreak: 0, lastOnTimeDate: null };
   }
 
   // Filter to one log per day (earliest check-in) and check if on-time
   const dailyLogs = new Map<string, { log: any; isOnTime: boolean }>();
   
-  for (const log of logs) {
+  // First, add attendance_logs (skip dates that have adjustments)
+  for (const log of logs || []) {
     const dateStr = log.server_time.split('T')[0];
+    // Skip if this date has an adjustment (adjustment takes priority)
+    if (adjustmentMap.has(dateStr)) continue;
+    
     if (!dailyLogs.has(dateStr)) {
       const isOnTime = await isCheckInOnTime(supabase, employeeId, log.server_time, log.branch_id);
       dailyLogs.set(dateStr, { log, isOnTime });
     }
+  }
+
+  // Then, add adjustments to dailyLogs
+  for (const [dateStr, adjLog] of adjustmentMap) {
+    // For adjustments, check if the override_check_in time is on-time
+    const isOnTime = await isCheckInOnTime(supabase, employeeId, adjLog.server_time, null);
+    dailyLogs.set(dateStr, { log: adjLog, isOnTime });
+    console.log(`${employeeName}: Including adjustment for ${dateStr}, isOnTime=${isOnTime}`);
   }
 
   // Convert to sorted array (most recent first)
