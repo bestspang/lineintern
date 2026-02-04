@@ -78,29 +78,53 @@ serve(async (req) => {
     if (approved) {
       // === APPROVAL FLOW ===
       
-      // Create the checkout log
-      const { data: checkoutLog, error: checkoutError } = await supabase
+      // Check if checkout already exists today (from payroll adjustment or other source)
+      const today = getBangkokDateString();
+      const { data: existingCheckout } = await supabase
         .from('attendance_logs')
-        .insert({
-          employee_id: employee.id,
-          branch_id: employee.branch_id,
-          event_type: 'check_out',
-          server_time: now,
-          latitude: request.latitude,
-          longitude: request.longitude,
-          source: 'remote_checkout_approval',
-          is_remote_checkin: true,
-          admin_notes: `Approved remote checkout. Reason: ${request.reason}`
-        })
         .select('id')
-        .single();
+        .eq('employee_id', employee.id)
+        .eq('event_type', 'check_out')
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lt('server_time', `${today}T23:59:59+07:00`)
+        .order('server_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (checkoutError) {
-        console.error('[remote-checkout-approval] Failed to create checkout log:', checkoutError);
-        return new Response(
-          JSON.stringify({ success: false, error: 'ไม่สามารถสร้าง checkout ได้' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      let checkoutLogId: string;
+      let wasAlreadyCheckedOut = false;
+
+      if (existingCheckout) {
+        // Checkout already exists (from payroll adjustment) - just archive the request
+        console.log(`[remote-checkout-approval] Checkout already exists for ${employee.full_name}, archiving request only`);
+        checkoutLogId = existingCheckout.id;
+        wasAlreadyCheckedOut = true;
+      } else {
+        // Create the checkout log
+        const { data: checkoutLog, error: checkoutError } = await supabase
+          .from('attendance_logs')
+          .insert({
+            employee_id: employee.id,
+            branch_id: employee.branch_id,
+            event_type: 'check_out',
+            server_time: now,
+            latitude: request.latitude,
+            longitude: request.longitude,
+            source: 'remote_checkout_approval',
+            is_remote_checkin: true,
+            admin_notes: `Approved remote checkout. Reason: ${request.reason}`
+          })
+          .select('id')
+          .single();
+
+        if (checkoutError) {
+          console.error('[remote-checkout-approval] Failed to create checkout log:', checkoutError);
+          return new Response(
+            JSON.stringify({ success: false, error: 'ไม่สามารถสร้าง checkout ได้' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        checkoutLogId = checkoutLog.id;
       }
 
       // Update the request status
@@ -110,7 +134,7 @@ serve(async (req) => {
           status: 'approved',
           approved_by_employee_id: approver_employee_id,
           approved_at: now,
-          checkout_log_id: checkoutLog.id,
+          checkout_log_id: checkoutLogId,
           updated_at: now
         })
         .eq('id', request_id);
@@ -123,9 +147,9 @@ serve(async (req) => {
         );
       }
 
-      // Update/create work session
-      const today = getBangkokDateString();
-      const { data: checkInLog } = await supabase
+      // Update/create work session (only if checkout was newly created)
+      if (!wasAlreadyCheckedOut) {
+        const { data: checkInLog } = await supabase
         .from('attendance_logs')
         .select('server_time')
         .eq('employee_id', employee.id)
@@ -140,23 +164,24 @@ serve(async (req) => {
         const checkOutTime = new Date(now);
         const totalMinutes = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
 
-        await supabase
-          .from('work_sessions')
-          .upsert({
-            employee_id: employee.id,
-            work_date: today,
-            first_check_in: checkInLog.server_time,
-            last_check_out: now,
-            total_work_minutes: totalMinutes,
-            net_work_minutes: totalMinutes,
-            status: 'complete',
-            updated_at: now
-          }, {
-            onConflict: 'employee_id,work_date'
-          });
+          await supabase
+            .from('work_sessions')
+            .upsert({
+              employee_id: employee.id,
+              work_date: today,
+              first_check_in: checkInLog.server_time,
+              last_check_out: now,
+              total_work_minutes: totalMinutes,
+              net_work_minutes: totalMinutes,
+              status: 'complete',
+              updated_at: now
+            }, {
+              onConflict: 'employee_id,work_date'
+            });
+        }
       }
 
-      console.log(`[remote-checkout-approval] Approved request ${request_id} for ${employee.full_name}`);
+      console.log(`[remote-checkout-approval] ${wasAlreadyCheckedOut ? 'Archived' : 'Approved'} request ${request_id} for ${employee.full_name}`);
 
       const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
 
@@ -224,11 +249,16 @@ serve(async (req) => {
         }
       }
 
+      const successMessage = wasAlreadyCheckedOut
+        ? `✅ Archive คำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ (มี checkout อยู่แล้ว)`
+        : `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`;
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`,
-          checkout_log_id: checkoutLog.id
+          message: successMessage,
+          checkout_log_id: checkoutLogId,
+          was_archived: wasAlreadyCheckedOut
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

@@ -96,7 +96,11 @@ export default function ApproveRemoteCheckout() {
       setRequests(previousRequests);
       toast.error(locale === 'th' ? 'ไม่สามารถอนุมัติได้' : 'Failed to approve');
     } else {
-      toast.success(locale === 'th' ? '✅ อนุมัติสำเร็จ! แจ้งพนักงานและ Admin แล้ว' : 'Approved! Notifications sent.');
+      const wasArchived = data?.was_archived;
+      const message = wasArchived 
+        ? (locale === 'th' ? '✅ Archive สำเร็จ! (มี checkout อยู่แล้ว)' : 'Archived! (checkout already exists)')
+        : (locale === 'th' ? '✅ อนุมัติสำเร็จ! แจ้งพนักงานและ Admin แล้ว' : 'Approved! Notifications sent.');
+      toast.success(message);
     }
     
     setProcessingId(null);
