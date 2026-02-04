@@ -123,17 +123,27 @@ serve(async (req) => {
 
     console.log(`[remote-checkout-request] Created request ${request.id} for employee ${employee.full_name}`);
 
-    // Send LINE notification to managers/admins
-    const branchData = employee.branch as { line_group_id?: string; name?: string } | null;
-    if (branchData?.line_group_id) {
-      try {
-        const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
-        if (lineChannelToken) {
+    // Send LINE notification to Management team (not branch group)
+    // This ensures only managers see approval requests, not all branch employees
+    try {
+      const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+      if (lineChannelToken) {
+        // Get the admin LINE group from settings (Management team for approvals)
+        const { data: settings } = await supabase
+          .from('attendance_settings')
+          .select('admin_line_group_id')
+          .eq('scope', 'global')
+          .maybeSingle();
+
+        const targetGroupId = settings?.admin_line_group_id;
+        
+        if (targetGroupId) {
+          const branchData = employee.branch as { name?: string } | null;
           const message = {
-            to: branchData.line_group_id,
+            to: targetGroupId,
             messages: [{
               type: 'text',
-              text: `📍 คำขอ Checkout นอกสถานที่\n\n👤 ${employee.full_name}\n📏 ระยะห่าง: ${Math.round(distance_from_branch || 0)} เมตร\n📝 เหตุผล: ${reason}\n\n⏳ กรุณาอนุมัติใน Portal`
+              text: `📍 คำขอ Checkout นอกสถานที่\n\n👤 ${employee.full_name}\n📏 ระยะห่าง: ${Math.round(distance_from_branch || 0)} เมตร\n📝 เหตุผล: ${reason}\n🏢 สาขา: ${branchData?.name || 'ไม่ระบุ'}\n\n⏳ กรุณาอนุมัติใน Portal`
             }]
           };
 
@@ -146,12 +156,14 @@ serve(async (req) => {
             body: JSON.stringify(message)
           });
 
-          console.log(`[remote-checkout-request] Sent LINE notification to group ${branchData.line_group_id}`);
+          console.log(`[remote-checkout-request] Sent LINE notification to admin group ${targetGroupId}`);
+        } else {
+          console.warn('[remote-checkout-request] No admin_line_group_id configured in attendance_settings');
         }
-      } catch (notifyError) {
-        console.warn('[remote-checkout-request] Failed to send LINE notification:', notifyError);
-        // Don't fail the request if notification fails
       }
+    } catch (notifyError) {
+      console.warn('[remote-checkout-request] Failed to send LINE notification:', notifyError);
+      // Don't fail the request if notification fails
     }
 
     return new Response(
