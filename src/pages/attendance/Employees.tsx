@@ -182,11 +182,13 @@ export default function AttendanceEmployees() {
       const isComplete = data.full_name && data.role_id && data.branch_id;
       
       // Convert empty strings to null for UUID fields to prevent Postgres errors
+      // ⚠️ IMPORTANT: When is_active = false, status must be 'inactive'
+      // This ensures badge displays correctly and employee is excluded from reports/points/summaries
       const cleanedData = {
         ...data,
         branch_id: data.branch_id || null,
         role_id: data.role_id || null,
-        status: isComplete ? 'active' : 'new'
+        status: !data.is_active ? 'inactive' : (isComplete ? 'active' : 'new')
       };
       
       if (editingEmployee) {
@@ -753,15 +755,15 @@ export default function AttendanceEmployees() {
                   <TableCell className="py-2">
                     <Badge 
                       variant={
-                        employee.status === 'new' ? 'secondary' : 
-                        employee.status === 'active' || employee.is_active ? 'default' : 'outline'
+                        !employee.is_active ? 'outline' :
+                        employee.status === 'new' ? 'secondary' : 'default'
                       }
                       className={cn(
                         "text-xs",
-                        employee.status === 'new' && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200"
+                        employee.status === 'new' && employee.is_active && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200"
                       )}
                     >
-                      {employee.status === 'new' ? 'New' : employee.status === 'active' || employee.is_active ? 'Active' : 'Inactive'}
+                      {!employee.is_active ? 'Inactive' : employee.status === 'new' ? 'New' : 'Active'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right py-2">

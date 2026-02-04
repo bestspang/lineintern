@@ -234,9 +234,10 @@ const generateSummary = async (
       .eq('branch_id', branch.id)
       .eq('is_active', true);
 
-    // Handle empty branches
+    // Skip empty branches silently - don't show "ไม่มีพนักงาน" in summary
+    // This prevents closed/empty branches from cluttering the report
     if (!employees || employees.length === 0) {
-      branchSummaries.push(`📍 ${branch.name}\n⏸️ ไม่มีพนักงานในสาขานี้`);
+      console.log(`[generateSummary] Skipping empty branch: ${branch.name}`);
       continue;
     }
 
