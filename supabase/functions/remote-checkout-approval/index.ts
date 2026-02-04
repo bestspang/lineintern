@@ -158,16 +158,54 @@ serve(async (req) => {
 
       console.log(`[remote-checkout-approval] Approved request ${request_id} for ${employee.full_name}`);
 
+      const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+
       // Send LINE notification to employee
-      if (employee.line_user_id) {
+      if (employee.line_user_id && lineChannelToken) {
         try {
-          const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
-          if (lineChannelToken) {
-            const message = {
-              to: employee.line_user_id,
+          const message = {
+            to: employee.line_user_id,
+            messages: [{
+              type: 'text',
+              text: `✅ คำขอ Checkout นอกสถานที่ได้รับการอนุมัติแล้ว\n\n⏰ เวลา Checkout: ${new Date(now).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}\n\nขอบคุณที่ใช้บริการ 🙏`
+            }]
+          };
+
+          await fetch('https://api.line.me/v2/bot/message/push', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${lineChannelToken}`
+            },
+            body: JSON.stringify(message)
+          });
+        } catch (notifyError) {
+          console.warn('[remote-checkout-approval] Failed to notify employee:', notifyError);
+        }
+      }
+
+      // Get approver info for admin notification
+      const { data: approver } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', approver_employee_id)
+        .maybeSingle();
+
+      // Send notification to Admin LINE group
+      if (lineChannelToken) {
+        try {
+          const { data: settings } = await supabase
+            .from('attendance_settings')
+            .select('admin_line_group_id')
+            .eq('scope', 'global')
+            .maybeSingle();
+
+          if (settings?.admin_line_group_id) {
+            const adminMessage = {
+              to: settings.admin_line_group_id,
               messages: [{
                 type: 'text',
-                text: `✅ คำขอ Checkout นอกสถานที่ได้รับการอนุมัติแล้ว\n\n⏰ เวลา Checkout: ${new Date(now).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}\n\nขอบคุณที่ใช้บริการ 🙏`
+                text: `✅ Remote Checkout อนุมัติแล้ว\n\n👤 พนักงาน: ${employee.full_name}\n✍️ อนุมัติโดย: ${approver?.full_name || 'ไม่ทราบ'}\n⏰ เวลา: ${new Date(now).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}`
               }]
             };
 
@@ -177,11 +215,12 @@ serve(async (req) => {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${lineChannelToken}`
               },
-              body: JSON.stringify(message)
+              body: JSON.stringify(adminMessage)
             });
+            console.log('[remote-checkout-approval] Sent admin notification');
           }
-        } catch (notifyError) {
-          console.warn('[remote-checkout-approval] Failed to notify employee:', notifyError);
+        } catch (adminNotifyError) {
+          console.warn('[remote-checkout-approval] Failed to notify admin group:', adminNotifyError);
         }
       }
 
@@ -218,16 +257,54 @@ serve(async (req) => {
 
       console.log(`[remote-checkout-approval] Rejected request ${request_id} for ${employee.full_name}`);
 
+      const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+
       // Send LINE notification to employee
-      if (employee.line_user_id) {
+      if (employee.line_user_id && lineChannelToken) {
         try {
-          const lineChannelToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
-          if (lineChannelToken) {
-            const message = {
-              to: employee.line_user_id,
+          const message = {
+            to: employee.line_user_id,
+            messages: [{
+              type: 'text',
+              text: `❌ คำขอ Checkout นอกสถานที่ถูกปฏิเสธ\n\n📝 เหตุผล: ${rejection_reason || 'ไม่ระบุ'}\n\nกรุณาติดต่อหัวหน้างานหากมีข้อสงสัย`
+            }]
+          };
+
+          await fetch('https://api.line.me/v2/bot/message/push', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${lineChannelToken}`
+            },
+            body: JSON.stringify(message)
+          });
+        } catch (notifyError) {
+          console.warn('[remote-checkout-approval] Failed to notify employee:', notifyError);
+        }
+      }
+
+      // Get approver info for admin notification
+      const { data: approverReject } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', approver_employee_id)
+        .maybeSingle();
+
+      // Send notification to Admin LINE group
+      if (lineChannelToken) {
+        try {
+          const { data: settings } = await supabase
+            .from('attendance_settings')
+            .select('admin_line_group_id')
+            .eq('scope', 'global')
+            .maybeSingle();
+
+          if (settings?.admin_line_group_id) {
+            const adminMessage = {
+              to: settings.admin_line_group_id,
               messages: [{
                 type: 'text',
-                text: `❌ คำขอ Checkout นอกสถานที่ถูกปฏิเสธ\n\n📝 เหตุผล: ${rejection_reason || 'ไม่ระบุ'}\n\nกรุณาติดต่อหัวหน้างานหากมีข้อสงสัย`
+                text: `❌ Remote Checkout ปฏิเสธ\n\n👤 พนักงาน: ${employee.full_name}\n✍️ โดย: ${approverReject?.full_name || 'ไม่ทราบ'}\n📝 เหตุผล: ${rejection_reason || 'ไม่ระบุ'}`
               }]
             };
 
@@ -237,11 +314,12 @@ serve(async (req) => {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${lineChannelToken}`
               },
-              body: JSON.stringify(message)
+              body: JSON.stringify(adminMessage)
             });
+            console.log('[remote-checkout-approval] Sent admin rejection notification');
           }
-        } catch (notifyError) {
-          console.warn('[remote-checkout-approval] Failed to notify employee:', notifyError);
+        } catch (adminNotifyError) {
+          console.warn('[remote-checkout-approval] Failed to notify admin group on rejection:', adminNotifyError);
         }
       }
 

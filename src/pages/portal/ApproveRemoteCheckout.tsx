@@ -77,6 +77,10 @@ export default function ApproveRemoteCheckout() {
     
     setProcessingId(request.id);
     
+    // Optimistic update - remove from list immediately
+    const previousRequests = [...requests];
+    setRequests(prev => prev.filter(r => r.id !== request.id));
+    
     const { data, error } = await portalApi({
       endpoint: 'approve-remote-checkout',
       employee_id: employee.id,
@@ -88,10 +92,11 @@ export default function ApproveRemoteCheckout() {
     });
 
     if (error) {
+      // Rollback on error
+      setRequests(previousRequests);
       toast.error(locale === 'th' ? 'ไม่สามารถอนุมัติได้' : 'Failed to approve');
     } else {
-      toast.success(locale === 'th' ? 'อนุมัติสำเร็จ ระบบ Checkout ให้พนักงานแล้ว' : 'Approved! Employee has been checked out.');
-      fetchRequests();
+      toast.success(locale === 'th' ? '✅ อนุมัติสำเร็จ! แจ้งพนักงานและ Admin แล้ว' : 'Approved! Notifications sent.');
     }
     
     setProcessingId(null);
@@ -109,6 +114,10 @@ export default function ApproveRemoteCheckout() {
     setProcessingId(selectedRequest.id);
     setRejectDialogOpen(false);
     
+    // Optimistic update - remove from list immediately
+    const previousRequests = [...requests];
+    setRequests(prev => prev.filter(r => r.id !== selectedRequest.id));
+    
     const { data, error } = await portalApi({
       endpoint: 'approve-remote-checkout',
       employee_id: employee.id,
@@ -121,10 +130,11 @@ export default function ApproveRemoteCheckout() {
     });
 
     if (error) {
+      // Rollback on error
+      setRequests(previousRequests);
       toast.error(locale === 'th' ? 'ไม่สามารถปฏิเสธได้' : 'Failed to reject');
     } else {
-      toast.success(locale === 'th' ? 'ปฏิเสธคำขอสำเร็จ' : 'Request rejected');
-      fetchRequests();
+      toast.success(locale === 'th' ? '❌ ปฏิเสธคำขอแล้ว แจ้ง Admin แล้ว' : 'Rejected! Admin notified.');
     }
     
     setProcessingId(null);
