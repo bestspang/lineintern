@@ -1,257 +1,236 @@
 
 
-## Portal UX/UI Audit Report - รายงานการตรวจสอบ UX/UI ระบบพอร์ทัล
+## แผนแก้ไข: Employee Inactive Bug + Branch Archive System
 
-### สรุปการตรวจสอบ
+### 1. Root Cause Analysis
 
-ได้ทำการตรวจสอบ 15+ หน้า Portal อย่างละเอียด ตรวจพบทั้งจุดที่ดีมากและจุดที่ควรปรับปรุง
+#### ปัญหา 1: พนักงาน "Pass" ยังแสดง Active
+
+| Field | ค่าในฐานข้อมูล | ปัญหา |
+|-------|---------------|-------|
+| `is_active` | `false` | ✅ ถูกต้อง (user ตั้งค่าแล้ว) |
+| `status` | `active` | ❌ ไม่ถูก sync |
+
+**สาเหตุ 1 - Save Logic Bug (line 189):**
+```typescript
+status: isComplete ? 'active' : 'new'  // ❌ ไม่ check is_active เลย!
+```
+เมื่อ save พนักงานที่มีข้อมูลครบ ระบบจะตั้ง `status = 'active'` เสมอ ไม่ว่า `is_active` จะเป็นอะไร
+
+**สาเหตุ 2 - Display Logic Bug (line 764):**
+```typescript
+employee.status === 'active' || employee.is_active ? 'Active' : 'Inactive'
+// ❌ ถ้า status = 'active' จะแสดง Active แม้ว่า is_active = false
+```
+
+#### ปัญหา 2: สาขาที่ปิดแล้วยังแสดงในรายงาน
+
+| สาขา | is_deleted | มีพนักงาน | ปัญหา |
+|------|-----------|----------|-------|
+| East Ville | `false` | 0 | ยังแสดง "ไม่มีพนักงาน" |
+| Siam Center | `false` | 0 | ยังแสดง "ไม่มีพนักงาน" |
+| Phuket | `false` | 0 | ยังแสดง "ไม่มีพนักงาน" |
+| testo | `false` | 0 | ยังแสดง "ไม่มีพนักงาน" |
+
+**สาเหตุ:** สาขาเหล่านี้ไม่ได้ถูก soft-delete จึงยังแสดงในรายงาน
 
 ---
 
-### 1. ปัญหาที่พบ (Issues Found)
+### 2. Solution Design
 
-#### 1.1 การใช้ภาษาไม่สม่ำเสมอ (Language Inconsistency) - Priority: HIGH
+#### 2.1 แก้ไข Employee Status Sync
 
-| หน้า | ปัญหา | ตัวอย่าง |
-|------|-------|---------|
-| PortalHome.tsx | ปุ่ม Check-in/out แสดงเป็น English เสมอ | `Check-in` แทนที่จะเป็น `เช็คอิน` |
-| PortalHome.tsx | Leaderboard ไม่แปลเป็นไทย | ควรเป็น `อันดับคะแนน` |
-| MyPoints.tsx | Label บางอันเป็น English | `Best: X days` ควรเป็น `สูงสุด: X วัน` |
-| DepositUpload.tsx | บางส่วนไม่มี locale support | `ยอดฝาก:`, `เลขบัญชี:` hardcoded |
+**File: `src/pages/attendance/Employees.tsx`**
 
-**แก้ไข:**
+**แก้ Save Logic (line 189):**
 ```typescript
-// PortalHome.tsx - แก้ปุ่ม Check-in/out
-{canCheckIn ? (
-  <>
-    <LogIn className="h-4 w-4" />
-    {locale === 'th' ? 'เช็คอิน' : 'Check-in'}
-  </>
-) : (
-  <>
-    <LogOut className="h-4 w-4" />
-    {locale === 'th' ? 'เช็คเอาท์' : 'Check-out'}
-  </>
-)}
+// BEFORE:
+status: isComplete ? 'active' : 'new'
 
-// Leaderboard label
-{
-  icon: Trophy,
-  label: 'อันดับคะแนน',  // เปลี่ยนจาก 'Leaderboard'
-  labelEn: 'Leaderboard',
-  ...
+// AFTER:
+status: !data.is_active ? 'inactive' : (isComplete ? 'active' : 'new')
+```
+
+**แก้ Display Logic (lines 754-765):**
+```typescript
+// BEFORE:
+employee.status === 'new' ? 'secondary' : 
+employee.status === 'active' || employee.is_active ? 'default' : 'outline'
+
+// AFTER:
+!employee.is_active ? 'outline' :
+employee.status === 'new' ? 'secondary' : 'default'
+
+// Text - BEFORE:
+employee.status === 'new' ? 'New' : employee.status === 'active' || employee.is_active ? 'Active' : 'Inactive'
+
+// Text - AFTER:
+!employee.is_active ? 'Inactive' : employee.status === 'new' ? 'New' : 'Active'
+```
+
+#### 2.2 Branch Archive System (เลือกใช้ Soft Delete)
+
+**Recommendation: ใช้ Soft Delete ที่มีอยู่แล้ว**
+
+เหตุผล:
+1. ✅ ระบบ soft delete (`is_deleted`) มีอยู่แล้วใน Branches.tsx
+2. ✅ มีปุ่ม Restore สำหรับกู้คืน
+3. ✅ ไม่ต้องเพิ่ม column ใหม่
+4. ✅ ข้อมูลเก่ายังอยู่ ไม่สูญหาย
+
+**เปรียบเทียบ:**
+
+| Option | ข้อดี | ข้อเสีย |
+|--------|-------|---------|
+| ลบจริง (Hard Delete) | Clean | ข้อมูลหายถาวร, FK constraint issues |
+| Soft Delete (แนะนำ) | กู้คืนได้, มีอยู่แล้ว | ต้อง filter ทุกที่ |
+| เพิ่ม is_active | แยกความหมาย deleted vs archived | ต้องเพิ่ม column, migration, แก้ code หลายจุด |
+
+#### 2.3 ปรับปรุง Daily Summary
+
+**File: `supabase/functions/attendance-daily-summary/index.ts`**
+
+ปรับ `generateSummary` function ให้ข้ามสาขาที่ไม่มีพนักงาน active:
+
+```typescript
+// BEFORE (line 237-240):
+if (!employees || employees.length === 0) {
+  branchSummaries.push(`📍 ${branch.name}\n⏸️ ไม่มีพนักงานในสาขานี้`);
+  continue;
+}
+
+// AFTER:
+if (!employees || employees.length === 0) {
+  // Skip empty branches in summary - don't show "ไม่มีพนักงาน"
+  console.log(`[generateSummary] Skipping empty branch: ${branch.name}`);
+  continue;
 }
 ```
 
-#### 1.2 Typography และ Spacing ไม่สม่ำเสมอ - Priority: MEDIUM
-
-| ปัญหา | ไฟล์ที่กระทบ |
-|-------|-------------|
-| Header H1 บางหน้าใช้ emoji บางหน้าไม่ใช้ | RequestOT, RequestLeave, MyLeaveBalance |
-| Font size ของ subheading ไม่เท่ากัน | หลายหน้า |
-
-**Pattern ที่แนะนำ:**
-```typescript
-// Header Pattern - ทุกหน้าควรใช้รูปแบบเดียวกัน
-<div>
-  <h1 className="text-2xl font-bold">
-    {locale === 'th' ? '📋 ชื่อหน้า' : '📋 Page Title'}
-  </h1>
-  <p className="text-muted-foreground mt-1">
-    {locale === 'th' ? 'คำอธิบาย' : 'Description'}
-  </p>
-</div>
-```
-
-#### 1.3 Bottom Navigation อาจแน่นเกินไป - Priority: LOW
-
-ปัจจุบันมี 7 items ใน `navItems` ซึ่งอาจแน่นบนหน้าจอเล็ก
-
-**แนะนำ:** เก็บไว้ 5 items หลัก และย้าย "อนุมัติ" ไปไว้ใน PortalHome เท่านั้น
-
-#### 1.4 Empty States ยังไม่ดึงดูด - Priority: LOW
-
-หลายหน้าแสดง empty state แบบธรรมดา ควรเพิ่มความน่าสนใจ
-
-```typescript
-// ปัจจุบัน
-<p className="text-muted-foreground">
-  {locale === 'th' ? 'ยังไม่มีประวัติคำขอ OT' : 'No OT request history'}
-</p>
-
-// แนะนำ
-<div className="text-center py-8">
-  <Clock className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
-  <p className="text-lg font-medium mb-2">
-    {locale === 'th' ? 'ยังไม่มีคำขอ OT' : 'No OT requests yet'}
-  </p>
-  <p className="text-sm text-muted-foreground mb-4">
-    {locale === 'th' ? 'เมื่อคุณส่งคำขอ OT จะแสดงที่นี่' : 'Your OT requests will appear here'}
-  </p>
-  <Button variant="outline" size="sm">
-    {locale === 'th' ? 'เรียนรู้เพิ่มเติม' : 'Learn more'}
-  </Button>
-</div>
-```
-
 ---
 
-### 2. จุดที่ทำได้ดี (Good Practices)
-
-| หมวด | รายละเอียด |
-|------|-----------|
-| Loading States | ใช้ Skeleton อย่างเหมาะสมทุกหน้า |
-| Error Handling | มี Error Boundary และ retry mechanism |
-| Executive Support | แสดงข้อความเฉพาะสำหรับผู้บริหารที่ไม่ต้อง track |
-| Timezone | ใช้ Bangkok timezone utilities อย่างถูกต้อง |
-| Mobile First | Card-based design เหมาะกับมือถือ |
-| Favorites | ระบบ pin favorite actions ดีมาก |
-| Gradients | ใช้ gradient สร้าง visual hierarchy ได้ดี |
-| Dark Mode | รองรับ dark mode ทุกหน้า |
-
----
-
-### 3. แผนการแก้ไข (Implementation Plan)
-
-#### Phase 1: Language Consistency (แก้ไขทันที)
-
-| ไฟล์ | การแก้ไข |
-|------|---------|
-| `src/pages/portal/PortalHome.tsx` | แก้ปุ่ม Check-in/out และ Leaderboard label |
-| `src/pages/portal/MyPoints.tsx` | แก้ "Best: X days" เป็น locale-aware |
-| `src/pages/portal/DepositUpload.tsx` | เพิ่ม locale support สำหรับ labels |
-
-#### Phase 2: Typography Standardization (ปรับปรุง)
-
-สร้าง consistent header pattern ทุกหน้า
-
-#### Phase 3: Enhanced Empty States (เสริมเพิ่ม)
-
-ปรับ empty states ให้น่าสนใจและมี call-to-action
-
----
-
-### 4. ไฟล์ที่ต้องแก้ไข
+### 3. Implementation Plan
 
 | ลำดับ | ไฟล์ | การแก้ไข | Risk |
 |-------|------|---------|------|
-| 1 | `src/pages/portal/PortalHome.tsx` | แก้ Check-in/out button text, Leaderboard label | ต่ำ |
-| 2 | `src/pages/portal/MyPoints.tsx` | แก้ "Best: X days" | ต่ำ |
-| 3 | `src/pages/portal/DepositUpload.tsx` | เพิ่ม locale สำหรับ labels | ต่ำ |
-| 4 | `src/pages/portal/RequestOT.tsx` | ปรับ empty state | ต่ำ |
-| 5 | `src/pages/portal/RequestLeave.tsx` | ปรับ empty state | ต่ำ |
+| 1 | `src/pages/attendance/Employees.tsx` | แก้ save logic และ display logic | ต่ำ |
+| 2 | `supabase/functions/attendance-daily-summary/index.ts` | ข้ามสาขาว่างใน report | ต่ำ |
+| 3 | ฐานข้อมูล | Soft delete สาขาที่ปิด + sync Pass status | ต่ำ |
 
 ---
 
-### 5. รายละเอียดการแก้ไขแต่ละไฟล์
+### 4. รายละเอียดการแก้ไข
 
-#### 5.1 PortalHome.tsx
+#### 4.1 Employees.tsx - Save Logic (line 179-190)
 
-**Line 399-409 - Check-in/out Button:**
 ```typescript
-// BEFORE
-{canCheckIn ? (
-  <>
-    <LogIn className="h-4 w-4" />
-    Check-in
-  </>
-) : (
-  <>
-    <LogOut className="h-4 w-4" />
-    Check-out
-  </>
-)}
-
-// AFTER
-{canCheckIn ? (
-  <>
-    <LogIn className="h-4 w-4" />
-    {locale === 'th' ? 'เช็คอิน' : 'Check-in'}
-  </>
-) : (
-  <>
-    <LogOut className="h-4 w-4" />
-    {locale === 'th' ? 'เช็คเอาท์' : 'Check-out'}
-  </>
-)}
+const saveMutation = useMutation({
+  mutationFn: async (data: typeof formData) => {
+    const isComplete = data.full_name && data.role_id && data.branch_id;
+    
+    const cleanedData = {
+      ...data,
+      branch_id: data.branch_id || null,
+      role_id: data.role_id || null,
+      // FIX: Respect is_active when setting status
+      status: !data.is_active ? 'inactive' : (isComplete ? 'active' : 'new')
+    };
+    // ... rest unchanged
+  }
+});
 ```
 
-**Line 98-106 - Leaderboard Label:**
+#### 4.2 Employees.tsx - Badge Display (lines 754-765)
+
+```tsx
+<Badge 
+  variant={
+    !employee.is_active ? 'outline' :
+    employee.status === 'new' ? 'secondary' : 'default'
+  }
+  className={cn(
+    "text-xs",
+    employee.status === 'new' && employee.is_active && "bg-yellow-100 text-yellow-800 ..."
+  )}
+>
+  {!employee.is_active ? 'Inactive' : employee.status === 'new' ? 'New' : 'Active'}
+</Badge>
+```
+
+#### 4.3 Daily Summary - Skip Empty Branches (line 237-240)
+
 ```typescript
-// BEFORE
-{
-  icon: Trophy,
-  label: 'Leaderboard',
-  labelEn: 'Leaderboard',
-  ...
+// Handle empty branches - skip silently instead of showing in report
+if (!employees || employees.length === 0) {
+  console.log(`[generateSummary] Skipping empty branch: ${branch.name}`);
+  continue;  // ❌ Remove: branchSummaries.push(`📍 ${branch.name}\n⏸️ ไม่มีพนักงาน...`);
 }
-
-// AFTER
-{
-  icon: Trophy,
-  label: 'อันดับคะแนน',
-  labelEn: 'Leaderboard',
-  ...
-}
-```
-
-#### 5.2 MyPoints.tsx
-
-**Line 230-234 - Best Streak:**
-```typescript
-// BEFORE
-<p className="text-xs text-muted-foreground">
-  Best: {happyPoints?.longest_punctuality_streak || 0} days
-</p>
-
-// AFTER
-<p className="text-xs text-muted-foreground">
-  {locale === 'th' 
-    ? `สูงสุด: ${happyPoints?.longest_punctuality_streak || 0} วัน`
-    : `Best: ${happyPoints?.longest_punctuality_streak || 0} days`}
-</p>
-```
-
-#### 5.3 DepositUpload.tsx
-
-**Line 296-305 - Today's Deposit Info Labels:**
-```typescript
-// BEFORE
-<div className="flex justify-between">
-  <span className="text-muted-foreground">ยอดฝาก:</span>
-  ...
-</div>
-
-// AFTER
-<div className="flex justify-between">
-  <span className="text-muted-foreground">
-    {locale === 'th' ? 'ยอดฝาก:' : 'Amount:'}
-  </span>
-  ...
-</div>
 ```
 
 ---
 
-### 6. ผลกระทบ
+### 5. Database Fixes
 
-| การแก้ไข | ผลกระทบ |
-|---------|---------|
-| Language fixes | ไม่กระทบ logic - เปลี่ยนแค่ text display |
-| Empty states | ไม่กระทบ data flow - เปลี่ยนแค่ UI |
-| Typography | ไม่กระทบ functionality |
+หลังแก้ code แล้ว ต้อง:
 
-**Risk Assessment: ต่ำมาก** - ทุกการแก้ไขเป็น UI text เท่านั้น
+**5.1 Sync Pass status:**
+```sql
+UPDATE employees 
+SET status = 'inactive' 
+WHERE is_active = false AND status != 'inactive';
+```
+
+**5.2 Soft delete สาขาที่ปิด:**
+
+สามารถทำได้ 2 วิธี:
+- **วิธี A (UI):** ไปที่ Attendance > Branches > คลิกปุ่มถังขยะบนสาขาที่ต้องการปิด
+- **วิธี B (SQL):**
+```sql
+UPDATE branches 
+SET is_deleted = true, deleted_at = NOW() 
+WHERE name IN ('East Ville', 'Siam Center', 'Phuket', 'testo');
+```
+
+---
+
+### 6. Cross-Feature Impact Analysis
+
+| Feature | ผลกระทบ | การตรวจสอบ |
+|---------|---------|-----------|
+| Daily Summary | ✅ จะไม่แสดงสาขาว่างอีกต่อไป | ทดสอบรายงานประจำวัน |
+| Attendance Reports | ✅ is_active filter มีอยู่แล้ว | ไม่กระทบ |
+| Point System | ✅ `.eq('is_active', true)` มีอยู่แล้ว | ไม่กระทบ |
+| Portal | ✅ ใช้ is_active อยู่แล้ว | ไม่กระทบ |
+| Work Sessions | ✅ `.eq('is_active', true)` มีอยู่แล้ว | ไม่กระทบ |
 
 ---
 
 ### 7. Verification Checklist
 
-หลังแก้ไข ต้องตรวจสอบ:
+หลังแก้ไขแล้ว ต้องตรวจสอบ:
 
-1. [ ] Toggle ภาษา TH/EN แล้ว text เปลี่ยนถูกต้อง
-2. [ ] ทดสอบบน mobile viewport (375px width)
-3. [ ] ทดสอบ dark mode
-4. [ ] ตรวจสอบว่าไม่มี console errors
-5. [ ] ตรวจสอบ typography consistency
+**Employee:**
+1. [ ] แก้ไข Pass ใน UI → Save → Badge ต้องขึ้น "Inactive"
+2. [ ] ตรวจสอบ DB: `is_active = false` และ `status = 'inactive'`
+3. [ ] Daily summary ไม่แสดงชื่อ Pass ในรายงาน
+
+**Branches:**
+1. [ ] Soft delete สาขา East Ville, Siam Center, Phuket, testo
+2. [ ] Daily summary ไม่แสดงสาขาเหล่านี้อีก
+3. [ ] Toggle "Show Deleted" ใน Branches page แสดงสาขาที่ลบได้
+4. [ ] สามารถ Restore กลับมาได้
+
+---
+
+### 8. Prevention Measures
+
+เพิ่ม comment ใน `Employees.tsx`:
+
+```typescript
+// ⚠️ IMPORTANT: When is_active = false, status must be 'inactive'
+// This ensures:
+// 1. Badge displays correctly
+// 2. Employee excluded from reports/points/summaries
+// DO NOT change status logic without updating badge display logic too
+```
 
