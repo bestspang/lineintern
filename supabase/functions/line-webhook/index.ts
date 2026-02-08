@@ -8906,10 +8906,10 @@ async function handleImageMessage(event: LineEvent) {
     // Only show warning if this group is in enabled list (config issue)
     if (enabledGroups.includes(rawLineGroupId)) {
       console.warn(`[handleImageMessage] Group ${rawLineGroupId} is in enabled list but has no linked branch!`);
-      await replyToLine(
-        event.replyToken,
-        '⚠️ กลุ่มนี้ยังไม่ได้เชื่อมต่อกับสาขา\n' +
-        'กรุณาให้ Admin ตั้งค่าใน Branches → เลือกสาขา → LINE Group'
+      // Send technical warning to admin group only — never to employee groups
+      await notifyAdminGroup(
+        `⚠️ กลุ่ม ${rawLineGroupId} อยู่ใน enabled list แต่ยังไม่ได้เชื่อมต่อกับสาขา\nกรุณาตั้งค่าใน Branches → เลือกสาขา → LINE Group`,
+        { groupId: rawLineGroupId }
       );
     } else {
       console.log(`[handleImageMessage] Group ${rawLineGroupId} is not a deposit-enabled branch group`);
