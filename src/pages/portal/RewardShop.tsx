@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Gift, Coins, ShieldCheck, Clock, Backpack } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface Reward {
   id: string;
@@ -42,6 +42,7 @@ export default function RewardShop() {
   const { employee, locale } = usePortal();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [useChoice, setUseChoice] = useState<'use_now' | 'bag'>('use_now');
 
@@ -156,6 +157,11 @@ export default function RewardShop() {
   };
 
   const handleSelectReward = (reward: Reward) => {
+    // If gacha type, redirect to gacha page
+    if (reward.name.toLowerCase().includes('gacha')) {
+      navigate('/portal/gacha');
+      return;
+    }
     setSelectedReward(reward);
     // Default choice based on use_mode
     if (reward.use_mode === 'bag_only') {

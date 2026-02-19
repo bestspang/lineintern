@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
+import { gachaPull } from './gacha.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +46,8 @@ serve(async (req) => {
         return await markAsUsed(supabase, redemption_id);
       case 'use_bag_item':
         return await useBagItem(supabase, bag_item_id, employee_id);
+      case 'gacha_pull':
+        return await gachaPull(supabase, employee_id, reward_id);
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Invalid action' }),
