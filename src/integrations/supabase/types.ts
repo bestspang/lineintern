@@ -14,6 +14,191 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_query_group_export: {
+        Row: {
+          allowed_data_sources: string[]
+          created_at: string
+          export_enabled: boolean
+          group_id: string
+          id: string
+          masking_level: string
+          synonyms: string[]
+          updated_at: string
+        }
+        Insert: {
+          allowed_data_sources?: string[]
+          created_at?: string
+          export_enabled?: boolean
+          group_id: string
+          id?: string
+          masking_level?: string
+          synonyms?: string[]
+          updated_at?: string
+        }
+        Update: {
+          allowed_data_sources?: string[]
+          created_at?: string
+          export_enabled?: boolean
+          group_id?: string
+          id?: string
+          masking_level?: string
+          synonyms?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_query_group_export_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: true
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_query_memory: {
+        Row: {
+          answer: string
+          created_at: string
+          expires_at: string
+          group_id: string
+          id: string
+          question: string
+          sources_used: Json
+          user_id: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          expires_at?: string
+          group_id: string
+          id?: string
+          question: string
+          sources_used?: Json
+          user_id: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          expires_at?: string
+          group_id?: string
+          id?: string
+          question?: string
+          sources_used?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_query_memory_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_query_memory_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_query_policies: {
+        Row: {
+          allowed_data_sources: string[]
+          created_at: string
+          enabled: boolean
+          id: string
+          max_hits_per_group: number
+          pii_mode: string
+          priority: number
+          scope_mode: string
+          source_group_id: string | null
+          source_type: string
+          source_user_id: string | null
+          time_window_days: number
+          updated_at: string
+        }
+        Insert: {
+          allowed_data_sources?: string[]
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_hits_per_group?: number
+          pii_mode?: string
+          priority?: number
+          scope_mode?: string
+          source_group_id?: string | null
+          source_type: string
+          source_user_id?: string | null
+          time_window_days?: number
+          updated_at?: string
+        }
+        Update: {
+          allowed_data_sources?: string[]
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_hits_per_group?: number
+          pii_mode?: string
+          priority?: number
+          scope_mode?: string
+          source_group_id?: string | null
+          source_type?: string
+          source_user_id?: string | null
+          time_window_days?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_query_policies_source_group_id_fkey"
+            columns: ["source_group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_query_policies_source_user_id_fkey"
+            columns: ["source_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_query_scope_groups: {
+        Row: {
+          group_id: string
+          id: string
+          policy_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          policy_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          policy_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_query_scope_groups_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_query_scope_groups_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "ai_query_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alerts: {
         Row: {
           action_taken: string | null

@@ -43,6 +43,7 @@ import UserManagement from "./pages/settings/UserManagement";
 import RoleManagement from "./pages/settings/RoleManagement";
 import APIKeys from "./pages/settings/APIKeys";
 import CuteQuotesSettings from "./pages/settings/CuteQuotesSettings";
+import AIQueryControl from "./pages/settings/AIQueryControl";
 import NotFound from "./pages/NotFound";
 import NetworkError from "./pages/NetworkError";
 import ServerError from "./pages/ServerError";
@@ -319,6 +320,7 @@ const App = () => (
                         <Route path="users" element={<UserManagement />} />
                         <Route path="roles" element={<RoleManagement />} />
                         <Route path="cute-quotes" element={<CuteQuotesSettings />} />
+                        <Route path="ai-cross-group" element={<AIQueryControl />} />
                         <Route path="safety" element={<SafetyRules />} />
                         <Route path="integrations" element={<Integrations />} />
                         <Route path="alerts" element={<Alerts />} />
