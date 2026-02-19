@@ -37,6 +37,7 @@ export default function HappyPoints() {
           employees!inner (
             full_name,
             code,
+            is_active,
             exclude_from_points,
             branch:branches!branch_id(name)
           )
@@ -45,9 +46,9 @@ export default function HappyPoints() {
       
       if (error) throw error;
       
-      // Filter out employees who are excluded from points
+      // Filter out employees who are excluded from points or inactive
       const filteredData = (data || []).filter(
-        (p: any) => !p.employees?.exclude_from_points
+        (p: any) => !p.employees?.exclude_from_points && p.employees?.is_active !== false
       );
       return filteredData as unknown as HappyPointsData[];
     },
@@ -63,14 +64,14 @@ export default function HappyPoints() {
           total_earned, 
           total_spent, 
           current_punctuality_streak,
-          employees!inner(exclude_from_points)
+          employees!inner(exclude_from_points, is_active)
         `);
       
       if (error) throw error;
       
-      // Filter out excluded employees for stats calculation
+      // Filter out excluded and inactive employees for stats calculation
       const filteredData = (data || []).filter(
-        (p: any) => !p.employees?.exclude_from_points
+        (p: any) => !p.employees?.exclude_from_points && p.employees?.is_active !== false
       );
       
       const totalBalance = filteredData.reduce((sum, p) => sum + (p.point_balance || 0), 0);
