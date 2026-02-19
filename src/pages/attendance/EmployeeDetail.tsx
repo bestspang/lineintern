@@ -23,7 +23,8 @@ import {
   XCircle,
   AlertCircle,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  Backpack
 } from 'lucide-react';
 import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
 import LocationHeatmap from '@/components/attendance/LocationHeatmap';
@@ -274,6 +275,20 @@ export default function EmployeeDetail() {
         branchName: log.branch?.name,
         isRemote: log.is_remote_checkin || false
       }));
+    }
+  });
+
+  // Fetch bag items for this employee
+  const { data: bagItems } = useQuery({
+    queryKey: ['employee-bag-items', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employee_bag_items')
+        .select('*')
+        .eq('employee_id', id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
     }
   });
 
@@ -564,6 +579,45 @@ export default function EmployeeDetail() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Bag Items */}
+      {bagItems && bagItems.length > 0 && (
+        <Card>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Backpack className="h-4 w-4 sm:h-5 sm:w-5" />
+              Bag Items ({bagItems.length})
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Digital items in employee's inventory</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {bagItems.map((item: any) => (
+                <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                  <span className="text-2xl">{item.item_icon || '🎁'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{item.item_name_th || item.item_name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant={item.status === 'active' ? 'default' : item.status === 'used' ? 'secondary' : 'outline'} className="text-[10px]">
+                        {item.status === 'active' ? '✅ Active' : item.status === 'used' ? '☑️ Used' : '⏰ Expired'}
+                      </Badge>
+                      {item.auto_activate && (
+                        <Badge variant="outline" className="text-[10px]">Auto</Badge>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {item.granted_by === 'purchase' ? '🛒 Purchased' : item.granted_by === 'admin_grant' ? '👑 Admin' : '⚙️ System'}
+                      {' · '}
+                      {format(new Date(item.created_at), 'MMM dd')}
+                      {item.used_at && ` · Used ${format(new Date(item.used_at), 'MMM dd')}`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Attendance History */}
       <Card>

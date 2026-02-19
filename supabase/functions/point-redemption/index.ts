@@ -29,8 +29,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, employee_id, reward_id, redemption_id, notes, admin_id, rejection_reason } = await req.json();
-
     const { action, employee_id, reward_id, redemption_id, notes, admin_id, rejection_reason, bag_item_id } = await req.json();
 
     // Handle different actions
