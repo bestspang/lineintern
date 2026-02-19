@@ -570,19 +570,40 @@ serve(async (req) => {
             newStreak
           });
         } else {
-        // Missed a work day - check for shield protection
-          if ((happyPoints.streak_shields || 0) > 0) {
-            const shieldsRemaining = happyPoints.streak_shields - 1;
-            
-            // Use shield to protect streak
+        // Missed a work day - check for shield protection (bag system first, fallback to legacy)
+          // Query bag for active shield
+          const { data: bagShield } = await supabase
+            .from('employee_bag_items')
+            .select('id')
+            .eq('employee_id', employee_id)
+            .eq('item_type', 'shield')
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (bagShield) {
+            // Use bag shield
+            await supabase
+              .from('employee_bag_items')
+              .update({ status: 'used', used_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', bagShield.id);
+
+            // Backward compat: also decrement legacy counter
+            const shieldsRemaining = Math.max(0, (happyPoints.streak_shields || 0) - 1);
             await supabase
               .from('happy_points')
-              .update({ 
-                streak_shields: shieldsRemaining,
-                last_shield_used_at: today
-              })
+              .update({ streak_shields: shieldsRemaining, last_shield_used_at: today })
               .eq('id', happyPoints.id);
-            
+
+            // Count remaining active shields in bag
+            const { count: remainingBagShields } = await supabase
+              .from('employee_bag_items')
+              .select('id', { count: 'exact', head: true })
+              .eq('employee_id', employee_id)
+              .eq('item_type', 'shield')
+              .eq('status', 'active');
+
             // Log shield usage
             await supabase.from('point_transactions').insert({
               employee_id,
@@ -591,15 +612,16 @@ serve(async (req) => {
               amount: 0,
               balance_after: happyPoints.point_balance,
               description: '🛡️ Streak Shield used - streak protected from missed day!',
-              metadata: { reason: 'shield_used_missed_day', streak_protected: happyPoints.current_punctuality_streak }
+              metadata: { reason: 'shield_used_missed_day', streak_protected: happyPoints.current_punctuality_streak, bag_item_id: bagShield.id }
             });
             
             // Streak continues from previous value + 1 for today
             newStreak = (happyPoints.current_punctuality_streak || 0) + 1;
-            logger.info('Shield used to protect streak (missed work day)', { 
+            logger.info('Shield used to protect streak (missed work day) [bag]', { 
               employee_id, 
               streak: newStreak,
-              shields_remaining: shieldsRemaining
+              shields_remaining: remainingBagShields ?? 0,
+              bag_item_id: bagShield.id
             });
             
             // Send LINE notification for shield usage
@@ -611,13 +633,13 @@ serve(async (req) => {
               points: 0,
               streak: newStreak,
               newBalance: happyPoints.point_balance,
-              shieldsRemaining,
+              shieldsRemaining: remainingBagShields ?? 0,
               commandType: 'streak_shield'
             });
           } else {
-            // No shield - reset streak to 1 (today counts as first day)
+            // No shield in bag - reset streak to 1 (today counts as first day)
             newStreak = 1;
-            logger.info('Streak reset (missed work day, no shield)', {
+            logger.info('Streak reset (missed work day, no shield in bag)', {
               employee_id,
               lastDate,
               previousWorkDay,
@@ -632,19 +654,39 @@ serve(async (req) => {
         longestStreak = newStreak;
       }
     } else {
-      // Late check-in - check for shield protection
-      if ((happyPoints.streak_shields || 0) > 0) {
-        const shieldsRemaining = happyPoints.streak_shields - 1;
-        
-        // Use shield to protect streak
+      // Late check-in - check for shield protection (bag system first)
+      const { data: lateBagShield } = await supabase
+        .from('employee_bag_items')
+        .select('id')
+        .eq('employee_id', employee_id)
+        .eq('item_type', 'shield')
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (lateBagShield) {
+        // Use bag shield
+        await supabase
+          .from('employee_bag_items')
+          .update({ status: 'used', used_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', lateBagShield.id);
+
+        // Backward compat: decrement legacy counter
+        const shieldsRemaining = Math.max(0, (happyPoints.streak_shields || 0) - 1);
         await supabase
           .from('happy_points')
-          .update({ 
-            streak_shields: shieldsRemaining,
-            last_shield_used_at: today
-          })
+          .update({ streak_shields: shieldsRemaining, last_shield_used_at: today })
           .eq('id', happyPoints.id);
-        
+
+        // Count remaining active shields in bag
+        const { count: remainingLateShields } = await supabase
+          .from('employee_bag_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('employee_id', employee_id)
+          .eq('item_type', 'shield')
+          .eq('status', 'active');
+
         // Log shield usage
         await supabase.from('point_transactions').insert({
           employee_id,
@@ -653,15 +695,16 @@ serve(async (req) => {
           amount: 0,
           balance_after: happyPoints.point_balance,
           description: '🛡️ Streak Shield used - streak protected from late check-in!',
-          metadata: { reason: 'shield_used_late', streak_protected: happyPoints.current_punctuality_streak }
+          metadata: { reason: 'shield_used_late', streak_protected: happyPoints.current_punctuality_streak, bag_item_id: lateBagShield.id }
         });
         
         // Keep current streak (don't increment since late, but don't reset)
         newStreak = happyPoints.current_punctuality_streak || 0;
-        logger.info('Shield used to protect streak (late check-in)', { 
+        logger.info('Shield used to protect streak (late check-in) [bag]', { 
           employee_id, 
           streak: newStreak,
-          shields_remaining: shieldsRemaining
+          shields_remaining: remainingLateShields ?? 0,
+          bag_item_id: lateBagShield.id
         });
         
         // Send LINE notification for shield usage
@@ -673,13 +716,13 @@ serve(async (req) => {
           points: 0,
           streak: newStreak,
           newBalance: happyPoints.point_balance,
-          shieldsRemaining,
+          shieldsRemaining: remainingLateShields ?? 0,
           commandType: 'streak_shield'
         });
       } else {
-        // No shield - reset streak to 0
+        // No shield in bag - reset streak to 0
         newStreak = 0;
-        logger.info('Streak reset (late check-in, no shield)', { employee_id, today });
+        logger.info('Streak reset (late check-in, no shield in bag)', { employee_id, today });
       }
     }
 
