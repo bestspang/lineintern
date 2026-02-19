@@ -45,7 +45,10 @@ export default function AttendanceSettings() {
     // Auto Checkout Notification Settings
     auto_checkout_notify_dm: true,
     auto_checkout_notify_group: true,
-    auto_checkout_notify_admin_group: false
+    auto_checkout_notify_admin_group: false,
+    // Work Reminder & Summary Settings
+    work_reminder_enabled: true,
+    work_summary_enabled: true
   });
   const [isTestingBirthday, setIsTestingBirthday] = useState(false);
 
@@ -134,7 +137,9 @@ export default function AttendanceSettings() {
         // Auto Checkout Notification Settings
         auto_checkout_notify_dm: (settings as any).auto_checkout_notify_dm ?? true,
         auto_checkout_notify_group: (settings as any).auto_checkout_notify_group ?? true,
-        auto_checkout_notify_admin_group: (settings as any).auto_checkout_notify_admin_group ?? false
+        auto_checkout_notify_admin_group: (settings as any).auto_checkout_notify_admin_group ?? false,
+        work_reminder_enabled: (settings as any).work_reminder_enabled ?? true,
+        work_summary_enabled: (settings as any).work_summary_enabled ?? true
       });
     }
   }, [settings]);
@@ -591,6 +596,61 @@ export default function AttendanceSettings() {
               <li>ระบบ Auto Checkout (เที่ยงคืนสำหรับ time_based, หลัง grace period สำหรับ hours_based)</li>
               <li>เฉพาะพนักงานที่ลืม Check Out และไม่ได้ขอ OT</li>
               <li>ไม่มีผลต่อการ Checkout ปกติหรือ OT ที่อนุมัติแล้ว</li>
+            </ul>
+          </div>
+
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Save className="h-4 w-4 mr-2" />
+            {saveMutation.isPending ? 'Saving...' : 'บันทึกการตั้งค่า'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Work Reminder & Summary Settings */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            📋 Work Reminder & Summary
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            ควบคุมการแจ้งเตือนงานและสรุปงานประจำวัน
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="work_reminder_enabled">เปิดใช้งาน Work Reminder</Label>
+              <p className="text-sm text-muted-foreground">
+                แจ้งเตือนก่อนถึงกำหนดงาน (24h, 6h, 1h) เช่น "📅 แจ้งเตือนงาน... เหลือเวลา 23 ชม."
+              </p>
+            </div>
+            <Switch
+              id="work_reminder_enabled"
+              checked={formData.work_reminder_enabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, work_reminder_enabled: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="work_summary_enabled">เปิดใช้งาน Work Summary</Label>
+              <p className="text-sm text-muted-foreground">
+                สรุปงานประจำวัน (ตอนเช้า/เย็น) เช่น "สวัสดีตอนเช้าทุกคน! สรุปงานสำคัญ..."
+              </p>
+            </div>
+            <Switch
+              id="work_summary_enabled"
+              checked={formData.work_summary_enabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, work_summary_enabled: checked })}
+            />
+          </div>
+
+          <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+            <h4 className="font-medium text-sm">รายละเอียด:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li><strong>Work Reminder</strong> — ส่งแจ้งเตือนอัตโนมัติก่อนถึง deadline ของแต่ละงาน</li>
+              <li><strong>Work Summary</strong> — สรุปภาพรวมงานทั้งหมดของทีมทุกเช้า/เย็น</li>
+              <li>ปิดการทำงานได้โดยไม่กระทบระบบอื่น</li>
             </ul>
           </div>
 

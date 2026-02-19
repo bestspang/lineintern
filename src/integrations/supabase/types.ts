@@ -469,6 +469,8 @@ export type Database = {
           time_zone: string | null
           token_validity_minutes: number | null
           updated_at: string | null
+          work_reminder_enabled: boolean | null
+          work_summary_enabled: boolean | null
         }
         Insert: {
           admin_line_group_id?: string | null
@@ -494,6 +496,8 @@ export type Database = {
           time_zone?: string | null
           token_validity_minutes?: number | null
           updated_at?: string | null
+          work_reminder_enabled?: boolean | null
+          work_summary_enabled?: boolean | null
         }
         Update: {
           admin_line_group_id?: string | null
@@ -519,6 +523,8 @@ export type Database = {
           time_zone?: string | null
           token_validity_minutes?: number | null
           updated_at?: string | null
+          work_reminder_enabled?: boolean | null
+          work_summary_enabled?: boolean | null
         }
         Relationships: [
           {
