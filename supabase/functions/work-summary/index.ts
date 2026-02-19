@@ -48,6 +48,23 @@ serve(async (req) => {
 
     console.log(`[work-summary] Starting ${period} work summary generation...`);
 
+    // Check if work summary is enabled in settings
+    const { data: globalSettings } = await supabase
+      .from('attendance_settings')
+      .select('work_summary_enabled')
+      .eq('scope', 'global')
+      .is('branch_id', null)
+      .is('employee_id', null)
+      .maybeSingle();
+
+    if (globalSettings && globalSettings.work_summary_enabled === false) {
+      console.log('[work-summary] Work summary is disabled in settings, skipping');
+      return new Response(JSON.stringify({ message: 'Work summary is disabled' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Fetch all active groups with work assignments enabled
     const { data: groups, error: groupsError } = await supabase
       .from('groups')

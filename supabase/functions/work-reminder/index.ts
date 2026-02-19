@@ -36,6 +36,23 @@ serve(async (req) => {
 
   try {
     console.log('[work-reminder] Starting hourly work reminder check...');
+
+    // Check if work reminder is enabled in settings
+    const { data: globalSettings } = await supabase
+      .from('attendance_settings')
+      .select('work_reminder_enabled')
+      .eq('scope', 'global')
+      .is('branch_id', null)
+      .is('employee_id', null)
+      .maybeSingle();
+
+    if (globalSettings && globalSettings.work_reminder_enabled === false) {
+      console.log('[work-reminder] Work reminder is disabled in settings, skipping');
+      return new Response(JSON.stringify({ message: 'Work reminder is disabled' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
     const now = getBangkokNow();
     const results: Array<{ taskId: string; status: string; remindersSent: number }> = [];
