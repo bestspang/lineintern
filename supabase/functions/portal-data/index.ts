@@ -960,7 +960,6 @@ serve(async (req) => {
             employee:employees!inner(
               id,
               full_name,
-              nickname,
               branch_id,
               exclude_from_points
             )
