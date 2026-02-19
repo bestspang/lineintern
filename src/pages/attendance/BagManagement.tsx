@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatBangkokDate } from '@/lib/timezone';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -251,14 +252,15 @@ export default function BagManagement() {
                   <TableHead>Employee</TableHead>
                   <TableHead className="text-center">Type</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead>Granted</TableHead>
+                  <TableHead>Expires</TableHead>
                   <TableHead className="text-center">Source</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No bag items found
                     </TableCell>
                   </TableRow>
@@ -290,6 +292,16 @@ export default function BagManagement() {
                         <Badge variant={getStatusColor(item.status)} className="text-xs capitalize">
                           {item.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {formatBangkokDate(item.created_at)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {item.expires_at ? formatBangkokDate(item.expires_at) : '-'}
+                        </span>
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="text-xs text-muted-foreground capitalize">
