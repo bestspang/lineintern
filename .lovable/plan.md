@@ -1,59 +1,51 @@
 
 
-## แก้ Bot ตอบ "Chat Summary" ภาษาอังกฤษ เมื่อถามคำถามที่มีคำว่า "สรุป"
+## แก้ AI หาข้อมูลยอดสาขาภูเก็ตไม่เจอ
 
-### Root Cause (ที่แท้จริง)
+### Root Cause
 
-ปัญหาไม่ได้อยู่ที่ prompt แต่อยู่ที่ **command routing**:
+ระบบ Cross-Group Query ใช้ entity resolution เพื่อจับคู่คำถามกับกลุ่ม LINE:
 
-1. User พิมพ์: `@LumimiHR วันนี้ Baze พูดเรื่องอะไรบ้างสรุปมา วันนี้เท่านั้น`
-2. `parseCommandDynamic` ทำงาน:
-   - Step 1: ตรวจ trigger `@LumimiHR` → `isMentioned = true` → ลบ trigger ออก → `cleanedText = "วันนี้ Baze พูดเรื่องอะไรบ้างสรุปมา วันนี้เท่านั้น"`
-   - Step 2: ตรวจ alias → เจอ alias `สรุป` (is_prefix: false = contains match) ใน "สรุปมา" → return `commandType: 'summary'`
-3. Main handler เห็น `commandType === 'summary'` → เรียก `handleSummaryCommand()` ซึ่งเป็น hardcoded English template ที่ดึง 100 messages มาสรุปแบบ full chat summary
+```
+คำถาม: "ยอดสาขาภูเก็ตโดยรวมเป็นไง"
+                  ^^^^^^^^
+                  ภาษาไทย
 
-**สรุป**: คำว่า "สรุป" ใน database alias จับ match กับคำถามธรรมชาติที่มีคำว่า "สรุปมา" ทำให้ route ไป handler ผิด
+Synonym ใน DB: "Phuket"
+                ^^^^^^
+                ภาษาอังกฤษ
+```
 
-### วิธีแก้
+`"ภูเก็ต".includes("phuket")` = **false** → entity resolution ล้มเหลว → AI ไม่ได้รับข้อมูลจากกลุ่ม Phuket → ตอบว่า "ข้อมูลไม่เพียงพอ"
 
-แก้ที่ `parseCommandDynamic` — เมื่อ user ถูก mention (`isMentioned = true`) และ cleanedText มีลักษณะเป็น **คำถามธรรมชาติ** (มีชื่อคน, มีคำถาม, มีบริบท) ไม่ใช่แค่คำสั่งสั้นๆ อย่าง "สรุป" หรือ "สรุปหน่อย" → ให้ fallback เป็น `ask` แทน `summary`
+ทั้งที่ข้อมูลยอดขาย (Sales: 1,550 / Target: 7,000) มีอยู่ในข้อความของ Nada ในกลุ่ม Phuket
 
-**กฎ**: ถ้า `isMentioned` + alias match เป็น `summary` + cleanedText ยาวกว่า alias text มาก (มีบริบทอื่นๆ เช่น ชื่อคน, คำถาม) → ให้ใช้ `ask` แทน
+### การแก้ไข (2 จุด)
+
+**1. เพิ่ม Thai synonym ให้กลุ่ม Phuket (DB fix)**
+- เพิ่ม "ภูเก็ต" และ "เซ็นทรัลภูเก็ต" เข้าไปใน synonyms ของ `ai_query_group_export` สำหรับ Phuket group
+- ทำให้ entity resolution จับคู่ "ภูเก็ต" ในคำถาม ↔ กลุ่ม Phuket ได้ทันที
+
+**2. ป้องกันปัญหาซ้ำ: เพิ่ม branch name (Thai) ใน entity resolution**
+- ตาราง `branches` มี `name = "Phuket"` (อังกฤษ) แต่ข้อความจริงใช้ "เซ็นทรัลภูเก็ต" / "ภูเก็ต"
+- เพิ่ม logic ใน `resolveEntities` ให้ดึง branch name + ตรวจสอบ synonyms ในตาราง `ai_query_group_export` ที่เป็นภาษาไทยด้วย
+- ปัจจุบันใช้ `branch_name` จาก branches table เฉยๆ ซึ่งเป็นภาษาอังกฤษ
 
 ### ไฟล์ที่แก้
 
 | ไฟล์ | จุดที่แก้ | รายละเอียด |
 |------|----------|-----------|
-| `supabase/functions/line-webhook/index.ts` | `parseCommandDynamic` (~line 4237-4258) | เพิ่ม logic: ถ้า isMentioned + commandType เป็น summary + cleanedText มีบริบทเพิ่มเติม (ชื่อคน/คำถาม) → return ask แทน |
-
-### ตัวอย่างผลลัพธ์
-
-| Input | ก่อนแก้ | หลังแก้ |
-|-------|---------|---------|
-| `@LumimiHR สรุป` | summary (ถูกต้อง) | summary (ไม่เปลี่ยน) |
-| `@LumimiHR สรุปหน่อย` | summary (ถูกต้อง) | summary (ไม่เปลี่ยน) |
-| `@LumimiHR วันนี้ Baze พูดอะไรบ้างสรุปมา` | summary (ผิด!) | ask (ถูกต้อง - ไป AI path) |
-| `/สรุป` | summary (ถูกต้อง) | summary (ไม่เปลี่ยน) |
-
-### Logic ที่เพิ่ม (Pseudocode)
-
-```text
-เมื่อ alias match สำเร็จ:
-  ถ้า isMentioned AND command_key เป็น 'summary'
-    AND cleanedText หลังลบ alias แล้วยังมีเนื้อหาเหลือ > 5 ตัวอักษร (มีคำถาม/ชื่อคน)
-  → return { commandType: 'ask', userMessage: cleanedText }
-  (ให้ AI ตอบตรงคำถามแทนทำ full summary)
-```
+| DB migration | `ai_query_group_export` | เพิ่ม synonyms "ภูเก็ต", "เซ็นทรัลภูเก็ต" สำหรับ Phuket group |
+| ไม่มีไฟล์ code ที่ต้องแก้ | - | Entity resolution logic ทำงานถูกแล้ว แค่ข้อมูล synonym ไม่ครบ |
 
 ### สิ่งที่ไม่แตะ
-- ไม่แก้ `handleSummaryCommand` (ยังทำงานปกติสำหรับ `/สรุป` หรือ `@bot สรุป`)
-- ไม่แก้ database aliases
-- ไม่แก้ prompts (แก้ไปแล้วรอบก่อน ยังใช้ได้)
-- ไม่แก้ cross-group-query
-- ไม่แก้ frontend / DB / RLS
+- ไม่แก้ cross-group-query.ts (logic ถูกแล้ว)
+- ไม่แก้ prompts
+- ไม่แก้ command routing
+- ไม่แก้ frontend / RLS
 
-### ความเสี่ยง
-- ต่ำ: เปลี่ยนเฉพาะ case ที่ mention + summary + มีบริบทเพิ่ม
-- `/สรุป` command ตรงๆ ไม่ได้รับผลกระทบ
-- `@bot สรุป` (สั้นๆ ไม่มีบริบท) ยังไป summary ปกติ
+### ผลลัพธ์ที่คาดหวัง
+ถาม "ยอดสาขาภูเก็ตโดยรวมเป็นไง" → entity resolution จับได้ว่าถามเรื่อง Phuket group → ดึงข้อความจากกลุ่มนั้น → AI เห็นข้อมูล Sales: 1,550 ที่ Nada โพสต์ → ตอบเป็นภาษาไทยสรุปยอดขาย
 
+### หมายเหตุ
+ควรตรวจสอบ synonyms ของทุกสาขาว่ามีชื่อภาษาไทยครบหรือยัง เพื่อป้องกันปัญหาเดียวกันกับสาขาอื่น
