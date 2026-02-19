@@ -94,7 +94,8 @@ import {
   MyReceipts, ReceiptDetail, ReceiptBusinesses, ReceiptNew,
   PayrollReport, MySchedule, MyPayroll, PointLeaderboard,
   PortalEmployees, PortalEmployeeDetail, PortalReceiptManagement, PortalReceiptAnalytics,
-  PortalBranchReport
+  PortalBranchReport,
+  MyBag
 } from "./pages/portal";
 import ApproveRemoteCheckout from "./pages/portal/ApproveRemoteCheckout";
 import DepositUpload from "./pages/portal/DepositUpload";
@@ -109,6 +110,7 @@ import MyPoints from "./pages/portal/MyPoints";
 import RewardShop from "./pages/portal/RewardShop";
 import MyRedemptions from "./pages/portal/MyRedemptions";
 import RedemptionApprovals from "./pages/attendance/RedemptionApprovals";
+import BagManagement from "./pages/attendance/BagManagement";
 import ShiftTemplates from "./pages/attendance/ShiftTemplates";
 import Schedules from "./pages/attendance/Schedules";
 // Receipt admin pages
@@ -195,6 +197,7 @@ const App = () => (
                       <Route path="/my-points" element={<MyPoints />} />
                       <Route path="/rewards" element={<RewardShop />} />
                       <Route path="/my-redemptions" element={<MyRedemptions />} />
+                      <Route path="/my-bag" element={<MyBag />} />
                       <Route path="/my-receipts" element={<MyReceipts />} />
                       <Route path="/receipts/:id" element={<ReceiptDetail />} />
                       <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
@@ -291,6 +294,7 @@ const App = () => (
                       <Route path="/attendance/point-transactions" element={<PointTransactions />} />
                       <Route path="/attendance/point-rules" element={<PointRules />} />
                       <Route path="/attendance/redemption-approvals" element={<RedemptionApprovals />} />
+                      <Route path="/attendance/bag-management" element={<BagManagement />} />
                       <Route path="/attendance/shift-templates" element={<ShiftTemplates />} />
                       <Route path="/attendance/schedules" element={<Schedules />} />
                       <Route path="/attendance/settings" element={<AttendanceSettings />} />

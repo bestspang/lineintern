@@ -2020,6 +2020,94 @@ export type Database = {
           },
         ]
       }
+      employee_bag_items: {
+        Row: {
+          auto_activate: boolean
+          created_at: string
+          employee_id: string
+          expires_at: string | null
+          granted_by: string
+          granted_by_admin_id: string | null
+          id: string
+          item_icon: string | null
+          item_name: string
+          item_name_th: string | null
+          item_type: string
+          metadata: Json
+          redemption_id: string | null
+          reward_id: string | null
+          status: string
+          updated_at: string
+          usage_rules: string | null
+          usage_rules_th: string | null
+          used_at: string | null
+        }
+        Insert: {
+          auto_activate?: boolean
+          created_at?: string
+          employee_id: string
+          expires_at?: string | null
+          granted_by?: string
+          granted_by_admin_id?: string | null
+          id?: string
+          item_icon?: string | null
+          item_name: string
+          item_name_th?: string | null
+          item_type?: string
+          metadata?: Json
+          redemption_id?: string | null
+          reward_id?: string | null
+          status?: string
+          updated_at?: string
+          usage_rules?: string | null
+          usage_rules_th?: string | null
+          used_at?: string | null
+        }
+        Update: {
+          auto_activate?: boolean
+          created_at?: string
+          employee_id?: string
+          expires_at?: string | null
+          granted_by?: string
+          granted_by_admin_id?: string | null
+          id?: string
+          item_icon?: string | null
+          item_name?: string
+          item_name_th?: string | null
+          item_type?: string
+          metadata?: Json
+          redemption_id?: string | null
+          reward_id?: string | null
+          status?: string
+          updated_at?: string
+          usage_rules?: string | null
+          usage_rules_th?: string | null
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_bag_items_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_bag_items_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "point_redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_bag_items_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "point_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_menu_tokens: {
         Row: {
           created_at: string | null
@@ -3654,6 +3742,7 @@ export type Database = {
           stock_limit: number | null
           stock_used: number | null
           updated_at: string | null
+          use_mode: string
           valid_from: string | null
           valid_until: string | null
         }
@@ -3674,6 +3763,7 @@ export type Database = {
           stock_limit?: number | null
           stock_used?: number | null
           updated_at?: string | null
+          use_mode?: string
           valid_from?: string | null
           valid_until?: string | null
         }
@@ -3694,6 +3784,7 @@ export type Database = {
           stock_limit?: number | null
           stock_used?: number | null
           updated_at?: string | null
+          use_mode?: string
           valid_from?: string | null
           valid_until?: string | null
         }

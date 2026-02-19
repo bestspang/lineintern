@@ -29,6 +29,7 @@ interface Reward {
   stock_limit: number | null;
   stock_used: number;
   cooldown_days: number;
+  use_mode: string;
 }
 
 export default function Rewards() {
@@ -118,6 +119,7 @@ export default function Rewards() {
       requires_approval: formData.get('requires_approval') === 'on',
       stock_limit: formData.get('stock_limit') ? parseInt(formData.get('stock_limit') as string) : null,
       cooldown_days: parseInt(formData.get('cooldown_days') as string) || 0,
+      use_mode: formData.get('use_mode') as string || 'use_now',
     };
 
     if (editingReward) {
@@ -217,6 +219,19 @@ export default function Rewards() {
               <div>
                 <Label htmlFor="stock_limit">Stock Limit (empty = unlimited)</Label>
                 <Input id="stock_limit" name="stock_limit" type="number" defaultValue={editingReward?.stock_limit || ''} />
+              </div>
+              <div>
+                <Label htmlFor="use_mode">Use Mode</Label>
+                <Select name="use_mode" defaultValue={editingReward?.use_mode || 'use_now'}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="use_now">Use Now (ใช้ทันที)</SelectItem>
+                    <SelectItem value="bag_only">Bag Only (เก็บอย่างเดียว)</SelectItem>
+                    <SelectItem value="choose">Choose (ให้เลือก)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">

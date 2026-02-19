@@ -31,16 +31,22 @@ serve(async (req) => {
 
     const { action, employee_id, reward_id, redemption_id, notes, admin_id, rejection_reason } = await req.json();
 
+    const { action, employee_id, reward_id, redemption_id, notes, admin_id, rejection_reason, bag_item_id } = await req.json();
+
     // Handle different actions
     switch (action) {
       case 'redeem':
-        return await processRedemption(supabase, employee_id, reward_id, notes);
+        return await processRedemption(supabase, employee_id, reward_id, notes, false);
+      case 'redeem_to_bag':
+        return await processRedemption(supabase, employee_id, reward_id, notes, true);
       case 'approve':
         return await approveRedemption(supabase, redemption_id, admin_id, notes);
       case 'reject':
         return await rejectRedemption(supabase, redemption_id, admin_id, rejection_reason);
       case 'use':
         return await markAsUsed(supabase, redemption_id);
+      case 'use_bag_item':
+        return await useBagItem(supabase, bag_item_id, employee_id);
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Invalid action' }),
@@ -57,7 +63,7 @@ serve(async (req) => {
   }
 });
 
-async function processRedemption(supabase: any, employee_id: string, reward_id: string, notes?: string) {
+async function processRedemption(supabase: any, employee_id: string, reward_id: string, notes?: string, toBag: boolean = false) {
   logger.info('Processing redemption', { employee_id, reward_id });
 
   // 1. Get reward details
@@ -190,25 +196,57 @@ async function processRedemption(supabase: any, employee_id: string, reward_id: 
     metadata: { reward_name: reward.name, reward_id }
   });
 
-  // 9. Special handling for Streak Shield
-  if (reward.name === 'Streak Shield') {
-    // Add shield to employee's inventory instead of creating regular redemption
+  // 9. Determine if item goes to bag
+  const useMode = reward.use_mode || 'use_now';
+  const shouldBag = toBag || useMode === 'bag_only';
+
+  if (shouldBag || reward.name === 'Streak Shield') {
+    // Create bag item
+    const bagItem: any = {
+      employee_id,
+      reward_id,
+      redemption_id: redemption.id,
+      item_name: reward.name,
+      item_name_th: reward.name_th,
+      item_icon: reward.icon || '🎁',
+      item_type: reward.name === 'Streak Shield' ? 'shield' : 'reward',
+      status: 'active',
+      auto_activate: reward.name === 'Streak Shield',
+      granted_by: 'purchase',
+      usage_rules: reward.description,
+      usage_rules_th: reward.description_th,
+      expires_at: expiresAt.toISOString(),
+    };
+
+    if (reward.name === 'Streak Shield') {
+      bagItem.usage_rules = 'Auto-activates when you are late or miss a work day. Protects your punctuality streak from resetting.';
+      bagItem.usage_rules_th = 'ใช้อัตโนมัติเมื่อคุณมาสายหรือขาดงาน ช่วยป้องกันไม่ให้ streak ตรงเวลาถูกรีเซ็ต';
+    }
+
+    await supabase.from('employee_bag_items').insert(bagItem);
+
+    // Update points (including streak_shields for backward compat)
+    const updateData: any = {
+      point_balance: newBalance,
+      total_spent: hp.total_spent + reward.point_cost,
+      updated_at: new Date().toISOString()
+    };
+    if (reward.name === 'Streak Shield') {
+      updateData.streak_shields = (hp.streak_shields || 0) + 1;
+    }
+
     await supabase
       .from('happy_points')
-      .update({
-        point_balance: newBalance,
-        total_spent: hp.total_spent + reward.point_cost,
-        streak_shields: (hp.streak_shields || 0) + 1,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', hp.id);
-    
-    logger.info('Streak Shield added to inventory', { 
+
+    logger.info('Item added to bag', { 
       employee_id, 
-      new_shield_count: (hp.streak_shields || 0) + 1 
+      item_type: reward.name === 'Streak Shield' ? 'shield' : 'reward',
+      reward_name: reward.name
     });
   } else {
-    // Regular redemption
+    // Regular redemption (use_now) - original behavior
     await supabase
       .from('happy_points')
       .update({
@@ -368,6 +406,35 @@ async function markAsUsed(supabase: any, redemption_id: string) {
 
   return new Response(
     JSON.stringify({ success: true, redemption }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+async function useBagItem(supabase: any, bag_item_id: string, employee_id: string) {
+  const { data: item, error } = await supabase
+    .from('employee_bag_items')
+    .update({
+      status: 'used',
+      used_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', bag_item_id)
+    .eq('employee_id', employee_id)
+    .eq('status', 'active')
+    .select()
+    .maybeSingle();
+
+  if (error || !item) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Item not found or not active' }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  logger.info('Bag item used', { bag_item_id, employee_id, item_name: item.item_name });
+
+  return new Response(
+    JSON.stringify({ success: true, item }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
