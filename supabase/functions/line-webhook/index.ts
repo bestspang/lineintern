@@ -4239,6 +4239,19 @@ async function parseCommandDynamic(text: string, isDM: boolean): Promise<ParsedC
       const regex = new RegExp(alias.alias_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), alias.case_sensitive ? 'g' : 'gi');
       const userMessage = cleanedText.replace(regex, '').trim();
 
+      // SMART ROUTING: If user mentioned bot + alias matched 'summary' but the message
+      // has substantial extra context (person name, question, etc.), treat as 'ask' instead.
+      // This prevents "@bot วันนี้ Baze พูดอะไรบ้างสรุปมา" from triggering full chat summary.
+      // Only standalone commands like "@bot สรุป" or "@bot สรุปหน่อย" should use summary handler.
+      if (isMentioned && command.command_key === 'summary' && userMessage.length > 5) {
+        console.log(`[parseCommandDynamic] Summary alias matched but message has extra context (${userMessage.length} chars), routing to 'ask' instead. cleanedText: "${cleanedText}"`);
+        return {
+          commandType: 'ask',
+          userMessage: cleanedText,
+          shouldRespond: true,
+        };
+      }
+
       // Update alias usage count (fire and forget)
       supabase
         .from('command_aliases')
