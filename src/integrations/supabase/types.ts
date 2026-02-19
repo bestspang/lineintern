@@ -2635,6 +2635,66 @@ export type Database = {
           },
         ]
       }
+      gacha_box_items: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          prize_icon: string
+          prize_name: string
+          prize_name_th: string | null
+          prize_reward_id: string | null
+          prize_type: string
+          prize_value: number
+          rarity: string
+          reward_id: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          prize_icon?: string
+          prize_name: string
+          prize_name_th?: string | null
+          prize_reward_id?: string | null
+          prize_type?: string
+          prize_value?: number
+          rarity?: string
+          reward_id: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          prize_icon?: string
+          prize_name?: string
+          prize_name_th?: string | null
+          prize_reward_id?: string | null
+          prize_type?: string
+          prize_value?: number
+          rarity?: string
+          reward_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gacha_box_items_prize_reward_id_fkey"
+            columns: ["prize_reward_id"]
+            isOneToOne: false
+            referencedRelation: "point_rewards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gacha_box_items_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "point_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       google_tokens: {
         Row: {
           access_token: string

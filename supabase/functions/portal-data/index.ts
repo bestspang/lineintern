@@ -932,6 +932,24 @@ serve(async (req) => {
         break;
       }
 
+      // Gacha box items for GachaBox.tsx
+      case 'gacha-items': {
+        const rewardId = params?.reward_id;
+        if (!rewardId) {
+          error = { message: 'reward_id is required' };
+          break;
+        }
+        const result = await supabase
+          .from('gacha_box_items')
+          .select('id, prize_name, prize_name_th, prize_icon, prize_type, prize_value, weight, rarity')
+          .eq('reward_id', rewardId)
+          .eq('is_active', true)
+          .order('weight', { ascending: false });
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       // Points balance for RewardShop.tsx
       case 'my-points-balance': {
         const result = await supabase

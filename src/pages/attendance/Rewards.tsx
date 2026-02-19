@@ -14,8 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { Gift, Plus, Pencil, Trash2, Coins, ShieldCheck, Package, ChevronDown, ChevronUp, Clock, Calendar, AlertCircle, Info } from 'lucide-react';
+import { Gift, Plus, Pencil, Trash2, Coins, ShieldCheck, Package, ChevronDown, ChevronUp, Clock, Calendar, AlertCircle, Info, Dices } from 'lucide-react';
 import { format } from 'date-fns';
+import GachaBoxSettings from './GachaBoxSettings';
 
 interface Reward {
   id: string;
@@ -40,6 +41,7 @@ export default function Rewards() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingReward, setEditingReward] = useState<Reward | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [gachaRewardId, setGachaRewardId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -351,6 +353,16 @@ export default function Rewards() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          {reward.name.toLowerCase().includes('gacha') && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setGachaRewardId(reward.id)}
+                              title="Manage Gacha Prizes"
+                            >
+                              <Dices className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -434,6 +446,16 @@ export default function Rewards() {
             </CardContent>
           </Card>
         ))
+      )}
+
+      {/* Gacha Box Settings Dialog */}
+      {gachaRewardId && (
+        <GachaBoxSettings
+          rewardId={gachaRewardId}
+          rewardName={rewards?.find(r => r.id === gachaRewardId)?.name || 'Gacha Box'}
+          open={!!gachaRewardId}
+          onOpenChange={(open) => { if (!open) setGachaRewardId(null); }}
+        />
       )}
     </div>
   );
