@@ -1,59 +1,96 @@
 
 
-## Auto-Suggest Synonyms สำหรับทุกกลุ่ม (กดปุ่มเดียว)
+## เพิ่ม Data Sources ให้ครบในระบบ AI Cross-Group Query
+
+### สถานะปัจจุบัน
+
+ตอนนี้ `ALL_DATA_SOURCES` มีแค่ 4 ตัว: `messages`, `attendance`, `employees`, `tasks`
+และ backend จริง ๆ ดึงข้อมูลได้แค่ 3 ตัว: messages, attendance, employees (tasks ยังไม่มี retrieval logic)
 
 ### สิ่งที่จะเพิ่ม
 
-ปุ่ม **"Auto-fill Synonyms"** ในหน้า Group Export Policy ที่กดแล้วจะ:
+เพิ่ม data sources ใหม่ 4 ตัว รวมเป็น 8 ตัว:
 
-1. ดึงชื่อกลุ่ม (`display_name`) + ชื่อสาขา (`branch.name`) ของทุกกลุ่ม
-2. สร้าง synonyms อัตโนมัติจาก:
-   - แยกคำจากชื่อกลุ่ม (เช่น "Eastville Goodchoose team" -> ["Eastville", "EV"])
-   - ชื่อสาขาถ้ามี (เช่น branch "Central Park" -> ["Central Park", "CP"])
-   - ตัดคำทั่วไปออก (team, goodchoose, etc.)
-   - ไม่ทับ synonyms เดิมที่ admin เคยใส่ไว้แล้ว (merge เข้าไป)
-3. Upsert ทุกกลุ่มที่มี export row อยู่แล้ว + สร้าง row ใหม่สำหรับกลุ่มที่ยังไม่มี
+| Data Source | คำอธิบาย | ตาราง DB |
+|---|---|---|
+| messages | ข้อความในกลุ่ม | messages |
+| attendance | เวลาเข้า-ออกงาน | attendance_logs |
+| employees | ข้อมูลพนักงาน | employees |
+| tasks | งานที่มอบหมาย | tasks |
+| points | คะแนน Happy Points | happy_points, point_transactions |
+| birthdays | วันเกิดพนักงาน | employees.date_of_birth |
+| rewards | รางวัลและ redemption | reward_items, point_redemptions |
+| leave | วันลา/วันหยุด | leave_requests, leave_balances |
 
-### ตัวอย่างผลลัพธ์
+### ไฟล์ที่แก้ไข
 
-| Group | Auto Synonyms |
-|-------|--------------|
-| Goodchoose Central Park สีลม | Central Park, สีลม, CP |
-| Eastville Goodchoose team | Eastville, EV |
-| Team Office Goodchoose | Office, Glowfish Office |
-| Phuket Goodchoose team | Phuket, ภูเก็ต |
+| File | Change |
+|---|---|
+| `src/pages/settings/AIQueryControl.tsx` | เพิ่ม data sources ใน `ALL_DATA_SOURCES` + label ภาษาไทย |
+| `supabase/functions/line-webhook/utils/cross-group-query.ts` | เพิ่ม retrieval logic สำหรับ points, birthdays, rewards, leave, tasks + เพิ่ม prompt section |
+| `supabase/functions/ai-query-test/index.ts` | เพิ่ม retrieval logic เดียวกันใน test console |
 
-### การเปลี่ยนแปลง
+### รายละเอียดทางเทคนิค
 
-**ไฟล์เดียว**: `src/pages/settings/AIQueryControl.tsx`
+**1. Frontend (`AIQueryControl.tsx`)**
 
-- เพิ่มปุ่ม "Auto-fill Synonyms" ข้างหัวตาราง
-- เพิ่มฟังก์ชัน `generateSynonyms(displayName, branchName?)` ที่แยกคำสำคัญจากชื่อ
-- เพิ่ม mutation ที่ loop upsert synonyms ให้ทุกกลุ่ม (merge กับ synonyms เดิม)
-- Query branches เพิ่มเพื่อ match กับ group ผ่าน `line_group_id`
+เปลี่ยน `ALL_DATA_SOURCES` จาก array เป็น object ที่มี label:
+
+```typescript
+const ALL_DATA_SOURCES = [
+  { key: 'messages', label: 'ข้อความ / Messages' },
+  { key: 'attendance', label: 'เวลาเข้า-ออก / Attendance' },
+  { key: 'employees', label: 'ข้อมูลพนักงาน / Employees' },
+  { key: 'tasks', label: 'งานที่มอบหมาย / Tasks' },
+  { key: 'points', label: 'คะแนน / Points' },
+  { key: 'birthdays', label: 'วันเกิด / Birthdays' },
+  { key: 'rewards', label: 'รางวัล / Rewards' },
+  { key: 'leave', label: 'วันลา / Leave' },
+];
+```
+
+**2. Backend retrieval (`cross-group-query.ts`)**
+
+เพิ่ม section ใน `retrieveCrossGroupEvidence()`:
+
+- **points**: ดึง `happy_points` (point_balance, streak) + `point_transactions` ล่าสุดของพนักงานใน branch ที่ match
+- **birthdays**: ดึง `employees.date_of_birth` ที่ไม่เป็น null ใน branch ที่ match
+- **rewards**: ดึง `reward_items` (active) + `point_redemptions` ล่าสุด
+- **leave**: ดึง `leave_requests` ในช่วงเวลาที่กำหนด + `leave_balances`
+- **tasks**: ดึง `tasks` ที่ `group_id` ตรงกับ target groups
+
+เพิ่ม section ใน `buildCrossGroupPrompt()` สำหรับแต่ละ data source ใหม่
+
+**3. Evidence type expansion**
+
+เพิ่ม fields ใน `CrossGroupEvidence`:
+
+```typescript
+interface CrossGroupEvidence {
+  messages: any[];
+  attendance: any[];
+  employees: any[];
+  sources: any[];
+  points?: any[];      // NEW
+  birthdays?: any[];   // NEW
+  rewards?: any[];     // NEW
+  leave?: any[];       // NEW
+  tasks?: any[];       // NEW
+}
+```
 
 ### สิ่งที่จะไม่แตะ
 
-- ไม่แก้ DB schema (ใช้ column `synonyms text[]` ที่มีอยู่แล้ว)
-- ไม่แก้ backend / edge functions
-- ไม่แก้ tab อื่น ไม่แก้ logic อื่นในหน้า
+- ไม่แก้ DB schema (ใช้ตารางที่มีอยู่แล้ว)
+- ไม่แก้ RLS policies
+- ไม่แก้ tab อื่นใน AI Query Control (Access Rules, Access Matrix, etc.)
+- ไม่แก้ logic เดิมของ messages, attendance, employees
 
-### Technical Details
+### Smoke Test
 
-```text
-generateSynonyms(displayName, branchName):
-  1. Split displayName by spaces
-  2. Filter out common words: "team", "goodchoose", "gc", "group"
-  3. Add branchName if different from displayName
-  4. Generate abbreviation from remaining words (first letters -> uppercase)
-  5. Deduplicate + return unique array
+1. เปิด Settings > AI Cross-Group > Access Rules > Edit rule
+2. ดู "Accessible Data Sources" ต้องเห็น 8 ตัวเลือกพร้อม label ภาษาไทย
+3. เปิด Export Policy > Edit group > ดู data sources ต้องเห็น 8 ตัวเลือกเช่นกัน
+4. ใช้ Test Console ถามเกี่ยวกับคะแนน/วันเกิด ต้องได้คำตอบจากข้อมูลจริง
+5. Access Matrix ต้องแสดง data sources ใหม่ได้ถูกต้อง
 
-Auto-fill mutation:
-  1. For each group:
-     a. Find matching branch via line_group_id
-     b. Generate suggested synonyms
-     c. Merge with existing synonyms (keep admin's manual entries)
-     d. Upsert to ai_query_group_export
-  2. Invalidate query cache
-  3. Toast success with count
-```
