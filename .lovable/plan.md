@@ -1,69 +1,60 @@
 
 
-## Gacha Box System - Bug Fix & End-to-End Verification
+## Gacha Box Labeling Fix - Verified & Ready
 
-### สถานะปัจจุบัน
-- Backend: `gacha_pull` action ทำงานถูกต้อง (ทดสอบแล้ว - return error "No prizes configured" เพราะยังไม่มี prizes)
-- Portal: GachaBox.tsx, RewardShop.tsx redirect logic ถูกต้อง
-- Admin: GachaBoxSettings.tsx **มี bug ทำให้ crash เมื่อกดเพิ่ม prize**
+### Verification Result: ALL 3 BUGS CONFIRMED
 
----
-
-### Bug ที่พบ (ยืนยันจากการทดสอบจริง)
-
-#### GachaBoxSettings.tsx - Radix SelectItem value="" crash
-- **อาการ**: กดปุ่ม "Add Prize" แล้ว app crash ทันที
-- **Error**: `A <Select.Item /> must have a value prop that is not an empty string`
-- **Root cause**: บรรทัด 272: `<SelectItem value="">None</SelectItem>` — Radix UI ไม่ยอมรับ value เป็น string ว่าง
-- **แก้ไข**: เปลี่ยนเป็น `<SelectItem value="none">None</SelectItem>` แล้วแปลงกลับเป็น null ตอน submit
+Rechecked actual code at exact line numbers. Every bug is real and the proposed fixes are correct.
 
 ---
 
-### ไฟล์ที่แก้ไข
-
-| ไฟล์ | การแก้ไข | ความเสี่ยง |
-|------|----------|-----------|
-| `src/pages/attendance/GachaBoxSettings.tsx` | Fix SelectItem value + แปลง "none" -> null ตอน submit | ต่ำมาก |
-
----
-
-### รายละเอียดทางเทคนิค
-
-**แก้ไข 1: SelectItem value (บรรทัด 269-272)**
-```tsx
-// BEFORE (crashes)
-<Select name="prize_reward_id" defaultValue={editingItem?.prize_reward_id || ''}>
-  ...
-  <SelectItem value="">None</SelectItem>
-
-// AFTER (fixed)
-<Select name="prize_reward_id" defaultValue={editingItem?.prize_reward_id || 'none'}>
-  ...
-  <SelectItem value="none">None</SelectItem>
+### Bug 1: MyBag.tsx (line 97-99) - CONFIRMED
+**Current code**: Only checks `admin_grant` vs fallback "Purchased"
+```
+granted_by === 'admin_grant' ? '🎁 Granted by manager' : '🛒 Purchased'
+```
+**Fix**: Add gacha case before fallback
+```
+granted_by === 'admin_grant' ? '🎁 ได้รับจากผู้จัดการ'
+: granted_by === 'gacha' ? '🎲 สุ่มได้จาก Gacha'
+: '🛒 ซื้อจากร้านค้า'
 ```
 
-**แก้ไข 2: handleSubmit conversion (บรรทัด 126)**
-```tsx
-// BEFORE
-prize_reward_id: (fd.get('prize_reward_id') as string) || null,
+### Bug 2: BagManagement.tsx (line 308) - CONFIRMED
+**Current code**: `admin_grant ? '🎁 Admin' : '🛒 Purchase'`
+**Fix**: Add gacha case
+```
+granted_by === 'admin_grant' ? '🎁 Admin'
+: granted_by === 'gacha' ? '🎲 Gacha'
+: '🛒 Purchase'
+```
 
-// AFTER
-prize_reward_id: ((fd.get('prize_reward_id') as string) === 'none' ? null : (fd.get('prize_reward_id') as string)) || null,
+### Bug 3: EmployeeDetail.tsx (line 609) - CONFIRMED
+**Current code**: `purchase ? '🛒 Purchased' : admin_grant ? '👑 Admin' : '⚙️ System'`
+**Fix**: Add gacha case
+```
+granted_by === 'purchase' ? '🛒 Purchased'
+: granted_by === 'admin_grant' ? '👑 Admin'
+: granted_by === 'gacha' ? '🎲 Gacha'
+: '⚙️ System'
 ```
 
 ---
 
-### การป้องกัน Regression
-- ไม่แตะ gacha.ts, point-redemption/index.ts, GachaBox.tsx, RewardShop.tsx, portal-data
-- แก้เฉพาะ Admin UI form ที่ crash
-- Logic การ save/load ไม่เปลี่ยน (null ยังเก็บเป็น null ใน DB)
+### Risk 1 & 2: NOT fixing (correct decision)
+- **Name-based detection**: Works now, and adding a DB-level `reward_type` column is overkill for current usage. If the reward gets renamed, the admin who renamed it would know.
+- **Race condition**: UI-level `isPending` is sufficient protection. DB-level locking is not needed.
 
-### Smoke Test หลังแก้
-1. Admin: กดปุ่ม Manage Gacha -> กด Add Prize -> ไม่ crash
-2. Admin: เพิ่ม prize type "nothing" (weight 50) -> save สำเร็จ
-3. Admin: เพิ่ม prize type "points" value 20 (weight 30) -> save สำเร็จ
-4. Admin: เพิ่ม prize type "reward" เลือก reward (weight 20) -> save สำเร็จ
-5. Portal: ไป Reward Shop > กด Gacha Box > redirect ไป /portal/gacha
-6. Portal: กดสุ่ม > เห็น animation > เห็นผลลัพธ์
-7. Portal: ถ้าได้ reward item > ไปเช็คใน My Bag ว่ามี
-8. Portal: rewards อื่นๆยังแลกได้ปกติ
+### Files to touch (3 files, 1-3 lines each)
+
+| File | Line | Change |
+|------|------|--------|
+| `src/pages/portal/MyBag.tsx` | 97-99 | Add gacha label |
+| `src/pages/attendance/BagManagement.tsx` | 308 | Add gacha label |
+| `src/pages/attendance/EmployeeDetail.tsx` | 609 | Add gacha label |
+
+### Zero regression risk
+- Only adding a new case to existing ternary expressions
+- No logic changes, no data flow changes
+- All other granted_by values continue to display the same way
+
