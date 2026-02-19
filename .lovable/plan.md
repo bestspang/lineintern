@@ -1,42 +1,39 @@
 
 
-## Bag & Reward System - UX Polish Plan
+## เพิ่มแสดงเงื่อนไขการใช้และ Effect ของแต่ละรางวัล
 
-### Current Status: Production-Ready
-ระบบ Bag & Reward ทำงานครบถ้วนแล้ว:
-- Data: use_mode ตั้งค่าถูกต้องทุกรายการ (verified in DB)
-- Edge Functions: redemption, bag item, shield logic ทำงานถูกต้อง
-- Portal: RewardShop, MyBag, usage rules dialog ครบ
-- Admin: Rewards table, BagManagement, EmployeeDetail bag section ครบ
-- Routing + Menu: ครบทุก path
+### สถานะปัจจุบัน
+ตาราง Rewards แสดงแค่ชื่อ, ราคา, stock, mode, status, approval แต่ไม่แสดง **description (effect)** และ **เงื่อนไขการใช้** (cooldown, valid period, etc.) ทำให้ admin ต้องกดเข้า Edit ถึงจะเห็นรายละเอียด
 
-### UX Polish Items (ปรับให้ดีขึ้น)
+### ข้อมูลที่มีอยู่แล้วใน DB (ไม่ต้องเพิ่ม column)
+- `description` / `description_th` = Effect ของรางวัล
+- `cooldown_days` = ระยะห่างขั้นต่ำก่อนแลกซ้ำ
+- `requires_approval` = ต้องขออนุมัติก่อนใช้
+- `use_mode` = วิธีใช้ (ทันที / เก็บกระเป๋า / เลือก)
+- `valid_from` / `valid_until` = ช่วงเวลาที่แลกได้
+- `stock_limit` / `stock_used` = จำนวนจำกัด
 
-#### 1. MyBag - แสดงวันหมดอายุ + วันที่ใช้
-- **ไฟล์**: `src/pages/portal/MyBag.tsx`
-- Active items: แสดง "หมดอายุ: วัน/เดือน/ปี" ถ้ามี `expires_at`
-- Used items: แสดง "ใช้เมื่อ: วัน/เดือน/ปี" จาก `used_at`
-- ช่วยให้พนักงานวางแผนใช้ item ก่อนหมดอายุ
+### การแก้ไข
+เพิ่ม **expandable row** ใต้แต่ละรางวัล แสดง 2 ส่วน:
 
-#### 2. BagManagement - เพิ่มคอลัมน์วันที่
-- **ไฟล์**: `src/pages/attendance/BagManagement.tsx`
-- เพิ่มคอลัมน์ "Granted" (created_at) และ "Expires" (expires_at)
-- Admin เห็นภาพรวมชัดขึ้นว่า item ไหนใกล้หมดอายุ
+**1. Effect (ผลของรางวัล)**
+- แสดง description (EN) และ description_th (TH) 
 
-#### 3. RewardShop - Bag count badge บน Backpack icon
-- **ไฟล์**: `src/pages/portal/RewardShop.tsx`
-- แสดงจำนวน active items เป็น badge เล็กๆ บนปุ่ม Backpack
-- ให้พนักงานรู้ว่ามี item ในกระเป๋ากี่ชิ้น
+**2. เงื่อนไขการใช้**
+- Cooldown: "ต้องรอ X วันก่อนแลกซ้ำ" (ถ้า > 0)
+- Valid Period: "แลกได้ตั้งแต่ ... ถึง ..." (ถ้ามี)
+- Approval: "ต้องขออนุมัติ" (ถ้า requires_approval)
+- Stock: "เหลือ X/Y ชิ้น" (ถ้ามี stock_limit)
 
-### Files to modify
-```
-src/pages/portal/MyBag.tsx              - เพิ่มแสดงวันหมดอายุ/วันที่ใช้
-src/pages/attendance/BagManagement.tsx   - เพิ่มคอลัมน์วันที่
-src/pages/portal/RewardShop.tsx         - เพิ่ม bag count badge
-```
+### ไฟล์ที่แก้
+- `src/pages/attendance/Rewards.tsx` (1 ไฟล์)
+  - เพิ่ม state `expandedId` สำหรับ toggle แสดง/ซ่อนรายละเอียด
+  - เพิ่ม Reward interface fields: `valid_from`, `valid_until`  
+  - เพิ่มปุ่ม expand (ChevronDown icon) ในคอลัมน์ Reward
+  - เพิ่ม collapsible TableRow ใต้แต่ละ reward แสดง Effect + Conditions
+  - ใช้ icon tags สำหรับแต่ละเงื่อนไขให้อ่านง่าย
 
-### Risk Assessment
-- ความเสี่ยง: ต่ำมาก - เป็นการเพิ่ม display เท่านั้น ไม่แก้ logic
-- ไม่กระทบ flow การซื้อ/ใช้/shield ที่มีอยู่
-- ข้อมูลที่แสดงมาจาก field ที่มีอยู่แล้วใน DB
+### ความเสี่ยง
+- ต่ำมาก: เป็นการแสดงผลข้อมูลที่มีอยู่แล้ว ไม่แก้ logic ใดๆ
+- ไม่กระทบ create/edit/delete flow
 
