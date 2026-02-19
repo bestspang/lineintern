@@ -1,39 +1,34 @@
 
 
-## เพิ่ม @LumimiHR Bot Trigger
+## แก้ AI ตีความแชทเป็นการ "มาทำงาน"
 
 ### ปัญหา
-Bot ไม่ตอบเมื่อ mention `@LumimiHR` ใน LINE group เพราะ trigger นี้ไม่มีในตาราง `bot_triggers` — มีแค่ `@bot`, `@goodlime`, `Hi`, `เฮ้`
+คำถาม "วันนี้ใครมาทำงานบ้าง" — AI เอาข้อมูลจาก 💬 ข้อความ (เช่น Best ส่งข้อความในกลุ่ม) มาตีความว่า Best ทำงานด้วย ทั้งที่ Best ไม่มีข้อมูลลงเวลาเข้างาน (📋 การลงเวลา) เลย
 
-### วิธีแก้
-เพิ่ม record `@LumimiHR` ในตาราง `bot_triggers` โดยสร้าง edge function ชั่วคราวเพื่อ insert data แล้วลบทิ้ง
+### Root Cause
+System prompt บอกแค่ "ตอบจากข้อมูลที่ให้มา" แต่ไม่ได้แยกว่า:
+- 📋 การลงเวลา = หลักฐานแข็ง (ใครเข้างาน/ออกงาน)
+- 💬 ข้อความ = บริบทเสริมเท่านั้น (ห้ามใช้ตัดสินว่าใครมาทำงาน)
 
-### ขั้นตอน
+### การแก้ไข
+เพิ่มกฎ 2 ข้อในทั้ง 2 ไฟล์:
 
-1. สร้าง edge function `admin-seed-trigger/index.ts` ที่ insert `@LumimiHR` trigger
-2. Deploy + เรียก function เพื่อ insert data
-3. ตรวจสอบว่า data เข้าแล้ว
-4. ลบ edge function ชั่วคราว
+**กฎใหม่:**
+- "การตอบว่าใครมาทำงาน/เข้างาน ต้องอ้างอิงจาก 📋 ข้อมูลการลงเวลาเท่านั้น ห้ามใช้ 💬 ข้อความแชทเป็นหลักฐานว่าคนนั้นมาทำงาน"
+- "ระบุตัวผู้ถาม (Requester) ให้ชัด ห้ามรวมผู้ถามเข้าไปในรายชื่อผู้มาทำงาน ถ้าไม่มี attendance record ของเขา"
 
-### ข้อมูลที่จะ insert
+**ไฟล์ที่แก้:**
 
-| Field | Value |
-|-------|-------|
-| trigger_text | `@LumimiHR` |
-| trigger_type | `mention` |
-| match_type | `contains` |
-| case_sensitive | `false` |
-| is_enabled | `true` |
-| is_primary | `true` |
-| available_in_dm | `false` |
-| available_in_group | `true` |
-| language | `th` |
+| ไฟล์ | จุดที่แก้ | รายละเอียด |
+|------|----------|-----------|
+| `supabase/functions/ai-query-test/index.ts` | line 369-383 (system prompt) | เพิ่มกฎ 13-14 |
+| `supabase/functions/line-webhook/utils/cross-group-query.ts` | CROSS_GROUP_SYSTEM_PROMPT ที่ใช้ใน production | เพิ่มกฎเดียวกัน |
 
 ### สิ่งที่ไม่แตะ
-- ไม่แก้ code ใดๆ ของ line-webhook
-- ไม่แก้ `@goodlime` trigger (คงไว้ตามที่ user ต้องการ)
-- ไม่แก้ DB schema
+- ไม่แก้ evidence retrieval logic
+- ไม่แก้ context prompt format
+- ไม่แก้ DB / RLS / routing
+- ไม่แก้ frontend
 
 ### ผลลัพธ์
-หลัง insert แล้ว bot จะตอบเมื่อถูก mention ด้วย `@LumimiHR` ใน group chat
-
+AI จะตอบ "วันนี้ใครมาทำงาน" โดยอ้างอิงจาก attendance records เท่านั้น ไม่เอาแชทมาตีความว่าคนนั้นทำงาน
