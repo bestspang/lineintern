@@ -1503,6 +1503,15 @@ serve(async (req) => {
 
       // ========== BAG / INVENTORY ENDPOINTS ==========
       case 'my-bag-items': {
+        // Lazy expiration: auto-expire items past expires_at
+        await supabase
+          .from('employee_bag_items')
+          .update({ status: 'expired' })
+          .eq('employee_id', employee_id)
+          .eq('status', 'active')
+          .lt('expires_at', new Date().toISOString())
+          .not('expires_at', 'is', null);
+
         const result = await supabase
           .from('employee_bag_items')
           .select('*')
