@@ -47,7 +47,7 @@ export default function MyRedemptions() {
   const pendingRedemptions = redemptions?.filter(r => r.status === 'pending') || [];
   const approvedRedemptions = redemptions?.filter(r => r.status === 'approved') || [];
   const usedRedemptions = redemptions?.filter(r => r.status === 'used') || [];
-  const otherRedemptions = redemptions?.filter(r => ['cancelled', 'expired'].includes(r.status)) || [];
+  const otherRedemptions = redemptions?.filter(r => ['cancelled', 'expired', 'rejected'].includes(r.status)) || [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -59,6 +59,8 @@ export default function MyRedemptions() {
         return <Badge variant="outline" className="gap-1"><Gift className="h-3 w-3" />{locale === 'th' ? 'ใช้แล้ว' : 'Used'}</Badge>;
       case 'cancelled':
         return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />{locale === 'th' ? 'ยกเลิก' : 'Cancelled'}</Badge>;
+      case 'rejected':
+        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />{locale === 'th' ? 'ปฏิเสธ' : 'Rejected'}</Badge>;
       case 'expired':
         return <Badge variant="secondary" className="text-muted-foreground gap-1"><Clock className="h-3 w-3" />{locale === 'th' ? 'หมดอายุ' : 'Expired'}</Badge>;
       default:

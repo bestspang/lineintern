@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star, Shield } from 'lucide-react';
+import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star, Shield, Backpack } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -411,12 +411,20 @@ export default function MyPoints() {
       )}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Button asChild variant="outline" className="h-auto py-4">
           <Link to="/portal/rewards">
             <div className="text-center">
               <Gift className="h-6 w-6 mx-auto mb-1 text-primary" />
               <span className="text-sm">{locale === 'th' ? 'แลกรางวัล' : 'Rewards'}</span>
+            </div>
+          </Link>
+        </Button>
+        <Button asChild variant="outline" className="h-auto py-4">
+          <Link to="/portal/my-bag">
+            <div className="text-center">
+              <Backpack className="h-6 w-6 mx-auto mb-1 text-purple-500" />
+              <span className="text-sm">{locale === 'th' ? 'กระเป๋า' : 'My Bag'}</span>
             </div>
           </Link>
         </Button>
