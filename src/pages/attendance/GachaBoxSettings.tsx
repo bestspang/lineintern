@@ -123,7 +123,7 @@ export default function GachaBoxSettings({ rewardId, rewardName, open, onOpenCha
       prize_icon: (fd.get('prize_icon') as string) || '🎁',
       prize_type: fd.get('prize_type') as string,
       prize_value: parseInt(fd.get('prize_value') as string) || 0,
-      prize_reward_id: (fd.get('prize_reward_id') as string) || null,
+      prize_reward_id: ((fd.get('prize_reward_id') as string) === 'none' ? null : (fd.get('prize_reward_id') as string)) || null,
       weight: parseInt(fd.get('weight') as string) || 10,
       rarity: fd.get('rarity') as string,
       is_active: fd.get('is_active') === 'on',
@@ -266,10 +266,10 @@ export default function GachaBoxSettings({ rewardId, rewardName, open, onOpenCha
               </div>
               <div>
                 <Label htmlFor="prize_reward_id">Grant Reward (for type=reward)</Label>
-                <Select name="prize_reward_id" defaultValue={editingItem?.prize_reward_id || ''}>
+                <Select name="prize_reward_id" defaultValue={editingItem?.prize_reward_id || 'none'}>
                   <SelectTrigger><SelectValue placeholder="Select reward..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {availableRewards.map((r: any) => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.icon || '🎁'} {r.name}
