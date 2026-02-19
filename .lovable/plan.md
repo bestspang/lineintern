@@ -1,25 +1,39 @@
 
 
-## Fix 2 จุด: Test Console prompt + missing return
+## เพิ่ม @LumimiHR Bot Trigger
 
-### ปัญหาที่แก้
+### ปัญหา
+Bot ไม่ตอบเมื่อ mention `@LumimiHR` ใน LINE group เพราะ trigger นี้ไม่มีในตาราง `bot_triggers` — มีแค่ `@bot`, `@goodlime`, `Hi`, `เฮ้`
 
-| # | ปัญหา | ไฟล์ | รายละเอียด |
-|---|-------|------|-----------|
-| 3 | Test Console system prompt สั้นเกินไป (1 บรรทัด) ไม่ตรงกับ production (12 กฎ) | `ai-query-test/index.ts` line 369 | AI ตอบไม่เหมือนกันระหว่าง Test Console กับ LINE bot จริง |
-| 4 | `retrieveCrossGroupEvidence` ไม่มี `return evidence;` | `cross-group-query.ts` line 542 | Production engine ได้ `undefined` ทำให้ AI ไม่มี evidence ใช้ |
+### วิธีแก้
+เพิ่ม record `@LumimiHR` ในตาราง `bot_triggers` โดยสร้าง edge function ชั่วคราวเพื่อ insert data แล้วลบทิ้ง
 
-### การแก้ไข
+### ขั้นตอน
 
-**ไฟล์ 1: `supabase/functions/line-webhook/utils/cross-group-query.ts`**
-- เพิ่ม `return evidence;` ก่อนปิด `}` ของ function `retrieveCrossGroupEvidence` (line 542)
+1. สร้าง edge function `admin-seed-trigger/index.ts` ที่ insert `@LumimiHR` trigger
+2. Deploy + เรียก function เพื่อ insert data
+3. ตรวจสอบว่า data เข้าแล้ว
+4. ลบ edge function ชั่วคราว
 
-**ไฟล์ 2: `supabase/functions/ai-query-test/index.ts`**
-- แทนที่ system prompt สั้น (line 369) ด้วย prompt เต็ม 12 กฎ เหมือน `CROSS_GROUP_SYSTEM_PROMPT` ใน production
+### ข้อมูลที่จะ insert
 
-### สิ่งที่จะไม่แตะ
-- ไม่แก้ timezone logic
-- ไม่แก้ retrieval logic
-- ไม่แก้ frontend
-- ไม่แก้ routing, DB, RLS
+| Field | Value |
+|-------|-------|
+| trigger_text | `@LumimiHR` |
+| trigger_type | `mention` |
+| match_type | `contains` |
+| case_sensitive | `false` |
+| is_enabled | `true` |
+| is_primary | `true` |
+| available_in_dm | `false` |
+| available_in_group | `true` |
+| language | `th` |
+
+### สิ่งที่ไม่แตะ
+- ไม่แก้ code ใดๆ ของ line-webhook
+- ไม่แก้ `@goodlime` trigger (คงไว้ตามที่ user ต้องการ)
+- ไม่แก้ DB schema
+
+### ผลลัพธ์
+หลัง insert แล้ว bot จะตอบเมื่อถูก mention ด้วย `@LumimiHR` ใน group chat
 
