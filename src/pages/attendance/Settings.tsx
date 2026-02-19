@@ -48,7 +48,8 @@ export default function AttendanceSettings() {
     auto_checkout_notify_admin_group: false,
     // Work Reminder & Summary Settings
     work_reminder_enabled: true,
-    work_summary_enabled: true
+    work_summary_enabled: true,
+    work_assignment_enabled: true
   });
   const [isTestingBirthday, setIsTestingBirthday] = useState(false);
 
@@ -139,7 +140,8 @@ export default function AttendanceSettings() {
         auto_checkout_notify_group: (settings as any).auto_checkout_notify_group ?? true,
         auto_checkout_notify_admin_group: (settings as any).auto_checkout_notify_admin_group ?? false,
         work_reminder_enabled: (settings as any).work_reminder_enabled ?? true,
-        work_summary_enabled: (settings as any).work_summary_enabled ?? true
+        work_summary_enabled: (settings as any).work_summary_enabled ?? true,
+        work_assignment_enabled: (settings as any).work_assignment_enabled ?? true
       });
     }
   }, [settings]);
@@ -645,11 +647,26 @@ export default function AttendanceSettings() {
             />
           </div>
 
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="work_assignment_enabled">เปิดใช้งาน Auto Task Creation</Label>
+              <p className="text-sm text-muted-foreground">
+                สร้างงานอัตโนมัติเมื่อมีการมอบหมายงานในกลุ่ม LINE เช่น "@ชื่อ ทำงาน X ภายในวันนี้"
+              </p>
+            </div>
+            <Switch
+              id="work_assignment_enabled"
+              checked={formData.work_assignment_enabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, work_assignment_enabled: checked })}
+            />
+          </div>
+
           <div className="bg-muted/50 p-4 rounded-lg space-y-2">
             <h4 className="font-medium text-sm">รายละเอียด:</h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
               <li><strong>Work Reminder</strong> — ส่งแจ้งเตือนอัตโนมัติก่อนถึง deadline ของแต่ละงาน</li>
               <li><strong>Work Summary</strong> — สรุปภาพรวมงานทั้งหมดของทีมทุกเช้า/เย็น</li>
+              <li><strong>Auto Task Creation</strong> — ตรวจจับการมอบหมายงานในกลุ่ม LINE แล้วสร้าง task อัตโนมัติ</li>
               <li>ปิดการทำงานได้โดยไม่กระทบระบบอื่น</li>
             </ul>
           </div>
