@@ -39,8 +39,9 @@ export default function PointTransactions() {
         .from('point_transactions')
         .select(`
           *,
-          employees!inner (full_name, code)
+          employees!inner (full_name, code, is_active)
         `)
+        .eq('employees.is_active', true)
         .order('created_at', { ascending: false })
         .limit(500);
       
