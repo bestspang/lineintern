@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trophy, ArrowLeft, Clock, CheckCircle, XCircle, Gift, Coins } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { formatBangkokDateTime, formatBangkokDate } from '@/lib/timezone';
 
 interface Redemption {
   id: string;
@@ -19,6 +19,7 @@ interface Redemption {
   used_at: string | null;
   expires_at: string | null;
   notes: string | null;
+  rejection_reason: string | null;
   point_rewards: {
     name: string;
     name_th: string | null;
@@ -80,7 +81,7 @@ export default function MyRedemptions() {
                   {locale === 'th' ? redemption.point_rewards?.name_th || redemption.point_rewards?.name : redemption.point_rewards?.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {format(new Date(redemption.created_at), 'dd/MM/yyyy HH:mm')}
+                  {formatBangkokDateTime(redemption.created_at)}
                 </p>
               </div>
               {getStatusBadge(redemption.status)}
@@ -92,12 +93,18 @@ export default function MyRedemptions() {
               </Badge>
               {redemption.expires_at && redemption.status === 'approved' && (
                 <span className="text-xs text-muted-foreground">
-                  {locale === 'th' ? 'หมดอายุ' : 'Expires'}: {format(new Date(redemption.expires_at), 'dd/MM/yyyy')}
+                  {locale === 'th' ? 'หมดอายุ' : 'Expires'}: {formatBangkokDate(redemption.expires_at)}
                 </span>
               )}
             </div>
             {redemption.notes && (
               <p className="text-xs text-muted-foreground mt-2 italic">"{redemption.notes}"</p>
+            )}
+            {redemption.status === 'rejected' && redemption.rejection_reason && (
+              <p className="text-xs text-destructive mt-2">
+                {locale === 'th' ? '❌ เหตุผล: ' : '❌ Reason: '}
+                {redemption.rejection_reason}
+              </p>
             )}
           </div>
         </div>
