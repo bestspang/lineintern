@@ -1,51 +1,31 @@
 
 
-## Bag & Reward System - Cross-Feature Sync Update
+## Reward & Bag Portal System - Cross-Feature Sync Update
 
-### สถานะปัจจุบัน (ตรวจสอบแล้ว)
-ระบบ Bag & Reward ทำงานถูกต้อง (logic, edge functions, DB) แต่พบ **5 จุดที่ไม่ sync กัน** ระหว่างส่วนต่างๆ ของระบบ
-
----
-
-### ปัญหาที่พบ (ทุกข้อตรวจสอบยืนยันแล้ว)
-
-#### 1. Help.tsx - ขาด Quick Action "กระเป๋าของฉัน"
-- **หลักฐาน**: PortalHome.tsx มี link ไป `/portal/my-bag` แต่ Help.tsx quickActions (20 รายการ) ไม่มี entry สำหรับ My Bag เลย
-- **ผลกระทบ**: พนักงานหา feature กระเป๋าจากหน้า Help ไม่เจอ
-- **แก้ไข**: เพิ่ม Quick Action entry (icon: Backpack, path: /portal/my-bag)
-
-#### 2. Static FAQs - ไม่มี FAQ เรื่อง Bag
-- **หลักฐาน**: STATIC_FAQS_TH/EN มี 11 ข้อ ไม่มีข้อใดอธิบาย Bag เลย
-- **DB FAQs**: มี FAQ เรื่องรางวัลแค่ 2 ข้อ แต่คำตอบเป็นข้อมูลเก่า ไม่กล่าวถึง bag, use_mode, expiration
-- **แก้ไข**: เพิ่ม static FAQ ใหม่ 2 ข้อ (TH+EN) อธิบาย Bag system + update DB FAQ
-
-#### 3. DB portal_faqs - คำตอบเรื่องรางวัลล้าสมัย
-- **หลักฐาน**: ตอบแค่ "กด แลก รอการอนุมัติจาก HR" แต่ระบบจริงมี:
-  - use_mode 3 แบบ (use_now, bag_only, choose)
-  - cooldown_days
-  - stock_limit
-  - auto-activate items
-- **แก้ไข**: อัพเดท FAQ ใน DB ผ่าน migration + อัพเดท static fallback
-
-#### 4. MyBag - ใช้ item แล้ว badge ไม่อัพเดท
-- **หลักฐาน**: `useMutation_.onSuccess` invalidate แค่ `my-bag-items` แต่ไม่ invalidate `my-bag-count` (ที่ RewardShop ใช้แสดง badge)
-- **ผลกระทบ**: กลับไป RewardShop หลังใช้ item จะเห็น badge จำนวนเก่า
-- **แก้ไข**: เพิ่ม `queryClient.invalidateQueries({ queryKey: ['my-bag-count'] })`
-
-#### 5. RewardShop - แลกรางวัลแล้ว badge ไม่อัพเดท  
-- **หลักฐาน**: `redeemMutation.onSuccess` invalidate `my-bag-items` แต่ไม่ invalidate `my-bag-count`
-- **ผลกระทบ**: แลกรางวัลใส่ bag แล้ว badge ยังแสดงจำนวนเก่า
-- **แก้ไข**: เพิ่ม `queryClient.invalidateQueries({ queryKey: ['my-bag-count'] })`
+### ตรวจสอบแล้ว: สิ่งที่ทำงานถูกต้อง (ไม่แก้)
+- RewardShop.tsx: use_mode logic, cache invalidation (my-bag-count) ครบ
+- MyBag.tsx: lazy expiration, cache invalidation ครบ
+- Help.tsx: Quick Actions มี My Bag, static FAQs มีเรื่อง Bag + Reward types ครบ
+- PortalHome.tsx: มี link ไป rewards + my-bag ครบ
+- portal-data: endpoints ครบ (rewards-list, my-bag-items, my-redemptions-list)
+- point-redemption edge function: logic ถูกต้องทั้ง redeem/bag/approve/reject/use
 
 ---
 
-### สิ่งที่ตรวจแล้วว่าไม่มีปัญหา (ไม่แก้)
-- RewardShop: use_mode logic (use_now/bag_only/choose) ถูกต้อง
-- MyBag: lazy expiration ทำงานใน portal-data
-- MyPoints: แสดง Streak Shield info ถูกต้อง
-- MyRedemptions: แสดงประวัติแลกรางวัลครบ
-- PortalHome: มี link ไป rewards + my-bag ครบ
-- Bot commands: ไม่มี bag/reward command ใน bot (ปกติ - features นี้เป็น portal-only)
+### ปัญหาที่พบ (ยืนยันแล้วจาก code)
+
+#### 1. MyRedemptions.tsx - "rejected" status หายไปจาก UI
+- **หลักฐาน**: บรรทัด 50 filter `otherRedemptions` ใช้แค่ `['cancelled', 'expired']` แต่ edge function `rejectRedemption()` set status เป็น `'rejected'`
+- **ผลกระทบ**: รายการที่ถูก reject จะไม่แสดงใน tab ไหนเลย (ตกจากทุก filter)
+- **Root cause**: ตอน implement MyRedemptions ยังไม่มี reject flow หรือลืมเพิ่ม
+- **แก้ไข**: 
+  1. เพิ่ม `'rejected'` ใน `otherRedemptions` filter
+  2. เพิ่ม case 'rejected' ใน `getStatusBadge()` แสดง badge สีแดงพร้อม rejection icon
+
+#### 2. MyPoints.tsx - ไม่มี link ไป My Bag
+- **หลักฐาน**: Quick Actions grid (บรรทัด 414-431) มีแค่ 2 ปุ่ม: "แลกรางวัล" + "ประวัติแลก" แต่ไม่มี "กระเป๋าของฉัน"
+- **ผลกระทบ**: พนักงานที่ดู My Points ไม่มี shortcut ไป My Bag ต้องกลับ Home ก่อน
+- **แก้ไข**: เพิ่มปุ่ม "กระเป๋าของฉัน" ในส่วน Quick Actions (เปลี่ยนจาก grid-cols-2 เป็น grid-cols-3)
 
 ---
 
@@ -53,39 +33,51 @@
 
 | ไฟล์ | การแก้ไข | ความเสี่ยง |
 |------|----------|-----------|
-| `src/pages/portal/Help.tsx` | เพิ่ม Quick Action + static FAQ | ต่ำมาก (เพิ่ม display) |
-| `src/pages/portal/MyBag.tsx` | เพิ่ม invalidate `my-bag-count` | ต่ำมาก (เพิ่ม cache invalidation) |
-| `src/pages/portal/RewardShop.tsx` | เพิ่ม invalidate `my-bag-count` | ต่ำมาก (เพิ่ม cache invalidation) |
-| DB Migration | อัพเดท portal_faqs content | ต่ำมาก (update text เท่านั้น) |
+| `src/pages/portal/MyRedemptions.tsx` | เพิ่ม 'rejected' ใน filter + badge | ต่ำมาก (เพิ่ม display) |
+| `src/pages/portal/MyPoints.tsx` | เพิ่ม link ไป My Bag | ต่ำมาก (เพิ่ม UI link) |
 
 ---
 
 ### รายละเอียดทางเทคนิค
 
-**Help.tsx Changes:**
-1. เพิ่ม `Backpack` ใน import จาก lucide-react
-2. เพิ่ม Quick Action:
-```
-{ icon: Backpack, title: 'กระเป๋าของฉัน' / 'My Bag', 
-  description: 'ดูไอเทมที่เก็บไว้' / 'View stored items', 
-  path: '/portal/my-bag' }
-```
-3. เพิ่ม static FAQ (TH): "กระเป๋าของฉัน (My Bag) คืออะไร?" -> อธิบาย bag system, expiration, auto-activate
-4. เพิ่ม static FAQ (EN): "What is My Bag?" -> same in English
-
-**Cache Fix (MyBag.tsx + RewardShop.tsx):**
-```typescript
-// เพิ่มบรรทัดนี้ใน onSuccess ของทั้ง 2 ไฟล์
-queryClient.invalidateQueries({ queryKey: ['my-bag-count'] });
+**MyRedemptions.tsx:**
+1. บรรทัด 50: เปลี่ยน filter เป็น `['cancelled', 'expired', 'rejected']`
+2. เพิ่ม case ใน getStatusBadge:
+```tsx
+case 'rejected':
+  return <Badge variant="destructive" className="gap-1">
+    <XCircle className="h-3 w-3" />
+    {locale === 'th' ? 'ปฏิเสธ' : 'Rejected'}
+  </Badge>;
 ```
 
-**DB Migration:**
-- UPDATE `portal_faqs` ที่ question_th = 'ฉันจะแลกของรางวัลอย่างไร?' ให้คำตอบครอบคลุม use_mode + bag
-- INSERT FAQ ใหม่เรื่อง "กระเป๋าของฉัน" (category: points)
+**MyPoints.tsx:**
+1. เพิ่ม import `Backpack` จาก lucide-react
+2. เปลี่ยน Quick Actions grid จาก `grid-cols-2` เป็น `grid-cols-3`
+3. เพิ่มปุ่มที่สาม:
+```tsx
+<Button asChild variant="outline" className="h-auto py-4">
+  <Link to="/portal/my-bag">
+    <div className="text-center">
+      <Backpack className="h-6 w-6 mx-auto mb-1 text-purple-500" />
+      <span className="text-sm">{locale === 'th' ? 'กระเป๋า' : 'My Bag'}</span>
+    </div>
+  </Link>
+</Button>
+```
+
+---
 
 ### การป้องกัน Regression
-- ไม่แตะ logic ใดๆ ของ reward/bag/redemption
-- ไม่แก้ routing, PortalHome, MyPoints, MyRedemptions
-- เพิ่มเฉพาะ display content + cache invalidation
-- Static FAQ เป็น fallback เท่านั้น ไม่กระทบ DB FAQ ที่มีอยู่
+- ไม่แตะ logic ใดๆ ของ reward/bag/redemption/point calculation
+- ไม่แก้ portal-data, point-redemption, RewardShop, MyBag, Help, PortalHome
+- เพิ่มเฉพาะ display content + navigation link
+- ไม่เปลี่ยน query keys หรือ data flow
+
+---
+
+### Feature Suggestions (วิเคราะห์แล้วว่าปลอดภัย)
+
+1. **Redemption Rejection Reason**: MyRedemptions สามารถแสดง `rejection_reason` ที่ admin กรอกตอน reject ได้ (field มีอยู่ใน DB แล้ว, แค่ UI ยังไม่แสดง) - เพิ่ม display text ใต้ rejected items เท่านั้น ไม่แตะ logic
+2. **Bag Item Count Badge บน MyPoints**: แสดง badge จำนวน active bag items ข้างปุ่ม "กระเป๋า" เหมือนที่ RewardShop ทำ - ใช้ query key เดิม `my-bag-count`
 
