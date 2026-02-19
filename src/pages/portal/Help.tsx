@@ -12,7 +12,7 @@ import {
   HelpCircle, Clock, Calendar, FileText, Gift, 
   MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
   CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package, Camera, MapPin, XCircle, Search
+  Activity, Package, Camera, MapPin, XCircle, Search, Backpack
 } from 'lucide-react';
 
 // Static fallback FAQs (used when database is empty or has errors)
@@ -32,6 +32,9 @@ const STATIC_FAQS_TH = [
   { question: 'ฉันจะยกเลิกคำขอ OT ได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-ot ใน DM (แชทส่วนตัว) กับบอท' },
   { question: 'ฉันจะยกเลิกคำขอวันหยุดได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" หรือพิมพ์ /cancel-dayoff ใน DM (แชทส่วนตัว) กับบอท' },
   { question: 'ฉันจะยกเลิกคำขอลางานได้อย่างไร?', answer: 'ไปที่ Portal > ประวัติการทำงาน กดปุ่ม "ยกเลิก" ได้เลย ไม่สามารถยกเลิกคำขอที่อนุมัติแล้วได้' },
+  // Bag
+  { question: 'กระเป๋าของฉัน (My Bag) คืออะไร?', answer: 'กระเป๋าเป็นที่เก็บไอเทมที่คุณแลกมาจากร้านค้ารางวัล สามารถเก็บไว้ใช้ทีหลังได้ ไอเทมบางชิ้นจะใช้อัตโนมัติเมื่อถึงเงื่อนไข (เช่น Streak Shield) บางชิ้นต้องกดใช้เอง และทุกไอเทมมีวันหมดอายุ หากไม่ใช้ภายในกำหนดจะหมดอายุไปโดยอัตโนมัติ' },
+  { question: 'รางวัลมีกี่แบบ?', answer: 'รางวัลมี 3 แบบ:\n• ใช้เลย - เปิดใช้ทันทีหลังแลก\n• เก็บอย่างเดียว - เก็บในกระเป๋าไว้ใช้ทีหลัง\n• เลือกได้ - เลือกว่าจะใช้เลยหรือเก็บในกระเป๋า\n\nบางรางวัลต้องรอหัวหน้าอนุมัติก่อนถึงจะใช้ได้' },
   // General
   { question: 'ทำไมฉันถึงไม่ต้อง Track เวลาหรือแต้ม?', answer: 'บางตำแหน่ง เช่น ผู้จัดการหรือเจ้าของกิจการ ถูกตั้งค่าให้ไม่ต้อง Track เวลาทำงาน หากมีข้อสงสัยกรุณาติดต่อ HR' },
 ];
@@ -50,6 +53,9 @@ const STATIC_FAQS_EN = [
   { question: 'How can I cancel an OT request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-ot in DM (direct message) with the bot.' },
   { question: 'How can I cancel a day-off request?', answer: 'Go to Portal > Work History, click "Cancel" button, or type /cancel-dayoff in DM (direct message) with the bot.' },
   { question: 'How can I cancel a leave request?', answer: 'Go to Portal > Work History and click the "Cancel" button. Already approved requests cannot be cancelled.' },
+  // Bag
+  { question: 'What is My Bag?', answer: 'My Bag is your personal inventory for storing redeemed reward items. You can save items for later use. Some items activate automatically when conditions are met (e.g., Streak Shield), while others require manual activation. All items have an expiration date and will expire if not used in time.' },
+  { question: 'What are the reward types?', answer: 'There are 3 types:\n• Use Now - Activates immediately after redemption\n• Bag Only - Stored in your bag for later use\n• Choose - You decide whether to use now or save to bag\n\nSome rewards require manager approval before they can be used.' },
   // General
   { question: 'Why don\'t I need to track time or points?', answer: 'Some positions such as managers or business owners are configured to not require time tracking. Please contact HR if you have questions.' },
 ];
@@ -226,6 +232,12 @@ export default function Help() {
       title: locale === 'th' ? 'ยกเลิกคำขอ' : 'Cancel Requests',
       description: locale === 'th' ? 'ยกเลิก OT/วันหยุด/ลางาน ที่รอ' : 'Cancel pending OT/leave requests',
       path: '/portal/my-history'
+    },
+    {
+      icon: Backpack,
+      title: locale === 'th' ? 'กระเป๋าของฉัน' : 'My Bag',
+      description: locale === 'th' ? 'ดูไอเทมที่เก็บไว้' : 'View stored items',
+      path: '/portal/my-bag'
     }
   ];
 
