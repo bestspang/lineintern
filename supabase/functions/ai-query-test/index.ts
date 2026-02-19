@@ -157,6 +157,12 @@ serve(async (req) => {
     // Step 4: Retrieve evidence
     const evidence: { messages: any[]; attendance: any[]; employees: any[]; sources: any[]; points: any[]; birthdays: any[]; rewards: any[]; leave: any[]; tasks: any[] } = { messages: [], attendance: [], employees: [], sources: [], points: [], birthdays: [], rewards: [], leave: [], tasks: [] };
 
+    // Shared: resolve branches linked to target groups (moved up for reuse)
+    const { data: _branchLinks } = await adminClient.from("branches").select("id, name, line_group_id").not("line_group_id", "is", null);
+    const { data: _groupLines } = await adminClient.from("groups").select("id, line_group_id").in("id", targetGroupIds);
+    const _targetLineIds = (_groupLines || []).map((g: any) => g.line_group_id).filter(Boolean);
+    const matchedBranches = (_branchLinks || []).filter((b: any) => _targetLineIds.includes(b.line_group_id));
+
     if (allowedDataSources.includes("messages")) {
       for (const gid of targetGroupIds.slice(0, 5)) {
         const { data: msgs } = await adminClient
@@ -178,12 +184,6 @@ serve(async (req) => {
       }
     }
 
-    // Shared: resolve branches linked to target groups
-    const { data: _branchLinks } = await adminClient.from("branches").select("id, name, line_group_id").not("line_group_id", "is", null);
-    const { data: _groupLines } = await adminClient.from("groups").select("id, line_group_id").in("id", targetGroupIds);
-    const _targetLineIds = (_groupLines || []).map((g: any) => g.line_group_id).filter(Boolean);
-    const matchedBranches = (_branchLinks || []).filter((b: any) => _targetLineIds.includes(b.line_group_id));
-
     if (allowedDataSources.includes("attendance")) {
       const branchIds = matchedBranches.map((b: any) => b.id);
       if (branchIds.length > 0) {
@@ -199,6 +199,24 @@ serve(async (req) => {
             evidence.attendance.push({ employee_name: eMap.get(log.employee_id) || "Unknown", branch_name: bMap.get(log.branch_id) || "Unknown", event_type: log.event_type, time: log.server_time });
           }
           evidence.sources.push({ group_name: matchedBranches.map((b: any) => b.name).join(", "), type: "attendance", excerpt: `${logs.length} records from ${matchedBranches.length} branch(es)` });
+        }
+      }
+    }
+
+    // Step 4a2: Retrieve employees
+    if (allowedDataSources.includes("employees")) {
+      const branchIdsE = matchedBranches.map((b: any) => b.id);
+      if (branchIdsE.length > 0) {
+        const bMapE = new Map(matchedBranches.map((b: any) => [b.id, b.name]));
+        const { data: empsE } = await adminClient
+          .from("employees").select("full_name, branch_id, role")
+          .in("branch_id", branchIdsE).eq("is_active", true);
+        for (const emp of empsE || []) {
+          evidence.employees.push({
+            name: emp.full_name || "Unknown",
+            branch_name: bMapE.get(emp.branch_id) || "Unknown",
+            role: emp.role || "employee"
+          });
         }
       }
     }
@@ -329,7 +347,14 @@ serve(async (req) => {
       }
       contextPrompt += "\n";
     }
-    if (evidence.attendance.length === 0 && evidence.messages.length === 0 && evidence.points.length === 0 && evidence.birthdays.length === 0 && evidence.rewards.length === 0 && evidence.leave.length === 0 && evidence.tasks.length === 0) {
+    if (evidence.employees.length > 0) {
+      contextPrompt += `👥 พนักงาน:\n`;
+      for (const e of evidence.employees.slice(0, 20)) {
+        contextPrompt += `- ${e.name} | ${e.branch_name} | ${e.role}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.attendance.length === 0 && evidence.messages.length === 0 && evidence.employees.length === 0 && evidence.points.length === 0 && evidence.birthdays.length === 0 && evidence.rewards.length === 0 && evidence.leave.length === 0 && evidence.tasks.length === 0) {
       contextPrompt += "⚠️ ไม่พบข้อมูลที่ตรงกับคำถาม\n\n";
     }
 
@@ -367,6 +392,7 @@ serve(async (req) => {
         evidence: {
           messages_count: evidence.messages.length,
           attendance_count: evidence.attendance.length,
+          employees_count: evidence.employees.length,
           points_count: evidence.points.length,
           birthdays_count: evidence.birthdays.length,
           rewards_count: evidence.rewards.length,
@@ -375,6 +401,7 @@ serve(async (req) => {
           sources_count: evidence.sources.length,
           sample_messages: evidence.messages.slice(0, 5),
           sample_attendance: evidence.attendance.slice(0, 10),
+          sample_employees: evidence.employees.slice(0, 5),
           sample_points: evidence.points.slice(0, 5),
           sample_birthdays: evidence.birthdays.slice(0, 5),
           sample_rewards: evidence.rewards.slice(0, 5),

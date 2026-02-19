@@ -37,6 +37,9 @@ const STATIC_FAQS_TH = [
   { question: 'รางวัลมีกี่แบบ?', answer: 'รางวัลมี 3 แบบ:\n• ใช้เลย - เปิดใช้ทันทีหลังแลก\n• เก็บอย่างเดียว - เก็บในกระเป๋าไว้ใช้ทีหลัง\n• เลือกได้ - เลือกว่าจะใช้เลยหรือเก็บในกระเป๋า\n\nบางรางวัลต้องรอหัวหน้าอนุมัติก่อนถึงจะใช้ได้' },
   // General
   { question: 'ทำไมฉันถึงไม่ต้อง Track เวลาหรือแต้ม?', answer: 'บางตำแหน่ง เช่น ผู้จัดการหรือเจ้าของกิจการ ถูกตั้งค่าให้ไม่ต้อง Track เวลาทำงาน หากมีข้อสงสัยกรุณาติดต่อ HR' },
+  // Cross-Group Query
+  { question: 'ถามข้อมูลข้ามกลุ่มได้อย่างไร?', answer: 'ใน LINE กลุ่มที่มีบอท ให้ @mention บอทแล้วพิมพ์คำถาม เช่น "@bot สาขา X มีใครเข้างานวันนี้" ระบบจะค้นข้อมูลจากกลุ่มที่อนุญาตแล้วตอบ' },
+  { question: 'ถามข้ามกลุ่มได้ข้อมูลอะไรบ้าง?', answer: 'ถามได้เรื่อง: การลงเวลา, ข้อความในกลุ่ม, พนักงาน, คะแนน Happy Points, วันเกิด, รางวัล, วันลา/OT และงานที่มอบหมาย ขึ้นอยู่กับสิทธิ์ที่ผู้ดูแลตั้งค่าไว้' },
 ];
 
 const STATIC_FAQS_EN = [
@@ -58,6 +61,9 @@ const STATIC_FAQS_EN = [
   { question: 'What are the reward types?', answer: 'There are 3 types:\n• Use Now - Activates immediately after redemption\n• Bag Only - Stored in your bag for later use\n• Choose - You decide whether to use now or save to bag\n\nSome rewards require manager approval before they can be used.' },
   // General
   { question: 'Why don\'t I need to track time or points?', answer: 'Some positions such as managers or business owners are configured to not require time tracking. Please contact HR if you have questions.' },
+  // Cross-Group Query
+  { question: 'How do I ask cross-group questions?', answer: 'In a LINE group with the bot, @mention the bot and type your question, e.g. "@bot who checked in at branch X today?" The system will search allowed groups and respond.' },
+  { question: 'What data can I ask about across groups?', answer: 'You can ask about: attendance, group messages, employees, Happy Points, birthdays, rewards, leave/OT, and work assignments — depending on permissions set by your admin.' },
 ];
 
 // ⚠️ PORTAL AUDIT: Verified 2026-01-28
