@@ -95,7 +95,7 @@ import {
   PayrollReport, MySchedule, MyPayroll, PointLeaderboard,
   PortalEmployees, PortalEmployeeDetail, PortalReceiptManagement, PortalReceiptAnalytics,
   PortalBranchReport,
-  MyBag, GachaBox
+  MyBag, GachaBox, GachaHistory
 } from "./pages/portal";
 import ApproveRemoteCheckout from "./pages/portal/ApproveRemoteCheckout";
 import DepositUpload from "./pages/portal/DepositUpload";
@@ -199,6 +199,7 @@ const App = () => (
                       <Route path="/my-redemptions" element={<MyRedemptions />} />
                       <Route path="/my-bag" element={<MyBag />} />
                       <Route path="/gacha" element={<GachaBox />} />
+                      <Route path="/gacha-history" element={<GachaHistory />} />
                       <Route path="/my-receipts" element={<MyReceipts />} />
                       <Route path="/receipts/:id" element={<ReceiptDetail />} />
                       <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />

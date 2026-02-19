@@ -1558,6 +1558,54 @@ serve(async (req) => {
         break;
       }
 
+      // ========== GACHA ENDPOINTS ==========
+      case 'gacha-daily-count': {
+        const rewardId = params?.reward_id;
+        if (!rewardId) {
+          error = { message: 'reward_id is required' };
+          break;
+        }
+
+        // Get reward to read daily_pull_limit
+        const { data: rewardInfo } = await supabase
+          .from('point_rewards')
+          .select('daily_pull_limit')
+          .eq('id', rewardId)
+          .maybeSingle();
+
+        // Count today's pulls (Bangkok timezone)
+        const todayBkk = getBangkokDateString();
+        const result = await supabase
+          .from('point_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('employee_id', employee_id)
+          .eq('category', 'gacha')
+          .eq('transaction_type', 'spend')
+          .gte('created_at', `${todayBkk}T00:00:00+07:00`);
+
+        data = {
+          pulls_today: result.count || 0,
+          daily_limit: rewardInfo?.daily_pull_limit || null,
+        };
+        error = result.error;
+        break;
+      }
+
+      case 'gacha-history': {
+        const limit = params?.limit || 50;
+        const result = await supabase
+          .from('point_transactions')
+          .select('id, amount, description, balance_after, metadata, created_at')
+          .eq('employee_id', employee_id)
+          .eq('category', 'gacha')
+          .eq('transaction_type', 'spend')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
