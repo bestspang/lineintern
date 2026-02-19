@@ -271,6 +271,7 @@ export default function Rewards() {
                     <TableHead>Reward</TableHead>
                     <TableHead className="text-right">Cost</TableHead>
                     <TableHead className="text-center">Stock</TableHead>
+                    <TableHead className="text-center">Mode</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead className="text-center">Approval</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -302,6 +303,16 @@ export default function Rewards() {
                         ) : (
                           <Package className="h-4 w-4 text-muted-foreground mx-auto" />
                         )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className={
+                          reward.use_mode === 'bag_only' ? 'border-purple-300 text-purple-700' :
+                          reward.use_mode === 'choose' ? 'border-blue-300 text-blue-700' :
+                          'border-gray-300 text-gray-700'
+                        }>
+                          {reward.use_mode === 'bag_only' ? '🎒 Bag' :
+                           reward.use_mode === 'choose' ? '🔀 Choose' : '⚡ Now'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant={reward.is_active ? 'default' : 'secondary'}>

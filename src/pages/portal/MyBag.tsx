@@ -216,6 +216,16 @@ export default function MyBag() {
               {locale === 'th' ? 'คุณต้องการใช้ไอเทมนี้หรือไม่?' : 'Do you want to use this item?'}
             </DialogDescription>
           </DialogHeader>
+          {selectedItem?.usage_rules && (
+            <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground leading-relaxed">
+              <p className="font-medium text-foreground mb-1">
+                {locale === 'th' ? '📋 เงื่อนไขการใช้งาน' : '📋 Usage Rules'}
+              </p>
+              {locale === 'th'
+                ? selectedItem.usage_rules_th || selectedItem.usage_rules
+                : selectedItem.usage_rules}
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedItem(null)}>
               {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
