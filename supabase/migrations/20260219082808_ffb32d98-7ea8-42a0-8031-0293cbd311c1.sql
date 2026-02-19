@@ -1,0 +1,2 @@
+ALTER TABLE attendance_settings ADD COLUMN work_assignment_enabled boolean DEFAULT true;
+COMMENT ON COLUMN attendance_settings.work_assignment_enabled IS 'Enable/disable automatic task creation from LINE group messages. Default true.';

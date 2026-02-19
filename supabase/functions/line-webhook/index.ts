@@ -10085,37 +10085,52 @@ async function handleMessageEvent(event: LineEvent) {
 
   // PHASE 2.5: Work Assignment Detection (runs for EVERY message)
   if (!isDM) {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const assignments = await detectWorkAssignment(event.message.text, user.id, group.id, locale);
+    // Check if work assignment detection is enabled in settings
+    const { data: workAssignmentSettings } = await supabase
+      .from('attendance_settings')
+      .select('work_assignment_enabled')
+      .eq('scope', 'global')
+      .is('branch_id', null)
+      .is('employee_id', null)
+      .maybeSingle();
     
-    if (assignments.length > 0) {
-      console.log(`[handleMessageEvent] Detected ${assignments.length} work assignment(s)`);
+    const workAssignmentEnabled = workAssignmentSettings?.work_assignment_enabled ?? true;
+    
+    if (workAssignmentEnabled) {
+      const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
+      const assignments = await detectWorkAssignment(event.message.text, user.id, group.id, locale);
       
-      const confirmationParts: string[] = [];
-      for (const assignment of assignments) {
-        const result = await createWorkTask(assignment, user.id, group.id, locale);
+      if (assignments.length > 0) {
+        console.log(`[handleMessageEvent] Detected ${assignments.length} work assignment(s)`);
         
-        if (result.success) {
-          const deadlineStr = formatTimeDistance(assignment.deadline!, locale);
-          if (locale === 'th') {
-            confirmationParts.push(`✅ สร้างงาน "${assignment.taskDescription}" สำหรับ @${assignment.assigneeDisplayName} กำหนดส่ง${deadlineStr}`);
-          } else {
-            confirmationParts.push(`✅ Created task "${assignment.taskDescription}" for @${assignment.assigneeDisplayName} due ${deadlineStr}`);
+        const confirmationParts: string[] = [];
+        for (const assignment of assignments) {
+          const result = await createWorkTask(assignment, user.id, group.id, locale);
+          
+          if (result.success) {
+            const deadlineStr = formatTimeDistance(assignment.deadline!, locale);
+            if (locale === 'th') {
+              confirmationParts.push(`✅ สร้างงาน "${assignment.taskDescription}" สำหรับ @${assignment.assigneeDisplayName} กำหนดส่ง${deadlineStr}`);
+            } else {
+              confirmationParts.push(`✅ Created task "${assignment.taskDescription}" for @${assignment.assigneeDisplayName} due ${deadlineStr}`);
+            }
+          }
+        }
+        
+        // Send confirmation using reply token if we have work assignments
+        if (confirmationParts.length > 0) {
+          const confirmationMessage = confirmationParts.join('\n');
+          try {
+            await replyToLine(event.replyToken, confirmationMessage);
+            console.log('[handleMessageEvent] Sent work assignment confirmation');
+            return; // Don't continue to AI response since we already replied
+          } catch (error) {
+            console.error('[handleMessageEvent] Error sending work assignment confirmation:', error);
           }
         }
       }
-      
-      // Send confirmation using reply token if we have work assignments
-      if (confirmationParts.length > 0) {
-        const confirmationMessage = confirmationParts.join('\n');
-        try {
-          await replyToLine(event.replyToken, confirmationMessage);
-          console.log('[handleMessageEvent] Sent work assignment confirmation');
-          return; // Don't continue to AI response since we already replied
-        } catch (error) {
-          console.error('[handleMessageEvent] Error sending work assignment confirmation:', error);
-        }
-      }
+    } else {
+      console.log('[handleMessageEvent] Work assignment detection is disabled');
     }
   }
 

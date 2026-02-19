@@ -469,6 +469,7 @@ export type Database = {
           time_zone: string | null
           token_validity_minutes: number | null
           updated_at: string | null
+          work_assignment_enabled: boolean | null
           work_reminder_enabled: boolean | null
           work_summary_enabled: boolean | null
         }
@@ -496,6 +497,7 @@ export type Database = {
           time_zone?: string | null
           token_validity_minutes?: number | null
           updated_at?: string | null
+          work_assignment_enabled?: boolean | null
           work_reminder_enabled?: boolean | null
           work_summary_enabled?: boolean | null
         }
@@ -523,6 +525,7 @@ export type Database = {
           time_zone?: string | null
           token_validity_minutes?: number | null
           updated_at?: string | null
+          work_assignment_enabled?: boolean | null
           work_reminder_enabled?: boolean | null
           work_summary_enabled?: boolean | null
         }
