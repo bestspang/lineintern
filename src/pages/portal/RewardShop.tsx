@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Gift, Coins, ShieldCheck, Clock, ArrowLeft } from 'lucide-react';
+import { Gift, Coins, ShieldCheck, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface Reward {
@@ -132,18 +132,16 @@ export default function RewardShop() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Gift className="h-5 w-5 text-primary" />
+          {locale === 'th' ? 'ร้านค้ารางวัล' : 'Reward Shop'}
+        </h1>
         <Button asChild variant="ghost" size="icon">
           <Link to="/portal/my-points">
-            <ArrowLeft className="h-5 w-5" />
+            <Coins className="h-5 w-5 text-yellow-500" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Gift className="h-5 w-5 text-primary" />
-            {locale === 'th' ? 'ร้านค้ารางวัล' : 'Reward Shop'}
-          </h1>
-        </div>
       </div>
 
       {/* Balance */}
