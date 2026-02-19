@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -320,10 +320,24 @@ function PolicyDialog({
     enabled: !!policy,
   });
 
+  // Reset form state when policy prop changes
+  useEffect(() => {
+    setSourceType(policy?.source_type || 'group');
+    setSourceGroupId(policy?.source_group_id || '');
+    setSourceUserId(policy?.source_user_id || '');
+    setScopeMode(policy?.scope_mode || 'all');
+    setDataSources(policy?.allowed_data_sources || ['messages']);
+    setTimeWindow(policy?.time_window_days || 30);
+    setPiiMode(policy?.pii_mode || 'mask_sensitive');
+    setMaxHits(policy?.max_hits_per_group || 50);
+    setPriority(policy?.priority || 0);
+    setScopeGroupIds([]);
+  }, [policy]);
+
   // sync existing scope groups
-  useState(() => {
+  useEffect(() => {
     if (existingScopeGroups) setScopeGroupIds(existingScopeGroups);
-  });
+  }, [existingScopeGroups]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
