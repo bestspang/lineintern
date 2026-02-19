@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
@@ -987,6 +987,7 @@ function AccessMatrixTab() {
                 </TableBody>
               </Table>
             </div>
+            <ScrollBar orientation="horizontal" />
           </ScrollArea>
         )}
       </CardContent>
