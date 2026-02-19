@@ -56,6 +56,7 @@ import {
   Gift,
   Mail,
   ShoppingBag,
+  Backpack,
   Receipt,
   PieChart,
   Flag,
@@ -201,6 +202,7 @@ const navigationGroups = [
       { title: 'Point Rules', titleTh: 'เงื่อนไขแต้ม', url: '/attendance/point-rules', icon: Settings2 },
       { title: 'Rewards', titleTh: 'รางวัล', url: '/attendance/rewards', icon: Gift },
       { title: 'Redemption Approvals', titleTh: 'อนุมัติแลกรางวัล', url: '/attendance/redemption-approvals', icon: ShoppingBag },
+      { title: 'Bag Management', titleTh: 'กระเป๋าพนักงาน', url: '/attendance/bag-management', icon: Backpack },
     ],
   },
   {
