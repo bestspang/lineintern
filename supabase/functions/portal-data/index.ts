@@ -966,6 +966,7 @@ serve(async (req) => {
             )
           `)
           .eq('employee.exclude_from_points', false)
+          .eq('employee.is_active', true)
           .order('point_balance', { ascending: false })
           .limit(limit);
 
