@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Gift, Plus, Pencil, Trash2, Coins, ShieldCheck, Package } from 'lucide-react';
+import { Gift, Plus, Pencil, Trash2, Coins, ShieldCheck, Package, ChevronDown, ChevronUp, Clock, Calendar, AlertCircle, Info } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface Reward {
   id: string;
@@ -30,11 +31,14 @@ interface Reward {
   stock_used: number;
   cooldown_days: number;
   use_mode: string;
+  valid_from: string | null;
+  valid_until: string | null;
 }
 
 export default function Rewards() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingReward, setEditingReward] = useState<Reward | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -279,9 +283,16 @@ export default function Rewards() {
                 </TableHeader>
                 <TableBody>
                   {categoryRewards.map((reward) => (
-                    <TableRow key={reward.id}>
+                    <React.Fragment key={reward.id}>
+                    <TableRow>
                       <TableCell>
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setExpandedId(expandedId === reward.id ? null : reward.id)}
+                            className="p-0.5 rounded hover:bg-muted transition-colors"
+                          >
+                            {expandedId === reward.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                          </button>
                           <span className="text-xl">{reward.icon || '🎁'}</span>
                           <div>
                             <p className="font-medium">{reward.name}</p>
@@ -358,6 +369,58 @@ export default function Rewards() {
                         </div>
                       </TableCell>
                     </TableRow>
+                    {expandedId === reward.id && (
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={7} className="py-3 px-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                                <Info className="h-4 w-4 text-primary" /> Effect / ผลของรางวัล
+                              </p>
+                              {reward.description ? (
+                                <p className="text-muted-foreground ml-5">{reward.description}</p>
+                              ) : (
+                                <p className="text-muted-foreground/60 ml-5 italic">No description</p>
+                              )}
+                              {reward.description_th && (
+                                <p className="text-muted-foreground ml-5">{reward.description_th}</p>
+                              )}
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                                <AlertCircle className="h-4 w-4 text-primary" /> เงื่อนไขการใช้
+                              </p>
+                              {reward.cooldown_days > 0 && (
+                                <p className="text-muted-foreground ml-5 flex items-center gap-1.5">
+                                  <Clock className="h-3.5 w-3.5" /> ต้องรอ {reward.cooldown_days} วันก่อนแลกซ้ำ
+                                </p>
+                              )}
+                              {(reward.valid_from || reward.valid_until) && (
+                                <p className="text-muted-foreground ml-5 flex items-center gap-1.5">
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  {' '}แลกได้{reward.valid_from ? ` ตั้งแต่ ${format(new Date(reward.valid_from), 'dd/MM/yyyy')}` : ''}
+                                  {reward.valid_until ? ` ถึง ${format(new Date(reward.valid_until), 'dd/MM/yyyy')}` : ''}
+                                </p>
+                              )}
+                              {reward.requires_approval && (
+                                <p className="text-muted-foreground ml-5 flex items-center gap-1.5">
+                                  <ShieldCheck className="h-3.5 w-3.5" /> ต้องขออนุมัติก่อนใช้
+                                </p>
+                              )}
+                              {reward.stock_limit && (
+                                <p className="text-muted-foreground ml-5 flex items-center gap-1.5">
+                                  <Package className="h-3.5 w-3.5" /> เหลือ {reward.stock_limit - reward.stock_used}/{reward.stock_limit} ชิ้น
+                                </p>
+                              )}
+                              {!reward.cooldown_days && !reward.valid_from && !reward.valid_until && !reward.requires_approval && !reward.stock_limit && (
+                                <p className="text-muted-foreground/60 ml-5 italic">ไม่มีเงื่อนไขพิเศษ</p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>
