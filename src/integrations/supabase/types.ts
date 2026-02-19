@@ -14,6 +14,76 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_query_audit_logs: {
+        Row: {
+          answer: string
+          created_at: string
+          data_sources_used: string[] | null
+          evidence_count: number | null
+          group_id: string
+          id: string
+          policy_id: string | null
+          question: string
+          request_id: string
+          response_time_ms: number | null
+          sources_used: Json | null
+          target_group_ids: string[] | null
+          user_id: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          data_sources_used?: string[] | null
+          evidence_count?: number | null
+          group_id: string
+          id?: string
+          policy_id?: string | null
+          question: string
+          request_id?: string
+          response_time_ms?: number | null
+          sources_used?: Json | null
+          target_group_ids?: string[] | null
+          user_id: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          data_sources_used?: string[] | null
+          evidence_count?: number | null
+          group_id?: string
+          id?: string
+          policy_id?: string | null
+          question?: string
+          request_id?: string
+          response_time_ms?: number | null
+          sources_used?: Json | null
+          target_group_ids?: string[] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_query_audit_logs_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_query_audit_logs_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "ai_query_policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_query_audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_query_group_export: {
         Row: {
           allowed_data_sources: string[]

@@ -8,7 +8,7 @@ import { getBangkokDateString, formatBangkokTime, getBangkokNow, toBangkokTime, 
 import {
   isSourceQuery, getCrossGroupPolicy, computeEffectiveScope,
   resolveEntities, retrieveCrossGroupEvidence, generateCrossGroupReply,
-  saveQueryMemory, getLastAnswerMemory, formatSourcesReply,
+  saveQueryMemory, getLastAnswerMemory, formatSourcesReply, logQueryAudit,
 } from "./utils/cross-group-query.ts";
 import {
   checkReceiptQuota,
@@ -10799,6 +10799,7 @@ async function handleMessageEvent(event: LineEvent) {
           // No memory → fall through to normal AI
         } else {
           // Full cross-group query flow
+          const crossGroupStartTime = Date.now();
           const effectiveScope = await computeEffectiveScope(crossGroupPolicy);
           if (effectiveScope.allowedGroupIds.length > 0) {
             const resolved = await resolveEntities(parsed.userMessage, effectiveScope);
@@ -10807,8 +10808,17 @@ async function handleMessageEvent(event: LineEvent) {
             );
             const crossGroupReply = await generateCrossGroupReply(parsed.userMessage, evidence, effectiveScope);
             
+            const crossGroupDurationMs = Date.now() - crossGroupStartTime;
             // Save memory for follow-up
             await saveQueryMemory(user.id, group.id, parsed.userMessage, crossGroupReply, evidence.sources);
+            // Fire-and-forget audit log
+            logQueryAudit({
+              userId: user.id, groupId: group.id, question: parsed.userMessage,
+              answer: crossGroupReply, targetGroupIds: resolved.targetGroupIds,
+              dataSourcesUsed: effectiveScope.allowedDataSources, sourcesUsed: evidence.sources,
+              policyId: crossGroupPolicy.id, evidenceCount: evidence.sources.length,
+              responseTimeMs: crossGroupDurationMs,
+            }).catch(() => {});
             
             const quickReply = await getSmartQuickReply(locale);
             await replyToLine(event.replyToken, crossGroupReply, quickReply);

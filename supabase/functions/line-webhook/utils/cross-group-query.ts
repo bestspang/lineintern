@@ -584,6 +584,38 @@ export async function getLastAnswerMemory(
 
 // ── Format Sources Reply ───────────────────────────────
 
+// ── Audit Logging ──────────────────────────────────────
+
+export async function logQueryAudit(params: {
+  userId: string;
+  groupId: string;
+  question: string;
+  answer: string;
+  targetGroupIds: string[];
+  dataSourcesUsed: string[];
+  sourcesUsed: EvidenceSource[];
+  policyId: string | null;
+  evidenceCount: number;
+  responseTimeMs: number;
+}): Promise<void> {
+  try {
+    await supabase.from("ai_query_audit_logs").insert({
+      user_id: params.userId,
+      group_id: params.groupId,
+      question: params.question,
+      answer: params.answer,
+      target_group_ids: params.targetGroupIds,
+      data_sources_used: params.dataSourcesUsed,
+      sources_used: params.sourcesUsed,
+      policy_id: params.policyId,
+      evidence_count: params.evidenceCount,
+      response_time_ms: params.responseTimeMs,
+    });
+  } catch (error) {
+    console.error("[logQueryAudit] Error:", error);
+  }
+}
+
 export function formatSourcesReply(sources: EvidenceSource[]): string {
   if (!sources || sources.length === 0) {
     return "ไม่มีข้อมูลแหล่งที่มาสำหรับคำตอบก่อนหน้า";

@@ -14,8 +14,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Plus, Trash2, Shield, Users, MessageSquare, Clock, Search, Eye } from 'lucide-react';
+import { Plus, Trash2, Shield, Users, MessageSquare, Clock, Search, Eye, Play, Grid3X3, FileText, ChevronDown, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -76,6 +78,22 @@ interface AiQueryMemoryRow {
   expires_at: string;
 }
 
+interface AuditLogRow {
+  id: string;
+  request_id: string;
+  user_id: string;
+  group_id: string;
+  question: string;
+  answer: string;
+  target_group_ids: string[];
+  data_sources_used: string[];
+  sources_used: any;
+  policy_id: string | null;
+  evidence_count: number;
+  response_time_ms: number;
+  created_at: string;
+}
+
 const ALL_DATA_SOURCES = ['messages', 'attendance', 'employees', 'tasks'];
 
 // ── Main Component ─────────────────────────────────────────────
@@ -93,14 +111,20 @@ export default function AIQueryControl() {
       </div>
 
       <Tabs defaultValue="policies">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="policies">{t('กฎการเข้าถึง', 'Access Rules')}</TabsTrigger>
-          <TabsTrigger value="export">{t('นโยบายส่งออก', 'Group Export Policy')}</TabsTrigger>
+          <TabsTrigger value="export">{t('นโยบายส่งออก', 'Export Policy')}</TabsTrigger>
+          <TabsTrigger value="matrix">{t('Access Matrix', 'Access Matrix')}</TabsTrigger>
+          <TabsTrigger value="test">{t('ทดสอบ AI', 'Test Console')}</TabsTrigger>
+          <TabsTrigger value="audit">{t('Audit Logs', 'Audit Logs')}</TabsTrigger>
           <TabsTrigger value="log">{t('คำถามล่าสุด', 'Recent Queries')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="policies"><PoliciesTab /></TabsContent>
         <TabsContent value="export"><ExportPolicyTab /></TabsContent>
+        <TabsContent value="matrix"><AccessMatrixTab /></TabsContent>
+        <TabsContent value="test"><TestConsoleTab /></TabsContent>
+        <TabsContent value="audit"><AuditLogsTab /></TabsContent>
         <TabsContent value="log"><RecentQueriesTab /></TabsContent>
       </Tabs>
     </div>
@@ -667,7 +691,495 @@ function ExportPolicyTab() {
   );
 }
 
-// ── Tab C: Recent Queries ──────────────────────────────────────
+// ── Tab C: Effective Access Matrix ─────────────────────────────
+
+function AccessMatrixTab() {
+  const { t } = useLocale();
+
+  const { data: policies } = useQuery({
+    queryKey: ['ai-query-policies'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ai_query_policies').select('*').eq('enabled', true).order('priority', { ascending: false });
+      if (error) throw error;
+      return data as AiQueryPolicy[];
+    },
+  });
+
+  const { data: scopeGroups } = useQuery({
+    queryKey: ['ai-query-scope-groups-all'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ai_query_scope_groups').select('*');
+      if (error) throw error;
+      return data as AiQueryScopeGroup[];
+    },
+  });
+
+  const { data: groups } = useQuery({
+    queryKey: ['groups-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('groups').select('id, display_name, line_group_id').order('display_name');
+      if (error) throw error;
+      return data as GroupInfo[];
+    },
+  });
+
+  const { data: exports } = useQuery({
+    queryKey: ['ai-query-group-export'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ai_query_group_export').select('*');
+      if (error) throw error;
+      return data as GroupExport[];
+    },
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ['users-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('id, display_name, line_user_id').order('display_name');
+      if (error) throw error;
+      return data as UserInfo[];
+    },
+  });
+
+  const exportMap = new Map((exports || []).map(e => [e.group_id, e]));
+  const allGroupIds = (groups || []).map(g => g.id);
+  const exportEnabledIds = new Set((exports || []).filter(e => e.export_enabled).map(e => e.group_id));
+
+  // Compute access for each policy → each target group
+  const computeAccess = (policy: AiQueryPolicy, targetGroupId: string): { accessible: boolean; dataSources: string[] } => {
+    // Check if target group allows export
+    if (!exportEnabledIds.has(targetGroupId)) return { accessible: false, dataSources: [] };
+
+    // Check if target group is in policy's scope
+    const policyScopeGroupIds = (scopeGroups || []).filter(sg => sg.policy_id === policy.id).map(sg => sg.group_id);
+    let inScope = false;
+    if (policy.scope_mode === 'all') {
+      inScope = true;
+    } else if (policy.scope_mode === 'include') {
+      inScope = policyScopeGroupIds.includes(targetGroupId);
+    } else {
+      inScope = !policyScopeGroupIds.includes(targetGroupId);
+    }
+    if (!inScope) return { accessible: false, dataSources: [] };
+
+    // Intersect data sources
+    const targetExport = exportMap.get(targetGroupId);
+    const exportDs = targetExport?.allowed_data_sources || [];
+    const intersection = policy.allowed_data_sources.filter(ds => exportDs.includes(ds));
+    return { accessible: intersection.length > 0, dataSources: intersection };
+  };
+
+  const getSourceLabel = (p: AiQueryPolicy) => {
+    if (p.source_type === 'group') {
+      return groups?.find(g => g.id === p.source_group_id)?.display_name || '—';
+    }
+    return users?.find(u => u.id === p.source_user_id)?.display_name || '—';
+  };
+
+  if (!policies || !groups) return <Skeleton className="h-40 w-full" />;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Grid3X3 className="h-4 w-4" />
+          {t('Effective Access Matrix', 'Effective Access Matrix')}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {t('แสดงว่า requester แต่ละคนเข้าถึงข้อมูลกลุ่มไหนได้บ้าง (เฉพาะ policy ที่เปิดอยู่)', 'Shows which target groups each requester can access (enabled policies only)')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!policies.length ? (
+          <p className="text-sm text-muted-foreground text-center py-8">{t('ไม่มี policy ที่เปิดอยู่', 'No enabled policies')}</p>
+        ) : (
+          <ScrollArea className="w-full">
+            <div className="min-w-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[150px] sticky left-0 bg-background z-10">{t('Requester', 'Requester')}</TableHead>
+                    {groups.map(g => (
+                      <TableHead key={g.id} className="text-center text-xs px-2 min-w-[80px]">
+                        <div className="truncate max-w-[80px]" title={g.display_name}>{g.display_name}</div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {policies.map(p => (
+                    <TableRow key={p.id}>
+                      <TableCell className="sticky left-0 bg-background z-10">
+                        <div className="flex items-center gap-1.5">
+                          {p.source_type === 'group' ? <Users className="h-3 w-3 text-muted-foreground" /> : <Shield className="h-3 w-3 text-muted-foreground" />}
+                          <span className="text-sm truncate max-w-[130px]">{getSourceLabel(p)}</span>
+                        </div>
+                      </TableCell>
+                      {groups.map(g => {
+                        const access = computeAccess(p, g.id);
+                        return (
+                          <TableCell key={g.id} className="text-center px-2">
+                            {access.accessible ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                <div className="flex flex-wrap justify-center gap-0.5">
+                                  {access.dataSources.map(ds => (
+                                    <Badge key={ds} variant="secondary" className="text-[9px] px-1 py-0 leading-tight">
+                                      {ds.slice(0, 3)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <XCircle className="h-4 w-4 text-muted-foreground/30 mx-auto" />
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Tab D: AI Test Console ─────────────────────────────────────
+
+function TestConsoleTab() {
+  const { t } = useLocale();
+  const [groupId, setGroupId] = useState('');
+  const [userId, setUserId] = useState('');
+  const [question, setQuestion] = useState('');
+  const [result, setResult] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { data: groups } = useQuery({
+    queryKey: ['groups-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('groups').select('id, display_name, line_group_id').order('display_name');
+      if (error) throw error;
+      return data as GroupInfo[];
+    },
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ['users-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('id, display_name, line_user_id').order('display_name');
+      if (error) throw error;
+      return data as UserInfo[];
+    },
+  });
+
+  const runTest = async () => {
+    if (!question.trim()) return;
+    setIsLoading(true);
+    setResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-query-test', {
+        body: {
+          requester_group_id: groupId || null,
+          requester_user_id: userId || null,
+          question: question.trim(),
+        },
+      });
+      if (error) throw error;
+      setResult(data);
+    } catch (err: any) {
+      toast.error(err.message || 'Test failed');
+      setResult({ error: err.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Play className="h-4 w-4" />
+          {t('AI Test Console (Dry-Run)', 'AI Test Console (Dry-Run)')}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {t('จำลองคำถาม AI ข้ามกลุ่มโดยไม่ส่ง LINE จริง — ดู scope, evidence, คำตอบ', 'Simulate cross-group query without sending LINE — see scope, evidence, answer')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Inputs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>{t('กลุ่มผู้ถาม', 'Requester Group')}</Label>
+            <Select value={groupId} onValueChange={setGroupId}>
+              <SelectTrigger><SelectValue placeholder={t('เลือกกลุ่ม', 'Select group')} /></SelectTrigger>
+              <SelectContent>
+                {(groups || []).map(g => (
+                  <SelectItem key={g.id} value={g.id}>{g.display_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('ผู้ถาม', 'Requester User')}</Label>
+            <Select value={userId} onValueChange={setUserId}>
+              <SelectTrigger><SelectValue placeholder={t('เลือกผู้ใช้', 'Select user')} /></SelectTrigger>
+              <SelectContent>
+                {(users || []).map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.display_name || u.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>{t('คำถาม', 'Question')}</Label>
+          <Textarea
+            value={question}
+            onChange={e => setQuestion(e.target.value)}
+            placeholder={t('เช่น เมื่อวานน้อง Eastville คนไหนมาบ้าง', 'e.g. Who came to Eastville yesterday?')}
+            rows={2}
+          />
+        </div>
+
+        <Button onClick={runTest} disabled={isLoading || !question.trim()}>
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+          {t('ทดสอบ', 'Run Test')}
+        </Button>
+
+        {/* Results */}
+        {result && (
+          <div className="space-y-3 pt-2">
+            {result.error ? (
+              <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{result.error}</div>
+            ) : (
+              <>
+                {result.duration_ms != null && (
+                  <Badge variant="outline" className="text-xs">⏱ {result.duration_ms}ms</Badge>
+                )}
+
+                {/* Policy */}
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full text-left">
+                    <ChevronDown className="h-4 w-4" />
+                    {t('1. Policy', '1. Policy')}
+                    {result.steps?.policy ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <XCircle className="h-3.5 w-3.5 text-destructive" />}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <pre className="bg-muted rounded-md p-2 text-xs overflow-auto max-h-32">{JSON.stringify(result.steps?.policy, null, 2)}</pre>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Effective Scope */}
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full text-left">
+                    <ChevronDown className="h-4 w-4" />
+                    {t('2. Effective Scope', '2. Effective Scope')}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <pre className="bg-muted rounded-md p-2 text-xs overflow-auto max-h-40">{JSON.stringify(result.steps?.effective_scope, null, 2)}</pre>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Resolved Entities */}
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full text-left">
+                    <ChevronDown className="h-4 w-4" />
+                    {t('3. Resolved Entities', '3. Resolved Entities')}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <pre className="bg-muted rounded-md p-2 text-xs overflow-auto max-h-40">{JSON.stringify(result.steps?.resolved_entities, null, 2)}</pre>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Evidence */}
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full text-left">
+                    <ChevronDown className="h-4 w-4" />
+                    {t('4. Evidence', '4. Evidence')}
+                    <Badge variant="secondary" className="text-[10px]">
+                      {result.steps?.evidence?.sources_count || 0} sources
+                    </Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <pre className="bg-muted rounded-md p-2 text-xs overflow-auto max-h-60">{JSON.stringify(result.steps?.evidence, null, 2)}</pre>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Answer */}
+                <Collapsible defaultOpen>
+                  <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full text-left">
+                    <ChevronDown className="h-4 w-4" />
+                    {t('5. AI Answer', '5. AI Answer')}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <div className="bg-primary/5 border border-primary/20 rounded-md p-3 text-sm whitespace-pre-wrap">
+                      {result.steps?.answer || t('ไม่มีคำตอบ', 'No answer')}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Tab E: Audit Logs ──────────────────────────────────────────
+
+function AuditLogsTab() {
+  const { t } = useLocale();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ['ai-query-audit-logs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ai_query_audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data as AuditLogRow[];
+    },
+  });
+
+  const { data: groups } = useQuery({
+    queryKey: ['groups-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('groups').select('id, display_name, line_group_id').order('display_name');
+      if (error) throw error;
+      return data as GroupInfo[];
+    },
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ['users-list-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('id, display_name, line_user_id').order('display_name');
+      if (error) throw error;
+      return data as UserInfo[];
+    },
+  });
+
+  const groupMap = new Map((groups || []).map(g => [g.id, g.display_name]));
+  const userMap = new Map((users || []).map(u => [u.id, u.display_name || u.line_user_id || u.id]));
+
+  const filtered = (logs || []).filter(l => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return l.question.toLowerCase().includes(q) ||
+      l.answer.toLowerCase().includes(q) ||
+      (userMap.get(l.user_id) || '').toLowerCase().includes(q) ||
+      (groupMap.get(l.group_id) || '').toLowerCase().includes(q);
+  });
+
+  if (isLoading) return <Skeleton className="h-40 w-full" />;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="h-4 w-4" />
+          {t('Audit Logs', 'Audit Logs')}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {t('บันทึกถาวรของทุกคำถาม AI ข้ามกลุ่ม (ไม่หมดอายุ)', 'Permanent record of all cross-group AI queries (no TTL)')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('ค้นหาคำถาม, คำตอบ, ผู้ถาม...', 'Search question, answer, requester...')}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        {!filtered.length ? (
+          <p className="text-sm text-muted-foreground text-center py-8">{t('ไม่มีข้อมูล', 'No audit logs')}</p>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map(log => (
+              <div key={log.id} className="border rounded-lg">
+                <button
+                  className="w-full text-left p-3 hover:bg-muted/50 transition-colors"
+                  onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                      <span className="font-medium text-foreground truncate">{userMap.get(log.user_id) || '—'}</span>
+                      <span>•</span>
+                      <span className="truncate">{groupMap.get(log.group_id) || '—'}</span>
+                      <span>•</span>
+                      <span className="whitespace-nowrap">{new Date(log.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge variant="outline" className="text-[10px]">{log.evidence_count} ev</Badge>
+                      <Badge variant="outline" className="text-[10px]">{log.response_time_ms}ms</Badge>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${expandedId === log.id ? 'rotate-180' : ''}`} />
+                    </div>
+                  </div>
+                  <p className="text-sm font-medium mt-1 truncate">Q: {log.question}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5 truncate">A: {log.answer.slice(0, 100)}{log.answer.length > 100 ? '…' : ''}</p>
+                </button>
+
+                {expandedId === log.id && (
+                  <div className="px-3 pb-3 space-y-2 border-t pt-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">{t('คำตอบเต็ม', 'Full Answer')}</p>
+                      <p className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-2">{log.answer}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">{t('กลุ่มที่ค้นหา', 'Target Groups')}:</span>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {(log.target_group_ids || []).map(gid => (
+                            <Badge key={gid} variant="secondary" className="text-[10px]">{groupMap.get(gid) || gid.slice(0, 8)}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('ข้อมูลที่ใช้', 'Data Sources')}:</span>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {(log.data_sources_used || []).map(ds => (
+                            <Badge key={ds} variant="outline" className="text-[10px]">{ds}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {log.sources_used && Array.isArray(log.sources_used) && log.sources_used.length > 0 && (
+                      <Collapsible>
+                        <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                          <ChevronDown className="h-3 w-3" />
+                          {t('แหล่งข้อมูล', 'Sources')} ({log.sources_used.length})
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-1">
+                          <pre className="bg-muted rounded p-2 text-[10px] overflow-auto max-h-40">{JSON.stringify(log.sources_used, null, 2)}</pre>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Tab F: Recent Queries ──────────────────────────────────────
 
 function RecentQueriesTab() {
   const { t } = useLocale();

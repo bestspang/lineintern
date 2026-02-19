@@ -237,3 +237,6 @@ verify_jwt = false
 
 [functions.dm-send]
 verify_jwt = false
+
+[functions.ai-query-test]
+verify_jwt = false
