@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Coins, ArrowLeft, RotateCcw, Sparkles } from 'lucide-react';
+import { Coins, ArrowLeft, RotateCcw, Sparkles, History } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 type Phase = 'idle' | 'spinning' | 'reveal';
@@ -98,8 +98,25 @@ export default function GachaBox() {
     enabled: !!employee?.id,
   });
 
+  // Daily pull count
+  const { data: dailyCount } = useQuery({
+    queryKey: ['gacha-daily-count', employee?.id, gachaReward?.id],
+    queryFn: async () => {
+      if (!employee?.id || !gachaReward?.id) return null;
+      const { data, error } = await portalApi<{ pulls_today: number; daily_limit: number | null }>({
+        endpoint: 'gacha-daily-count',
+        employee_id: employee.id,
+        params: { reward_id: gachaReward.id },
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!employee?.id && !!gachaReward?.id,
+  });
+
   const balance = newBalance ?? happyPoints?.point_balance ?? happyPoints?.current_balance ?? 0;
   const canAfford = gachaReward ? balance >= gachaReward.point_cost : false;
+  const dailyLimitReached = dailyCount?.daily_limit ? (dailyCount.pulls_today >= dailyCount.daily_limit) : false;
 
   const pullMutation = useMutation({
     mutationFn: async () => {
@@ -131,6 +148,7 @@ export default function GachaBox() {
         queryClient.invalidateQueries({ queryKey: ['my-happy-points'] });
         queryClient.invalidateQueries({ queryKey: ['my-bag-items'] });
         queryClient.invalidateQueries({ queryKey: ['my-bag-count'] });
+        queryClient.invalidateQueries({ queryKey: ['gacha-daily-count'] });
       }, 3000);
     },
     onError: (error) => {
@@ -166,7 +184,7 @@ export default function GachaBox() {
   useEffect(() => () => stopSpin(), [stopSpin]);
 
   const handlePull = () => {
-    if (!canAfford || pullMutation.isPending || phase !== 'idle') return;
+    if (!canAfford || dailyLimitReached || pullMutation.isPending || phase !== 'idle') return;
     setWonPrize(null);
     pullMutation.mutate();
   };
@@ -224,17 +242,37 @@ export default function GachaBox() {
               <Button
                 size="lg"
                 onClick={handlePull}
-                disabled={!canAfford || pullMutation.isPending}
+                disabled={!canAfford || dailyLimitReached || pullMutation.isPending}
                 className="text-lg px-8 py-6 gap-2"
               >
                 <Coins className="h-5 w-5" />
                 {locale === 'th' ? `สุ่มเลย! (${gachaReward.point_cost} pts)` : `Pull! (${gachaReward.point_cost} pts)`}
               </Button>
-              {!canAfford && (
+              {dailyLimitReached && (
+                <p className="text-sm text-destructive">
+                  {locale === 'th' 
+                    ? `สุ่มครบ ${dailyCount?.daily_limit} ครั้งแล้ววันนี้` 
+                    : `Daily limit reached (${dailyCount?.daily_limit} pulls/day)`}
+                </p>
+              )}
+              {!canAfford && !dailyLimitReached && (
                 <p className="text-sm text-destructive">
                   {locale === 'th' ? 'แต้มไม่พอ' : 'Not enough points'}
                 </p>
               )}
+              {dailyCount?.daily_limit && !dailyLimitReached && (
+                <p className="text-xs text-muted-foreground">
+                  {locale === 'th' 
+                    ? `สุ่มแล้ว ${dailyCount.pulls_today}/${dailyCount.daily_limit} ครั้งวันนี้` 
+                    : `${dailyCount.pulls_today}/${dailyCount.daily_limit} pulls today`}
+                </p>
+              )}
+              <Button asChild variant="ghost" size="sm" className="gap-1">
+                <Link to="/portal/gacha-history">
+                  <History className="h-4 w-4" />
+                  {locale === 'th' ? 'ประวัติการสุ่ม' : 'Pull History'}
+                </Link>
+              </Button>
             </div>
           )}
 

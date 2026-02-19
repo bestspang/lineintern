@@ -48,3 +48,4 @@ export { default as PayrollReport } from './PayrollReport';
 // Bag
 export { default as MyBag } from './MyBag';
 export { default as GachaBox } from './GachaBox';
+export { default as GachaHistory } from './GachaHistory';

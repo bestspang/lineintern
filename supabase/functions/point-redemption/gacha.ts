@@ -74,6 +74,32 @@ export async function gachaPull(supabase: any, employee_id: string, reward_id: s
     }
   }
 
+  // 4.5 Check daily pull limit
+  if (reward.daily_pull_limit && reward.daily_pull_limit > 0) {
+    // Calculate Bangkok today start in UTC (Bangkok = UTC+7)
+    const now = new Date();
+    const bangkokOffset = 7 * 60 * 60 * 1000;
+    const bangkokNow = new Date(now.getTime() + bangkokOffset);
+    const bangkokTodayStart = new Date(Date.UTC(bangkokNow.getUTCFullYear(), bangkokNow.getUTCMonth(), bangkokNow.getUTCDate()) - bangkokOffset);
+
+    const { count } = await supabase
+      .from('point_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('employee_id', employee_id)
+      .eq('category', 'gacha')
+      .eq('transaction_type', 'spend')
+      .gte('created_at', bangkokTodayStart.toISOString());
+
+    if ((count || 0) >= reward.daily_pull_limit) {
+      return jsonResponse({
+        success: false,
+        error: `Daily limit reached (${reward.daily_pull_limit} pulls/day)`,
+        daily_limit: reward.daily_pull_limit,
+        pulls_today: count,
+      }, 400);
+    }
+  }
+
   // 5. Get active gacha prizes for this reward
   const { data: prizes, error: prizesError } = await supabase
     .from('gacha_box_items')

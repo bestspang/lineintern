@@ -3789,6 +3789,7 @@ export type Database = {
           category: string
           cooldown_days: number | null
           created_at: string | null
+          daily_pull_limit: number | null
           description: string | null
           description_th: string | null
           display_order: number | null
@@ -3810,6 +3811,7 @@ export type Database = {
           category: string
           cooldown_days?: number | null
           created_at?: string | null
+          daily_pull_limit?: number | null
           description?: string | null
           description_th?: string | null
           display_order?: number | null
@@ -3831,6 +3833,7 @@ export type Database = {
           category?: string
           cooldown_days?: number | null
           created_at?: string | null
+          daily_pull_limit?: number | null
           description?: string | null
           description_th?: string | null
           display_order?: number | null

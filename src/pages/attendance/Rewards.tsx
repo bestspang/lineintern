@@ -32,6 +32,7 @@ interface Reward {
   stock_limit: number | null;
   stock_used: number;
   cooldown_days: number;
+  daily_pull_limit: number | null;
   use_mode: string;
   valid_from: string | null;
   valid_until: string | null;
@@ -126,6 +127,7 @@ export default function Rewards() {
       requires_approval: formData.get('requires_approval') === 'on',
       stock_limit: formData.get('stock_limit') ? parseInt(formData.get('stock_limit') as string) : null,
       cooldown_days: parseInt(formData.get('cooldown_days') as string) || 0,
+      daily_pull_limit: formData.get('daily_pull_limit') ? parseInt(formData.get('daily_pull_limit') as string) : null,
       use_mode: formData.get('use_mode') as string || 'use_now',
     };
 
@@ -226,9 +228,15 @@ export default function Rewards() {
                         <Input id="cooldown_days" name="cooldown_days" type="number" defaultValue={editingReward?.cooldown_days || 0} />
                       </div>
                     </div>
-                    <div>
-                      <Label htmlFor="stock_limit">Stock Limit (empty = unlimited)</Label>
-                      <Input id="stock_limit" name="stock_limit" type="number" defaultValue={editingReward?.stock_limit || ''} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="stock_limit">Stock Limit (empty = unlimited)</Label>
+                        <Input id="stock_limit" name="stock_limit" type="number" defaultValue={editingReward?.stock_limit || ''} />
+                      </div>
+                      <div>
+                        <Label htmlFor="daily_pull_limit">Daily Pull Limit (Gacha)</Label>
+                        <Input id="daily_pull_limit" name="daily_pull_limit" type="number" placeholder="ไม่จำกัด" defaultValue={editingReward?.daily_pull_limit || ''} />
+                      </div>
                     </div>
                     <div>
                       <Label htmlFor="use_mode">Use Mode</Label>
