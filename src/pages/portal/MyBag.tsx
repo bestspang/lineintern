@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatBangkokDate } from '@/lib/timezone';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
@@ -96,6 +97,16 @@ export default function MyBag() {
                     ? (locale === 'th' ? '🎁 ได้รับจากผู้จัดการ' : '🎁 Granted by manager')
                     : (locale === 'th' ? '🛒 ซื้อจากร้านค้า' : '🛒 Purchased')}
                 </p>
+                {item.status === 'active' && item.expires_at && (
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    ⏰ {locale === 'th' ? 'หมดอายุ' : 'Expires'}: {formatBangkokDate(item.expires_at)}
+                  </p>
+                )}
+                {item.status === 'used' && item.used_at && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    ✅ {locale === 'th' ? 'ใช้เมื่อ' : 'Used on'}: {formatBangkokDate(item.used_at)}
+                  </p>
+                )}
               </div>
               <Badge
                 variant={item.status === 'active' ? 'default' : item.status === 'used' ? 'secondary' : 'destructive'}

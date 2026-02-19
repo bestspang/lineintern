@@ -59,6 +59,21 @@ export default function RewardShop() {
     enabled: !!employee?.id,
   });
 
+  const { data: bagCount } = useQuery({
+    queryKey: ['my-bag-count', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return 0;
+      const { count, error } = await supabase
+        .from('employee_bag_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee.id)
+        .eq('status', 'active');
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!employee?.id,
+  });
+
   const { data: rewards, isLoading } = useQuery({
     queryKey: ['available-rewards'],
     queryFn: async () => {
@@ -167,9 +182,14 @@ export default function RewardShop() {
           {locale === 'th' ? 'ร้านค้ารางวัล' : 'Reward Shop'}
         </h1>
         <div className="flex gap-1">
-          <Button asChild variant="ghost" size="icon">
+          <Button asChild variant="ghost" size="icon" className="relative">
             <Link to="/portal/my-bag">
               <Backpack className="h-5 w-5 text-primary" />
+              {(bagCount ?? 0) > 0 && (
+                <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-4 min-w-4 flex items-center justify-center px-1">
+                  {bagCount}
+                </span>
+              )}
             </Link>
           </Button>
           <Button asChild variant="ghost" size="icon">
