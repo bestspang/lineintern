@@ -1,259 +1,116 @@
 
 
-## Cross-Group AI Query System — Implementation Plan (ปรับจาก Spec)
+## Phase 2: AI Test Console + Access Matrix + Audit Logs
 
-### 1) Spec Analysis: สิ่งที่ดีแล้ว (ไม่ต้องแก้)
+### Overview
 
-- Core Principles 4 ข้อ (evidence-only, deterministic access, short answers, source attribution) — สมบูรณ์
-- Triggering Rule (@mention only) — ตรงกับ `parseCommand` ที่มีอยู่แล้ว
-- Two-sided permission model (requester scope intersect group export policy) — design ดีมาก
-- Follow-up sources memory — ใช้ได้จริง
-- Response style (Thai, short, Bangkok dates) — เข้ากับ bot ปัจจุบัน
+Add 3 new tabs to the existing `/settings/ai-cross-group` page, bringing it from 3 tabs to 6 (reordered for logical flow).
 
-### 2) สิ่งที่ต้องปรับให้เข้ากับ Reality ของ Codebase
+### 1) Database: New `ai_query_audit_logs` Table
 
-#### 2.1 "Tools" concept ต้องเป็น server-side functions (ไม่ใช่ LLM tool-calling)
-
-Spec เขียนเหมือน LLM จะ "call tools" เอง (resolve_entities, retrieve_attendance_facts, search_messages) แต่ในระบบจริง:
-- ใช้ Lovable AI Gateway (OpenAI-compatible) ซึ่ง **ไม่รองรับ function calling / tool use**
-- ต้องเปลี่ยนเป็น **server-side orchestration**: edge function เป็นคนดึงข้อมูล แล้วส่ง context ให้ AI ตอบ
-
-**แนวทางปรับ:**
-```text
-// แทนที่จะให้ AI call tools:
-Step 1: Server resolves entities (match group names/synonyms)
-Step 2: Server retrieves data (messages, attendance) within scope
-Step 3: Server builds context prompt with evidence
-Step 4: AI generates answer from provided evidence
-Step 5: Server extracts/stores sources_used
-```
-
-#### 2.2 Group Directory ใช้ข้อมูลที่มีอยู่แล้ว + เพิ่ม synonyms
-
-ระบบมี `groups` table + `branches` table อยู่แล้ว:
-- groups: Eastville Goodchoose team, Goodchoose Central Park สีลม, etc.
-- branches: Central Park, Glowfish Office, Management (linked via line_group_id)
-
-**แนวทาง:** เพิ่ม `synonyms` column ใน `groups` table (text[]) แทนการสร้าง table ใหม่ หรือเก็บใน `ai_query_access` config
-
-#### 2.3 Attendance Facts ดึงจาก attendance_logs โดยตรง
-
-Spec มี `retrieve_attendance_facts()` tool — ในจริงต้องดึงจาก:
-- `attendance_logs` (check_in/check_out events per employee per branch)
-- `employees` (ชื่อ, สาขา)
-- `daily_attendance_summaries` (สรุปรายวัน)
-
-ไม่ต้องสร้าง "facts table" แยก — ดึงจาก source tables ตรงๆ
-
-#### 2.4 Conversation Memory ง่ายกว่า Spec ได้
-
-Spec มี `ai_query_conversations` table เก็บ role/content/sources — ปรับให้ lightweight:
-- เก็บแค่ last Q&A pair + sources_used per user per group
-- TTL 1 ชั่วโมง (ใช้ `expires_at`)
-- ไม่ต้องเก็บ full conversation history (ใช้ messages table ที่มีอยู่แทน)
-
-#### 2.5 Admin Page วาง Route ที่ `/settings/ai-cross-group` ตาม spec — OK
-
-แต่ลดจาก 5 tabs เหลือ 3 tabs ก่อน (MVP):
-- **A) Access Rules** (requester + scope + data sources) — รวม requester rules
-- **B) Group Export Policy** (per group: export_enabled, synonyms)
-- **C) Activity Log** (recent queries + sources used)
-
-**ตัด Tab D (AI Test Console) และ E (Audit Logs detail) ไว้ phase 2**
-
-### 3) Database Design (ปรับจาก Spec)
-
-**Table 1: `ai_query_policies`** (รวม requester + scope)
+The existing `ai_query_memory` has a 1-hour TTL and is not suitable for persistent audit. We need a dedicated audit log table.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| id | uuid PK | |
-| source_type | text | 'group' or 'user' |
-| source_group_id | uuid FK groups | nullable |
-| source_user_id | uuid FK users | nullable |
-| enabled | boolean default false | ต้องเปิดก่อนถึงจะใช้ได้ |
-| scope_mode | text | 'all', 'include', 'exclude' |
-| allowed_data_sources | text[] | ['messages','attendance','employees','tasks'] |
-| time_window_days | int default 30 | |
-| pii_mode | text default 'mask_sensitive' | |
-| max_hits_per_group | int default 50 | |
-| priority | int default 0 | สำหรับ resolve conflicts |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-
-**Table 2: `ai_query_scope_groups`** (include/exclude list)
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| policy_id | uuid FK ai_query_policies | |
-| group_id | uuid FK groups | |
-
-**Table 3: `ai_query_group_export`** (per-group export control)
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| group_id | uuid FK groups UNIQUE | |
-| export_enabled | boolean default false | default ปิด ตาม spec |
-| allowed_data_sources | text[] default '{}' | override ต่อกลุ่ม |
-| synonyms | text[] default '{}' | ชื่อเรียกอื่นๆ |
-| masking_level | text default 'none' | |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-
-**Table 4: `ai_query_memory`** (follow-up memory, lightweight)
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| user_id | uuid FK users | |
-| group_id | uuid FK groups | |
-| question | text | |
-| answer | text | |
+| id | uuid PK | default gen_random_uuid() |
+| request_id | uuid | unique per query execution |
+| user_id | uuid FK users | who asked |
+| group_id | uuid FK groups | from which group |
+| question | text | the question asked |
+| answer | text | AI response |
+| target_group_ids | text[] | groups that were searched |
+| data_sources_used | text[] | e.g. ['messages','attendance'] |
 | sources_used | jsonb | structured citations |
-| created_at | timestamptz | |
-| expires_at | timestamptz | default now() + 1 hour |
+| policy_id | uuid FK ai_query_policies nullable | which policy was applied |
+| evidence_count | int default 0 | total evidence items retrieved |
+| response_time_ms | int | processing duration |
+| created_at | timestamptz default now() | |
 
-### 4) Backend Flow (line-webhook modification)
+RLS: Only authenticated users with management access can read.
 
-**ตำแหน่งที่แก้:** เมื่อ `parsed.commandType === 'ask'` และ `!isDM` (group context)
+### 2) Backend: Log Audit on Every Cross-Group Query
 
-```text
-// ใน handleMessageEvent, ก่อน generateAiReply:
+Modify `cross-group-query.ts` to add a `logQueryAudit()` function that inserts into `ai_query_audit_logs` after every successful cross-group query. This is a small addition alongside the existing `saveQueryMemory()` call.
 
-if (parsed.commandType === 'ask' && !isDM) {
-  // 1. Check if cross-group query is enabled for this group/user
-  const crossGroupPolicy = await getCrossGroupPolicy(group.id, user.id);
-  
-  if (crossGroupPolicy) {
-    // 2. Compute effective_scope (intersection of policy + export policies)
-    const effectiveScope = await computeEffectiveScope(crossGroupPolicy);
-    
-    // 3. Check for follow-up ("เอาข้อมูลมาจากไหน", "source?")
-    if (isSourceQuery(parsed.userQuestion)) {
-      const memory = await getLastAnswerMemory(user.id, group.id);
-      if (memory) {
-        aiReply = formatSourcesReply(memory.sources_used);
-        // skip normal AI flow
-      } else {
-        aiReply = "ไม่มีข้อมูลคำตอบก่อนหน้า กรุณาถามคำถามใหม่อีกครั้งค่ะ";
-      }
-    } else {
-      // 4. Server-side entity resolution
-      const resolvedEntities = resolveEntities(parsed.userQuestion, effectiveScope);
-      
-      // 5. Retrieve cross-group evidence
-      const evidence = await retrieveCrossGroupEvidence(
-        resolvedEntities.targetGroupIds,
-        effectiveScope,
-        parsed.userQuestion
-      );
-      
-      // 6. Build cross-group prompt
-      const crossGroupPrompt = buildCrossGroupPrompt(
-        parsed.userQuestion, evidence, effectiveScope
-      );
-      
-      // 7. Generate AI reply with cross-group context
-      aiReply = await callAI(CROSS_GROUP_SYSTEM_PROMPT, crossGroupPrompt, 500);
-      
-      // 8. Save memory for follow-up
-      await saveQueryMemory(user.id, group.id, parsed.userQuestion, aiReply, evidence.sources);
-    }
-  }
-  // else: fall through to normal single-group AI reply
-}
-```
+### 3) Tab D: Effective Access Matrix
 
-### 5) Key Helper Functions (new, in line-webhook)
+A read-only visualization showing which requester (group/user) can access which target group's data.
 
-```text
-getCrossGroupPolicy(groupId, userId)
-  -> query ai_query_policies matching group or user, order by priority
+- Rows = active policies (requester groups/users)
+- Columns = all groups
+- Cells = checkmark with data source badges if accessible, empty if not
+- Computed client-side by intersecting policy scope with group export policies
+- No new backend needed -- uses existing `ai_query_policies`, `ai_query_scope_groups`, and `ai_query_group_export` data
 
-computeEffectiveScope(policy)
-  -> get scope groups (include/exclude)
-  -> intersect with ai_query_group_export where export_enabled = true
-  -> return { allowedGroupIds, allowedDataSources, timeWindowDays, ... }
+### 4) Tab E: AI Test Console (Dry-Run)
 
-resolveEntities(question, scope)
-  -> load group names + synonyms from ai_query_group_export
-  -> fuzzy match question text against names/synonyms
-  -> return { targetGroupIds, dateRange, intent }
+A form that simulates a cross-group query without sending to LINE:
 
-retrieveCrossGroupEvidence(groupIds, scope, question)
-  -> if 'attendance' in allowedDataSources:
-       query attendance_logs + employees for matched groups/dates
-  -> if 'messages' in allowedDataSources:
-       query messages table across groups with text search
-  -> return { facts[], messages[], sources[] }
+- **Inputs**: Select requester (group or user), type a question
+- **Process**: Calls a new edge function `ai-query-test` that runs the same logic as the real handler but returns structured debug output instead of sending a LINE reply
+- **Output displays**:
+  - Resolved entities (matched groups)
+  - Effective scope (allowed groups + data sources)
+  - Evidence preview (messages/attendance found)
+  - AI answer draft
+  - sources_used list
 
-isSourceQuery(question)
-  -> match patterns: "เอาข้อมูลมาจากไหน", "source", "อ้างอิง", "ที่มา"
+**New edge function: `supabase/functions/ai-query-test/index.ts`**
+- Accepts: `{ requester_group_id, requester_user_id, question }`
+- Runs: `getCrossGroupPolicy` -> `computeEffectiveScope` -> `resolveEntities` -> `retrieveCrossGroupEvidence` -> `generateCrossGroupReply`
+- Returns: JSON with all intermediate steps (no LINE message sent)
+- Auth: requires authenticated user with management access
 
-buildCrossGroupPrompt(question, evidence, scope)
-  -> format evidence into structured prompt
-  -> include CROSS_GROUP_SYSTEM_PROMPT from spec (shortened)
-```
+### 5) Tab F: Audit Logs
 
-### 6) Admin UI Page: `/settings/ai-cross-group`
+A searchable, paginated table from `ai_query_audit_logs`:
 
-**New file: `src/pages/settings/AIQueryControl.tsx`**
+- Columns: time, requester, group, question, answer (truncated), groups touched, data sources, evidence count, response time
+- Expandable row to see full answer + sources_used detail
+- Filter by date range and requester
+- Sorted by newest first
 
-**Tab A: Access Rules**
-- Table listing existing policies (source group/user, scope mode, enabled toggle)
-- Dialog to create/edit: pick source (group dropdown or user search), scope mode (all/include/exclude), group picker for include/exclude, data source checkboxes, time window slider
-- Enable/disable toggle per rule
+### 6) Tab Reorder
 
-**Tab B: Group Export Policy**
-- Table listing all groups with export_enabled toggle
-- Click to edit: synonyms (tag input), allowed data sources, masking level
-- Default: export_enabled = false (admin must explicitly enable)
-
-**Tab C: Recent Queries**
-- Read-only log from ai_query_memory showing recent questions, answers, sources, requester
+Final tab order in the TabsList:
+1. Access Rules (existing)
+2. Group Export Policy (existing)
+3. Access Matrix (new)
+4. Test Console (new)
+5. Audit Logs (new)
+6. Recent Queries (existing, kept for quick TTL-based view)
 
 ### 7) Files to Create/Modify
 
 | File | Action | Risk |
 |------|--------|------|
-| Migration SQL | CREATE 4 tables + RLS | None (new) |
-| `src/pages/settings/AIQueryControl.tsx` | New page | None |
-| `src/App.tsx` | Add route | Low |
-| `src/components/DashboardLayout.tsx` | Add sidebar link | Low |
-| `supabase/functions/line-webhook/index.ts` | Add cross-group logic in ask handler | Medium (surgical insert) |
+| Migration SQL | CREATE `ai_query_audit_logs` + RLS | None (new table) |
+| `src/pages/settings/AIQueryControl.tsx` | Add 3 new tab components + reorder tabs | Low (additive) |
+| `supabase/functions/ai-query-test/index.ts` | New edge function for dry-run | None (new) |
+| `supabase/functions/line-webhook/utils/cross-group-query.ts` | Add `logQueryAudit()` export | Low (additive) |
+| `supabase/functions/line-webhook/index.ts` | Call `logQueryAudit()` after cross-group reply | Low (1 line add) |
+| `supabase/config.toml` | Add `ai-query-test` function config | Low |
 
-### 8) สิ่งที่จะไม่แตะ
+### 8) What We Will NOT Touch
 
-- parseCommand / shouldTriggerBot (ใช้ commandType 'ask' เดิม)
-- generateAiReply function เดิม (cross-group ใช้ callAI แยก)
-- Memory system เดิม (memory_items, working_memory)
-- Work assignment detection
-- All other commands (summary, faq, report, todo, etc.)
-- Receipt handler, attendance-submit, all other edge functions
+- Existing 3 tabs (Access Rules, Export Policy, Recent Queries) -- no changes to their logic
+- `parseCommand`, `generateAiReply`, memory system, all other webhook handlers
+- Any other pages or edge functions
 
-### 9) Backward Compatibility
+### 9) Implementation Order
 
-- ถ้าไม่มี policy ใน ai_query_policies -> behavior เดิม 100% (single-group AI reply)
-- ถ้ามี policy แต่ disabled -> behavior เดิม
-- export_enabled default = false -> ไม่มีกลุ่มไหนถูกดึงข้อมูลจนกว่า admin จะเปิด
-- Feature เป็น opt-in ทั้งหมด, zero regression
+1. Database migration (create `ai_query_audit_logs`)
+2. Backend: add `logQueryAudit()` to `cross-group-query.ts` + call it in `line-webhook/index.ts`
+3. New edge function `ai-query-test`
+4. UI: Add Access Matrix tab
+5. UI: Add Test Console tab
+6. UI: Add Audit Logs tab
+7. Reorder tabs
 
-### 10) Implementation Order
+### 10) Technical Notes
 
-1. Database migration (4 tables + RLS)
-2. Admin UI page (AIQueryControl.tsx + route + sidebar)
-3. Backend cross-group query engine (line-webhook)
-4. Deploy + test
-
-### 11) จุดที่ปรับจาก Spec เดิม
-
-| Spec เดิม | ปรับเป็น | เหตุผล |
-|-----------|---------|--------|
-| LLM tool-calling (resolve_entities, search_messages) | Server-side orchestration | Lovable AI Gateway ไม่รองรับ tool-calling |
-| 5 tabs ใน admin page | 3 tabs (MVP) | Test Console + Audit Logs ไว้ phase 2 |
-| Full conversation history table | Lightweight last-Q&A memory | ใช้ messages table ที่มีอยู่สำหรับ history |
-| Separate group_directory table | synonyms ใน ai_query_group_export | ใช้ groups + branches ที่มีอยู่ |
-| attendance_facts extraction | Query attendance_logs + employees ตรง | ไม่ต้องสร้าง facts table แยก |
+- Access Matrix is computed purely client-side from existing queries (no new API)
+- Test Console calls the new `ai-query-test` edge function via `supabase.functions.invoke()`
+- Audit Logs table has no TTL -- data persists permanently for compliance
+- `logQueryAudit` is fire-and-forget (non-blocking, errors logged but don't break the reply)
 
