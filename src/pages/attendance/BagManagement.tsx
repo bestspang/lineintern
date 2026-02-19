@@ -305,7 +305,7 @@ export default function BagManagement() {
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="text-xs text-muted-foreground capitalize">
-                          {item.granted_by === 'admin_grant' ? '🎁 Admin' : '🛒 Purchase'}
+                          {item.granted_by === 'admin_grant' ? '🎁 Admin' : item.granted_by === 'gacha' ? '🎲 Gacha' : '🛒 Purchase'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
