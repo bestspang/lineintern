@@ -94,7 +94,16 @@ interface AuditLogRow {
   created_at: string;
 }
 
-const ALL_DATA_SOURCES = ['messages', 'attendance', 'employees', 'tasks'];
+const ALL_DATA_SOURCES = [
+  { key: 'messages', label: 'ข้อความ / Messages' },
+  { key: 'attendance', label: 'เวลาเข้า-ออก / Attendance' },
+  { key: 'employees', label: 'ข้อมูลพนักงาน / Employees' },
+  { key: 'tasks', label: 'งานที่มอบหมาย / Tasks' },
+  { key: 'points', label: 'คะแนน / Points' },
+  { key: 'birthdays', label: 'วันเกิด / Birthdays' },
+  { key: 'rewards', label: 'รางวัล / Rewards' },
+  { key: 'leave', label: 'วันลา / Leave' },
+];
 
 // ── Main Component ─────────────────────────────────────────────
 
@@ -474,9 +483,9 @@ function PolicyDialog({
             <Label>{t('ประเภทข้อมูลที่เข้าถึงได้', 'Accessible Data Sources')}</Label>
             <div className="flex flex-wrap gap-3">
               {ALL_DATA_SOURCES.map(ds => (
-                <div key={ds} className="flex items-center gap-1.5">
-                  <Checkbox checked={dataSources.includes(ds)} onCheckedChange={() => toggleDataSource(ds)} />
-                  <span className="text-sm capitalize">{ds}</span>
+                <div key={ds.key} className="flex items-center gap-1.5">
+                  <Checkbox checked={dataSources.includes(ds.key)} onCheckedChange={() => toggleDataSource(ds.key)} />
+                  <span className="text-sm">{ds.label}</span>
                 </div>
               ))}
             </div>
@@ -782,19 +791,19 @@ function ExportPolicyTab() {
                 <Label>{t('ข้อมูลที่ส่งออกได้', 'Exportable Data')}</Label>
                 <div className="flex flex-wrap gap-3">
                   {ALL_DATA_SOURCES.map(ds => (
-                    <div key={ds} className="flex items-center gap-1.5">
+                    <div key={ds.key} className="flex items-center gap-1.5">
                       <Checkbox
-                        checked={editGroup.allowed_data_sources.includes(ds)}
+                        checked={editGroup.allowed_data_sources.includes(ds.key)}
                         onCheckedChange={() => {
                           setEditGroup(prev => prev ? {
                             ...prev,
-                            allowed_data_sources: prev.allowed_data_sources.includes(ds)
-                              ? prev.allowed_data_sources.filter(d => d !== ds)
-                              : [...prev.allowed_data_sources, ds],
+                            allowed_data_sources: prev.allowed_data_sources.includes(ds.key)
+                              ? prev.allowed_data_sources.filter(d => d !== ds.key)
+                              : [...prev.allowed_data_sources, ds.key],
                           } : null);
                         }}
                       />
-                      <span className="text-sm capitalize">{ds}</span>
+                      <span className="text-sm">{ds.label}</span>
                     </div>
                   ))}
                 </div>

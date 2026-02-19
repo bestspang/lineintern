@@ -155,7 +155,7 @@ serve(async (req) => {
     }
 
     // Step 4: Retrieve evidence
-    const evidence: { messages: any[]; attendance: any[]; employees: any[]; sources: any[] } = { messages: [], attendance: [], employees: [], sources: [] };
+    const evidence: { messages: any[]; attendance: any[]; employees: any[]; sources: any[]; points: any[]; birthdays: any[]; rewards: any[]; leave: any[]; tasks: any[] } = { messages: [], attendance: [], employees: [], sources: [], points: [], birthdays: [], rewards: [], leave: [], tasks: [] };
 
     if (allowedDataSources.includes("messages")) {
       for (const gid of targetGroupIds.slice(0, 5)) {
@@ -178,11 +178,13 @@ serve(async (req) => {
       }
     }
 
+    // Shared: resolve branches linked to target groups
+    const { data: _branchLinks } = await adminClient.from("branches").select("id, name, line_group_id").not("line_group_id", "is", null);
+    const { data: _groupLines } = await adminClient.from("groups").select("id, line_group_id").in("id", targetGroupIds);
+    const _targetLineIds = (_groupLines || []).map((g: any) => g.line_group_id).filter(Boolean);
+    const matchedBranches = (_branchLinks || []).filter((b: any) => _targetLineIds.includes(b.line_group_id));
+
     if (allowedDataSources.includes("attendance")) {
-      const { data: branchLinks } = await adminClient.from("branches").select("id, name, line_group_id").not("line_group_id", "is", null);
-      const { data: groupLines } = await adminClient.from("groups").select("id, line_group_id").in("id", targetGroupIds);
-      const targetLineIds = (groupLines || []).map((g: any) => g.line_group_id).filter(Boolean);
-      const matchedBranches = (branchLinks || []).filter((b: any) => targetLineIds.includes(b.line_group_id));
       const branchIds = matchedBranches.map((b: any) => b.id);
       if (branchIds.length > 0) {
         const { data: logs } = await adminClient.from("attendance_logs").select("employee_id, event_type, server_time, branch_id")
@@ -197,6 +199,81 @@ serve(async (req) => {
             evidence.attendance.push({ employee_name: eMap.get(log.employee_id) || "Unknown", branch_name: bMap.get(log.branch_id) || "Unknown", event_type: log.event_type, time: log.server_time });
           }
           evidence.sources.push({ group_name: matchedBranches.map((b: any) => b.name).join(", "), type: "attendance", excerpt: `${logs.length} records from ${matchedBranches.length} branch(es)` });
+        }
+      }
+    }
+
+    // Step 4b: Retrieve points
+    if (allowedDataSources.includes("points")) {
+      const branchIds2 = matchedBranches?.map((b: any) => b.id) || [];
+      if (branchIds2.length > 0) {
+        const { data: emps2 } = await adminClient.from("employees").select("id, full_name, branch_id").in("branch_id", branchIds2).eq("is_active", true);
+        if (emps2?.length) {
+          const empIds2 = emps2.map((e: any) => e.id);
+          const { data: hp } = await adminClient.from("happy_points").select("employee_id, point_balance, streak").in("employee_id", empIds2);
+          const { data: txns } = await adminClient.from("point_transactions").select("employee_id, description, amount").in("employee_id", empIds2).order("created_at", { ascending: false }).limit(100);
+          const hpMap = new Map((hp || []).map((h: any) => [h.employee_id, h]));
+          const txnsByEmp = new Map<string, string[]>();
+          (txns || []).forEach((t: any) => { const list = txnsByEmp.get(t.employee_id) || []; if (list.length < 3) list.push(`${t.description} (${t.amount > 0 ? '+' : ''}${t.amount})`); txnsByEmp.set(t.employee_id, list); });
+          const bMap2 = new Map(matchedBranches.map((b: any) => [b.id, b.name]));
+          for (const emp of emps2) {
+            const h = hpMap.get(emp.id);
+            if (h) evidence.points.push({ employee_name: emp.full_name || "Unknown", branch_name: bMap2.get(emp.branch_id) || "Unknown", balance: h.point_balance || 0, streak: h.streak || 0, recent_transactions: txnsByEmp.get(emp.id) || [] });
+          }
+        }
+      }
+    }
+
+    // Step 4c: Retrieve birthdays
+    if (allowedDataSources.includes("birthdays")) {
+      const branchIds3 = matchedBranches?.map((b: any) => b.id) || [];
+      if (branchIds3.length > 0) {
+        const bMap3 = new Map(matchedBranches.map((b: any) => [b.id, b.name]));
+        const { data: emps3 } = await adminClient.from("employees").select("full_name, branch_id, date_of_birth").in("branch_id", branchIds3).eq("is_active", true).not("date_of_birth", "is", null);
+        for (const emp of emps3 || []) evidence.birthdays.push({ employee_name: emp.full_name || "Unknown", branch_name: bMap3.get(emp.branch_id) || "Unknown", date_of_birth: emp.date_of_birth });
+      }
+    }
+
+    // Step 4d: Retrieve rewards
+    if (allowedDataSources.includes("rewards")) {
+      const { data: items } = await adminClient.from("reward_items").select("id, name, points_cost, stock_quantity").eq("is_active", true);
+      const { data: redemptions } = await adminClient.from("point_redemptions").select("employee_id, reward_item_id, quantity, status, created_at").order("created_at", { ascending: false }).limit(50);
+      const rdEmpIds = [...new Set((redemptions || []).map((r: any) => r.employee_id))];
+      const { data: rdEmps } = rdEmpIds.length > 0 ? await adminClient.from("employees").select("id, full_name").in("id", rdEmpIds) : { data: [] };
+      const rdEmpMap = new Map((rdEmps || []).map((e: any) => [e.id, e.full_name || "Unknown"]));
+      for (const item of items || []) {
+        const itemRd = (redemptions || []).filter((r: any) => r.reward_item_id === item.id).slice(0, 3).map((r: any) => `${rdEmpMap.get(r.employee_id) || "?"} (${r.status})`);
+        evidence.rewards.push({ item_name: item.name, points_cost: item.points_cost, stock: item.stock_quantity ?? 0, recent_redemptions: itemRd });
+      }
+    }
+
+    // Step 4e: Retrieve leave
+    if (allowedDataSources.includes("leave")) {
+      const branchIds4 = matchedBranches?.map((b: any) => b.id) || [];
+      if (branchIds4.length > 0) {
+        const { data: emps4 } = await adminClient.from("employees").select("id, full_name, branch_id").in("branch_id", branchIds4).eq("is_active", true);
+        if (emps4?.length) {
+          const empIds4 = emps4.map((e: any) => e.id);
+          const empMap4 = new Map(emps4.map((e: any) => [e.id, e]));
+          const bMap4 = new Map(matchedBranches.map((b: any) => [b.id, b.name]));
+          const { data: leaves } = await adminClient.from("leave_requests").select("employee_id, leave_type, start_date, end_date, status").in("employee_id", empIds4).gte("end_date", dateStart).lte("start_date", dateEnd).order("start_date", { ascending: false }).limit(100);
+          for (const lv of leaves || []) {
+            const emp = empMap4.get(lv.employee_id);
+            evidence.leave.push({ employee_name: emp?.full_name || "Unknown", branch_name: bMap4.get(emp?.branch_id) || "Unknown", leave_type: lv.leave_type, start_date: lv.start_date, end_date: lv.end_date, status: lv.status });
+          }
+        }
+      }
+    }
+
+    // Step 4f: Retrieve tasks
+    if (allowedDataSources.includes("tasks")) {
+      const { data: tasksData } = await adminClient.from("tasks").select("id, title, status, due_at, group_id, assigned_to").in("group_id", targetGroupIds).order("created_at", { ascending: false }).limit(100);
+      if (tasksData?.length) {
+        const assigneeIds = [...new Set(tasksData.filter((t: any) => t.assigned_to).map((t: any) => t.assigned_to))];
+        const { data: usersData } = assigneeIds.length > 0 ? await adminClient.from("users").select("id, display_name").in("id", assigneeIds) : { data: [] };
+        const userMap = new Map((usersData || []).map((u: any) => [u.id, u.display_name || "Unknown"]));
+        for (const task of tasksData) {
+          evidence.tasks.push({ title: task.title, group_name: groupNameMap[task.group_id] || task.group_id, status: task.status, assignee: userMap.get(task.assigned_to) || "—", due_at: task.due_at });
         }
       }
     }
@@ -217,7 +294,42 @@ serve(async (req) => {
       }
       contextPrompt += "\n";
     }
-    if (evidence.attendance.length === 0 && evidence.messages.length === 0) {
+    if (evidence.points.length > 0) {
+      contextPrompt += `🏆 คะแนน:\n`;
+      for (const p of evidence.points.slice(0, 20)) {
+        contextPrompt += `- ${p.employee_name} | ${p.branch_name} | คะแนน: ${p.balance} | streak: ${p.streak}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.birthdays.length > 0) {
+      contextPrompt += `🎂 วันเกิด:\n`;
+      for (const b of evidence.birthdays.slice(0, 20)) {
+        contextPrompt += `- ${b.employee_name} | ${b.branch_name} | ${b.date_of_birth}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.rewards.length > 0) {
+      contextPrompt += `🎁 รางวัล:\n`;
+      for (const r of evidence.rewards.slice(0, 15)) {
+        contextPrompt += `- ${r.item_name} | ${r.points_cost} pts | คงเหลือ: ${r.stock}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.leave.length > 0) {
+      contextPrompt += `🏖️ วันลา:\n`;
+      for (const l of evidence.leave.slice(0, 20)) {
+        contextPrompt += `- ${l.employee_name} | ${l.leave_type} | ${l.start_date} - ${l.end_date} | ${l.status}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.tasks.length > 0) {
+      contextPrompt += `📝 งาน:\n`;
+      for (const t of evidence.tasks.slice(0, 15)) {
+        contextPrompt += `- ${t.title} | ${t.group_name} | ${t.status} | ${t.assignee}\n`;
+      }
+      contextPrompt += "\n";
+    }
+    if (evidence.attendance.length === 0 && evidence.messages.length === 0 && evidence.points.length === 0 && evidence.birthdays.length === 0 && evidence.rewards.length === 0 && evidence.leave.length === 0 && evidence.tasks.length === 0) {
       contextPrompt += "⚠️ ไม่พบข้อมูลที่ตรงกับคำถาม\n\n";
     }
 
@@ -255,9 +367,19 @@ serve(async (req) => {
         evidence: {
           messages_count: evidence.messages.length,
           attendance_count: evidence.attendance.length,
+          points_count: evidence.points.length,
+          birthdays_count: evidence.birthdays.length,
+          rewards_count: evidence.rewards.length,
+          leave_count: evidence.leave.length,
+          tasks_count: evidence.tasks.length,
           sources_count: evidence.sources.length,
           sample_messages: evidence.messages.slice(0, 5),
           sample_attendance: evidence.attendance.slice(0, 10),
+          sample_points: evidence.points.slice(0, 5),
+          sample_birthdays: evidence.birthdays.slice(0, 5),
+          sample_rewards: evidence.rewards.slice(0, 5),
+          sample_leave: evidence.leave.slice(0, 5),
+          sample_tasks: evidence.tasks.slice(0, 5),
           sources: evidence.sources.slice(0, 10),
         },
         answer,

@@ -53,6 +53,11 @@ interface CrossGroupEvidence {
   attendance: Array<{ employee_name: string; branch_name: string; event_type: string; time: string }>;
   employees: Array<{ name: string; branch_name: string; role: string }>;
   sources: EvidenceSource[];
+  points: Array<{ employee_name: string; branch_name: string; balance: number; streak: number; recent_transactions: string[] }>;
+  birthdays: Array<{ employee_name: string; branch_name: string; date_of_birth: string }>;
+  rewards: Array<{ item_name: string; points_cost: number; stock: number; recent_redemptions: string[] }>;
+  leave: Array<{ employee_name: string; branch_name: string; leave_type: string; start_date: string; end_date: string; status: string }>;
+  tasks: Array<{ title: string; group_name: string; status: string; assignee: string; due_at: string | null }>;
 }
 
 // ── Source Query Detection ──────────────────────────────
@@ -292,7 +297,7 @@ export async function retrieveCrossGroupEvidence(
   question: string,
   dateRange: { start: string; end: string }
 ): Promise<CrossGroupEvidence> {
-  const evidence: CrossGroupEvidence = { messages: [], attendance: [], employees: [], sources: [] };
+  const evidence: CrossGroupEvidence = { messages: [], attendance: [], employees: [], sources: [], points: [], birthdays: [], rewards: [], leave: [], tasks: [] };
 
   // Load group names for display
   const { data: groupsData } = await supabase
@@ -434,7 +439,106 @@ export async function retrieveCrossGroupEvidence(
     }
   }
 
-  return evidence;
+  // Helper: get branch IDs from target groups
+  const getBranchContext = async () => {
+    const { data: branchLinks } = await supabase.from("branches").select("id, name, line_group_id").not("line_group_id", "is", null);
+    const { data: groupLines } = await supabase.from("groups").select("id, line_group_id").in("id", targetGroupIds);
+    const targetLineGroupIds = (groupLines || []).map((g: any) => g.line_group_id).filter(Boolean);
+    const matchedBranches = (branchLinks || []).filter((b: any) => targetLineGroupIds.includes(b.line_group_id));
+    return { branchIds: matchedBranches.map((b: any) => b.id), branchNameMap: new Map(matchedBranches.map((b: any) => [b.id, b.name])) };
+  };
+
+  // 4. Points
+  if (scope.allowedDataSources.includes("points")) {
+    const { branchIds, branchNameMap } = await getBranchContext();
+    if (branchIds.length > 0) {
+      const { data: emps } = await supabase.from("employees").select("id, full_name, branch_id").in("branch_id", branchIds).eq("is_active", true);
+      if (emps?.length) {
+        const empIds = emps.map((e: any) => e.id);
+        const { data: hp } = await supabase.from("happy_points").select("employee_id, point_balance, streak").in("employee_id", empIds);
+        const { data: txns } = await supabase.from("point_transactions").select("employee_id, description, amount, created_at").in("employee_id", empIds).order("created_at", { ascending: false }).limit(100);
+        const hpMap = new Map((hp || []).map((h: any) => [h.employee_id, h]));
+        const txnsByEmp = new Map<string, string[]>();
+        (txns || []).forEach((t: any) => {
+          const list = txnsByEmp.get(t.employee_id) || [];
+          if (list.length < 3) list.push(`${t.description} (${t.amount > 0 ? '+' : ''}${t.amount})`);
+          txnsByEmp.set(t.employee_id, list);
+        });
+        for (const emp of emps) {
+          const h = hpMap.get(emp.id);
+          if (h) {
+            evidence.points.push({ employee_name: emp.full_name || "Unknown", branch_name: branchNameMap.get(emp.branch_id) || "Unknown", balance: h.point_balance || 0, streak: h.streak || 0, recent_transactions: txnsByEmp.get(emp.id) || [] });
+          }
+        }
+        evidence.sources.push({ group_name: [...branchNameMap.values()].join(", "), group_id: targetGroupIds[0], type: "points", excerpt: `${evidence.points.length} employees with point data` });
+      }
+    }
+  }
+
+  // 5. Birthdays
+  if (scope.allowedDataSources.includes("birthdays")) {
+    const { branchIds, branchNameMap } = await getBranchContext();
+    if (branchIds.length > 0) {
+      const { data: emps } = await supabase.from("employees").select("full_name, branch_id, date_of_birth").in("branch_id", branchIds).eq("is_active", true).not("date_of_birth", "is", null);
+      for (const emp of emps || []) {
+        evidence.birthdays.push({ employee_name: emp.full_name || "Unknown", branch_name: branchNameMap.get(emp.branch_id) || "Unknown", date_of_birth: emp.date_of_birth });
+      }
+      if (evidence.birthdays.length > 0) {
+        evidence.sources.push({ group_name: [...branchNameMap.values()].join(", "), group_id: targetGroupIds[0], type: "birthdays", excerpt: `${evidence.birthdays.length} employees with birthday data` });
+      }
+    }
+  }
+
+  // 6. Rewards
+  if (scope.allowedDataSources.includes("rewards")) {
+    const { data: items } = await supabase.from("reward_items").select("id, name, points_cost, stock_quantity").eq("is_active", true);
+    const { data: redemptions } = await supabase.from("point_redemptions").select("employee_id, reward_item_id, quantity, status, created_at").order("created_at", { ascending: false }).limit(50);
+    const { data: emps } = redemptions?.length ? await supabase.from("employees").select("id, full_name").in("id", [...new Set(redemptions.map((r: any) => r.employee_id))]) : { data: [] };
+    const empMap = new Map((emps || []).map((e: any) => [e.id, e.full_name || "Unknown"]));
+    const itemMap = new Map((items || []).map((i: any) => [i.id, i]));
+
+    for (const item of items || []) {
+      const itemRedemptions = (redemptions || []).filter((r: any) => r.reward_item_id === item.id).slice(0, 3).map((r: any) => `${empMap.get(r.employee_id) || "?"} (${r.status})`);
+      evidence.rewards.push({ item_name: item.name, points_cost: item.points_cost, stock: item.stock_quantity ?? 0, recent_redemptions: itemRedemptions });
+    }
+    if (evidence.rewards.length > 0) {
+      evidence.sources.push({ group_name: "All", group_id: targetGroupIds[0], type: "rewards", excerpt: `${evidence.rewards.length} reward items` });
+    }
+  }
+
+  // 7. Leave
+  if (scope.allowedDataSources.includes("leave")) {
+    const { branchIds, branchNameMap } = await getBranchContext();
+    if (branchIds.length > 0) {
+      const { data: emps } = await supabase.from("employees").select("id, full_name, branch_id").in("branch_id", branchIds).eq("is_active", true);
+      if (emps?.length) {
+        const empIds = emps.map((e: any) => e.id);
+        const empMap = new Map(emps.map((e: any) => [e.id, e]));
+        const { data: leaves } = await supabase.from("leave_requests").select("employee_id, leave_type, start_date, end_date, status").in("employee_id", empIds).gte("end_date", dateRange.start).lte("start_date", dateRange.end).order("start_date", { ascending: false }).limit(100);
+        for (const lv of leaves || []) {
+          const emp = empMap.get(lv.employee_id);
+          evidence.leave.push({ employee_name: emp?.full_name || "Unknown", branch_name: branchNameMap.get(emp?.branch_id) || "Unknown", leave_type: lv.leave_type, start_date: lv.start_date, end_date: lv.end_date, status: lv.status });
+        }
+        if (evidence.leave.length > 0) {
+          evidence.sources.push({ group_name: [...branchNameMap.values()].join(", "), group_id: targetGroupIds[0], type: "leave", excerpt: `${evidence.leave.length} leave requests` });
+        }
+      }
+    }
+  }
+
+  // 8. Tasks
+  if (scope.allowedDataSources.includes("tasks")) {
+    const { data: tasksData } = await supabase.from("tasks").select("id, title, status, due_at, group_id, assigned_to").in("group_id", targetGroupIds).order("created_at", { ascending: false }).limit(100);
+    if (tasksData?.length) {
+      const assigneeIds = [...new Set((tasksData || []).filter((t: any) => t.assigned_to).map((t: any) => t.assigned_to))];
+      const { data: usersData } = assigneeIds.length > 0 ? await supabase.from("users").select("id, display_name").in("id", assigneeIds) : { data: [] };
+      const userMap = new Map((usersData || []).map((u: any) => [u.id, u.display_name || "Unknown"]));
+      for (const task of tasksData) {
+        evidence.tasks.push({ title: task.title, group_name: groupNameMap.get(task.group_id) || task.group_id, status: task.status, assignee: userMap.get(task.assigned_to) || "—", due_at: task.due_at });
+      }
+      evidence.sources.push({ group_name: "Tasks", group_id: targetGroupIds[0], type: "tasks", excerpt: `${tasksData.length} tasks` });
+    }
+  }
 }
 
 // ── Build Cross-Group Prompt ───────────────────────────
@@ -473,8 +577,54 @@ export function buildCrossGroupPrompt(
     prompt += "\n";
   }
 
-  if (evidence.attendance.length === 0 && evidence.messages.length === 0 && evidence.employees.length === 0) {
+  if (evidence.attendance.length === 0 && evidence.messages.length === 0 && evidence.employees.length === 0 && evidence.points.length === 0 && evidence.birthdays.length === 0 && evidence.rewards.length === 0 && evidence.leave.length === 0 && evidence.tasks.length === 0) {
     prompt += `⚠️ ไม่พบข้อมูลที่ตรงกับคำถามในช่วงเวลาที่ค้นหา\n\n`;
+  }
+
+  if (evidence.points.length > 0) {
+    prompt += `🏆 คะแนน Happy Points:\n`;
+    for (const p of evidence.points.slice(0, 30)) {
+      prompt += `- ${p.employee_name} | ${p.branch_name} | คะแนน: ${p.balance} | streak: ${p.streak}`;
+      if (p.recent_transactions.length) prompt += ` | ล่าสุด: ${p.recent_transactions.join(', ')}`;
+      prompt += `\n`;
+    }
+    prompt += "\n";
+  }
+
+  if (evidence.birthdays.length > 0) {
+    prompt += `🎂 วันเกิดพนักงาน:\n`;
+    for (const b of evidence.birthdays.slice(0, 30)) {
+      prompt += `- ${b.employee_name} | ${b.branch_name} | วันเกิด: ${b.date_of_birth}\n`;
+    }
+    prompt += "\n";
+  }
+
+  if (evidence.rewards.length > 0) {
+    prompt += `🎁 รางวัล:\n`;
+    for (const r of evidence.rewards.slice(0, 20)) {
+      prompt += `- ${r.item_name} | ${r.points_cost} pts | คงเหลือ: ${r.stock}`;
+      if (r.recent_redemptions.length) prompt += ` | แลกล่าสุด: ${r.recent_redemptions.join(', ')}`;
+      prompt += `\n`;
+    }
+    prompt += "\n";
+  }
+
+  if (evidence.leave.length > 0) {
+    prompt += `🏖️ วันลา:\n`;
+    for (const l of evidence.leave.slice(0, 30)) {
+      prompt += `- ${l.employee_name} | ${l.branch_name} | ${l.leave_type} | ${l.start_date} - ${l.end_date} | สถานะ: ${l.status}\n`;
+    }
+    prompt += "\n";
+  }
+
+  if (evidence.tasks.length > 0) {
+    prompt += `📝 งานที่มอบหมาย:\n`;
+    for (const t of evidence.tasks.slice(0, 20)) {
+      prompt += `- ${t.title} | [${t.group_name}] | สถานะ: ${t.status} | ผู้รับผิดชอบ: ${t.assignee}`;
+      if (t.due_at) prompt += ` | กำหนด: ${new Date(t.due_at).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}`;
+      prompt += `\n`;
+    }
+    prompt += "\n";
   }
 
   return prompt;
