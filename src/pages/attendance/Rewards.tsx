@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Gift, Plus, Pencil, Trash2, Coins, ShieldCheck, Package, ChevronDown, ChevronUp, Clock, Calendar, AlertCircle, Info } from 'lucide-react';
 import { format } from 'date-fns';
@@ -168,84 +169,90 @@ export default function Rewards() {
               Add Reward
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg !grid !grid-rows-[auto_1fr_auto] overflow-hidden max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>{editingReward ? 'Edit Reward' : 'Create Reward'}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Name (EN)</Label>
-                  <Input id="name" name="name" defaultValue={editingReward?.name} required />
-                </div>
-                <div>
-                  <Label htmlFor="name_th">Name (TH)</Label>
-                  <Input id="name_th" name="name_th" defaultValue={editingReward?.name_th || ''} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="description">Description (EN)</Label>
-                <Textarea id="description" name="description" defaultValue={editingReward?.description || ''} />
-              </div>
-              <div>
-                <Label htmlFor="description_th">Description (TH)</Label>
-                <Textarea id="description_th" name="description_th" defaultValue={editingReward?.description_th || ''} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="point_cost">Point Cost</Label>
-                  <Input id="point_cost" name="point_cost" type="number" defaultValue={editingReward?.point_cost || 100} required />
-                </div>
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <Select name="category" defaultValue={editingReward?.category || 'perk'}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="micro">Micro (50-100 pts)</SelectItem>
-                      <SelectItem value="perk">Perk (150-800 pts)</SelectItem>
-                      <SelectItem value="legendary">Legendary (1000+ pts)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="icon">Icon Emoji</Label>
-                  <Input id="icon" name="icon" defaultValue={editingReward?.icon || '🎁'} placeholder="🎁" />
-                </div>
-                <div>
-                  <Label htmlFor="cooldown_days">Cooldown (days)</Label>
-                  <Input id="cooldown_days" name="cooldown_days" type="number" defaultValue={editingReward?.cooldown_days || 0} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="stock_limit">Stock Limit (empty = unlimited)</Label>
-                <Input id="stock_limit" name="stock_limit" type="number" defaultValue={editingReward?.stock_limit || ''} />
-              </div>
-              <div>
-                <Label htmlFor="use_mode">Use Mode</Label>
-                <Select name="use_mode" defaultValue={editingReward?.use_mode || 'use_now'}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="use_now">Use Now (ใช้ทันที)</SelectItem>
-                    <SelectItem value="bag_only">Bag Only (เก็บอย่างเดียว)</SelectItem>
-                    <SelectItem value="choose">Choose (ให้เลือก)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <Switch id="is_active" name="is_active" defaultChecked={editingReward?.is_active ?? true} />
-                  <Label htmlFor="is_active">Active</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch id="requires_approval" name="requires_approval" defaultChecked={editingReward?.requires_approval ?? false} />
-                  <Label htmlFor="requires_approval">Requires Approval</Label>
-                </div>
+            <form onSubmit={handleSubmit} className="flex flex-col min-h-0 gap-4">
+              <div className="flex-1 min-h-0">
+                <ScrollArea className="h-full pr-4">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="name">Name (EN)</Label>
+                        <Input id="name" name="name" defaultValue={editingReward?.name} required />
+                      </div>
+                      <div>
+                        <Label htmlFor="name_th">Name (TH)</Label>
+                        <Input id="name_th" name="name_th" defaultValue={editingReward?.name_th || ''} />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="description">Description (EN)</Label>
+                      <Textarea id="description" name="description" defaultValue={editingReward?.description || ''} />
+                    </div>
+                    <div>
+                      <Label htmlFor="description_th">Description (TH)</Label>
+                      <Textarea id="description_th" name="description_th" defaultValue={editingReward?.description_th || ''} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="point_cost">Point Cost</Label>
+                        <Input id="point_cost" name="point_cost" type="number" defaultValue={editingReward?.point_cost || 100} required />
+                      </div>
+                      <div>
+                        <Label htmlFor="category">Category</Label>
+                        <Select name="category" defaultValue={editingReward?.category || 'perk'}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="micro">Micro (50-100 pts)</SelectItem>
+                            <SelectItem value="perk">Perk (150-800 pts)</SelectItem>
+                            <SelectItem value="legendary">Legendary (1000+ pts)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="icon">Icon Emoji</Label>
+                        <Input id="icon" name="icon" defaultValue={editingReward?.icon || '🎁'} placeholder="🎁" />
+                      </div>
+                      <div>
+                        <Label htmlFor="cooldown_days">Cooldown (days)</Label>
+                        <Input id="cooldown_days" name="cooldown_days" type="number" defaultValue={editingReward?.cooldown_days || 0} />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="stock_limit">Stock Limit (empty = unlimited)</Label>
+                      <Input id="stock_limit" name="stock_limit" type="number" defaultValue={editingReward?.stock_limit || ''} />
+                    </div>
+                    <div>
+                      <Label htmlFor="use_mode">Use Mode</Label>
+                      <Select name="use_mode" defaultValue={editingReward?.use_mode || 'use_now'}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="use_now">Use Now (ใช้ทันที)</SelectItem>
+                          <SelectItem value="bag_only">Bag Only (เก็บอย่างเดียว)</SelectItem>
+                          <SelectItem value="choose">Choose (ให้เลือก)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <Switch id="is_active" name="is_active" defaultChecked={editingReward?.is_active ?? true} />
+                        <Label htmlFor="is_active">Active</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch id="requires_approval" name="requires_approval" defaultChecked={editingReward?.requires_approval ?? false} />
+                        <Label htmlFor="requires_approval">Requires Approval</Label>
+                      </div>
+                    </div>
+                  </div>
+                </ScrollArea>
               </div>
               <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
                 {editingReward ? 'Update Reward' : 'Create Reward'}
