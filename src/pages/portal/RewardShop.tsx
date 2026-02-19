@@ -3,13 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Gift, Coins, ShieldCheck, Clock } from 'lucide-react';
+import { Gift, Coins, ShieldCheck, Clock, Backpack } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface Reward {
@@ -26,6 +28,7 @@ interface Reward {
   stock_limit: number | null;
   stock_used: number;
   cooldown_days: number;
+  use_mode: string;
 }
 
 interface PointsBalance {
@@ -40,8 +43,8 @@ export default function RewardShop() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
+  const [useChoice, setUseChoice] = useState<'use_now' | 'bag'>('use_now');
 
-  // Use portalApi for points balance
   const { data: happyPoints } = useQuery({
     queryKey: ['my-happy-points', employee?.id],
     queryFn: async () => {
@@ -56,7 +59,6 @@ export default function RewardShop() {
     enabled: !!employee?.id,
   });
 
-  // Use portalApi for rewards list
   const { data: rewards, isLoading } = useQuery({
     queryKey: ['available-rewards'],
     queryFn: async () => {
@@ -71,11 +73,12 @@ export default function RewardShop() {
     enabled: !!employee?.id,
   });
 
-  // Redemption still uses edge function directly (has complex logic)
   const redeemMutation = useMutation({
-    mutationFn: async (rewardId: string) => {
+    mutationFn: async ({ rewardId, toBag }: { rewardId: string; toBag: boolean }) => {
+      const action = toBag ? 'redeem_to_bag' : 'redeem';
       const response = await supabase.functions.invoke('point-redemption', {
         body: {
+          action,
           employee_id: employee?.id,
           reward_id: rewardId,
         },
@@ -84,17 +87,26 @@ export default function RewardShop() {
       if (response.error) throw new Error(response.error.message);
       if (!response.data.success) throw new Error(response.data.error || 'Redemption failed');
       
-      return response.data;
+      return { ...response.data, toBag };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['my-happy-points'] });
       queryClient.invalidateQueries({ queryKey: ['available-rewards'] });
-      toast({
-        title: locale === 'th' ? '🎉 แลกรางวัลสำเร็จ!' : '🎉 Reward Redeemed!',
-        description: data.requires_approval 
-          ? (locale === 'th' ? 'รอการอนุมัติจากผู้จัดการ' : 'Waiting for manager approval')
-          : (locale === 'th' ? 'สามารถใช้งานได้ทันที' : 'You can use it now!'),
-      });
+      queryClient.invalidateQueries({ queryKey: ['my-bag-items'] });
+      
+      if (data.toBag) {
+        toast({
+          title: locale === 'th' ? '🎒 เก็บในกระเป๋าแล้ว!' : '🎒 Saved to Bag!',
+          description: locale === 'th' ? 'ไปดูในกระเป๋าของฉัน' : 'Check it in My Bag',
+        });
+      } else {
+        toast({
+          title: locale === 'th' ? '🎉 แลกรางวัลสำเร็จ!' : '🎉 Reward Redeemed!',
+          description: data.requires_approval 
+            ? (locale === 'th' ? 'รอการอนุมัติจากผู้จัดการ' : 'Waiting for manager approval')
+            : (locale === 'th' ? 'สามารถใช้งานได้ทันที' : 'You can use it now!'),
+        });
+      }
       setSelectedReward(null);
     },
     onError: (error) => {
@@ -120,6 +132,23 @@ export default function RewardShop() {
     legendary: { th: '🏆 รางวัลใหญ่', en: '🏆 Legendary Rewards' },
   };
 
+  const handleConfirm = () => {
+    if (!selectedReward) return;
+    const useMode = selectedReward.use_mode || 'use_now';
+    const toBag = useMode === 'bag_only' || (useMode === 'choose' && useChoice === 'bag');
+    redeemMutation.mutate({ rewardId: selectedReward.id, toBag });
+  };
+
+  const handleSelectReward = (reward: Reward) => {
+    setSelectedReward(reward);
+    // Default choice based on use_mode
+    if (reward.use_mode === 'bag_only') {
+      setUseChoice('bag');
+    } else {
+      setUseChoice('use_now');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -137,11 +166,18 @@ export default function RewardShop() {
           <Gift className="h-5 w-5 text-primary" />
           {locale === 'th' ? 'ร้านค้ารางวัล' : 'Reward Shop'}
         </h1>
-        <Button asChild variant="ghost" size="icon">
-          <Link to="/portal/my-points">
-            <Coins className="h-5 w-5 text-yellow-500" />
-          </Link>
-        </Button>
+        <div className="flex gap-1">
+          <Button asChild variant="ghost" size="icon">
+            <Link to="/portal/my-bag">
+              <Backpack className="h-5 w-5 text-primary" />
+            </Link>
+          </Button>
+          <Button asChild variant="ghost" size="icon">
+            <Link to="/portal/my-points">
+              <Coins className="h-5 w-5 text-yellow-500" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Balance */}
@@ -178,7 +214,7 @@ export default function RewardShop() {
                   <Card 
                     key={reward.id} 
                     className={`transition-all ${canAfford && !outOfStock ? 'hover:shadow-md cursor-pointer' : 'opacity-60'}`}
-                    onClick={() => canAfford && !outOfStock && setSelectedReward(reward)}
+                    onClick={() => canAfford && !outOfStock && handleSelectReward(reward)}
                   >
                     <CardContent className="py-4">
                       <div className="flex items-start gap-3">
@@ -199,6 +235,18 @@ export default function RewardShop() {
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2 mt-2">
+                            {reward.use_mode === 'bag_only' && (
+                              <Badge variant="outline" className="text-xs gap-1">
+                                <Backpack className="h-3 w-3" />
+                                {locale === 'th' ? 'เก็บอย่างเดียว' : 'Bag only'}
+                              </Badge>
+                            )}
+                            {reward.use_mode === 'choose' && (
+                              <Badge variant="outline" className="text-xs gap-1">
+                                <Backpack className="h-3 w-3" />
+                                {locale === 'th' ? 'เก็บได้' : 'Can store'}
+                              </Badge>
+                            )}
                             {reward.requires_approval && (
                               <Badge variant="outline" className="text-xs gap-1">
                                 <ShieldCheck className="h-3 w-3" />
@@ -253,8 +301,43 @@ export default function RewardShop() {
               <span>{locale === 'th' ? 'แต้มคงเหลือหลังแลก' : 'Balance After'}</span>
               <span className="font-medium">{(balance - (selectedReward?.point_cost || 0)).toLocaleString()}</span>
             </div>
+
+            {/* Use mode choice */}
+            {selectedReward?.use_mode === 'choose' && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
+                  {locale === 'th' ? 'คุณต้องการ...' : 'What would you like to do?'}
+                </Label>
+                <RadioGroup value={useChoice} onValueChange={(v) => setUseChoice(v as 'use_now' | 'bag')}>
+                  <div className="flex items-center space-x-2 p-3 rounded-lg border cursor-pointer hover:bg-muted" onClick={() => setUseChoice('use_now')}>
+                    <RadioGroupItem value="use_now" id="use_now" />
+                    <Label htmlFor="use_now" className="cursor-pointer flex-1">
+                      <p className="font-medium">{locale === 'th' ? '⚡ ใช้เลย' : '⚡ Use Now'}</p>
+                      <p className="text-xs text-muted-foreground">{locale === 'th' ? 'เปิดใช้ทันที' : 'Activate immediately'}</p>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 p-3 rounded-lg border cursor-pointer hover:bg-muted" onClick={() => setUseChoice('bag')}>
+                    <RadioGroupItem value="bag" id="bag" />
+                    <Label htmlFor="bag" className="cursor-pointer flex-1">
+                      <p className="font-medium">{locale === 'th' ? '🎒 เก็บในกระเป๋า' : '🎒 Save to Bag'}</p>
+                      <p className="text-xs text-muted-foreground">{locale === 'th' ? 'เก็บไว้ใช้ทีหลัง' : 'Store for later use'}</p>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
+
+            {selectedReward?.use_mode === 'bag_only' && (
+              <div className="p-3 bg-muted rounded-lg text-sm flex items-center gap-2">
+                <Backpack className="h-4 w-4 text-primary" />
+                {locale === 'th'
+                  ? 'ไอเทมนี้จะถูกเก็บในกระเป๋าของคุณ'
+                  : 'This item will be stored in your bag'}
+              </div>
+            )}
+
             {selectedReward?.requires_approval && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                 <ShieldCheck className="h-4 w-4 inline mr-1" />
                 {locale === 'th' 
                   ? 'รางวัลนี้ต้องรอการอนุมัติจากผู้จัดการ' 
@@ -268,7 +351,7 @@ export default function RewardShop() {
               {locale === 'th' ? 'ยกเลิก' : 'Cancel'}
             </Button>
             <Button 
-              onClick={() => selectedReward && redeemMutation.mutate(selectedReward.id)}
+              onClick={handleConfirm}
               disabled={redeemMutation.isPending}
             >
               {redeemMutation.isPending 

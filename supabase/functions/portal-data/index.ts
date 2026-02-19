@@ -1501,6 +1501,36 @@ serve(async (req) => {
         break;
       }
 
+      // ========== BAG / INVENTORY ENDPOINTS ==========
+      case 'my-bag-items': {
+        const result = await supabase
+          .from('employee_bag_items')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .order('created_at', { ascending: false });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'employee-bag-items': {
+        const targetEmployeeId = params?.target_employee_id;
+        if (!targetEmployeeId) {
+          error = { message: 'target_employee_id is required' };
+          break;
+        }
+        const result = await supabase
+          .from('employee_bag_items')
+          .select('*')
+          .eq('employee_id', targetEmployeeId)
+          .order('created_at', { ascending: false });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),

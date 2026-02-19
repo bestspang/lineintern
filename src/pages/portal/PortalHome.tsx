@@ -10,7 +10,7 @@ import {
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
   Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity
+  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
@@ -121,6 +121,15 @@ const quickActions: QuickAction[] = [
     descriptionEn: 'Redeem rewards',
     path: '/portal/rewards',
     color: 'from-pink-500 to-pink-600',
+  },
+  {
+    icon: Backpack,
+    label: 'กระเป๋าของฉัน',
+    labelEn: 'My Bag',
+    description: 'ดูไอเทมที่เก็บไว้',
+    descriptionEn: 'View stored items',
+    path: '/portal/my-bag',
+    color: 'from-purple-500 to-purple-600',
   },
 ];
 

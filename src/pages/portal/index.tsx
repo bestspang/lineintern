@@ -44,3 +44,6 @@ export { default as PortalReceiptAnalytics } from './PortalReceiptAnalytics';
 
 // HR pages
 export { default as PayrollReport } from './PayrollReport';
+
+// Bag
+export { default as MyBag } from './MyBag';
