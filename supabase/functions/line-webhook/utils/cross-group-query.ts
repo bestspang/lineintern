@@ -539,6 +539,8 @@ export async function retrieveCrossGroupEvidence(
       evidence.sources.push({ group_name: "Tasks", group_id: targetGroupIds[0], type: "tasks", excerpt: `${tasksData.length} tasks` });
     }
   }
+
+  return evidence;
 }
 
 // ── Build Cross-Group Prompt ───────────────────────────
