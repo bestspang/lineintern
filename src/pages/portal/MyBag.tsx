@@ -62,6 +62,7 @@ export default function MyBag() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bag-items'] });
+      queryClient.invalidateQueries({ queryKey: ['my-bag-count'] });
       toast({
         title: locale === 'th' ? '✅ ใช้ไอเทมสำเร็จ!' : '✅ Item Used!',
         description: locale === 'th' ? 'ไอเทมถูกใช้งานแล้ว' : 'Item has been activated',

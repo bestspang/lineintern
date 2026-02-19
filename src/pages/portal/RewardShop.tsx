@@ -108,6 +108,7 @@ export default function RewardShop() {
       queryClient.invalidateQueries({ queryKey: ['my-happy-points'] });
       queryClient.invalidateQueries({ queryKey: ['available-rewards'] });
       queryClient.invalidateQueries({ queryKey: ['my-bag-items'] });
+      queryClient.invalidateQueries({ queryKey: ['my-bag-count'] });
       
       if (data.toBag) {
         toast({
