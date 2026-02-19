@@ -6,6 +6,11 @@ import { logger } from "../_shared/logger.ts";
 import { logBotMessage, type BotLogEntry } from "../_shared/bot-logger.ts";
 import { getBangkokDateString, formatBangkokTime, getBangkokNow, toBangkokTime, getBangkokTimeComponents } from "../_shared/timezone.ts";
 import {
+  isSourceQuery, getCrossGroupPolicy, computeEffectiveScope,
+  resolveEntities, retrieveCrossGroupEvidence, generateCrossGroupReply,
+  saveQueryMemory, getLastAnswerMemory, formatSourcesReply,
+} from "./utils/cross-group-query.ts";
+import {
   checkReceiptQuota,
   getUserBusinesses,
   getDefaultBusiness,
@@ -10774,7 +10779,51 @@ async function handleMessageEvent(event: LineEvent) {
   // Get social context for cognitive awareness
   const socialContext = await getSocialContext(group.id, user.id);
 
-  // Generate AI reply
+  // ── Cross-Group AI Query Engine ──────────────────────────
+  // Check if cross-group query is enabled for this group/user (only in group context, ask command)
+  if (parsed.commandType === 'ask' && !isDM) {
+    try {
+      const crossGroupPolicy = await getCrossGroupPolicy(group.id, user.id);
+      if (crossGroupPolicy) {
+        console.log(`[handleMessageEvent] Cross-group query enabled for group=${group.id}, user=${user.id}`);
+
+        // Check for follow-up source query
+        if (isSourceQuery(parsed.userMessage)) {
+          const memory = await getLastAnswerMemory(user.id, group.id);
+          if (memory) {
+            const sourceReply = formatSourcesReply(memory.sources_used);
+            const quickReply = await getSmartQuickReply(locale);
+            await replyToLine(event.replyToken, sourceReply, quickReply);
+            return;
+          }
+          // No memory → fall through to normal AI
+        } else {
+          // Full cross-group query flow
+          const effectiveScope = await computeEffectiveScope(crossGroupPolicy);
+          if (effectiveScope.allowedGroupIds.length > 0) {
+            const resolved = await resolveEntities(parsed.userMessage, effectiveScope);
+            const evidence = await retrieveCrossGroupEvidence(
+              resolved.targetGroupIds, effectiveScope, parsed.userMessage, resolved.dateRange
+            );
+            const crossGroupReply = await generateCrossGroupReply(parsed.userMessage, evidence, effectiveScope);
+            
+            // Save memory for follow-up
+            await saveQueryMemory(user.id, group.id, parsed.userMessage, crossGroupReply, evidence.sources);
+            
+            const quickReply = await getSmartQuickReply(locale);
+            await replyToLine(event.replyToken, crossGroupReply, quickReply);
+            await insertMessage(group.id, null, "bot", crossGroupReply);
+            return;
+          }
+        }
+      }
+    } catch (crossGroupError) {
+      console.error('[handleMessageEvent] Cross-group query error:', crossGroupError);
+      // Fall through to normal AI reply
+    }
+  }
+
+  // Generate AI reply (normal single-group flow)
   const startTime = Date.now();
   let aiReply: string;
   let usedKnowledgeItemIds: string[] = [];
