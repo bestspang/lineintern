@@ -606,7 +606,7 @@ export default function EmployeeDetail() {
                       )}
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      {item.granted_by === 'purchase' ? '🛒 Purchased' : item.granted_by === 'admin_grant' ? '👑 Admin' : '⚙️ System'}
+                      {item.granted_by === 'purchase' ? '🛒 Purchased' : item.granted_by === 'admin_grant' ? '👑 Admin' : item.granted_by === 'gacha' ? '🎲 Gacha' : '⚙️ System'}
                       {' · '}
                       {format(new Date(item.created_at), 'MMM dd')}
                       {item.used_at && ` · Used ${format(new Date(item.used_at), 'MMM dd')}`}

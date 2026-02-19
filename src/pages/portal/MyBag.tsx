@@ -94,8 +94,10 @@ export default function MyBag() {
                   {locale === 'th' ? item.item_name_th || item.item_name : item.item_name}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {item.granted_by === 'admin_grant'
+                {item.granted_by === 'admin_grant'
                     ? (locale === 'th' ? '🎁 ได้รับจากผู้จัดการ' : '🎁 Granted by manager')
+                    : item.granted_by === 'gacha'
+                    ? (locale === 'th' ? '🎲 สุ่มได้จาก Gacha' : '🎲 Won from Gacha')
                     : (locale === 'th' ? '🛒 ซื้อจากร้านค้า' : '🛒 Purchased')}
                 </p>
                 {item.status === 'active' && item.expires_at && (
