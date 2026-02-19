@@ -1,64 +1,59 @@
 
 
-## Fix: Policy Dialog Shows Stale Data After Save/Reopen
+## Auto-Suggest Synonyms สำหรับทุกกลุ่ม (กดปุ่มเดียว)
 
-### Root Cause
+### สิ่งที่จะเพิ่ม
 
-Two bugs in `PolicyDialog` component (`AIQueryControl.tsx` lines 282-378):
+ปุ่ม **"Auto-fill Synonyms"** ในหน้า Group Export Policy ที่กดแล้วจะ:
 
-1. **Stale state on reopen**: `useState(policy?.source_type || 'group')` etc. (lines 297-306) only set initial values on first mount. When the dialog reopens with a different `policy` prop, React reuses the existing state -- showing old data.
+1. ดึงชื่อกลุ่ม (`display_name`) + ชื่อสาขา (`branch.name`) ของทุกกลุ่ม
+2. สร้าง synonyms อัตโนมัติจาก:
+   - แยกคำจากชื่อกลุ่ม (เช่น "Eastville Goodchoose team" -> ["Eastville", "EV"])
+   - ชื่อสาขาถ้ามี (เช่น branch "Central Park" -> ["Central Park", "CP"])
+   - ตัดคำทั่วไปออก (team, goodchoose, etc.)
+   - ไม่ทับ synonyms เดิมที่ admin เคยใส่ไว้แล้ว (merge เข้าไป)
+3. Upsert ทุกกลุ่มที่มี export row อยู่แล้ว + สร้าง row ใหม่สำหรับกลุ่มที่ยังไม่มี
 
-2. **Misused `useState` as side effect**: Lines 324-326 use `useState()` callback to sync `scopeGroupIds` from `existingScopeGroups`. This should be `useEffect`. The current code runs once during component initialization, before the query has loaded, so scope groups are never synced.
+### ตัวอย่างผลลัพธ์
 
-### Fix (Surgical, 2 changes)
+| Group | Auto Synonyms |
+|-------|--------------|
+| Goodchoose Central Park สีลม | Central Park, สีลม, CP |
+| Eastville Goodchoose team | Eastville, EV |
+| Team Office Goodchoose | Office, Glowfish Office |
+| Phuket Goodchoose team | Phuket, ภูเก็ต |
 
-**File**: `src/pages/settings/AIQueryControl.tsx`
+### การเปลี่ยนแปลง
 
-**Change 1** -- Add `useEffect` to reset all form state when `policy` prop changes (replaces reliance on useState initial values):
+**ไฟล์เดียว**: `src/pages/settings/AIQueryControl.tsx`
 
-```typescript
-import { useState, useEffect } from 'react';
+- เพิ่มปุ่ม "Auto-fill Synonyms" ข้างหัวตาราง
+- เพิ่มฟังก์ชัน `generateSynonyms(displayName, branchName?)` ที่แยกคำสำคัญจากชื่อ
+- เพิ่ม mutation ที่ loop upsert synonyms ให้ทุกกลุ่ม (merge กับ synonyms เดิม)
+- Query branches เพิ่มเพื่อ match กับ group ผ่าน `line_group_id`
 
-// Inside PolicyDialog, after the useState declarations:
-useEffect(() => {
-  setSourceType(policy?.source_type || 'group');
-  setSourceGroupId(policy?.source_group_id || '');
-  setSourceUserId(policy?.source_user_id || '');
-  setScopeMode(policy?.scope_mode || 'all');
-  setDataSources(policy?.allowed_data_sources || ['messages']);
-  setTimeWindow(policy?.time_window_days || 30);
-  setPiiMode(policy?.pii_mode || 'mask_sensitive');
-  setMaxHits(policy?.max_hits_per_group || 50);
-  setPriority(policy?.priority || 0);
-  setScopeGroupIds([]);
-}, [policy]);
+### สิ่งที่จะไม่แตะ
+
+- ไม่แก้ DB schema (ใช้ column `synonyms text[]` ที่มีอยู่แล้ว)
+- ไม่แก้ backend / edge functions
+- ไม่แก้ tab อื่น ไม่แก้ logic อื่นในหน้า
+
+### Technical Details
+
+```text
+generateSynonyms(displayName, branchName):
+  1. Split displayName by spaces
+  2. Filter out common words: "team", "goodchoose", "gc", "group"
+  3. Add branchName if different from displayName
+  4. Generate abbreviation from remaining words (first letters -> uppercase)
+  5. Deduplicate + return unique array
+
+Auto-fill mutation:
+  1. For each group:
+     a. Find matching branch via line_group_id
+     b. Generate suggested synonyms
+     c. Merge with existing synonyms (keep admin's manual entries)
+     d. Upsert to ai_query_group_export
+  2. Invalidate query cache
+  3. Toast success with count
 ```
-
-**Change 2** -- Replace the broken `useState` callback (lines 324-326) with a proper `useEffect`:
-
-```typescript
-// Replace:
-useState(() => {
-  if (existingScopeGroups) setScopeGroupIds(existingScopeGroups);
-});
-
-// With:
-useEffect(() => {
-  if (existingScopeGroups) setScopeGroupIds(existingScopeGroups);
-}, [existingScopeGroups]);
-```
-
-### Impact
-
-- Only touches `PolicyDialog` internal state management
-- No API changes, no DB changes, no other components affected
-- Existing save logic is unchanged
-- After fix: opening a saved policy will correctly show its saved values
-
-### Files Changed
-
-| File | Lines | Change |
-|------|-------|--------|
-| `src/pages/settings/AIQueryControl.tsx` | 1 (import) | Add `useEffect` to import |
-| `src/pages/settings/AIQueryControl.tsx` | ~306-326 | Add `useEffect` for policy sync + fix scope groups sync |
-
