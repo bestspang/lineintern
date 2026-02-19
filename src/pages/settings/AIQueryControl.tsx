@@ -17,7 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { Plus, Trash2, Shield, Users, MessageSquare, Clock, Search, Eye, Play, Grid3X3, FileText, ChevronDown, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Shield, Users, MessageSquare, Clock, Search, Eye, Play, Grid3X3, FileText, ChevronDown, CheckCircle2, XCircle, Loader2, Wand2 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -526,6 +526,62 @@ function PolicyDialog({
   );
 }
 
+// ── Synonym Generator ──────────────────────────────────────────
+
+const COMMON_WORDS = new Set([
+  'team', 'goodchoose', 'gc', 'group', 'กลุ่ม', 'ทีม',
+  'line', 'chat', 'the', 'of', 'and', '-', '–',
+]);
+
+function generateSynonyms(displayName: string, branchName?: string | null): string[] {
+  const results: string[] = [];
+
+  // Split display name, filter common words
+  const words = displayName
+    .split(/[\s\-–]+/)
+    .map(w => w.trim())
+    .filter(w => w.length > 1 && !COMMON_WORDS.has(w.toLowerCase()));
+
+  // Add meaningful words
+  results.push(...words);
+
+  // Generate abbreviation from remaining words (2+ chars each, 2+ words)
+  if (words.length >= 2) {
+    const abbr = words
+      .filter(w => /^[a-zA-Z]/.test(w))
+      .map(w => w[0].toUpperCase())
+      .join('');
+    if (abbr.length >= 2) results.push(abbr);
+  }
+
+  // Add branch name if different
+  if (branchName && branchName.toLowerCase() !== displayName.toLowerCase()) {
+    const branchWords = branchName
+      .split(/[\s\-–]+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 1 && !COMMON_WORDS.has(w.toLowerCase()));
+    results.push(...branchWords);
+
+    // Branch abbreviation
+    if (branchWords.length >= 2) {
+      const bAbbr = branchWords
+        .filter(w => /^[a-zA-Z]/.test(w))
+        .map(w => w[0].toUpperCase())
+        .join('');
+      if (bAbbr.length >= 2) results.push(bAbbr);
+    }
+  }
+
+  // Deduplicate (case-insensitive)
+  const seen = new Set<string>();
+  return results.filter(s => {
+    const lower = s.toLowerCase();
+    if (seen.has(lower)) return false;
+    seen.add(lower);
+    return true;
+  });
+}
+
 // ── Tab B: Group Export Policy ─────────────────────────────────
 
 function ExportPolicyTab() {
@@ -543,6 +599,15 @@ function ExportPolicyTab() {
     },
   });
 
+  const { data: branches } = useQuery({
+    queryKey: ['branches-for-synonyms'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('branches').select('id, name, line_group_id').eq('is_deleted', false);
+      if (error) throw error;
+      return data as { id: string; name: string; line_group_id: string | null }[];
+    },
+  });
+
   const { data: exports, isLoading } = useQuery({
     queryKey: ['ai-query-group-export'],
     queryFn: async () => {
@@ -553,6 +618,11 @@ function ExportPolicyTab() {
   });
 
   const exportMap = new Map((exports || []).map(e => [e.group_id, e]));
+
+  // Branch lookup by line_group_id
+  const branchByLineGroupId = new Map(
+    (branches || []).filter(b => b.line_group_id).map(b => [b.line_group_id!, b])
+  );
 
   const toggleExportMutation = useMutation({
     mutationFn: async ({ groupId, enabled }: { groupId: string; enabled: boolean }) => {
@@ -571,6 +641,42 @@ function ExportPolicyTab() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-query-group-export'] }),
     onError: () => toast.error('Failed to toggle'),
+  });
+
+  const autoFillSynonymsMutation = useMutation({
+    mutationFn: async () => {
+      if (!groups) return 0;
+      let count = 0;
+      for (const g of groups) {
+        const branch = g.line_group_id ? branchByLineGroupId.get(g.line_group_id) : undefined;
+        const suggested = generateSynonyms(g.display_name, branch?.name);
+        if (suggested.length === 0) continue;
+
+        const existing = exportMap.get(g.id);
+        // Merge: keep existing manual synonyms + add new suggestions
+        const existingSyns = existing?.synonyms || [];
+        const seenLower = new Set(existingSyns.map(s => s.toLowerCase()));
+        const merged = [...existingSyns, ...suggested.filter(s => !seenLower.has(s.toLowerCase()))];
+
+        if (existing) {
+          const { error } = await supabase.from('ai_query_group_export')
+            .update({ synonyms: merged })
+            .eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('ai_query_group_export')
+            .insert({ group_id: g.id, export_enabled: false, allowed_data_sources: ['messages'], synonyms: merged });
+          if (error) throw error;
+        }
+        count++;
+      }
+      return count;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['ai-query-group-export'] });
+      toast.success(t(`อัปเดต synonyms ให้ ${count} กลุ่มแล้ว`, `Auto-filled synonyms for ${count} groups`));
+    },
+    onError: (e: any) => toast.error(e.message || 'Auto-fill failed'),
   });
 
   const saveExportMutation = useMutation({
@@ -598,10 +704,27 @@ function ExportPolicyTab() {
     <>
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">{t('นโยบายส่งออกข้อมูลกลุ่ม', 'Group Export Policy')}</CardTitle>
-          <CardDescription className="text-xs">
-            {t('กำหนดว่ากลุ่มไหนอนุญาตให้ส่งข้อมูลออกไปใช้ในคำตอบ AI ข้ามกลุ่ม (default: ปิด)', 'Control which groups allow their data to be used in cross-group AI answers (default: off)')}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">{t('นโยบายส่งออกข้อมูลกลุ่ม', 'Group Export Policy')}</CardTitle>
+              <CardDescription className="text-xs">
+                {t('กำหนดว่ากลุ่มไหนอนุญาตให้ส่งข้อมูลออกไปใช้ในคำตอบ AI ข้ามกลุ่ม (default: ปิด)', 'Control which groups allow their data to be used in cross-group AI answers (default: off)')}
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => autoFillSynonymsMutation.mutate()}
+              disabled={autoFillSynonymsMutation.isPending}
+            >
+              {autoFillSynonymsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-1" />
+              )}
+              {t('Auto-fill Synonyms', 'Auto-fill Synonyms')}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
