@@ -1,40 +1,42 @@
 
-## แผนลบพนักงาน Inactive ออกจาก Leaderboard และล้าง Points
 
-### สถานะปัจจุบัน
+## แก้ Leaderboard ไม่แสดงข้อมูล
 
-- พนักงาน inactive ที่ยังมี points: **Pass** (120 pts, earned: 120, spent: 0)
-- ปัจจุบันทั้ง Leaderboard (portal) และ HappyPoints Dashboard (admin) กรองแค่ `exclude_from_points` แต่ **ไม่ได้กรอง `is_active`** ทำให้พนักงานที่ลาออกแล้วยังแสดงอยู่ใน ranking
+### Root Cause
+
+Edge function `portal-data` leaderboard query เลือก column `nickname` จาก employees table แต่ column นี้ **ไม่มีอยู่จริง** ทำให้ query error 500:
+
+```
+column employees_1.nickname does not exist
+```
 
 ### สิ่งที่จะทำ
 
-#### 1. Zero out points ของพนักงาน inactive (Data update)
+**แก้ไฟล์เดียว**: `supabase/functions/portal-data/index.ts`
 
-อัปเดต happy_points ของ "Pass" ให้เป็น 0:
-- `point_balance` = 0
-- `total_earned` = 0  
-- `total_spent` = 0
-- `current_punctuality_streak` = 0
+ลบ `nickname` ออกจาก select ใน leaderboard case (บรรทัด ~963):
 
-#### 2. เพิ่ม filter `is_active = true` ใน Leaderboard query (portal-data)
+```
+Before:
+  employee:employees!inner(
+    id,
+    full_name,
+    nickname,      <-- ไม่มี column นี้
+    branch_id,
+    exclude_from_points
+  )
 
-แก้ `supabase/functions/portal-data/index.ts` เพิ่ม `.eq('employee.is_active', true)` ใน leaderboard case
+After:
+  employee:employees!inner(
+    id,
+    full_name,
+    branch_id,
+    exclude_from_points
+  )
+```
 
-#### 3. เพิ่ม filter `is_active` ใน HappyPoints Dashboard (admin)
+แก้ไขเฉพาะจุดนี้จุดเดียว ไม่กระทบ feature อื่น
 
-แก้ `src/pages/attendance/HappyPoints.tsx` เพิ่มการกรอง `is_active = false` ออกจากทั้ง table และ stats
+### ตรวจสอบ PointLeaderboard.tsx
 
----
-
-### รายละเอียดทางเทคนิค
-
-| ลำดับ | ไฟล์/Action | การแก้ไข |
-|-------|-------------|---------|
-| 1 | DB (data update) | Zero out happy_points สำหรับ employee_id ที่ is_active = false |
-| 2 | `supabase/functions/portal-data/index.ts` | เพิ่ม `.eq('employee.is_active', true)` ใน leaderboard query |
-| 3 | `src/pages/attendance/HappyPoints.tsx` | เพิ่มเงื่อนไข filter `is_active` ในทั้ง query หลักและ stats query |
-
-### Cross-Feature Impact
-- ไม่กระทบ feature อื่น เป็นการเพิ่ม filter condition เท่านั้น
-- พนักงาน active ทุกคนยังแสดงตามปกติ
-- Default behavior ไม่เปลี่ยน (เพิ่ม filter เฉพาะ inactive)
+Frontend ใช้ `item.employee?.full_name` เป็นหลัก และมี fallback `item.employee?.nickname` แต่จะไม่ error เพราะแค่ได้ undefined — แค่ลบ `nickname` จาก edge function ก็พอ
