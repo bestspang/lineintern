@@ -1,83 +1,72 @@
 
 
-## แก้ 3 จุด: Promise.allSettled, ลบ secrets_configured, เพิ่ม message length limit
+## แก้ 2 จุด: PostgREST Filter Validation + Logger Sensitive Keys
 
-### 1. เปลี่ยน Promise.all → Promise.allSettled (line 11163-11170)
+### 1. เพิ่ม UUID validation ใน cross-group-query.ts (line 83-104)
 
-**ปัญหา**: ถ้า event เดียวพัง ทั้ง batch พัง → LINE retry ซ้ำทุก event
-**แก้ที่**: `supabase/functions/line-webhook/index.ts` line 11163-11170
+**ไฟล์**: `supabase/functions/line-webhook/utils/cross-group-query.ts`
 
-```text
-// ก่อน:
-const promises = webhookBody.events.map(...);
-await Promise.all(promises);
+เพิ่ม UUID regex check ก่อน `.or()` query:
 
-// หลัง:
-const results = await Promise.allSettled(
-  webhookBody.events.map((event, index) => {
-    console.log(`[webhook] Starting processing of event ${index + 1}...`);
-    return handleEvent(event);
-  })
-);
-const failed = results.filter(r => r.status === 'rejected');
-if (failed.length > 0) {
-  console.error(`[webhook] ${failed.length}/${results.length} events failed`);
-  failed.forEach((f, i) => console.error(`[webhook] Event failure ${i+1}:`, f.reason));
+```typescript
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function getCrossGroupPolicy(
+  groupId: string,
+  userId: string
+): Promise<CrossGroupPolicy | null> {
+  // Validate UUID format to prevent filter injection
+  if (!UUID_RE.test(groupId) || !UUID_RE.test(userId)) {
+    console.warn("[crossGroupQuery] Invalid UUID format", { groupId: !!groupId, userId: !!userId });
+    return null;
+  }
+  // ... existing query unchanged ...
 }
 ```
 
-**ผลลัพธ์**: event ที่พังจะไม่กระทบ event อื่น, log error แยกแต่ละตัว, ยังคง return 200 ให้ LINE ไม่ retry
+- ค่าเป็น UUID อยู่แล้วในทางปฏิบัติ → ผ่าน validation เหมือนเดิม
+- ถ้าค่าผิดปกติ → return null (เหมือน policy ไม่เจอ) ไม่ throw error
+- Caller เดียว: `index.ts:10820` → ไม่กระทบ function อื่น
 
 ---
 
-### 2. ลบ secrets_configured จาก health check (line 11060-11073)
+### 2. เพิ่ม sensitive keys ใน logger.ts (line 6-18)
 
-**ปัญหา**: เปิดเผยว่า secret ไหนมี/ไม่มี → attacker รู้จุดอ่อน
-**แก้ที่**: `supabase/functions/line-webhook/index.ts` line 11060-11073
+**ไฟล์**: `supabase/functions/_shared/logger.ts`
 
-```text
-// ก่อน:
-{ status, timestamp, service, version, secrets_configured: { ... } }
+เพิ่ม 4 keys ใน `SENSITIVE_KEYS` array:
 
-// หลัง:
-{ status: "healthy", timestamp, service: "line-webhook", version: "2.0.0" }
+```typescript
+const SENSITIVE_KEYS = [
+  'password',
+  'token',
+  'access_token',
+  'refresh_token',
+  'api_key',
+  'secret',
+  'line_user_id',
+  'line_group_id',
+  'authorization',
+  'photo_hash',
+  'device_info',
+  // เพิ่มใหม่
+  'email',
+  'phone',
+  'phone_number',
+  'bank_account',
+];
 ```
 
----
-
-### 3. เพิ่ม message length limit (line 9944-9948)
-
-**ปัญหา**: ไม่จำกัดความยาวข้อความก่อนส่ง AI → อาจ DoS ผ่าน token overflow
-**แก้ที่**: `supabase/functions/line-webhook/index.ts` หลัง line 9947 (หลังเช็ค empty text)
-
-```text
-// เพิ่มหลัง check empty text:
-const MAX_MESSAGE_LENGTH = 2000;
-if (event.message.text.length > MAX_MESSAGE_LENGTH) {
-  console.log(`[handleMessageEvent] Message too long (${event.message.text.length} chars), truncating to ${MAX_MESSAGE_LENGTH}`);
-  event.message.text = event.message.text.substring(0, MAX_MESSAGE_LENGTH);
-}
-```
-
-**หมายเหตุ**: ไม่ reject ข้อความ (อาจเป็นข้อมูลจริง เช่น รายงานยอดขาย) แต่ truncate เพื่อป้องกัน token overflow
+- ไม่เปลี่ยน logic, signature, หรือ export
+- 31 edge functions ที่ import logger จะ mask เพิ่มอัตโนมัติ
 
 ---
-
-### ไฟล์ที่แก้
-
-| ไฟล์ | จุดที่แก้ | รายละเอียด |
-|------|----------|-----------|
-| `supabase/functions/line-webhook/index.ts` | line 11163-11170 | Promise.all → Promise.allSettled + error logging |
-| `supabase/functions/line-webhook/index.ts` | line 11060-11073 | ลบ secrets_configured จาก health check response |
-| `supabase/functions/line-webhook/index.ts` | line ~9948 | เพิ่ม message length limit 2000 chars |
 
 ### สิ่งที่ไม่แตะ
-- ไม่แก้ command routing / prompts / DB / RLS / frontend
-- ไม่แก้ handleEvent logic (แค่เปลี่ยนวิธี await)
-- ไม่แก้ health-check edge function แยก (แก้เฉพาะ health endpoint ใน line-webhook)
+- ไม่แก้ index.ts
+- ไม่แก้ DB / RLS / frontend / prompts / routing
+- ไม่แก้ function อื่นใน cross-group-query.ts
 
-### ความเสี่ยง: ต่ำมาก
-- Promise.allSettled: เปลี่ยนเฉพาะ error isolation, ไม่กระทบ logic
-- ลบ secrets_configured: ข้อมูลนี้ไม่ได้ถูกใช้โดย frontend
-- Message truncate: ข้อความ LINE ปกติไม่เกิน 5,000 chars, limit 2,000 เพียงพอสำหรับ AI processing
-
+### ความเสี่ยง: ศูนย์
+- UUID validation: ค่าเป็น UUID อยู่แล้ว → ไม่เปลี่ยนพฤติกรรม
+- Logger keys: เพิ่ม masking → ไม่กระทบ functionality
