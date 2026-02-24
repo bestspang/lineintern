@@ -1,72 +1,45 @@
 
 
-## แก้ 2 จุด: PostgREST Filter Validation + Logger Sensitive Keys
+## สิ่งที่ต้องทำ + Feature ที่กระทบน้อยสุด
 
-### 1. เพิ่ม UUID validation ใน cross-group-query.ts (line 83-104)
+### 0. แก้ Build Error ก่อน (บังคับ)
 
-**ไฟล์**: `supabase/functions/line-webhook/utils/cross-group-query.ts`
-
-เพิ่ม UUID regex check ก่อน `.or()` query:
+**ไฟล์**: `supabase/functions/ai-query-test/index.ts` line 435
 
 ```typescript
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ก่อน:
+return new Response(JSON.stringify({ error: error.message || "Internal error" }), {
 
-export async function getCrossGroupPolicy(
-  groupId: string,
-  userId: string
-): Promise<CrossGroupPolicy | null> {
-  // Validate UUID format to prevent filter injection
-  if (!UUID_RE.test(groupId) || !UUID_RE.test(userId)) {
-    console.warn("[crossGroupQuery] Invalid UUID format", { groupId: !!groupId, userId: !!userId });
-    return null;
-  }
-  // ... existing query unchanged ...
-}
+// หลัง:
+return new Response(JSON.stringify({ error: (error as Error).message || "Internal error" }), {
 ```
 
-- ค่าเป็น UUID อยู่แล้วในทางปฏิบัติ → ผ่าน validation เหมือนเดิม
-- ถ้าค่าผิดปกติ → return null (เหมือน policy ไม่เจอ) ไม่ throw error
-- Caller เดียว: `index.ts:10820` → ไม่กระทบ function อื่น
+แก้ 1 จุด, risk ศูนย์
 
 ---
 
-### 2. เพิ่ม sensitive keys ใน logger.ts (line 6-18)
+### Feature ที่กระทบน้อยสุด (จัดลำดับตาม risk ต่ำ → สูง)
 
-**ไฟล์**: `supabase/functions/_shared/logger.ts`
-
-เพิ่ม 4 keys ใน `SENSITIVE_KEYS` array:
-
-```typescript
-const SENSITIVE_KEYS = [
-  'password',
-  'token',
-  'access_token',
-  'refresh_token',
-  'api_key',
-  'secret',
-  'line_user_id',
-  'line_group_id',
-  'authorization',
-  'photo_hash',
-  'device_info',
-  // เพิ่มใหม่
-  'email',
-  'phone',
-  'phone_number',
-  'bank_account',
-];
-```
-
-- ไม่เปลี่ยน logic, signature, หรือ export
-- 31 edge functions ที่ import logger จะ mask เพิ่มอัตโนมัติ
+| ลำดับ | Feature | ทำไม risk ต่ำ | Effort |
+|-------|---------|--------------|--------|
+| 1 | **Feature Flags RLS → admin only** | แก้ RLS policy 1 ตาราง, ไม่แตะ code | 5 นาที |
+| 2 | **Receipt Smart Categorization** | เพิ่ม logic ใน receipt-submit ที่มีอยู่, ไม่แก้ schema | ต่ำ |
+| 3 | **Broadcast Audience Targeting** | Broadcast.tsx มี recipient_groups อยู่แล้ว, เพิ่ม filter UI | ต่ำ |
+| 4 | **Notification Center** | สร้าง table + page ใหม่ทั้งหมด, ไม่แตะของเดิม | กลาง |
+| 5 | **Manager Dashboard** | สร้าง page ใหม่ดึง data จาก table ที่มีอยู่, ไม่แก้ logic เดิม | กลาง |
+| 6 | **Gacha Daily Missions** | เพิ่ม table + UI ใหม่, แตะ point system เล็กน้อย | กลาง |
+| 7 | **Attendance Predictive Insights** | ต้องเพิ่ม AI processing + cron job ใหม่ | กลาง-สูง |
+| 8 | **Dashboard Widgets** | แก้ Overview.tsx ที่มีอยู่, อาจกระทบ layout | สูง |
+| 9 | **Broadcast refactor** | 2,144 บรรทัด แก้เยอะ, เสี่ยง regression | สูง |
 
 ---
 
-### สิ่งที่ไม่แตะ
-- ไม่แก้ index.ts
-- ไม่แก้ DB / RLS / frontend / prompts / routing
-- ไม่แก้ function อื่นใน cross-group-query.ts
+### แนะนำเริ่มที่: Feature Flags RLS + Build Error Fix
 
-### ความเสี่ยง: ศูนย์
-- UUID validation: ค่าเป็น UUID อยู่แล้ว → ไม่เปลี่ยนพฤติกรรม
-- Logger keys: เพิ่ม masking → ไม่กระทบ functionality
+ทั้งสองอย่างแก้เร็ว (รวม < 10 นาที), กระทบศูนย์
+
+หลังจากนั้นเลือกได้:
+- **ถ้าต้องการ value เร็ว**: Notification Center (page ใหม่ ไม่แตะของเดิม)
+- **ถ้าต้องการ security**: Feature Flags RLS
+- **ถ้าต้องการ UX ดีขึ้น**: Manager Dashboard (รวม pending approvals ไว้ที่เดียว)
+
