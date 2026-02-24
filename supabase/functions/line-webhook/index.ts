@@ -10761,6 +10761,13 @@ async function handleMessageEvent(event: LineEvent) {
     }
   }
 
+  // Truncate overly long messages to prevent token overflow in AI processing
+  const MAX_MESSAGE_LENGTH = 2000;
+  if (event.message.text.length > MAX_MESSAGE_LENGTH) {
+    console.log(`[handleMessageEvent] Message too long (${event.message.text.length} chars), truncating to ${MAX_MESSAGE_LENGTH}`);
+    event.message.text = event.message.text.substring(0, MAX_MESSAGE_LENGTH);
+  }
+
 
   // PHASE 2: Handle /confirm with feedback command
   if (parsed.commandType === 'confirm_with_feedback') {
@@ -11061,12 +11068,7 @@ serve(async (req) => {
       status: "healthy",
       timestamp: new Date().toISOString(),
       service: "line-webhook",
-      version: "2.0.0",
-      secrets_configured: {
-        LINE_CHANNEL_SECRET: !!LINE_CHANNEL_SECRET,
-        LINE_CHANNEL_ACCESS_TOKEN: !!LINE_CHANNEL_ACCESS_TOKEN,
-        SUPABASE_URL: !!SUPABASE_URL,
-      }
+      version: "2.0.0"
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -11160,11 +11162,17 @@ serve(async (req) => {
 
     // Process events
     console.log(`[webhook] Processing events...`);
-    const promises = webhookBody.events.map((event, index) => {
-      console.log(`[webhook] Starting processing of event ${index + 1}...`);
-      return handleEvent(event);
-    });
-    await Promise.all(promises);
+    const results = await Promise.allSettled(
+      webhookBody.events.map((event, index) => {
+        console.log(`[webhook] Starting processing of event ${index + 1}...`);
+        return handleEvent(event);
+      })
+    );
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length > 0) {
+      console.error(`[webhook] ${failed.length}/${results.length} events failed`);
+      failed.forEach((f, i) => console.error(`[webhook] Event failure ${i + 1}:`, (f as PromiseRejectedResult).reason));
+    }
 
     console.log(`\n${'='.repeat(80)}`);
     console.log(`[webhook] ✓✓✓ ALL EVENTS PROCESSED SUCCESSFULLY ✓✓✓`);
