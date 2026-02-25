@@ -214,6 +214,35 @@ serve(async (req) => {
 
     console.log(`[early-checkout-request] Created request ${leaveRequest.id}`);
 
+    // Notify managers/admins via portal notification (non-blocking)
+    try {
+      const { data: managerEmployees } = await supabase
+        .from('employees')
+        .select('id, role_id, employee_roles!inner(role_key)')
+        .in('employee_roles.role_key', ['admin', 'manager', 'hr', 'owner'])
+        .eq('is_active', true);
+
+      if (managerEmployees && managerEmployees.length > 0) {
+        const notifications = managerEmployees
+          .filter(m => m.id !== employee_id)
+          .map(m => ({
+            employee_id: m.id,
+            title: '🚪 คำขอออกงานก่อนเวลา',
+            body: `${employee.full_name} ขอออกก่อนเวลา — ${leave_reason}`,
+            type: 'approval',
+            priority: 'high',
+            action_url: '/portal/approve-early-leave',
+            metadata: { request_type: 'early_leave', request_id: leaveRequest.id }
+          }));
+        
+        if (notifications.length > 0) {
+          await supabase.from('notifications').insert(notifications);
+        }
+      }
+    } catch (e) {
+      console.warn('[early-checkout-request] Failed to create manager notifications', e);
+    }
+
     // Get admins to notify
     const { data: admins } = await supabase
       .from('user_roles')
