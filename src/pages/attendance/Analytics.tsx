@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import LiveAttendanceStatus from '@/components/attendance/LiveAttendanceStatus';
+import PatternInsightsContent from '@/components/attendance/PatternInsightsContent';
 import { getBangkokNow, getBangkokHoursMinutes, formatBangkokISODate } from '@/lib/timezone';
 
 const BANGKOK_TZ = 'Asia/Bangkok';
@@ -621,6 +622,10 @@ export default function AttendanceAnalytics() {
           </TabsTrigger>
           <TabsTrigger value="late" className="text-xs sm:text-sm">เข้าสาย</TabsTrigger>
           <TabsTrigger value="branches" className="text-xs sm:text-sm hidden sm:inline-flex">เปรียบเทียบสาขา</TabsTrigger>
+          <TabsTrigger value="insights" className="text-xs sm:text-sm">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Pattern Insights
+          </TabsTrigger>
         </TabsList>
 
         {/* Summary Tab - On Time, Late, Absent by Branch */}
@@ -1145,6 +1150,18 @@ export default function AttendanceAnalytics() {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        {/* Pattern Insights Tab */}
+        <TabsContent value="insights" className="space-y-4">
+          <PatternInsightsContent
+            checkInLogs={checkInLogs}
+            employees={employees || []}
+            branches={branches || []}
+            gracePeriodMinutes={gracePeriodMinutes}
+            selectedBranch={selectedBranch}
+            dateRange={dateRange}
+          />
         </TabsContent>
       </Tabs>
     </div>

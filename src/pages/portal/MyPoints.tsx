@@ -104,6 +104,20 @@ export default function MyPoints() {
     enabled: !!employee?.id,
   });
 
+  const { data: achievementBadges } = useQuery({
+    queryKey: ['achievement-badges', employee?.id],
+    queryFn: async () => {
+      if (!employee?.id) return null;
+      const { data, error } = await portalApi({
+        endpoint: 'achievement-badges',
+        employee_id: employee.id
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!employee?.id,
+  });
+
   const { data: dailyMissions } = useQuery({
     queryKey: ['daily-missions', employee?.id],
     queryFn: async () => {
@@ -238,6 +252,46 @@ export default function MyPoints() {
                   }
                   <span className={m.completed ? 'line-through text-muted-foreground' : ''}>
                     {m.icon} {locale === 'th' ? m.label_th : m.label_en}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Achievement Badges Card */}
+      {achievementBadges && (
+        <Card className="border-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-yellow-500" />
+              {locale === 'th' ? 'เหรียญตรา' : 'Achievement Badges'}
+            </CardTitle>
+            <CardDescription>
+              {locale === 'th' 
+                ? `ปลดล็อค ${achievementBadges.unlocked_count}/${achievementBadges.total_count}`
+                : `${achievementBadges.unlocked_count}/${achievementBadges.total_count} unlocked`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              {achievementBadges.badges?.map((badge: any) => (
+                <div
+                  key={badge.id}
+                  className={`flex flex-col items-center text-center p-2 rounded-lg border transition-all ${
+                    badge.unlocked 
+                      ? badge.tier === 'gold' 
+                        ? 'bg-yellow-50 border-yellow-300 dark:bg-yellow-950/30 dark:border-yellow-700' 
+                        : badge.tier === 'silver'
+                        ? 'bg-slate-50 border-slate-300 dark:bg-slate-950/30 dark:border-slate-600'
+                        : 'bg-orange-50 border-orange-300 dark:bg-orange-950/30 dark:border-orange-700'
+                      : 'bg-muted/30 border-muted opacity-40'
+                  }`}
+                >
+                  <span className="text-2xl mb-1">{badge.icon}</span>
+                  <span className="text-[10px] font-medium leading-tight">
+                    {locale === 'th' ? badge.label_th : badge.label_en}
                   </span>
                 </div>
               ))}
