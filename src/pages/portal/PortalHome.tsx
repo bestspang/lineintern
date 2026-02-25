@@ -10,7 +10,8 @@ import {
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
   Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack
+  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack,
+  LayoutDashboard
 } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
@@ -134,6 +135,16 @@ const quickActions: QuickAction[] = [
 ];
 
 const managerActions: QuickAction[] = [
+  {
+    icon: LayoutDashboard,
+    label: 'แดชบอร์ดหัวหน้า',
+    labelEn: 'Manager Dashboard',
+    description: 'ภาพรวมทีมและคำขอ',
+    descriptionEn: 'Team overview & approvals',
+    path: '/portal/manager-dashboard',
+    color: 'from-rose-500 to-rose-600',
+    roles: ['manager', 'supervisor', 'admin', 'owner'],
+  },
   {
     icon: ClipboardList,
     label: 'อนุมัติคำขอ',
