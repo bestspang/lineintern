@@ -169,6 +169,35 @@ serve(async (req) => {
 
     console.log('[overtime-request] Created request:', otRequest.id);
 
+    // Notify managers/admins via portal notification (non-blocking)
+    try {
+      const { data: managerEmployees } = await supabase
+        .from('employees')
+        .select('id, role_id, employee_roles!inner(role_key)')
+        .in('employee_roles.role_key', ['admin', 'manager', 'hr', 'owner'])
+        .eq('is_active', true);
+
+      if (managerEmployees && managerEmployees.length > 0) {
+        const notifications = managerEmployees
+          .filter(m => m.id !== body.employee_id)
+          .map(m => ({
+            employee_id: m.id,
+            title: '📋 คำขอ OT ใหม่',
+            body: `${employee.full_name} ขอ OT ${estimatedHours} ชม. วันที่ ${requestDate}`,
+            type: 'approval',
+            priority: 'high',
+            action_url: '/portal/approve-ot',
+            metadata: { request_type: 'overtime', request_id: otRequest.id }
+          }));
+        
+        if (notifications.length > 0) {
+          await supabase.from('notifications').insert(notifications);
+        }
+      }
+    } catch (e) {
+      console.warn('[overtime-request] Failed to create manager notifications', e);
+    }
+
     // Get admin users
     const { data: admins } = await supabase
       .from('user_roles')
