@@ -1,9 +1,10 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer, RefreshCw, Loader2, Globe } from 'lucide-react';
+import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Banknote, Receipt, Timer, RefreshCw, Loader2, Globe, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortal } from '@/contexts/PortalContext';
 import { useLiffOptional } from '@/contexts/LiffContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -34,6 +35,33 @@ export function PortalLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { employee, loading, error, locale, setLocale, isManager, refreshData } = usePortal();
   const liff = useLiffOptional();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch unread notification count
+  useEffect(() => {
+    if (!employee?.id) return;
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from('notifications' as never)
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee.id)
+        .eq('is_read', false);
+      setUnreadCount(count || 0);
+    };
+    fetchCount();
+
+    // Realtime updates
+    const channel = supabase
+      .channel('notif-count')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `employee_id=eq.${employee.id}`,
+      }, () => fetchCount())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [employee?.id]);
 
   // Toggle language
   const toggleLocale = () => {
@@ -149,6 +177,21 @@ export function PortalLayout({ children }: { children: ReactNode }) {
                     📍 {employee.branch.name}
                   </span>
                 )}
+                {/* Notification Bell */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate('/portal/notifications')}
+                  className="h-8 w-8 relative"
+                  title={locale === 'th' ? 'การแจ้งเตือน' : 'Notifications'}
+                >
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
                 {/* Language Toggle */}
                 <Button
                   variant="ghost"

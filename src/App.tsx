@@ -96,7 +96,8 @@ import {
   PayrollReport, MySchedule, MyPayroll, PointLeaderboard,
   PortalEmployees, PortalEmployeeDetail, PortalReceiptManagement, PortalReceiptAnalytics,
   PortalBranchReport,
-  MyBag, GachaBox, GachaHistory
+  MyBag, GachaBox, GachaHistory,
+  Notifications
 } from "./pages/portal";
 import ApproveRemoteCheckout from "./pages/portal/ApproveRemoteCheckout";
 import DepositUpload from "./pages/portal/DepositUpload";
@@ -216,6 +217,7 @@ const App = () => (
                       <Route path="/receipt-management" element={<PortalReceiptManagement />} />
                       <Route path="/receipt-analytics" element={<PortalReceiptAnalytics />} />
                       <Route path="/branch-report" element={<PortalBranchReport />} />
+                      <Route path="/notifications" element={<Notifications />} />
                         <Route path="*" element={<NotFound />} />
                       </Routes>
                     </PortalLayout>

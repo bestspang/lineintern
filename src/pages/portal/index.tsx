@@ -49,3 +49,6 @@ export { default as PayrollReport } from './PayrollReport';
 export { default as MyBag } from './MyBag';
 export { default as GachaBox } from './GachaBox';
 export { default as GachaHistory } from './GachaHistory';
+
+// Notifications
+export { default as Notifications } from './Notifications';
