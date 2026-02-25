@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Bell, BellOff, CheckCheck, Info, AlertTriangle, ShieldCheck, Settings, ChevronRight } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Bell, BellOff, CheckCheck, Info, AlertTriangle, Settings, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Notification {
@@ -22,6 +24,22 @@ interface Notification {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+interface NotificationPreferences {
+  notify_overtime: boolean;
+  notify_early_leave: boolean;
+  notify_day_off: boolean;
+  notify_remote_checkout: boolean;
+  notify_receipts: boolean;
+}
+
+const defaultPrefs: NotificationPreferences = {
+  notify_overtime: true,
+  notify_early_leave: true,
+  notify_day_off: true,
+  notify_remote_checkout: true,
+  notify_receipts: true,
+};
 
 const typeIcons: Record<string, typeof Info> = {
   info: Info,
@@ -43,14 +61,17 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
+  const [prefs, setPrefs] = useState<NotificationPreferences>(defaultPrefs);
+  const [prefsLoading, setPrefsLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const t = (th: string, en: string) => locale === 'th' ? th : en;
 
   useEffect(() => {
     if (!employee?.id) return;
     fetchNotifications();
+    fetchPreferences();
 
-    // Realtime subscription
     const channel = supabase
       .channel('portal-notifications')
       .on('postgres_changes', {
@@ -79,6 +100,46 @@ export default function Notifications() {
       setNotifications(data as unknown as Notification[]);
     }
     setLoading(false);
+  };
+
+  const fetchPreferences = async () => {
+    if (!employee?.id) return;
+    try {
+      const { data } = await supabase.functions.invoke('portal-data', {
+        body: { endpoint: 'notification-preferences', employee_id: employee.id }
+      });
+      if (data?.data) {
+        setPrefs({
+          notify_overtime: data.data.notify_overtime ?? true,
+          notify_early_leave: data.data.notify_early_leave ?? true,
+          notify_day_off: data.data.notify_day_off ?? true,
+          notify_remote_checkout: data.data.notify_remote_checkout ?? true,
+          notify_receipts: data.data.notify_receipts ?? true,
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch notification preferences', e);
+    }
+  };
+
+  const updatePreference = async (key: keyof NotificationPreferences, value: boolean) => {
+    const newPrefs = { ...prefs, [key]: value };
+    setPrefs(newPrefs);
+    setPrefsLoading(true);
+    try {
+      await supabase.functions.invoke('portal-data', {
+        body: {
+          endpoint: 'notification-preferences-update',
+          employee_id: employee?.id,
+          params: newPrefs,
+        }
+      });
+      toast.success(t('บันทึกแล้ว', 'Saved'));
+    } catch (e) {
+      setPrefs(prefs); // rollback
+      toast.error(t('บันทึกไม่สำเร็จ', 'Failed to save'));
+    }
+    setPrefsLoading(false);
   };
 
   const markAsRead = async (id: string) => {
@@ -124,6 +185,14 @@ export default function Notifications() {
     return d.toLocaleDateString(locale === 'th' ? 'th-TH' : 'en-US', { month: 'short', day: 'numeric' });
   };
 
+  const prefItems: { key: keyof NotificationPreferences; icon: string; label: string }[] = [
+    { key: 'notify_overtime', icon: '📋', label: t('คำขอ OT', 'OT Requests') },
+    { key: 'notify_early_leave', icon: '🚪', label: t('คำขอออกก่อนเวลา', 'Early Leave Requests') },
+    { key: 'notify_day_off', icon: '📅', label: t('คำขอวันหยุด', 'Day Off Requests') },
+    { key: 'notify_remote_checkout', icon: '📍', label: t('Checkout นอกสถานที่', 'Remote Checkout') },
+    { key: 'notify_receipts', icon: '🧾', label: t('ใบเสร็จ', 'Receipts') },
+  ];
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -144,12 +213,43 @@ export default function Notifications() {
             <Badge variant="default" className="text-xs">{unreadCount}</Badge>
           )}
         </div>
-        {unreadCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={markAllAsRead}>
-            <CheckCheck className="h-4 w-4 mr-1" />
-            {t('อ่านทั้งหมด', 'Read all')}
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {unreadCount > 0 && (
+            <Button variant="ghost" size="sm" onClick={markAllAsRead}>
+              <CheckCheck className="h-4 w-4 mr-1" />
+              {t('อ่านทั้งหมด', 'Read all')}
+            </Button>
+          )}
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>{t('ตั้งค่าการแจ้งเตือน', 'Notification Settings')}</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground mb-4">
+                {t('เลือกประเภทการแจ้งเตือนที่ต้องการรับ', 'Choose which notifications to receive')}
+              </p>
+              <div className="space-y-4">
+                {prefItems.map(item => (
+                  <div key={item.key} className="flex items-center justify-between">
+                    <span className="text-sm">
+                      {item.icon} {item.label}
+                    </span>
+                    <Switch
+                      checked={prefs[item.key]}
+                      onCheckedChange={(v) => updatePreference(item.key, v)}
+                      disabled={prefsLoading}
+                    />
+                  </div>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Tabs */}

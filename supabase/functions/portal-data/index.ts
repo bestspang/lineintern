@@ -1606,6 +1606,38 @@ serve(async (req) => {
         break;
       }
 
+      case 'notification-preferences': {
+        // GET: return preferences for employee
+        const result = await supabase
+          .from('notification_preferences')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'notification-preferences-update': {
+        // POST: upsert preferences
+        const result = await supabase
+          .from('notification_preferences')
+          .upsert({
+            employee_id,
+            notify_overtime: params?.notify_overtime ?? true,
+            notify_early_leave: params?.notify_early_leave ?? true,
+            notify_day_off: params?.notify_day_off ?? true,
+            notify_remote_checkout: params?.notify_remote_checkout ?? true,
+            notify_receipts: params?.notify_receipts ?? true,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'employee_id' })
+          .select()
+          .single();
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
