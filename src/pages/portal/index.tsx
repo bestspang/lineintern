@@ -52,3 +52,6 @@ export { default as GachaHistory } from './GachaHistory';
 
 // Notifications
 export { default as Notifications } from './Notifications';
+
+// Manager
+export { default as ManagerDashboard } from './ManagerDashboard';
