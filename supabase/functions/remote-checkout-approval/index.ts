@@ -249,6 +249,21 @@ serve(async (req) => {
         }
       }
 
+      // Insert portal notification (non-blocking)
+      try {
+        await supabase.from('notifications').insert({
+          employee_id: employee.id,
+          title: '✅ Checkout นอกสถานที่: อนุมัติ',
+          body: `คำขอ Checkout นอกสถานที่ได้รับอนุมัติแล้ว`,
+          type: 'approval',
+          priority: 'normal',
+          action_url: '/portal/my-history',
+          metadata: { request_type: 'remote_checkout', request_id, action: 'approve' }
+        });
+      } catch (notifErr) {
+        console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
+      }
+
       const successMessage = wasAlreadyCheckedOut
         ? `✅ Archive คำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ (มี checkout อยู่แล้ว)`
         : `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`;
@@ -351,6 +366,21 @@ serve(async (req) => {
         } catch (adminNotifyError) {
           console.warn('[remote-checkout-approval] Failed to notify admin group on rejection:', adminNotifyError);
         }
+      }
+
+      // Insert portal notification (non-blocking)
+      try {
+        await supabase.from('notifications').insert({
+          employee_id: employee.id,
+          title: '❌ Checkout นอกสถานที่: ไม่อนุมัติ',
+          body: `เหตุผล: ${rejection_reason || 'ไม่ระบุ'}`,
+          type: 'approval',
+          priority: 'normal',
+          action_url: '/portal/my-history',
+          metadata: { request_type: 'remote_checkout', request_id, action: 'reject' }
+        });
+      } catch (notifErr) {
+        console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
       }
 
       return new Response(
