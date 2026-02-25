@@ -3717,6 +3717,56 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          action_url: string | null
+          body: string | null
+          created_at: string
+          employee_id: string
+          id: string
+          is_read: boolean
+          metadata: Json | null
+          priority: string
+          read_at: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          action_url?: string | null
+          body?: string | null
+          created_at?: string
+          employee_id: string
+          id?: string
+          is_read?: boolean
+          metadata?: Json | null
+          priority?: string
+          read_at?: string | null
+          title: string
+          type?: string
+        }
+        Update: {
+          action_url?: string | null
+          body?: string | null
+          created_at?: string
+          employee_id?: string
+          id?: string
+          is_read?: boolean
+          metadata?: Json | null
+          priority?: string
+          read_at?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       overtime_requests: {
         Row: {
           approved_at: string | null
