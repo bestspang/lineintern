@@ -425,6 +425,35 @@ export default function ReceiptAnalytics() {
         </Card>
       </div>
 
+      {/* Monthly Comparison Card */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">เดือนนี้ vs เดือนก่อน</p>
+              <p className="text-2xl font-bold">{formatCurrency(analytics.monthlyComparison.current)}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {analytics.monthlyComparison.previous > 0 ? (() => {
+                const change = ((analytics.monthlyComparison.current - analytics.monthlyComparison.previous) / analytics.monthlyComparison.previous) * 100;
+                const isUp = change >= 0;
+                return (
+                  <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${isUp ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    <TrendingUp className={`h-4 w-4 ${!isUp ? 'rotate-180' : ''}`} />
+                    {isUp ? '+' : ''}{change.toFixed(1)}%
+                  </div>
+                );
+              })() : (
+                <span className="text-xs text-muted-foreground">ไม่มีข้อมูลเดือนก่อน</span>
+              )}
+              <span className="text-sm text-muted-foreground">
+                เดือนก่อน: {formatCurrency(analytics.monthlyComparison.previous)}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly/Daily Trend */}

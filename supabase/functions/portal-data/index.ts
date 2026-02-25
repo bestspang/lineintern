@@ -1638,6 +1638,84 @@ serve(async (req) => {
         break;
       }
 
+      case 'daily-missions': {
+        const today = getBangkokDateString();
+        const todayStart = `${today}T00:00:00+07:00`;
+        const todayEnd = `${today}T23:59:59+07:00`;
+
+        // Mission 1: On-time check-in today
+        const { data: todayCheckin } = await supabase
+          .from('attendance_logs')
+          .select('id, server_time')
+          .eq('employee_id', employee_id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', todayStart)
+          .lte('server_time', todayEnd)
+          .limit(1);
+
+        // Check if check-in was on time via work_sessions
+        const { data: todaySession } = await supabase
+          .from('work_sessions')
+          .select('is_late')
+          .eq('employee_id', employee_id)
+          .eq('work_date', today)
+          .maybeSingle();
+
+        const checkedIn = (todayCheckin?.length || 0) > 0;
+        const onTime = checkedIn && todaySession?.is_late === false;
+
+        // Mission 2: Current streak
+        const { data: hp } = await supabase
+          .from('happy_points')
+          .select('current_punctuality_streak, daily_response_score')
+          .eq('employee_id', employee_id)
+          .maybeSingle();
+
+        const streak = hp?.current_punctuality_streak || 0;
+
+        // Mission 3: Points earned today
+        const { data: todayPoints } = await supabase
+          .from('point_transactions')
+          .select('amount')
+          .eq('employee_id', employee_id)
+          .eq('transaction_type', 'earn')
+          .gte('created_at', todayStart)
+          .lte('created_at', todayEnd);
+
+        const todayTotalPoints = (todayPoints || []).reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+
+        // Mission 4: Check-out completed
+        const { data: todayCheckout } = await supabase
+          .from('attendance_logs')
+          .select('id')
+          .eq('employee_id', employee_id)
+          .eq('event_type', 'check_out')
+          .gte('server_time', todayStart)
+          .lte('server_time', todayEnd)
+          .limit(1);
+
+        const checkedOut = (todayCheckout?.length || 0) > 0;
+
+        const missions = [
+          { id: 'checkin', label_th: 'เช็คอินวันนี้', label_en: 'Check in today', icon: '🕐', completed: checkedIn },
+          { id: 'ontime', label_th: 'มาตรงเวลา', label_en: 'On time', icon: '✅', completed: onTime },
+          { id: 'streak3', label_th: 'Streak 3 วันขึ้นไป', label_en: '3+ day streak', icon: '🔥', completed: streak >= 3 },
+          { id: 'earn_points', label_th: 'ได้รับแต้มวันนี้', label_en: 'Earn points today', icon: '⭐', completed: todayTotalPoints > 0 },
+          { id: 'checkout', label_th: 'เช็คเอาท์วันนี้', label_en: 'Check out today', icon: '🏠', completed: checkedOut },
+        ];
+
+        const completedCount = missions.filter(m => m.completed).length;
+
+        data = {
+          missions,
+          completed_count: completedCount,
+          total_count: missions.length,
+          today_points: todayTotalPoints,
+          current_streak: streak,
+        };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
