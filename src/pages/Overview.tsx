@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server } from 'lucide-react';
+import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -174,6 +174,29 @@ export default function Overview() {
     refetchInterval: 30000, // Check health every 30 seconds
   });
 
+  // Action Items Today
+  const { data: actionItems, isLoading: actionItemsLoading } = useQuery({
+    queryKey: ['action-items-today'],
+    queryFn: async () => {
+      const [otRes, earlyLeaveRes, remoteCheckoutRes, dayOffRes, receiptRes] = await Promise.all([
+        supabase.from('overtime_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('early_leave_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('remote_checkout_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('flexible_day_off_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending'),
+      ]);
+      
+      const items: Array<{ label: string; count: number; href: string; emoji: string }> = [];
+      if ((otRes.count || 0) > 0) items.push({ label: 'OT Requests', count: otRes.count || 0, href: '/attendance/overtime-requests', emoji: '⏰' });
+      if ((earlyLeaveRes.count || 0) > 0) items.push({ label: 'Early Leave Requests', count: earlyLeaveRes.count || 0, href: '/attendance/early-leave-requests', emoji: '🚪' });
+      if ((remoteCheckoutRes.count || 0) > 0) items.push({ label: 'Remote Checkout', count: remoteCheckoutRes.count || 0, href: '/attendance/logs', emoji: '📍' });
+      if ((dayOffRes.count || 0) > 0) items.push({ label: 'Day Off Requests', count: dayOffRes.count || 0, href: '/attendance/flexible-day-off-requests', emoji: '📅' });
+      if ((receiptRes.count || 0) > 0) items.push({ label: 'Receipt Approvals', count: receiptRes.count || 0, href: '/receipts', emoji: '🧾' });
+      return items;
+    },
+    refetchInterval: 60000,
+  });
+
   const statCards = [
     {
       title: 'Active Groups',
@@ -235,7 +258,39 @@ export default function Overview() {
         ))}
       </div>
 
-      {/* Receipt Stats Widget */}
+      {/* Action Items Today */}
+      {!actionItemsLoading && actionItems && actionItems.length > 0 && (
+        <Card className="border-primary/20">
+          <CardHeader className="p-4 sm:p-6 pb-2">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Today's Action Items
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">{actionItems.length} pending items need your attention</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+            <div className="space-y-2">
+              {actionItems.map((item) => (
+                <div
+                  key={item.href}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => navigate(item.href)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{item.emoji}</span>
+                    <span className="text-sm font-medium">{item.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">{item.count}</Badge>
+                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/receipts')}>
         <CardHeader className="p-4 sm:p-6 pb-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">

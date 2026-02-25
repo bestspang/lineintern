@@ -121,6 +121,10 @@ export default function Broadcast() {
   const [editScheduledAt, setEditScheduledAt] = useState("");
   const [editMessageType, setEditMessageType] = useState<MessageType>("text");
 
+  // Employee filter state
+  const [filterBranchId, setFilterBranchId] = useState<string>("all");
+  const [filterRoleId, setFilterRoleId] = useState<string>("all");
+
   // Logs state
   const [logSearchTerm, setLogSearchTerm] = useState("");
   const [logStatusFilter, setLogStatusFilter] = useState<"all" | "sent" | "failed" | "skipped">("all");
@@ -323,16 +327,43 @@ export default function Broadcast() {
     },
   });
 
-  // Fetch employees with LINE ID
+  // Fetch employees with LINE ID (include branch & role for filtering)
   const { data: employees } = useQuery({
     queryKey: ["broadcast-employees"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("employees")
-        .select("id, full_name, line_user_id")
+        .select("id, full_name, line_user_id, branch_id, role_id")
         .eq("is_active", true)
         .not("line_user_id", "is", null)
         .order("full_name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch branches for filter
+  const { data: branches } = useQuery({
+    queryKey: ["broadcast-branches"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("id, name")
+        .eq("is_deleted", false)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch employee roles for filter
+  const { data: employeeRoles } = useQuery({
+    queryKey: ["broadcast-employee-roles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employee_roles")
+        .select("id, role_key, display_name_th, display_name_en")
+        .order("priority");
       if (error) throw error;
       return data;
     },
@@ -1247,27 +1278,83 @@ export default function Broadcast() {
                     </ScrollArea>
                   </div>
 
-                  {/* Employees */}
+                  {/* Employees with Branch/Role Filter */}
                   <div className="space-y-2">
-                    <Label>{t('พนักงาน', 'Employees')} ({employees?.length || 0})</Label>
-                    <ScrollArea className="h-32 border rounded-md p-2">
-                      {employees?.map((emp) => (
-                        <div key={emp.id} className="flex items-center gap-2 py-1">
-                          <Checkbox
-                            checked={selectedEmployees.includes(emp.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedEmployees([...selectedEmployees, emp.id]);
-                              } else {
-                                setSelectedEmployees(selectedEmployees.filter((id) => id !== emp.id));
-                              }
-                            }}
-                          />
-                          <span className="text-sm">{emp.full_name}</span>
-                        </div>
-                      ))}
-                      {!employees?.length && <p className="text-sm text-muted-foreground">{t('ไม่มีพนักงานที่มี LINE ID', 'No employees with LINE ID')}</p>}
-                    </ScrollArea>
+                    <Label>{t('พนักงาน', 'Employees')}</Label>
+                    <div className="flex gap-2">
+                      <Select value={filterBranchId} onValueChange={setFilterBranchId}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder={t('ทุกสาขา', 'All Branches')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('ทุกสาขา', 'All Branches')}</SelectItem>
+                          {branches?.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={filterRoleId} onValueChange={setFilterRoleId}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder={t('ทุกตำแหน่ง', 'All Roles')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('ทุกตำแหน่ง', 'All Roles')}</SelectItem>
+                          {employeeRoles?.map((r) => (
+                            <SelectItem key={r.id} value={r.id}>{locale === 'th' ? (r.display_name_th || r.role_key) : (r.display_name_en || r.role_key)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(() => {
+                      const filtered = employees?.filter((emp) => {
+                        if (filterBranchId !== 'all' && emp.branch_id !== filterBranchId) return false;
+                        if (filterRoleId !== 'all' && emp.role_id !== filterRoleId) return false;
+                        return true;
+                      }) || [];
+                      return (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">{filtered.length} {t('คน', 'people')}</span>
+                            {filtered.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={() => {
+                                  const ids = filtered.map(e => e.id);
+                                  const allSelected = ids.every(id => selectedEmployees.includes(id));
+                                  if (allSelected) {
+                                    setSelectedEmployees(selectedEmployees.filter(id => !ids.includes(id)));
+                                  } else {
+                                    setSelectedEmployees([...new Set([...selectedEmployees, ...ids])]);
+                                  }
+                                }}
+                              >
+                                {filtered.every(e => selectedEmployees.includes(e.id)) ? t('ยกเลิกทั้งหมด', 'Deselect All') : t('เลือกทั้งหมด', 'Select All')}
+                              </Button>
+                            )}
+                          </div>
+                          <ScrollArea className="h-32 border rounded-md p-2">
+                            {filtered.map((emp) => (
+                              <div key={emp.id} className="flex items-center gap-2 py-1">
+                                <Checkbox
+                                  checked={selectedEmployees.includes(emp.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedEmployees([...selectedEmployees, emp.id]);
+                                    } else {
+                                      setSelectedEmployees(selectedEmployees.filter((id) => id !== emp.id));
+                                    }
+                                  }}
+                                />
+                                <span className="text-sm">{emp.full_name}</span>
+                              </div>
+                            ))}
+                            {filtered.length === 0 && <p className="text-sm text-muted-foreground">{t('ไม่มีพนักงานที่ตรงตามเงื่อนไข', 'No employees match filter')}</p>}
+                          </ScrollArea>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Save as Recipient Group */}
