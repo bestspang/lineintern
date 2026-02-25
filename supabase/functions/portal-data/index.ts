@@ -1716,6 +1716,70 @@ serve(async (req) => {
         break;
       }
 
+      case 'achievement-badges': {
+        // Query happy_points
+        const { data: hp } = await supabase
+          .from('happy_points')
+          .select('current_punctuality_streak, longest_punctuality_streak, total_earned, point_balance, streak_shields, daily_response_score, daily_score_date')
+          .eq('employee_id', employee_id)
+          .maybeSingle();
+
+        // Check perfect month: all working days this month have on-time check-ins
+        const now = getBangkokNow();
+        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const todayStr = getBangkokDateString();
+
+        const { data: monthCheckins } = await supabase
+          .from('attendance_logs')
+          .select('id, server_time')
+          .eq('employee_id', employee_id)
+          .eq('event_type', 'check_in')
+          .gte('server_time', `${monthStart}T00:00:00+07:00`)
+          .lte('server_time', `${todayStr}T23:59:59+07:00`);
+
+        const { data: schedules } = await supabase
+          .from('work_schedules')
+          .select('day_of_week, is_working_day')
+          .eq('employee_id', employee_id);
+
+        // Count working days so far this month
+        const workingDaysSet = new Set((schedules || []).filter(s => s.is_working_day).map(s => s.day_of_week));
+        let workingDaysThisMonth = 0;
+        const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        for (let d = new Date(monthStartDate); d <= now; d.setDate(d.getDate() + 1)) {
+          if (workingDaysSet.has(d.getDay())) workingDaysThisMonth++;
+        }
+        const checkinDays = monthCheckins?.length || 0;
+        const isPerfectMonth = workingDaysThisMonth > 0 && checkinDays >= workingDaysThisMonth && now.getDate() >= 20;
+
+        const streak = hp?.current_punctuality_streak || 0;
+        const longestStreak = hp?.longest_punctuality_streak || 0;
+        const totalEarned = hp?.total_earned || 0;
+        const shields = hp?.streak_shields || 0;
+        const responseScore = hp?.daily_response_score || 0;
+        const scoreDate = hp?.daily_score_date;
+        const isScoreToday = scoreDate === todayStr;
+
+        const badges = [
+          { id: 'streak5', label_th: 'Streak 5 วัน', label_en: '5-Day Streak', icon: '🔥', unlocked: streak >= 5 || longestStreak >= 5, tier: 'bronze' },
+          { id: 'streak10', label_th: 'Streak 10 วัน', label_en: '10-Day Streak', icon: '🔥', unlocked: streak >= 10 || longestStreak >= 10, tier: 'silver' },
+          { id: 'streak20', label_th: 'Streak 20 วัน', label_en: '20-Day Streak', icon: '🔥', unlocked: streak >= 20 || longestStreak >= 20, tier: 'gold' },
+          { id: 'perfect_month', label_th: 'เดือนสมบูรณ์แบบ', label_en: 'Perfect Month', icon: '🏆', unlocked: isPerfectMonth, tier: 'gold' },
+          { id: 'top_earner', label_th: 'นักสะสมแต้ม', label_en: 'Top Earner', icon: '⭐', unlocked: totalEarned >= 500, tier: 'silver' },
+          { id: 'diamond_earner', label_th: 'นักสะสมเพชร', label_en: 'Diamond Earner', icon: '💎', unlocked: totalEarned >= 2000, tier: 'gold' },
+          { id: 'fast_responder', label_th: 'ตอบไว', label_en: 'Fast Responder', icon: '💬', unlocked: isScoreToday && responseScore >= 5, tier: 'bronze' },
+          { id: 'shield_master', label_th: 'ราชาโล่', label_en: 'Shield Master', icon: '🛡️', unlocked: shields >= 3, tier: 'silver' },
+          { id: 'longest_streak', label_th: 'Streak ระดับตำนาน', label_en: 'Legendary Streak', icon: '👑', unlocked: longestStreak >= 30, tier: 'gold' },
+        ];
+
+        data = {
+          badges,
+          unlocked_count: badges.filter(b => b.unlocked).length,
+          total_count: badges.length,
+        };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown endpoint: ${endpoint}` }),
