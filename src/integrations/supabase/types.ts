@@ -3717,6 +3717,47 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          employee_id: string
+          id: string
+          notify_day_off: boolean
+          notify_early_leave: boolean
+          notify_overtime: boolean
+          notify_receipts: boolean
+          notify_remote_checkout: boolean
+          updated_at: string
+        }
+        Insert: {
+          employee_id: string
+          id?: string
+          notify_day_off?: boolean
+          notify_early_leave?: boolean
+          notify_overtime?: boolean
+          notify_receipts?: boolean
+          notify_remote_checkout?: boolean
+          updated_at?: string
+        }
+        Update: {
+          employee_id?: string
+          id?: string
+          notify_day_off?: boolean
+          notify_early_leave?: boolean
+          notify_overtime?: boolean
+          notify_receipts?: boolean
+          notify_remote_checkout?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           action_url: string | null

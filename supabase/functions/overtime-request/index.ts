@@ -178,8 +178,19 @@ serve(async (req) => {
         .eq('is_active', true);
 
       if (managerEmployees && managerEmployees.length > 0) {
+        // Check notification preferences
+        const { data: prefs } = await supabase
+          .from('notification_preferences')
+          .select('employee_id, notify_overtime')
+          .in('employee_id', managerEmployees.map(m => m.id));
+        const prefMap = new Map(prefs?.map(p => [p.employee_id, p]) || []);
+
         const notifications = managerEmployees
           .filter(m => m.id !== body.employee_id)
+          .filter(m => {
+            const pref = prefMap.get(m.id);
+            return !pref || pref.notify_overtime !== false;
+          })
           .map(m => ({
             employee_id: m.id,
             title: '📋 คำขอ OT ใหม่',
