@@ -149,6 +149,22 @@ serve(async (req) => {
 
     await supabase.from('approval_logs').insert(approvalLogs);
 
+    // Insert portal notifications for each request (non-blocking)
+    try {
+      const notifications = requests.map((req: any) => ({
+        employee_id: req.employee_id,
+        title: action === 'approve' ? '✅ วันหยุดยืดหยุ่น: อนุมัติ' : '❌ วันหยุดยืดหยุ่น: ไม่อนุมัติ',
+        body: `วันที่ ${req.day_off_date}${req.reason ? ` — ${req.reason}` : ''}`,
+        type: 'approval',
+        priority: 'normal',
+        action_url: '/portal/my-history',
+        metadata: { request_type: 'flexible_day_off', request_id: req.id, action }
+      }));
+      await supabase.from('notifications').insert(notifications);
+    } catch (notifErr) {
+      console.warn('[flexible-day-off-approval] Failed to create notifications:', notifErr);
+    }
+
     // Format Thai date helper
     const formatThaiDate = (dateStr: string) => {
       const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
