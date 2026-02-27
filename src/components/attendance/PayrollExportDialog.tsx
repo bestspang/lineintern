@@ -428,7 +428,16 @@ export default function PayrollExportDialog({
                   className="pl-8 h-9"
                 />
               </div>
-              <div className="border rounded-md max-h-36 overflow-y-auto">
+              <div className="border rounded-md max-h-52 overflow-y-auto">
+                <label
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm sticky top-0 bg-background border-b font-medium z-10"
+                >
+                  <Checkbox
+                    checked={selectAll}
+                    onCheckedChange={toggleAllEmployees}
+                  />
+                  <span>เลือกทั้งหมด ({filteredEmployees.length} คน)</span>
+                </label>
                 {filteredEmployees.map(emp => (
                   <label
                     key={emp.id}
