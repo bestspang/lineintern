@@ -1,19 +1,22 @@
 
 
-## Fix: Employee List Scroll + Select All Checkbox
+## Problem Analysis
 
-### Problems
-1. **`max-h-36` (144px) is too short** — ไม่สามารถ scroll ดูคนสุดท้ายได้
-2. **"เลือกทั้งหมด" เป็นปุ่ม text เล็กๆ** — user ต้องการ checkbox "Select All" ที่ชัดเจนกว่า
+The column picker UI code looks correct — `activeColumns` switches between `SUMMARY_COLUMNS` and `DAILY_COLUMNS` based on `mode`, and `toggleColumn` correctly handles both sets. The issue is likely that the **ScrollArea is cutting off** the column picker section at the bottom of the dialog, making it impossible to scroll down to see/interact with the column checkboxes — especially when the employee list is expanded.
 
-### Changes
+The `DialogContent` uses `max-h-[90vh]` with `overflow-hidden`, and `ScrollArea` with `flex-1`. If the content above (mode tabs + month range + branch filter + employee list with `max-h-52`) takes up most of the viewport height, the column picker gets pushed below the visible area.
+
+## Fix
 
 **File: `src/components/attendance/PayrollExportDialog.tsx`**
 
-1. เพิ่ม `max-h-36` → `max-h-52` (208px) เพื่อให้เห็นคนมากขึ้น
-2. เพิ่ม "เลือกทั้งหมด" checkbox row ที่ sticky อยู่บนสุดของ list (sticky top-0, bg-muted/30, border-b)
-3. คง "เลือกทั้งหมด" button ข้างบนไว้เหมือนเดิม (ไม่แตะ)
+1. Reduce employee list max-height from `max-h-52` to `max-h-40` to leave room for column picker
+2. Add `min-h-0` to the ScrollArea to ensure flex shrinking works properly
+3. Add extra bottom padding (`pb-4`) to the inner content so the column picker section has breathing room when scrolled
 
-### Risk: Very Low
-- UI-only change, ไม่แตะ logic/export/data
+These are UI-only changes. No logic or data changes.
+
+| File | Change | Risk |
+|------|--------|------|
+| `PayrollExportDialog.tsx` | Adjust scroll area sizing (~3 lines) | Very Low |
 
