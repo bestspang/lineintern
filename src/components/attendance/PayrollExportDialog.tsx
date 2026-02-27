@@ -55,6 +55,7 @@ const DAILY_COLUMNS = [
   { key: 'check_in', label: 'เวลาเข้า', default: true },
   { key: 'check_out', label: 'เวลาออก', default: true },
   { key: 'work_hours', label: 'ชม.ทำงาน', default: true },
+  { key: 'late_minutes', label: 'สาย (นาที)', default: true },
   { key: 'capped_hours', label: 'ชม.จริง (cap)', default: true },
   { key: 'ot_approved_hours', label: 'OT อนุมัติ (ชม.)', default: false },
   { key: 'is_overtime', label: 'OT', default: false },
@@ -117,6 +118,7 @@ export default function PayrollExportDialog({
     new Set(DAILY_COLUMNS.filter(c => c.default).map(c => c.key))
   );
   const [isExporting, setIsExporting] = useState(false);
+  const [lateThreshold, setLateThreshold] = useState<number | null>(null); // null = use globalGrace
 
   // Load saved preferences
   useEffect(() => {
@@ -128,6 +130,7 @@ export default function PayrollExportDialog({
         if (prefs.selectedBranch) setSelectedBranch(prefs.selectedBranch);
         if (prefs.exportFormat) setExportFormat(prefs.exportFormat);
         if (prefs.sortBy) setSortBy(prefs.sortBy);
+        if (prefs.lateThreshold != null) setLateThreshold(prefs.lateThreshold);
         if (Array.isArray(prefs.summaryColumns)) setSummaryColumns(new Set(prefs.summaryColumns));
         if (Array.isArray(prefs.dailyColumns)) setDailyColumns(new Set(prefs.dailyColumns));
       }
@@ -231,6 +234,7 @@ export default function PayrollExportDialog({
           status: 'ตรงเวลา',
           check_in: '08:00',
           check_out: '17:00',
+          late_minutes: '0',
           work_hours: '8.00',
           capped_hours: '8.00',
           ot_approved_hours: '-',
@@ -251,6 +255,7 @@ export default function PayrollExportDialog({
         selectedBranch,
         exportFormat,
         sortBy,
+        lateThreshold,
         summaryColumns: Array.from(summaryColumns),
         dailyColumns: Array.from(dailyColumns),
       }));
@@ -364,6 +369,7 @@ export default function PayrollExportDialog({
     });
 
     const globalGrace = settingsRes.data?.[0]?.grace_period_minutes || 15;
+    const effectiveGrace = lateThreshold != null ? lateThreshold : globalGrace;
     const globalStartTime = settingsRes.data?.[0]?.standard_start_time || '08:00:00';
 
     const holidaySet = new Set<string>();
@@ -412,6 +418,7 @@ export default function PayrollExportDialog({
 
         // Determine detailed status
         let status = '';
+        let lateMinutes = 0;
         if (adjustment?.override_status) {
           const os = adjustment.override_status.toLowerCase();
           if (['leave', 'vacation', 'sick', 'personal', 'ลา', 'ลาป่วย', 'ลากิจ', 'ลาพักร้อน'].some(t => os.includes(t))) {
@@ -441,10 +448,11 @@ export default function PayrollExportDialog({
 
           if (diffMinutes < 0) {
             status = 'ก่อนเวลา';
-          } else if (diffMinutes <= globalGrace) {
+          } else if (diffMinutes <= effectiveGrace) {
             status = 'ตรงเวลา';
           } else {
             status = 'สาย';
+            lateMinutes = Math.round(diffMinutes);
           }
         }
 
@@ -470,6 +478,7 @@ export default function PayrollExportDialog({
           date: dateStr,
           day_name: DAY_NAMES_TH[dayOfWeek],
           status,
+          late_minutes: checkIn ? String(lateMinutes) : '-',
           check_in: checkInTime,
           check_out: checkOutTime,
           work_hours: finalWorkHours.toFixed(2),
@@ -607,22 +616,41 @@ export default function PayrollExportDialog({
               </Select>
             </div>
 
-            {/* Sort selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium flex items-center gap-1.5">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                เรียงลำดับ
-              </Label>
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.filter(o => mode === 'daily' || o.value !== 'date').map(o => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Sort selector + Late threshold */}
+            <div className="flex gap-3">
+              <div className="space-y-2 flex-1">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  เรียงลำดับ
+                </Label>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.filter(o => mode === 'daily' || o.value !== 'date').map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {mode === 'daily' && (
+                <div className="space-y-2 w-40">
+                  <Label className="text-sm font-medium">นับสายหลังจาก (นาที)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={120}
+                    placeholder="ค่าเริ่มต้น"
+                    value={lateThreshold != null ? lateThreshold : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLateThreshold(v === '' ? null : Math.max(0, Number(v)));
+                    }}
+                    className="h-10"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Employee picker */}
