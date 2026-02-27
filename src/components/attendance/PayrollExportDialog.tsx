@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, addMonths, subMonths } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
@@ -81,6 +81,20 @@ export default function PayrollExportDialog({
     new Set(DAILY_COLUMNS.filter(c => c.default).map(c => c.key))
   );
   const [isExporting, setIsExporting] = useState(false);
+
+  // Load saved preferences from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('payroll-export-prefs');
+      if (saved) {
+        const prefs = JSON.parse(saved);
+        if (prefs.mode) setMode(prefs.mode);
+        if (prefs.selectedBranch) setSelectedBranch(prefs.selectedBranch);
+        if (Array.isArray(prefs.summaryColumns)) setSummaryColumns(new Set(prefs.summaryColumns));
+        if (Array.isArray(prefs.dailyColumns)) setDailyColumns(new Set(prefs.dailyColumns));
+      }
+    } catch {}
+  }, []);
 
   // Filter employees by branch & search
   const filteredEmployees = useMemo(() => {
@@ -308,6 +322,15 @@ export default function PayrollExportDialog({
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Export สำเร็จ');
+    // Save preferences for next time
+    try {
+      localStorage.setItem('payroll-export-prefs', JSON.stringify({
+        mode,
+        selectedBranch,
+        summaryColumns: Array.from(summaryColumns),
+        dailyColumns: Array.from(dailyColumns),
+      }));
+    } catch {}
   };
 
   const activeColumns = mode === 'summary' ? SUMMARY_COLUMNS : DAILY_COLUMNS;
