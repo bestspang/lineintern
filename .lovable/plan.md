@@ -1,86 +1,48 @@
 
 
-## Plan: Achievement Badges + Attendance Predictive Insights
+## Plan: Enhanced Payroll Export with Multiple Modes
 
-### สิ่งที่จะทำ 2 อย่าง
+### Problem
+Current export is a single "Export" button that dumps summary CSV (1 row per employee). User wants:
+1. **Summary mode** (current) vs **Daily detail mode** (1 row per employee per day)
+2. Month range selector (select multiple months)
+3. Employee/branch filter for export
+4. Column picker (choose which data to include)
 
----
+### Approach
+Create a new `PayrollExportDialog` component used from Payroll.tsx. This keeps Payroll.tsx changes minimal (just import + replace the export button).
 
-### Feature A: Achievement Badges ใน MyPoints Page
+### Implementation
 
-**แนวทาง**: Computed badges (เหมือน daily missions) — คำนวณจาก data ที่มีอยู่ ไม่ต้องสร้าง table ใหม่
+**New file: `src/components/attendance/PayrollExportDialog.tsx`**
+- Dialog with tabs: "Summary" vs "Daily Detail"
+- Month range picker (from/to month)
+- Branch filter dropdown (reuse existing branches data)
+- Employee multi-select checkboxes (filter by branch first)
+- Column picker with checkboxes:
+  - Summary: รหัส, ชื่อ, สาขา, ประเภท, วันทำงาน, ชม.รวม, สาย, ขาด, ลา, OT, เงินเดือน, หัก, สุทธิ
+  - Daily: รหัส, ชื่อ, วันที่, สถานะ (มา/สาย/ขาด/ลา), เวลาเข้า, เวลาออก, ชม.ทำงาน, OT, หมายเหตุ
+- Export button generates CSV based on selections
+- For daily mode: query `attendance_logs` + `work_sessions` for selected employees/months
+- Props: `payrollRecords`, `employees`, `branches`, `currentMonth`, `open`, `onOpenChange`
 
-**Badge Categories** (computed from existing data):
+**Edit: `src/pages/attendance/Payroll.tsx`**
+- Import `PayrollExportDialog`
+- Add state `exportDialogOpen`
+- Replace existing `handleExport` button click with opening the dialog
+- Pass existing data (employees, branches, payrollRecords, currentMonth) as props
 
-| Badge | Icon | Condition | Source |
-|-------|------|-----------|--------|
-| 🔥 Streak 5 | Flame | `current_punctuality_streak >= 5` | `happy_points` |
-| 🔥 Streak 10 | Flame | `current_punctuality_streak >= 10` | `happy_points` |
-| 🔥 Streak 20 | Flame | `current_punctuality_streak >= 20` | `happy_points` |
-| 🏆 Perfect Month | Trophy | ไม่ขาด ไม่สาย ทั้งเดือน | `attendance_logs` + `work_schedules` |
-| ⭐ Top Earner | Star | `total_earned >= 500` | `happy_points` |
-| 💎 Diamond Earner | Gem | `total_earned >= 2000` | `happy_points` |
-| 💬 Fast Responder | MessageSquare | `daily_response_score >= 5` วันนี้ | `happy_points` |
-| 🛡️ Shield Master | Shield | เคยมี streak shield >= 3 | `happy_points.streak_shields` |
-| 👑 Longest Streak | Crown | `longest_punctuality_streak >= 30` | `happy_points` |
-
-**Implementation**:
-
-1. **`portal-data/index.ts`** — เพิ่ม endpoint `achievement-badges` ที่ query `happy_points` + `attendance_logs` (เดือนปัจจุบัน) แล้วคำนวณ badges ที่ unlock แล้ว
-
-2. **`src/pages/portal/MyPoints.tsx`** — เพิ่ม "Achievement Badges" card หลัง Daily Missions card แสดง badges เป็น grid ของ icons (unlocked = สี, locked = gray)
-
-| File | Change | Risk |
-|------|--------|------|
-| `supabase/functions/portal-data/index.ts` | เพิ่ม `achievement-badges` endpoint (~50 lines) | Very Low (new endpoint) |
-| `src/pages/portal/MyPoints.tsx` | เพิ่ม Badges card (~60 lines) | Very Low (additive) |
-
----
-
-### Feature B: Attendance Predictive Insights Tab
-
-**แนวทาง**: เพิ่ม tab "Pattern Insights" ใน Analytics.tsx ที่ใช้ data จาก queries ที่มีอยู่แล้ว (`logs`, `employees`, `checkInLogs`) + query เพิ่มสำหรับ 90 วันย้อนหลัง
-
-**สิ่งที่แสดง**:
-
-1. **Top 5 พนักงานที่มาสายบ่อย** — table แสดง ชื่อ, จำนวนวันสาย, % สาย, สาขา
-2. **วันที่ขาดงานบ่อย (Day of Week)** — bar chart แสดง จันทร์-อาทิตย์ ว่าวันไหนมีคนขาดมากสุด
-3. **Attendance Score Trend** — line chart แสดง % on-time per week (4 สัปดาห์ล่าสุด)
-4. **Risk Alerts** — cards แสดงพนักงานที่มี pattern น่าเป็นห่วง (สาย > 30% ของ check-ins)
-
-**Implementation**:
-
-Data computation ทั้งหมดทำ client-side จาก `logs` ที่ query มาแล้ว (useMemo) — ไม่ต้องเพิ่ม query ใหม่ ไม่ต้องเพิ่ม edge function
+### Files Changed
 
 | File | Change | Risk |
 |------|--------|------|
-| `src/pages/attendance/Analytics.tsx` | เพิ่ม tab "insights" + TabsContent (~150 lines) | Very Low (additive tab) |
+| `src/components/attendance/PayrollExportDialog.tsx` | New component (~250 lines) | None (new file) |
+| `src/pages/attendance/Payroll.tsx` | Import + replace export button (~5 lines changed) | Very Low |
 
----
-
-### สรุป Files Changed
-
-| File | Change | Risk |
-|------|--------|------|
-| `supabase/functions/portal-data/index.ts` | เพิ่ม `achievement-badges` endpoint | Very Low |
-| `src/pages/portal/MyPoints.tsx` | เพิ่ม Achievement Badges card | Very Low |
-| `src/pages/attendance/Analytics.tsx` | เพิ่ม Pattern Insights tab | Very Low |
-
-### Files NOT Changed
-- DB schema — ไม่ต้อง migration (computed badges)
-- Edge functions อื่น — ไม่แตะ
-- Points/Gacha logic — ไม่แตะ
-
-### Risk: Very Low
-- ทั้งหมดเป็น additive — เพิ่ม tab/card/endpoint ใหม่ ไม่แก้ code เดิม
-- Badges คำนวณจาก `happy_points` ที่มีอยู่แล้ว
-- Insights คำนวณ client-side จาก logs ที่ query มาแล้ว
-- ไม่มี DB migration
-
-### Verification
-1. เปิด Portal > MyPoints → เห็น Achievement Badges card พร้อม badges ที่ unlock/locked
-2. พนักงานที่มี streak 5+ → เห็น badge 🔥 Streak 5 สว่าง
-3. เปิด Attendance > Analytics > tab "Pattern Insights" → เห็น top late employees + day-of-week chart
-4. เลือก branch filter → insights filter ตาม branch ด้วย
-5. เลือก date range 30 วัน → weekly trend แสดง 4 สัปดาห์
+### Key Design Decisions
+- Daily mode queries `attendance_logs` directly in the dialog (lazy load when user picks daily mode)
+- Multi-month support: loop months and query each
+- Column picker uses simple checkbox list with "Select All" toggle
+- Keep existing `handleExport` as fallback, dialog calls similar logic internally
+- No DB changes, no edge function changes
 
