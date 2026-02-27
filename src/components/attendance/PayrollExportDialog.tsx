@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { Download, FileText, Search, Loader2, Table } from 'lucide-react';
+import { Download, FileText, Search, Loader2, Table, ArrowUpDown } from 'lucide-react';
 
 interface PayrollExportDialogProps {
   open: boolean;
@@ -55,8 +55,18 @@ const DAILY_COLUMNS = [
   { key: 'check_in', label: 'เวลาเข้า', default: true },
   { key: 'check_out', label: 'เวลาออก', default: true },
   { key: 'work_hours', label: 'ชม.ทำงาน', default: true },
+  { key: 'capped_hours', label: 'ชม.จริง (cap)', default: true },
+  { key: 'ot_approved_hours', label: 'OT อนุมัติ (ชม.)', default: false },
   { key: 'is_overtime', label: 'OT', default: false },
   { key: 'note', label: 'หมายเหตุ', default: false },
+];
+
+type SortBy = 'code' | 'name' | 'date';
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'code', label: 'รหัสพนักงาน' },
+  { value: 'name', label: 'ชื่อพนักงาน' },
+  { value: 'date', label: 'วันที่' },
 ];
 
 const DAY_NAMES_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
@@ -99,6 +109,7 @@ export default function PayrollExportDialog({
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(true);
   const [exportFormat, setExportFormat] = useState<'csv' | 'xlsx'>('csv');
+  const [sortBy, setSortBy] = useState<SortBy>('code');
   const [summaryColumns, setSummaryColumns] = useState<Set<string>>(
     new Set(SUMMARY_COLUMNS.filter(c => c.default).map(c => c.key))
   );
@@ -116,6 +127,7 @@ export default function PayrollExportDialog({
         if (prefs.mode) setMode(prefs.mode);
         if (prefs.selectedBranch) setSelectedBranch(prefs.selectedBranch);
         if (prefs.exportFormat) setExportFormat(prefs.exportFormat);
+        if (prefs.sortBy) setSortBy(prefs.sortBy);
         if (Array.isArray(prefs.summaryColumns)) setSummaryColumns(new Set(prefs.summaryColumns));
         if (Array.isArray(prefs.dailyColumns)) setDailyColumns(new Set(prefs.dailyColumns));
       }
@@ -216,10 +228,12 @@ export default function PayrollExportDialog({
           branch: emp.branches?.name || '-',
           date: format(today, 'yyyy-MM-dd'),
           day_name: DAY_NAMES_TH[today.getDay()],
-          status: 'มา',
-          check_in: '08:30',
-          check_out: '17:30',
-          work_hours: '9.00',
+          status: 'ตรงเวลา',
+          check_in: '08:00',
+          check_out: '17:00',
+          work_hours: '8.00',
+          capped_hours: '8.00',
+          ot_approved_hours: '-',
           is_overtime: '-',
           note: '-',
         };
@@ -236,6 +250,7 @@ export default function PayrollExportDialog({
         mode,
         selectedBranch,
         exportFormat,
+        sortBy,
         summaryColumns: Array.from(summaryColumns),
         dailyColumns: Array.from(dailyColumns),
       }));
@@ -265,6 +280,16 @@ export default function PayrollExportDialog({
     }
   };
 
+  const sortRows = (rows: { sortCode: string; sortName: string; sortDate: string; cells: string[] }[]): string[][] => {
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      if (sortBy === 'name') return a.sortName.localeCompare(b.sortName, 'th');
+      if (sortBy === 'date') return a.sortDate.localeCompare(b.sortDate) || a.sortCode.localeCompare(b.sortCode);
+      return a.sortCode.localeCompare(b.sortCode); // default: code
+    });
+    return sorted.map(r => r.cells);
+  };
+
   const exportSummary = (employeeIds: string[]) => {
     const filtered = payrollRecords?.filter(r => employeeIds.includes(r.employee_id)) || [];
     if (filtered.length === 0) {
@@ -274,10 +299,16 @@ export default function PayrollExportDialog({
 
     const cols = SUMMARY_COLUMNS.filter(c => summaryColumns.has(c.key));
     const headers = cols.map(c => c.label);
-    const rows = filtered.map(r => {
+    const taggedRows = filtered.map(r => {
       const row = buildSummaryRow(r);
-      return cols.map(c => row[c.key] || '');
+      return {
+        sortCode: row.code,
+        sortName: row.name,
+        sortDate: '',
+        cells: cols.map(c => row[c.key] || ''),
+      };
     });
+    const rows = sortRows(taggedRows);
 
     const filename = `payroll_summary_${format(fromMonth, 'yyyy-MM')}`;
     exportFormat === 'xlsx' ? downloadXLSX(headers, rows, filename) : downloadCSV(headers, rows, filename);
@@ -289,6 +320,7 @@ export default function PayrollExportDialog({
     const startStr = format(start, 'yyyy-MM-dd');
     const endStr = format(end, 'yyyy-MM-dd');
 
+    // Fetch attendance logs in batches
     let allLogs: any[] = [];
     const BATCH = 50;
     for (let i = 0; i < employeeIds.length; i += BATCH) {
@@ -304,43 +336,132 @@ export default function PayrollExportDialog({
       allLogs = allLogs.concat(data || []);
     }
 
-    const empMap = new Map<string, { code: string; name: string; branch: string }>();
+    // Fetch work_schedules, attendance_adjustments, overtime_requests in parallel
+    const [schedulesRes, adjustmentsRes, otRes, settingsRes, holidaysRes] = await Promise.all([
+      supabase.from('work_schedules').select('employee_id, day_of_week, is_working_day, start_time, end_time, expected_hours').in('employee_id', employeeIds),
+      supabase.from('attendance_adjustments').select('employee_id, adjustment_date, override_status, leave_type, override_work_hours, override_ot_hours').in('employee_id', employeeIds).gte('adjustment_date', startStr).lte('adjustment_date', endStr),
+      supabase.from('overtime_requests').select('employee_id, request_date, estimated_hours, status').in('employee_id', employeeIds).gte('request_date', startStr).lte('request_date', endStr).eq('status', 'approved'),
+      supabase.from('attendance_settings').select('grace_period_minutes, standard_start_time').eq('scope', 'global').limit(1),
+      supabase.from('holidays').select('date').gte('date', startStr).lte('date', endStr),
+    ]);
+
+    // Build lookup maps
+    const scheduleMap = new Map<string, Map<number, any>>();
+    (schedulesRes.data || []).forEach(s => {
+      if (!scheduleMap.has(s.employee_id)) scheduleMap.set(s.employee_id, new Map());
+      scheduleMap.get(s.employee_id)!.set(s.day_of_week, s);
+    });
+
+    const adjustmentMap = new Map<string, any>();
+    (adjustmentsRes.data || []).forEach(a => {
+      adjustmentMap.set(`${a.employee_id}_${a.adjustment_date}`, a);
+    });
+
+    const otMap = new Map<string, number>();
+    (otRes.data || []).forEach((o: any) => {
+      const key = `${o.employee_id}_${o.request_date}`;
+      otMap.set(key, (otMap.get(key) || 0) + (o.estimated_hours || 0));
+    });
+
+    const globalGrace = settingsRes.data?.[0]?.grace_period_minutes || 15;
+    const globalStartTime = settingsRes.data?.[0]?.standard_start_time || '08:00:00';
+
+    const holidaySet = new Set<string>();
+    (holidaysRes.data || []).forEach((h: any) => holidaySet.add(h.date));
+
+    const empMap = new Map<string, { code: string; name: string; branch: string; shift_start_time?: string; max_work_hours_per_day?: number; break_hours?: number }>();
     employees?.forEach(e => {
       empMap.set(e.id, {
         code: e.code || '',
         name: e.full_name || '',
         branch: e.branches?.name || '-',
+        shift_start_time: e.shift_start_time,
+        max_work_hours_per_day: e.max_work_hours_per_day,
+        break_hours: e.break_hours,
       });
     });
 
     const days = eachDayOfInterval({ start, end });
     const cols = DAILY_COLUMNS.filter(c => dailyColumns.has(c.key));
     const headers = cols.map(c => c.label);
-    const rows: string[][] = [];
+    const taggedRows: { sortCode: string; sortName: string; sortDate: string; cells: string[] }[] = [];
 
     for (const empId of employeeIds) {
       const emp = empMap.get(empId);
       if (!emp) continue;
       const empLogs = allLogs.filter(l => l.employee_id === empId);
+      const empSchedule = scheduleMap.get(empId);
+      const maxHours = emp.max_work_hours_per_day || 8;
+      const breakHrs = emp.break_hours || 0;
 
       for (const day of days) {
         const dateStr = format(day, 'yyyy-MM-dd');
+        const dayOfWeek = day.getDay();
         const dayLogs = empLogs.filter(l => formatBangkokISODate(l.server_time) === dateStr);
         const checkIn = dayLogs.find(l => l.event_type === 'check_in');
         const checkOut = dayLogs.find(l => l.event_type === 'check_out');
+        const adjKey = `${empId}_${dateStr}`;
+        const adjustment = adjustmentMap.get(adjKey);
+        const approvedOtHours = otMap.get(adjKey) || 0;
 
-        let status = 'ขาด';
-        if (checkIn) status = 'มา';
-        const dayOfWeek = day.getDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          if (!checkIn) status = 'วันหยุด';
+        // Determine schedule for this day
+        const schedule = empSchedule?.get(dayOfWeek);
+        const isWorkingDay = schedule ? schedule.is_working_day : (dayOfWeek >= 1 && dayOfWeek <= 5);
+        const isHoliday = holidaySet.has(dateStr);
+        const shiftStartStr = schedule?.start_time || emp.shift_start_time || globalStartTime;
+
+        // Determine detailed status
+        let status = '';
+        if (adjustment?.override_status) {
+          const os = adjustment.override_status.toLowerCase();
+          if (['leave', 'vacation', 'sick', 'personal', 'ลา', 'ลาป่วย', 'ลากิจ', 'ลาพักร้อน'].some(t => os.includes(t))) {
+            status = adjustment.leave_type ? `ลา (${adjustment.leave_type})` : 'ลา';
+          } else if (os === 'absent' || os === 'ขาด') {
+            status = 'ขาด';
+          } else if (os === 'holiday' || os === 'วันหยุด') {
+            status = 'วันหยุด';
+          } else {
+            status = adjustment.override_status;
+          }
+        } else if (!isWorkingDay || isHoliday) {
+          if (checkIn) {
+            status = checkIn.is_overtime ? 'OT (วันหยุด)' : 'มา (วันหยุด)';
+          } else {
+            status = 'วันหยุด';
+          }
+        } else if (!checkIn) {
+          status = 'ขาด';
+        } else {
+          // Compare check_in time vs shift start
+          const checkInDate = parseISO(checkIn.server_time);
+          const [sh, sm] = shiftStartStr.split(':').map(Number);
+          const shiftStart = new Date(day);
+          shiftStart.setHours(sh, sm, 0, 0);
+          const diffMinutes = (checkInDate.getTime() - shiftStart.getTime()) / 60000;
+
+          if (diffMinutes < 0) {
+            status = 'ก่อนเวลา';
+          } else if (diffMinutes <= globalGrace) {
+            status = 'ตรงเวลา';
+          } else {
+            status = 'สาย';
+          }
         }
 
+        // Calculate work hours
         const checkInTime = checkIn ? format(parseISO(checkIn.server_time), 'HH:mm') : '-';
         const checkOutTime = checkOut ? format(parseISO(checkOut.server_time), 'HH:mm') : '-';
-        const workHours = checkIn && checkOut
-          ? ((parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / 3600000).toFixed(2)
-          : '0';
+        let rawHours = 0;
+        if (checkIn && checkOut) {
+          rawHours = (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / 3600000;
+        }
+        const netHours = Math.max(0, rawHours - breakHrs);
+
+        // Override work hours from adjustment if available
+        const finalWorkHours = adjustment?.override_work_hours != null ? adjustment.override_work_hours : netHours;
+
+        // Capped hours: min(netHours, maxHours) + approved OT
+        const cappedHours = Math.min(finalWorkHours, maxHours) + approvedOtHours;
 
         const rowData: Record<string, string> = {
           code: emp.code,
@@ -351,19 +472,27 @@ export default function PayrollExportDialog({
           status,
           check_in: checkInTime,
           check_out: checkOutTime,
-          work_hours: workHours,
+          work_hours: finalWorkHours.toFixed(2),
+          capped_hours: cappedHours.toFixed(2),
+          ot_approved_hours: approvedOtHours > 0 ? approvedOtHours.toFixed(2) : '-',
           is_overtime: checkIn?.is_overtime ? 'ใช่' : '-',
           note: checkIn?.flag_reason || '-',
         };
-        rows.push(cols.map(c => rowData[c.key] || ''));
+        taggedRows.push({
+          sortCode: emp.code,
+          sortName: emp.name,
+          sortDate: dateStr,
+          cells: cols.map(c => rowData[c.key] || ''),
+        });
       }
     }
 
-    if (rows.length === 0) {
+    if (taggedRows.length === 0) {
       toast.error('ไม่พบข้อมูลในช่วงที่เลือก');
       return;
     }
 
+    const rows = sortRows(taggedRows);
     const fromStr = format(fromMonth, 'yyyy-MM');
     const toStr = format(toMonth, 'yyyy-MM');
     const filename = fromStr === toStr ? `payroll_daily_${fromStr}` : `payroll_daily_${fromStr}_to_${toStr}`;
@@ -473,6 +602,24 @@ export default function PayrollExportDialog({
                   <SelectItem value="all">ทุกสาขา</SelectItem>
                   {branches?.map(b => (
                     <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Sort selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                เรียงลำดับ
+              </Label>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.filter(o => mode === 'daily' || o.value !== 'date').map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
