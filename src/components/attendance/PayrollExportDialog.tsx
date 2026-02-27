@@ -348,8 +348,8 @@ export default function PayrollExportDialog({
           <DialogDescription>เลือกรูปแบบ, ช่วงเวลา, พนักงาน และคอลัมน์ที่ต้องการ</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-4 pb-2">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
+          <div className="space-y-4 pb-4">
             {/* Mode tabs */}
             <Tabs value={mode} onValueChange={(v) => setMode(v as 'summary' | 'daily')}>
               <TabsList className="w-full">
@@ -428,7 +428,7 @@ export default function PayrollExportDialog({
                   className="pl-8 h-9"
                 />
               </div>
-              <div className="border rounded-md max-h-52 overflow-y-auto">
+              <div className="border rounded-md max-h-40 overflow-y-auto">
                 <label
                   className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm sticky top-0 bg-background border-b font-medium z-10"
                 >
