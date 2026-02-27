@@ -339,7 +339,7 @@ export default function PayrollExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85dvh] !grid !grid-rows-[auto_1fr_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -348,8 +348,9 @@ export default function PayrollExportDialog({
           <DialogDescription>เลือกรูปแบบ, ช่วงเวลา, พนักงาน และคอลัมน์ที่ต้องการ</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
-          <div className="space-y-4 pb-4">
+        <div className="min-h-0 overflow-hidden">
+        <ScrollArea className="h-full pr-4">
+          <div className="space-y-4 pb-6">
             {/* Mode tabs */}
             <Tabs value={mode} onValueChange={(v) => setMode(v as 'summary' | 'daily')}>
               <TabsList className="w-full">
@@ -447,8 +448,8 @@ export default function PayrollExportDialog({
                       checked={selectAll || selectedEmployees.has(emp.id)}
                       onCheckedChange={() => toggleEmployee(emp.id)}
                     />
-                    <span className="text-muted-foreground w-12 text-xs">{emp.code || '-'}</span>
-                    <span className="truncate">{emp.full_name}</span>
+                    <span className="text-muted-foreground w-12 shrink-0 text-xs">{emp.code || '-'}</span>
+                    <span className="flex-1 min-w-0 truncate">{emp.full_name}</span>
                   </label>
                 ))}
                 {filteredEmployees.length === 0 && (
@@ -484,7 +485,7 @@ export default function PayrollExportDialog({
             </div>
           </div>
         </ScrollArea>
-
+        </div>
         <DialogFooter className="pt-2 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>ยกเลิก</Button>
           <Button onClick={handleExport} disabled={isExporting}>
