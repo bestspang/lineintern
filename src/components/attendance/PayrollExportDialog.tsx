@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, subMonths } from 'date-fns';
 import { th } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
-import { formatBangkokISODate, getBangkokHoursMinutes } from '@/lib/timezone';
+import { formatBangkokISODate } from '@/lib/timezone';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -11,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { Download, FileText, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Download, FileText, Search, Loader2, Table } from 'lucide-react';
 
 interface PayrollExportDialogProps {
   open: boolean;
@@ -59,6 +61,28 @@ const DAILY_COLUMNS = [
 
 const DAY_NAMES_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
+function buildSummaryRow(r: any): Record<string, string> {
+  return {
+    code: r.employee?.code || '',
+    name: r.employee?.full_name || '',
+    branch: r.employee?.branches?.name || '-',
+    pay_type: r.pay_type === 'salary' ? 'เงินเดือน' : 'รายชั่วโมง',
+    work_days: String(r.actual_work_days || 0),
+    total_hours: (r.total_work_hours || 0).toFixed(2),
+    late_count: String(r.late_count || 0),
+    late_minutes: String(r.late_minutes || 0),
+    leave_days: String(r.leave_days || 0),
+    early_leave: String(r.early_leave_count || 0),
+    absent_days: String(r.absent_days || 0),
+    ot_hours: (r.ot_hours || 0).toFixed(2),
+    base_salary: (r.base_salary || 0).toFixed(2),
+    ot_pay: (r.ot_pay || 0).toFixed(2),
+    allowances: (r.total_allowances || 0).toFixed(2),
+    deductions: (r.total_deductions || 0).toFixed(2),
+    net_pay: (r.net_pay || 0).toFixed(2),
+  };
+}
+
 export default function PayrollExportDialog({
   open,
   onOpenChange,
@@ -74,6 +98,7 @@ export default function PayrollExportDialog({
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(true);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'xlsx'>('csv');
   const [summaryColumns, setSummaryColumns] = useState<Set<string>>(
     new Set(SUMMARY_COLUMNS.filter(c => c.default).map(c => c.key))
   );
@@ -82,7 +107,7 @@ export default function PayrollExportDialog({
   );
   const [isExporting, setIsExporting] = useState(false);
 
-  // Load saved preferences from localStorage on mount
+  // Load saved preferences
   useEffect(() => {
     try {
       const saved = localStorage.getItem('payroll-export-prefs');
@@ -90,25 +115,24 @@ export default function PayrollExportDialog({
         const prefs = JSON.parse(saved);
         if (prefs.mode) setMode(prefs.mode);
         if (prefs.selectedBranch) setSelectedBranch(prefs.selectedBranch);
+        if (prefs.exportFormat) setExportFormat(prefs.exportFormat);
         if (Array.isArray(prefs.summaryColumns)) setSummaryColumns(new Set(prefs.summaryColumns));
         if (Array.isArray(prefs.dailyColumns)) setDailyColumns(new Set(prefs.dailyColumns));
       }
     } catch {}
   }, []);
 
-  // Filter employees by branch & search
   const filteredEmployees = useMemo(() => {
     if (!employees) return [];
     return employees.filter(emp => {
       const matchBranch = selectedBranch === 'all' || emp.branch_id === selectedBranch;
-      const matchSearch = !employeeSearch || 
+      const matchSearch = !employeeSearch ||
         emp.full_name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
         emp.code?.toLowerCase().includes(employeeSearch.toLowerCase());
       return matchBranch && matchSearch;
     });
   }, [employees, selectedBranch, employeeSearch]);
 
-  // When selectAll changes or filter changes, update selected
   const effectiveSelectedIds = useMemo(() => {
     if (selectAll) return new Set(filteredEmployees.map(e => e.id));
     return selectedEmployees;
@@ -151,7 +175,6 @@ export default function PayrollExportDialog({
     }
   };
 
-  // Generate month options (12 months back + current)
   const monthOptions = useMemo(() => {
     const options = [];
     for (let i = 11; i >= 0; i--) {
@@ -161,6 +184,65 @@ export default function PayrollExportDialog({
     return options;
   }, []);
 
+  // --- Preview data (3 rows) ---
+  const previewData = useMemo(() => {
+    const ids = Array.from(effectiveSelectedIds);
+    if (ids.length === 0) return { headers: [] as string[], rows: [] as string[][] };
+
+    if (mode === 'summary') {
+      const cols = SUMMARY_COLUMNS.filter(c => summaryColumns.has(c.key));
+      const headers = cols.map(c => c.label);
+      const filtered = payrollRecords?.filter(r => ids.includes(r.employee_id)) || [];
+      const rows = filtered.slice(0, 3).map(r => {
+        const row = buildSummaryRow(r);
+        return cols.map(c => row[c.key] || '');
+      });
+      return { headers, rows };
+    } else {
+      // Daily mode: show placeholder from first employee's info
+      const cols = DAILY_COLUMNS.filter(c => dailyColumns.has(c.key));
+      const headers = cols.map(c => c.label);
+      const empMap = new Map<string, any>();
+      employees?.forEach(e => empMap.set(e.id, e));
+
+      const sampleRows: string[][] = [];
+      const today = new Date();
+      for (let i = 0; i < Math.min(3, ids.length); i++) {
+        const emp = empMap.get(ids[i]);
+        if (!emp) continue;
+        const rowData: Record<string, string> = {
+          code: emp.code || '-',
+          name: emp.full_name || '',
+          branch: emp.branches?.name || '-',
+          date: format(today, 'yyyy-MM-dd'),
+          day_name: DAY_NAMES_TH[today.getDay()],
+          status: 'มา',
+          check_in: '08:30',
+          check_out: '17:30',
+          work_hours: '9.00',
+          is_overtime: '-',
+          note: '-',
+        };
+        sampleRows.push(cols.map(c => rowData[c.key] || ''));
+      }
+      return { headers, rows: sampleRows };
+    }
+  }, [mode, effectiveSelectedIds, payrollRecords, employees, summaryColumns, dailyColumns]);
+
+  // --- Save prefs helper ---
+  const savePrefs = () => {
+    try {
+      localStorage.setItem('payroll-export-prefs', JSON.stringify({
+        mode,
+        selectedBranch,
+        exportFormat,
+        summaryColumns: Array.from(summaryColumns),
+        dailyColumns: Array.from(dailyColumns),
+      }));
+    } catch {}
+  };
+
+  // --- Export handlers ---
   const handleExport = async () => {
     const ids = Array.from(effectiveSelectedIds);
     if (ids.length === 0) {
@@ -192,31 +274,13 @@ export default function PayrollExportDialog({
 
     const cols = SUMMARY_COLUMNS.filter(c => summaryColumns.has(c.key));
     const headers = cols.map(c => c.label);
-
     const rows = filtered.map(r => {
-      const row: Record<string, string> = {
-        code: r.employee?.code || '',
-        name: r.employee?.full_name || '',
-        branch: r.employee?.branches?.name || '-',
-        pay_type: r.pay_type === 'salary' ? 'เงินเดือน' : 'รายชั่วโมง',
-        work_days: String(r.actual_work_days || 0),
-        total_hours: (r.total_work_hours || 0).toFixed(2),
-        late_count: String(r.late_count || 0),
-        late_minutes: String(r.late_minutes || 0),
-        leave_days: String(r.leave_days || 0),
-        early_leave: String(r.early_leave_count || 0),
-        absent_days: String(r.absent_days || 0),
-        ot_hours: (r.ot_hours || 0).toFixed(2),
-        base_salary: (r.base_salary || 0).toFixed(2),
-        ot_pay: (r.ot_pay || 0).toFixed(2),
-        allowances: (r.total_allowances || 0).toFixed(2),
-        deductions: (r.total_deductions || 0).toFixed(2),
-        net_pay: (r.net_pay || 0).toFixed(2),
-      };
+      const row = buildSummaryRow(r);
       return cols.map(c => row[c.key] || '');
     });
 
-    downloadCSV(headers, rows, `payroll_summary_${format(fromMonth, 'yyyy-MM')}`);
+    const filename = `payroll_summary_${format(fromMonth, 'yyyy-MM')}`;
+    exportFormat === 'xlsx' ? downloadXLSX(headers, rows, filename) : downloadCSV(headers, rows, filename);
   };
 
   const exportDaily = async (employeeIds: string[]) => {
@@ -225,7 +289,6 @@ export default function PayrollExportDialog({
     const startStr = format(start, 'yyyy-MM-dd');
     const endStr = format(end, 'yyyy-MM-dd');
 
-    // Batch query (handle >1000 rows with pagination)
     let allLogs: any[] = [];
     const BATCH = 50;
     for (let i = 0; i < employeeIds.length; i += BATCH) {
@@ -241,7 +304,6 @@ export default function PayrollExportDialog({
       allLogs = allLogs.concat(data || []);
     }
 
-    // Build employee lookup
     const empMap = new Map<string, { code: string; name: string; branch: string }>();
     employees?.forEach(e => {
       empMap.set(e.id, {
@@ -251,7 +313,6 @@ export default function PayrollExportDialog({
       });
     });
 
-    // Generate rows: 1 per employee per day
     const days = eachDayOfInterval({ start, end });
     const cols = DAILY_COLUMNS.filter(c => dailyColumns.has(c.key));
     const headers = cols.map(c => c.label);
@@ -306,7 +367,7 @@ export default function PayrollExportDialog({
     const fromStr = format(fromMonth, 'yyyy-MM');
     const toStr = format(toMonth, 'yyyy-MM');
     const filename = fromStr === toStr ? `payroll_daily_${fromStr}` : `payroll_daily_${fromStr}_to_${toStr}`;
-    downloadCSV(headers, rows, filename);
+    exportFormat === 'xlsx' ? downloadXLSX(headers, rows, filename) : downloadCSV(headers, rows, filename);
   };
 
   const downloadCSV = (headers: string[], rows: string[][], filename: string) => {
@@ -321,16 +382,23 @@ export default function PayrollExportDialog({
     a.download = `${filename}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('Export สำเร็จ');
-    // Save preferences for next time
-    try {
-      localStorage.setItem('payroll-export-prefs', JSON.stringify({
-        mode,
-        selectedBranch,
-        summaryColumns: Array.from(summaryColumns),
-        dailyColumns: Array.from(dailyColumns),
-      }));
-    } catch {}
+    toast.success('Export CSV สำเร็จ');
+    savePrefs();
+  };
+
+  const downloadXLSX = (headers: string[], rows: string[][], filename: string) => {
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    // Auto-width columns
+    ws['!cols'] = headers.map((h, i) => {
+      const maxLen = Math.max(h.length, ...rows.map(r => (r[i] || '').length));
+      return { wch: Math.min(maxLen + 2, 30) };
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, mode === 'summary' ? 'สรุป' : 'รายวัน');
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+    toast.success('Export XLSX สำเร็จ');
+    savePrefs();
   };
 
   const activeColumns = mode === 'summary' ? SUMMARY_COLUMNS : DAILY_COLUMNS;
@@ -483,9 +551,62 @@ export default function PayrollExportDialog({
                 ))}
               </div>
             </div>
+
+            {/* Preview table */}
+            {previewData.rows.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Table className="h-3.5 w-3.5" />
+                  ตัวอย่างข้อมูล ({previewData.rows.length} แถวแรก)
+                  {mode === 'daily' && <span className="text-muted-foreground font-normal">(ข้อมูลจำลอง)</span>}
+                </Label>
+                <div className="border rounded-md overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/50 border-b">
+                        {previewData.headers.map((h, i) => (
+                          <th key={i} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.rows.map((row, ri) => (
+                        <tr key={ri} className="border-b last:border-b-0 hover:bg-muted/30">
+                          {row.map((cell, ci) => (
+                            <td key={ci} className="px-2 py-1 whitespace-nowrap">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Format selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">รูปแบบไฟล์</Label>
+              <RadioGroup
+                value={exportFormat}
+                onValueChange={(v) => setExportFormat(v as 'csv' | 'xlsx')}
+                className="flex gap-4"
+              >
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <RadioGroupItem value="csv" />
+                  <span>CSV</span>
+                  <span className="text-muted-foreground text-xs">(เปิดใน Excel/Google Sheets)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <RadioGroupItem value="xlsx" />
+                  <span>XLSX</span>
+                  <span className="text-muted-foreground text-xs">(Excel native)</span>
+                </label>
+              </RadioGroup>
+            </div>
           </div>
         </ScrollArea>
         </div>
+
         <DialogFooter className="pt-2 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>ยกเลิก</Button>
           <Button onClick={handleExport} disabled={isExporting}>
@@ -494,7 +615,7 @@ export default function PayrollExportDialog({
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            Export CSV
+            Export {exportFormat.toUpperCase()}
           </Button>
         </DialogFooter>
       </DialogContent>
