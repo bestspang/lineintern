@@ -181,6 +181,7 @@ const App = () => (
           <ErrorBoundary>
             <AuthProvider>
             <Suspense fallback={<PageLoader />}>
+            <main>
             <Routes>
               <Route path="/auth" element={<Auth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
@@ -379,6 +380,7 @@ const App = () => (
                 </ProtectedRoute>
               } />
             </Routes>
+            </main>
             </Suspense>
             </AuthProvider>
           </ErrorBoundary>
