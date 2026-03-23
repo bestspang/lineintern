@@ -84,7 +84,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
   const [retryCount, setRetryCount] = useState(0);
   const [initProgress, setInitProgress] = useState<string>('');
   const isInitializing = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReadyRef = useRef(false); // Track isReady in ref to avoid stale closure
 
   const MAX_RETRIES = 2;

@@ -120,7 +120,7 @@ export default function Auth() {
     } else {
       toast({
         title: 'Account created',
-        description: 'You can now sign in with your credentials.',
+        description: 'Please check your email to verify your account before signing in.',
       });
     }
   };
@@ -304,7 +304,7 @@ export default function Auth() {
                     name="password"
                     type="password"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>

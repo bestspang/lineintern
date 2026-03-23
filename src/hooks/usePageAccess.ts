@@ -114,25 +114,43 @@ export function usePageAccess() {
 
 // Helper to determine menu group from path
 function getMenuGroupFromPath(path: string): string | null {
-  if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator') {
+  if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator' || path === '/pre-deploy-checklist') {
     return 'Dashboard';
+  }
+  if (path.startsWith('/attendance/deposits')) {
+    return 'Deposits';
+  }
+  if (path.startsWith('/attendance/points') || path.startsWith('/attendance/rewards') || path.startsWith('/attendance/redemption') || path.startsWith('/attendance/gacha')) {
+    return 'Points & Rewards';
+  }
+  if (path.startsWith('/attendance/overtime') || path === '/attendance/early-leave-requests') {
+    return 'Overtime';
+  }
+  if (path.startsWith('/attendance/payroll') || path === '/attendance/pay-ytd') {
+    return 'Payroll';
   }
   if (path.startsWith('/attendance')) {
     return 'Attendance';
   }
-  if (['/groups', '/users', '/tasks', '/commands', '/alerts', '/broadcast', '/direct-messages', '/summaries', '/reports', '/cron-jobs'].includes(path)) {
+  if (path.startsWith('/receipts') || path === '/receipt-settings') {
+    return 'Receipts';
+  }
+  if (['/branch-reports'].includes(path) || path.startsWith('/branch-reports')) {
+    return 'Management';
+  }
+  if (['/groups', '/users', '/tasks', '/commands', '/alerts', '/broadcast', '/direct-messages', '/summaries', '/reports', '/cron-jobs', '/employee-menu'].includes(path)) {
     return 'Management';
   }
   if (['/memory', '/memory-analytics', '/personality', '/analytics'].includes(path)) {
     return 'AI Features';
   }
-  if (['/faq-logs', '/knowledge', '/training', '/safety-rules'].includes(path)) {
+  if (['/faq-logs', '/knowledge', '/training', '/safety-rules', '/portal-faq-admin'].includes(path)) {
     return 'Content & Knowledge';
   }
-  if (['/settings', '/integrations'].includes(path) || path.startsWith('/settings/')) {
+  if (['/settings', '/integrations', '/feature-flags'].includes(path) || path.startsWith('/settings/')) {
     return 'Configuration';
   }
-  if (['/bot-logs', '/test-bot'].includes(path)) {
+  if (['/bot-logs', '/test-bot', '/profile-sync-health'].includes(path)) {
     return 'Monitoring & Tools';
   }
   return null;
