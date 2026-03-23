@@ -130,8 +130,8 @@ Deno.serve(async (req) => {
     ]);
 
     const todayLogs = todayLogsResult.data || [];
-    const checkInLog = todayLogs.find(l => l.event_type === 'check-in');
-    const checkOutLog = todayLogs.find(l => l.event_type === 'check-out');
+    const checkInLog = todayLogs.find(l => l.event_type === 'check_in' || l.event_type === 'check-in');
+    const checkOutLog = todayLogs.find(l => l.event_type === 'check_out' || l.event_type === 'check-out');
 
     // Calculate minutes worked
     let minutesWorked: number | null = null;
@@ -156,6 +156,7 @@ Deno.serve(async (req) => {
           line_user_id: employee.line_user_id,
           role: employee.employee_roles || null,
           branch: employee.branches || null,
+          branch_id: employee.branch_id || null,
           birth_date: employee.birth_date || null,
           skip_attendance_tracking: employee.skip_attendance_tracking || false,
           exclude_from_points: employee.exclude_from_points || false

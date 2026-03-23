@@ -3,7 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, subMonth
 import { th } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
-import { formatBangkokISODate } from '@/lib/timezone';
+import { formatBangkokISODate, getBangkokHoursMinutes, formatBangkokTimeShort } from '@/lib/timezone';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -334,8 +334,8 @@ export default function PayrollExportDialog({
         .from('attendance_logs')
         .select('employee_id, event_type, server_time, is_overtime, flag_reason')
         .in('employee_id', batch)
-        .gte('server_time', startStr)
-        .lte('server_time', endStr + 'T23:59:59')
+        .gte('server_time', startStr + 'T00:00:00+07:00')
+        .lte('server_time', endStr + 'T23:59:59+07:00')
         .order('server_time');
       if (error) throw error;
       allLogs = allLogs.concat(data || []);
@@ -439,12 +439,12 @@ export default function PayrollExportDialog({
         } else if (!checkIn) {
           status = 'ขาด';
         } else {
-          // Compare check_in time vs shift start
-          const checkInDate = parseISO(checkIn.server_time);
+          // Compare check_in time vs shift start (Bangkok timezone)
+          const checkInBkk = getBangkokHoursMinutes(checkIn.server_time);
           const [sh, sm] = shiftStartStr.split(':').map(Number);
-          const shiftStart = new Date(day);
-          shiftStart.setHours(sh, sm, 0, 0);
-          const diffMinutes = (checkInDate.getTime() - shiftStart.getTime()) / 60000;
+          const diffMinutes = checkInBkk
+            ? (checkInBkk.hours * 60 + checkInBkk.minutes) - (sh * 60 + sm)
+            : 0;
 
           if (diffMinutes < 0) {
             status = 'ก่อนเวลา';
@@ -457,8 +457,8 @@ export default function PayrollExportDialog({
         }
 
         // Calculate work hours
-        const checkInTime = checkIn ? format(parseISO(checkIn.server_time), 'HH:mm') : '-';
-        const checkOutTime = checkOut ? format(parseISO(checkOut.server_time), 'HH:mm') : '-';
+        const checkInTime = checkIn ? formatBangkokTimeShort(checkIn.server_time) : '-';
+        const checkOutTime = checkOut ? formatBangkokTimeShort(checkOut.server_time) : '-';
         let rawHours = 0;
         if (checkIn && checkOut) {
           rawHours = (parseISO(checkOut.server_time).getTime() - parseISO(checkIn.server_time).getTime()) / 3600000;

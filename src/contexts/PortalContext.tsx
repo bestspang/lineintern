@@ -72,8 +72,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null);
   const [authMethod, setAuthMethod] = useState<'token' | 'liff' | null>(null);
   
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasShownWarning = useRef(false);
 
   // Get LIFF context safely - returns null if not in LiffProvider
