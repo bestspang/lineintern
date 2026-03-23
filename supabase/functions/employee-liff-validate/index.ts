@@ -124,8 +124,8 @@ Deno.serve(async (req) => {
         .from('attendance_logs')
         .select('event_type, server_time')
         .eq('employee_id', employee.id)
-        .gte('server_time', `${today}T00:00:00`)
-        .lt('server_time', `${today}T23:59:59`)
+        .gte('server_time', `${today}T00:00:00+07:00`)
+        .lt('server_time', `${today}T23:59:59+07:00`)
         .order('server_time', { ascending: true })
     ]);
 

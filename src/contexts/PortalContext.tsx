@@ -84,7 +84,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const liffIsLoggedIn = liffContext?.isLoggedIn ?? false;
   const liffUserId = liffContext?.profile?.userId ?? null;
   
-  console.log('[Portal] LIFF state:', { liffIsReady, liffIsLoggedIn, liffUserId });
+  if (import.meta.env.DEV) console.log('[Portal] LIFF state:', { liffIsReady, liffIsLoggedIn, liffUserId });
 
   const validateToken = useCallback(async (tokenValue: string, isRefresh = false) => {
     try {

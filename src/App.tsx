@@ -161,7 +161,11 @@ const LiffReceiptEdit = lazy(() => import("./pages/liff/LiffReceiptEdit"));
 const LiffReceiptList = lazy(() => import("./pages/liff/LiffReceiptList"));
 const LiffBusinesses = lazy(() => import("./pages/liff/LiffBusinesses"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, staleTime: 30_000 },
+  },
+});
 
 function PageLoader() {
   return (
