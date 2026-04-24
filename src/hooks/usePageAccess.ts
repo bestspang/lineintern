@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole, AppRole } from './useUserRole';
+import {
+  normalizeAdminPath,
+  resolveAdminMenuGroup,
+  toIdForm,
+  MENU_GROUP_PRIORITY,
+  PATH_ALIASES,
+} from '@/lib/admin-page-registry';
 
 interface PageConfig {
   id: string;
@@ -11,6 +18,28 @@ interface PageConfig {
   can_access: boolean;
 }
 
+/**
+ * Build a lookup that accepts both the canonical path and any legacy
+ * alias from `PATH_ALIASES`, so DB rows like `/attendance/employee-history/:id`
+ * still grant the same access as the canonical route.
+ */
+function buildPageConfigMap(configs: PageConfig[]): Map<string, PageConfig> {
+  const map = new Map<string, PageConfig>();
+  for (const cfg of configs) {
+    const canonical = normalizeAdminPath(cfg.page_path);
+    map.set(canonical, cfg);
+    // Also index by the original path so direct lookups still work
+    map.set(cfg.page_path, cfg);
+  }
+  // Index alias forms back to their canonical config (if present)
+  for (const [legacy, canonical] of Object.entries(PATH_ALIASES)) {
+    if (!map.has(legacy) && map.has(canonical)) {
+      map.set(legacy, map.get(canonical)!);
+    }
+  }
+  return map;
+}
+
 export function usePageAccess() {
   const { role, canAccessMenuGroup, isAdmin, isOwner, isLoading: roleLoading } = useUserRole();
 
@@ -18,17 +47,17 @@ export function usePageAccess() {
     queryKey: ['webapp-page-config', role],
     queryFn: async () => {
       if (!role) return [];
-      
+
       const { data, error } = await supabase
         .from('webapp_page_config')
         .select('*')
         .eq('role', role);
-      
+
       if (error) {
         console.error('Error fetching page config:', error);
         return [];
       }
-      
+
       return data as PageConfig[];
     },
     enabled: !!role,
@@ -37,36 +66,39 @@ export function usePageAccess() {
   const canAccessPage = (path: string): boolean => {
     // Owner and Admin always have full access
     if (isOwner || isAdmin) return true;
-    
+
     // If still loading, default to false to prevent showing unauthorized menus
     if (roleLoading || pageConfigLoading) return false;
-    
-    // Find the page config for this path
-    const pageConfig = pageConfigs?.find(pc => pc.page_path === path);
+
+    // Normalize incoming path so /overview, /branch-reports, etc. all resolve
+    const canonicalPath = normalizeAdminPath(toIdForm(path));
 
     // Hardening: if pageConfigs failed to load (network race / partial load),
-    // fall back to menu group check instead of hard-deny — prevents false
-    // "Access Denied" cards on transient failures. Menu group check is still
-    // enforced, so security is preserved.
+    // fall back to menu group check instead of hard-deny.
     if (!pageConfigs || pageConfigs.length === 0) {
-      const menuGroup = getMenuGroupFromPath(path);
+      const menuGroup = resolveAdminMenuGroup(canonicalPath);
       if (!menuGroup) return false;
       return canAccessMenuGroup(menuGroup);
     }
 
-    // If no specific page config, deny access (security first)
+    const lookup = buildPageConfigMap(pageConfigs);
+    const pageConfig =
+      lookup.get(canonicalPath) ??
+      lookup.get(path) ??
+      lookup.get(toIdForm(path));
+
+    // If no specific page config, fall back to menu group access
     if (!pageConfig) {
-      // Find menu group from path
-      const menuGroup = getMenuGroupFromPath(path);
-      if (!menuGroup) return false; // Unknown path = deny
+      const menuGroup = resolveAdminMenuGroup(canonicalPath);
+      if (!menuGroup) return false;
       return canAccessMenuGroup(menuGroup);
     }
-    
+
     // First check if menu group is accessible
     if (!canAccessMenuGroup(pageConfig.menu_group)) {
       return false;
     }
-    
+
     // Then check page-level access
     return pageConfig.can_access;
   };
@@ -76,12 +108,12 @@ export function usePageAccess() {
     if (isOwner || isAdmin) {
       return pageConfigs?.filter(pc => pc.menu_group === menuGroup).map(pc => pc.page_path) || [];
     }
-    
+
     // First check if the menu group is accessible
     if (!canAccessMenuGroup(menuGroup)) {
       return [];
     }
-    
+
     // Return only pages with can_access = true
     return pageConfigs?.filter(pc => pc.menu_group === menuGroup && pc.can_access).map(pc => pc.page_path) || [];
   };
@@ -93,22 +125,22 @@ export function usePageAccess() {
   // Get the first accessible page for redirect purposes
   const getFirstAccessiblePage = (): string | null => {
     if (!pageConfigs || pageConfigs.length === 0) return null;
-    
-    // Priority order of menu groups
-    const menuGroupOrder = ['Dashboard', 'Attendance', 'Management', 'Content & Knowledge', 'AI Features', 'Monitoring & Tools', 'Configuration'];
-    
-    for (const menuGroup of menuGroupOrder) {
+
+    for (const menuGroup of MENU_GROUP_PRIORITY) {
       if (!canAccessMenuGroup(menuGroup)) continue;
-      
+
       const accessiblePages = pageConfigs
         .filter(pc => pc.menu_group === menuGroup && pc.can_access)
-        .sort((a, b) => a.page_path.localeCompare(b.page_path));
-      
+        .map(pc => normalizeAdminPath(pc.page_path))
+        // Skip dynamic routes like `/something/:id` — never a safe landing page
+        .filter(p => !p.includes(':'))
+        .sort((a, b) => a.localeCompare(b));
+
       if (accessiblePages.length > 0) {
-        return accessiblePages[0].page_path;
+        return accessiblePages[0];
       }
     }
-    
+
     return null;
   };
 
@@ -120,48 +152,4 @@ export function usePageAccess() {
     pageConfigs,
     loading: roleLoading || pageConfigLoading,
   };
-}
-
-// Helper to determine menu group from path
-function getMenuGroupFromPath(path: string): string | null {
-  if (path === '/' || path === '/overview' || path === '/health' || path === '/config-validator' || path === '/pre-deploy-checklist') {
-    return 'Dashboard';
-  }
-  if (path.startsWith('/attendance/deposits')) {
-    return 'Deposits';
-  }
-  if (path.startsWith('/attendance/points') || path.startsWith('/attendance/rewards') || path.startsWith('/attendance/redemption') || path.startsWith('/attendance/gacha')) {
-    return 'Points & Rewards';
-  }
-  if (path.startsWith('/attendance/overtime') || path === '/attendance/early-leave-requests') {
-    return 'Overtime';
-  }
-  if (path.startsWith('/attendance/payroll') || path === '/attendance/pay-ytd') {
-    return 'Payroll';
-  }
-  if (path.startsWith('/attendance')) {
-    return 'Attendance';
-  }
-  if (path.startsWith('/receipts') || path === '/receipt-settings') {
-    return 'Receipts';
-  }
-  if (['/branch-reports'].includes(path) || path.startsWith('/branch-reports')) {
-    return 'Management';
-  }
-  if (['/groups', '/users', '/tasks', '/commands', '/alerts', '/broadcast', '/direct-messages', '/summaries', '/reports', '/cron-jobs', '/employee-menu'].includes(path)) {
-    return 'Management';
-  }
-  if (['/memory', '/memory-analytics', '/personality', '/analytics'].includes(path)) {
-    return 'AI Features';
-  }
-  if (['/faq-logs', '/knowledge', '/training', '/safety-rules', '/portal-faq-admin'].includes(path)) {
-    return 'Content & Knowledge';
-  }
-  if (['/settings', '/integrations', '/feature-flags'].includes(path) || path.startsWith('/settings/')) {
-    return 'Configuration';
-  }
-  if (['/bot-logs', '/test-bot', '/profile-sync-health'].includes(path)) {
-    return 'Monitoring & Tools';
-  }
-  return null;
 }
