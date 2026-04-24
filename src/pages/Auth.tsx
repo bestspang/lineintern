@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { z } from 'zod';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { ArrowLeft, Mail, Home, LogOut } from 'lucide-react';
 
 const signInSchema = z.object({
   email: z.string().email('Invalid email address').max(255, 'Email must be less than 255 characters'),
@@ -34,10 +35,31 @@ const forgotPasswordSchema = z.object({
 
 export default function Auth() {
   const { user, signIn, signUp, resetPassword, loading } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+
+  const handleClearSession = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[Auth] signOut error (ignored):', err);
+    }
+    try {
+      // Best-effort: clear any leftover Supabase auth keys that might block re-login
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('sb-') || k.includes('supabase'))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignore */
+    }
+    toast({
+      title: 'ล้าง session แล้ว',
+      description: 'คุณสามารถลองเข้าสู่ระบบใหม่ได้',
+    });
+  };
 
   if (loading) {
     return (
@@ -313,6 +335,28 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
+
+          {/* Recovery actions — visible escape hatches in case of stale session / lockout */}
+          <div className="mt-6 pt-4 border-t flex flex-col sm:flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 text-xs sm:text-sm"
+              onClick={() => navigate('/')}
+            >
+              <Home className="w-4 h-4 mr-2" />
+              ไปหน้าหลัก
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 text-xs sm:text-sm"
+              onClick={handleClearSession}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              ออกจากระบบ / ล้าง session
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
