@@ -6,13 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Clock, Calendar, History, Users, Camera,
-  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
-  Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack,
-  LayoutDashboard
-} from 'lucide-react';
+import { LogIn, LogOut, Coins } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { portalApi } from '@/lib/portal-api';
@@ -20,17 +14,29 @@ import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
 import { FavoriteButton } from '@/components/portal/FavoriteButton';
+import {
+  PORTAL_ACTIONS,
+  isVisibleToRole,
+  type PortalAction,
+} from '@/lib/portal-actions';
 
-interface QuickAction {
-  icon: typeof Clock;
-  label: string;
-  labelEn: string;
-  description: string;
-  descriptionEn: string;
-  path: string;
-  color: string;
-  roles?: string[];
-}
+// ⚠️ HOME GRID CONTRACT (preserved):
+// PortalHome shows a curated subset of `employee` actions in the main grid,
+// because /portal/checkin and /portal/my-points already have dedicated
+// hero cards above. The full list (including those) lives in `Help.tsx`.
+const HOME_QUICK_ACTION_IDS = [
+  'my-history',
+  'my-schedule',
+  'my-payroll',
+  'my-leave',
+  'request-leave',
+  'request-ot',
+  'my-receipts',
+  'leaderboard',
+  'status',
+  'rewards',
+  'my-bag',
+] as const;
 
 const quickActions: QuickAction[] = [
   {
