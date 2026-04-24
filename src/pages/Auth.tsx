@@ -335,6 +335,28 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
+
+          {/* Recovery actions — visible escape hatches in case of stale session / lockout */}
+          <div className="mt-6 pt-4 border-t flex flex-col sm:flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 text-xs sm:text-sm"
+              onClick={() => navigate('/')}
+            >
+              <Home className="w-4 h-4 mr-2" />
+              ไปหน้าหลัก
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 text-xs sm:text-sm"
+              onClick={handleClearSession}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              ออกจากระบบ / ล้าง session
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
