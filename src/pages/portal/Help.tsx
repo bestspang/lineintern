@@ -207,7 +207,8 @@ export default function Help() {
       icon: CheckSquare,
       title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
       description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
-      path: '/portal/approvals'
+      path: '/portal/approvals',
+      roles: ['manager', 'supervisor', 'admin', 'owner'],
     },
     {
       icon: Activity,
@@ -225,19 +226,22 @@ export default function Help() {
       icon: Camera,
       title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
       description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
-      path: '/portal/photos'
+      path: '/portal/photos',
+      roles: ['admin', 'owner'],
     },
     {
       icon: MapPin,
       title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
       description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
-      path: '/portal/approvals/remote-checkout'
+      path: '/portal/approvals/remote-checkout',
+      roles: ['manager', 'supervisor', 'admin', 'owner'],
     },
     {
       icon: FileText,
       title: locale === 'th' ? 'สรุปประจำวัน' : 'Daily Summary',
       description: locale === 'th' ? 'ดูสรุปการทำงานประจำวัน' : 'View daily work summary',
-      path: '/portal/daily-summary'
+      path: '/portal/daily-summary',
+      roles: ['admin', 'owner'],
     },
     {
       icon: XCircle,
