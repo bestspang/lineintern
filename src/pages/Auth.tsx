@@ -35,10 +35,31 @@ const forgotPasswordSchema = z.object({
 
 export default function Auth() {
   const { user, signIn, signUp, resetPassword, loading } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+
+  const handleClearSession = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[Auth] signOut error (ignored):', err);
+    }
+    try {
+      // Best-effort: clear any leftover Supabase auth keys that might block re-login
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('sb-') || k.includes('supabase'))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignore */
+    }
+    toast({
+      title: 'ล้าง session แล้ว',
+      description: 'คุณสามารถลองเข้าสู่ระบบใหม่ได้',
+    });
+  };
 
   if (loading) {
     return (
