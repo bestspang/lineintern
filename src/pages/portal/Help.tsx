@@ -121,138 +121,16 @@ export default function Help() {
     return matchesSearch && matchesCategory;
   });
 
-  const quickActions = [
-    {
-      icon: Clock,
-      title: locale === 'th' ? 'เช็คอิน/เอาท์' : 'Check In/Out',
-      description: locale === 'th' ? 'บันทึกเวลาเข้า-ออกงาน' : 'Record attendance',
-      path: '/portal/checkin'
-    },
-    {
-      icon: Calendar,
-      title: locale === 'th' ? 'ขอลางาน' : 'Request Leave',
-      description: locale === 'th' ? 'ส่งคำขอลาหยุด' : 'Submit leave request',
-      path: '/portal/request-leave'
-    },
-    {
-      icon: CalendarMinus,
-      title: locale === 'th' ? 'วันลาคงเหลือ' : 'Leave Balance',
-      description: locale === 'th' ? 'ตรวจสอบวันลาที่เหลือ' : 'Check remaining leave days',
-      path: '/portal/my-leave'
-    },
-    {
-      icon: FileText,
-      title: locale === 'th' ? 'ขอ OT' : 'Request OT',
-      description: locale === 'th' ? 'ส่งคำขอทำงานล่วงเวลา' : 'Submit overtime request',
-      path: '/portal/request-ot'
-    },
-    {
-      icon: Gift,
-      title: locale === 'th' ? 'แลกของรางวัล' : 'Redeem Rewards',
-      description: locale === 'th' ? 'ใช้คะแนนแลกของรางวัล' : 'Use points for rewards',
-      path: '/portal/rewards'
-    },
-    {
-      icon: Star,
-      title: locale === 'th' ? 'คะแนนของฉัน' : 'My Points',
-      description: locale === 'th' ? 'ดู Happy Points และประวัติ' : 'View points and history',
-      path: '/portal/my-points'
-    },
-    {
-      icon: Receipt,
-      title: locale === 'th' ? 'ใบเสร็จ' : 'Receipts',
-      description: locale === 'th' ? 'จัดการใบเสร็จและค่าใช้จ่าย' : 'Manage receipts & expenses',
-      path: '/portal/my-receipts'
-    },
-    {
-      icon: CalendarDays,
-      title: locale === 'th' ? 'ตารางกะ' : 'My Schedule',
-      description: locale === 'th' ? 'ดูตารางการทำงาน' : 'View work schedule',
-      path: '/portal/my-schedule'
-    },
-    {
-      icon: Wallet,
-      title: locale === 'th' ? 'Payroll ของฉัน' : 'My Payroll',
-      description: locale === 'th' ? 'ดูรายได้และเงินเดือน' : 'View earnings & salary',
-      path: '/portal/my-payroll'
-    },
-    {
-      icon: Trophy,
-      title: locale === 'th' ? 'Leaderboard' : 'Leaderboard',
-      description: locale === 'th' ? 'อันดับแต้มในทีม' : 'Team point rankings',
-      path: '/portal/leaderboard'
-    },
-    {
-      icon: User,
-      title: locale === 'th' ? 'โปรไฟล์' : 'My Profile',
-      description: locale === 'th' ? 'ดูข้อมูลส่วนตัว' : 'View your profile',
-      path: '/portal/my-profile'
-    },
-    {
-      icon: Banknote,
-      title: locale === 'th' ? 'ฝากเงิน' : 'Deposit',
-      description: locale === 'th' ? 'ส่งใบฝากเงินประจำวัน' : 'Submit daily deposit slip',
-      path: '/portal/deposit-upload'
-    },
-    {
-      icon: History,
-      title: locale === 'th' ? 'ประวัติการเข้างาน' : 'Work History',
-      description: locale === 'th' ? 'ดูบันทึกการเข้างานย้อนหลัง' : 'View attendance history',
-      path: '/portal/my-history'
-    },
-    {
-      icon: CheckSquare,
-      title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
-      description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
-      path: '/portal/approvals',
-      roles: ['manager', 'supervisor', 'admin', 'owner'],
-    },
-    {
-      icon: Activity,
-      title: locale === 'th' ? 'สถานะวันนี้' : 'Today Status',
-      description: locale === 'th' ? 'ดูสถานะการทำงานวันนี้' : 'View today\'s work status',
-      path: '/portal/status'
-    },
-    {
-      icon: Package,
-      title: locale === 'th' ? 'ประวัติการแลก' : 'My Redemptions',
-      description: locale === 'th' ? 'ดูประวัติการแลกของรางวัล' : 'View redemption history',
-      path: '/portal/my-redemptions'
-    },
-    {
-      icon: Camera,
-      title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
-      description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
-      path: '/portal/photos',
-      roles: ['admin', 'owner'],
-    },
-    {
-      icon: MapPin,
-      title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
-      description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
-      path: '/portal/approvals/remote-checkout',
-      roles: ['manager', 'supervisor', 'admin', 'owner'],
-    },
-    {
-      icon: FileText,
-      title: locale === 'th' ? 'สรุปประจำวัน' : 'Daily Summary',
-      description: locale === 'th' ? 'ดูสรุปการทำงานประจำวัน' : 'View daily work summary',
-      path: '/portal/daily-summary',
-      roles: ['admin', 'owner'],
-    },
-    {
-      icon: XCircle,
-      title: locale === 'th' ? 'ยกเลิกคำขอ' : 'Cancel Requests',
-      description: locale === 'th' ? 'ยกเลิก OT/วันหยุด/ลางาน ที่รอ' : 'Cancel pending OT/leave requests',
-      path: '/portal/my-history'
-    },
-    {
-      icon: Backpack,
-      title: locale === 'th' ? 'กระเป๋าของฉัน' : 'My Bag',
-      description: locale === 'th' ? 'ดูไอเทมที่เก็บไว้' : 'View stored items',
-      path: '/portal/my-bag'
-    }
-  ];
+  // Build the role-aware quick action list from the shared registry.
+  // Behavior preserved: every action shown to the user maps to a real route
+  // they have permission to use; admin/manager actions are hidden otherwise.
+  const visibleActions = getVisibleActions(roleKey).map((a) => ({
+    icon: a.icon,
+    title: locale === 'th' ? a.label : a.labelEn,
+    description: locale === 'th' ? a.description : a.descriptionEn,
+    path: a.path,
+    id: a.id,
+  }));
 
   return (
     <div className="space-y-6">
