@@ -8,12 +8,12 @@ import { usePortal } from '@/contexts/PortalContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  HelpCircle, Clock, Calendar, FileText, Gift, 
-  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
-  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
-  Activity, Package, Camera, MapPin, XCircle, Search, Backpack
+import {
+  HelpCircle,
+  MessageCircle, Phone, Mail, CheckCircle,
+  Search,
 } from 'lucide-react';
+import { getVisibleActions } from '@/lib/portal-actions';
 
 // Static fallback FAQs (used when database is empty or has errors)
 // ⚠️ SYNC NOTE: Keep in sync with portal_faqs table content
