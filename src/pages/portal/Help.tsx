@@ -85,11 +85,8 @@ export default function Help() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // ⚠️ SYNC: keep these role keys aligned with PortalContext (isManager / isAdmin)
-  // and PortalHome managerActions/adminActions roles arrays.
+  // Role key for action filtering — handled centrally by getVisibleActions().
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
-  const isManagerRole = ['manager', 'supervisor', 'admin', 'owner'].includes(roleKey);
-  const isAdminRole = ['admin', 'owner'].includes(roleKey);
 
   // Fetch FAQs from database
   const { data: dbFaqs, isLoading: isLoadingFaqs } = useQuery({
