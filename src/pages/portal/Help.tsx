@@ -81,9 +81,15 @@ const FAQ_CATEGORIES = [
 ];
 
 export default function Help() {
-  const { locale } = usePortal();
+  const { locale, employee } = usePortal();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // ⚠️ SYNC: keep these role keys aligned with PortalContext (isManager / isAdmin)
+  // and PortalHome managerActions/adminActions roles arrays.
+  const roleKey = employee?.role?.role_key?.toLowerCase() || '';
+  const isManagerRole = ['manager', 'supervisor', 'admin', 'owner'].includes(roleKey);
+  const isAdminRole = ['admin', 'owner'].includes(roleKey);
 
   // Fetch FAQs from database
   const { data: dbFaqs, isLoading: isLoadingFaqs } = useQuery({
