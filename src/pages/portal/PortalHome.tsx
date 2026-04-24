@@ -6,13 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Clock, Calendar, History, Users, Camera,
-  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
-  Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack,
-  LayoutDashboard
-} from 'lucide-react';
+import { LogIn, LogOut, Coins } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { portalApi } from '@/lib/portal-api';
@@ -20,248 +14,39 @@ import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
 import { FavoriteButton } from '@/components/portal/FavoriteButton';
+import {
+  PORTAL_ACTIONS,
+  isVisibleToRole,
+  type PortalAction,
+} from '@/lib/portal-actions';
 
-interface QuickAction {
-  icon: typeof Clock;
-  label: string;
-  labelEn: string;
-  description: string;
-  descriptionEn: string;
-  path: string;
-  color: string;
-  roles?: string[];
-}
+// ⚠️ HOME GRID CONTRACT (preserved):
+// PortalHome shows a curated subset of `employee` actions in the main grid,
+// because /portal/checkin and /portal/my-points already have dedicated
+// hero cards above. The full list (including those) lives in `Help.tsx`.
+const HOME_QUICK_ACTION_IDS = [
+  'my-history',
+  'my-schedule',
+  'my-payroll',
+  'my-leave',
+  'request-leave',
+  'request-ot',
+  'my-receipts',
+  'leaderboard',
+  'status',
+  'rewards',
+  'my-bag',
+] as const;
 
-const quickActions: QuickAction[] = [
-  {
-    icon: History,
-    label: 'ประวัติการทำงาน',
-    labelEn: 'Work History',
-    description: 'ดูประวัติเช็คอิน/เอาท์',
-    descriptionEn: 'View check-in/out history',
-    path: '/portal/my-history',
-    color: 'from-blue-500 to-blue-600',
-  },
-  {
-    icon: CalendarDays,
-    label: 'ตารางกะ',
-    labelEn: 'My Schedule',
-    description: 'ดูตารางกะประจำสัปดาห์',
-    descriptionEn: 'View weekly schedule',
-    path: '/portal/my-schedule',
-    color: 'from-sky-500 to-sky-600',
-  },
-  {
-    icon: Wallet,
-    label: 'Payroll ของฉัน',
-    labelEn: 'My Payroll',
-    description: 'ดูรายได้ประมาณการ',
-    descriptionEn: 'View estimated earnings',
-    path: '/portal/my-payroll',
-    color: 'from-emerald-500 to-emerald-600',
-  },
-  {
-    icon: Calendar,
-    label: 'วันลาคงเหลือ',
-    labelEn: 'Leave Balance',
-    description: 'ตรวจสอบวันลาที่เหลือ',
-    descriptionEn: 'Check remaining leave days',
-    path: '/portal/my-leave',
-    color: 'from-teal-500 to-teal-600',
-  },
-  {
-    icon: CalendarPlus,
-    label: 'ขอลางาน',
-    labelEn: 'Request Leave',
-    description: 'ส่งคำขอลางาน',
-    descriptionEn: 'Submit leave request',
-    path: '/portal/request-leave',
-    color: 'from-violet-500 to-violet-600',
-  },
-  {
-    icon: Clock,
-    label: 'ขอ OT',
-    labelEn: 'Request OT',
-    description: 'ส่งคำขอทำ OT',
-    descriptionEn: 'Submit OT request',
-    path: '/portal/request-ot',
-    color: 'from-orange-500 to-orange-600',
-  },
-  {
-    icon: Receipt,
-    label: 'ใบเสร็จของฉัน',
-    labelEn: 'My Receipts',
-    description: 'ดูและจัดการใบเสร็จ',
-    descriptionEn: 'View & manage receipts',
-    path: '/portal/my-receipts',
-    color: 'from-cyan-500 to-cyan-600',
-  },
-  {
-    icon: Trophy,
-    label: 'อันดับคะแนน',
-    labelEn: 'Leaderboard',
-    description: 'อันดับแต้มในทีม',
-    descriptionEn: 'Team point rankings',
-    path: '/portal/leaderboard',
-    color: 'from-amber-500 to-amber-600',
-  },
-  {
-    icon: Activity,
-    label: 'สถานะวันนี้',
-    labelEn: 'Today Status',
-    description: 'ดูสถานะการทำงานวันนี้',
-    descriptionEn: 'View today work status',
-    path: '/portal/status',
-    color: 'from-green-500 to-green-600',
-  },
-  {
-    icon: Gift,
-    label: 'แลกรางวัล',
-    labelEn: 'Rewards',
-    description: 'ใช้แต้มแลกของรางวัล',
-    descriptionEn: 'Redeem rewards',
-    path: '/portal/rewards',
-    color: 'from-pink-500 to-pink-600',
-  },
-  {
-    icon: Backpack,
-    label: 'กระเป๋าของฉัน',
-    labelEn: 'My Bag',
-    description: 'ดูไอเทมที่เก็บไว้',
-    descriptionEn: 'View stored items',
-    path: '/portal/my-bag',
-    color: 'from-purple-500 to-purple-600',
-  },
-];
+// All action lists are now derived from PORTAL_ACTIONS (single source of truth).
+// See src/lib/portal-actions.ts.
+const quickActionsAll: PortalAction[] = HOME_QUICK_ACTION_IDS
+  .map((id) => PORTAL_ACTIONS.find((a) => a.id === id))
+  .filter((a): a is PortalAction => Boolean(a));
 
-const managerActions: QuickAction[] = [
-  {
-    icon: LayoutDashboard,
-    label: 'แดชบอร์ดหัวหน้า',
-    labelEn: 'Manager Dashboard',
-    description: 'ภาพรวมทีมและคำขอ',
-    descriptionEn: 'Team overview & approvals',
-    path: '/portal/manager-dashboard',
-    color: 'from-rose-500 to-rose-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner'],
-  },
-  {
-    icon: ClipboardList,
-    label: 'อนุมัติคำขอ',
-    labelEn: 'Approve Requests',
-    description: 'OT และการลา',
-    descriptionEn: 'OT and leave requests',
-    path: '/portal/approvals',
-    color: 'from-amber-500 to-amber-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner'],
-  },
-  {
-    icon: Users,
-    label: 'สรุปทีม',
-    labelEn: 'Team Summary',
-    description: 'ดูสถานะทีมวันนี้',
-    descriptionEn: 'View team status today',
-    path: '/portal/team-summary',
-    color: 'from-cyan-500 to-cyan-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner', 'hr'],
-  },
-  {
-    icon: Banknote,
-    label: 'ตรวจสอบใบฝาก',
-    labelEn: 'Review Deposits',
-    description: 'ตรวจสอบใบฝากเงินสาขา',
-    descriptionEn: 'Review branch deposits',
-    path: '/portal/deposit-review-list',
-    color: 'from-green-500 to-green-600',
-    roles: ['manager', 'admin', 'owner'],
-  },
-  {
-    icon: Building2,
-    label: 'รายงานสาขา',
-    labelEn: 'Branch Report',
-    description: 'ดูยอดขายและสถิติสาขา',
-    descriptionEn: 'View branch sales & stats',
-    path: '/portal/branch-report',
-    color: 'from-indigo-500 to-indigo-600',
-    roles: ['manager', 'admin', 'owner'],
-  },
-];
-
-const adminActions: QuickAction[] = [
-  {
-    icon: Camera,
-    label: 'รูปวันนี้',
-    labelEn: "Today's Photos",
-    description: 'ดูรูปเช็คอินวันนี้',
-    descriptionEn: "View today's check-in photos",
-    path: '/portal/photos',
-    color: 'from-rose-500 to-rose-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: TrendingUp,
-    label: 'สรุปประจำวัน',
-    labelEn: 'Daily Summary',
-    description: 'สถิติและรายงาน',
-    descriptionEn: 'Statistics and reports',
-    path: '/portal/daily-summary',
-    color: 'from-indigo-500 to-indigo-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: Users,
-    label: 'จัดการพนักงาน',
-    labelEn: 'Manage Employees',
-    description: 'ดูข้อมูลพนักงาน',
-    descriptionEn: 'View employee data',
-    path: '/portal/employees',
-    color: 'from-blue-500 to-blue-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: ReceiptText,
-    label: 'จัดการใบเสร็จ',
-    labelEn: 'Receipt Management',
-    description: 'ตรวจสอบและอนุมัติใบเสร็จ',
-    descriptionEn: 'Review and approve receipts',
-    path: '/portal/receipt-management',
-    color: 'from-teal-500 to-teal-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: BarChart3,
-    label: 'วิเคราะห์ใบเสร็จ',
-    labelEn: 'Receipt Analytics',
-    description: 'สถิติและรายงานใบเสร็จ',
-    descriptionEn: 'Receipt statistics and reports',
-    path: '/portal/receipt-analytics',
-    color: 'from-violet-500 to-violet-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: Gift,
-    label: 'อนุมัติแลกรางวัล',
-    labelEn: 'Approve Redemptions',
-    description: 'อนุมัติการแลกรางวัล',
-    descriptionEn: 'Approve reward redemptions',
-    path: '/portal/approve-redemptions',
-    color: 'from-fuchsia-500 to-fuchsia-600',
-    roles: ['admin', 'owner'],
-  },
-];
-
-const hrActions: QuickAction[] = [
-  {
-    icon: FileText,
-    label: 'รายงาน Payroll',
-    labelEn: 'Payroll Report',
-    description: 'ดูสรุปการจ่ายเงินเดือน',
-    descriptionEn: 'View payroll summary',
-    path: '/portal/payroll-report',
-    color: 'from-slate-500 to-slate-600',
-    roles: ['hr', 'admin', 'owner'],
-  },
-];
+const managerActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'manager');
+const adminActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'admin');
+const hrActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'hr');
 
 export default function PortalHome() {
   const navigate = useNavigate();
@@ -347,20 +132,14 @@ export default function PortalHome() {
     return null;
   }, [checkIn, checkOut, currentTime]); // Update when clock ticks
 
-  // Filter actions based on role
-  const visibleManagerActions = managerActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleAdminActions = adminActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleHrActions = hrActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
+  // Filter actions based on role (uses shared registry helper)
+  const visibleManagerActions = managerActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleAdminActions = adminActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleHrActions = hrActions.filter((a) => isVisibleToRole(a, roleKey));
 
-  // Sort quickActions by favorites
+  // Sort quick actions by favorites
   const sortedQuickActions = useMemo(() => {
-    return [...quickActions].sort((a, b) => {
+    return [...quickActionsAll].sort((a, b) => {
       const aFav = isFavorite(a.path);
       const bFav = isFavorite(b.path);
       if (aFav && !bFav) return -1;
