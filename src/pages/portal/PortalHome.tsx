@@ -132,20 +132,14 @@ export default function PortalHome() {
     return null;
   }, [checkIn, checkOut, currentTime]); // Update when clock ticks
 
-  // Filter actions based on role
-  const visibleManagerActions = managerActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleAdminActions = adminActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleHrActions = hrActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
+  // Filter actions based on role (uses shared registry helper)
+  const visibleManagerActions = managerActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleAdminActions = adminActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleHrActions = hrActions.filter((a) => isVisibleToRole(a, roleKey));
 
-  // Sort quickActions by favorites
+  // Sort quick actions by favorites
   const sortedQuickActions = useMemo(() => {
-    return [...quickActions].sort((a, b) => {
+    return [...quickActionsAll].sort((a, b) => {
       const aFav = isFavorite(a.path);
       const bFav = isFavorite(b.path);
       if (aFav && !bFav) return -1;
