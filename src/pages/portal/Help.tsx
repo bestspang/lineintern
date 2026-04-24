@@ -81,9 +81,15 @@ const FAQ_CATEGORIES = [
 ];
 
 export default function Help() {
-  const { locale } = usePortal();
+  const { locale, employee } = usePortal();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // ⚠️ SYNC: keep these role keys aligned with PortalContext (isManager / isAdmin)
+  // and PortalHome managerActions/adminActions roles arrays.
+  const roleKey = employee?.role?.role_key?.toLowerCase() || '';
+  const isManagerRole = ['manager', 'supervisor', 'admin', 'owner'].includes(roleKey);
+  const isAdminRole = ['admin', 'owner'].includes(roleKey);
 
   // Fetch FAQs from database
   const { data: dbFaqs, isLoading: isLoadingFaqs } = useQuery({
@@ -201,7 +207,8 @@ export default function Help() {
       icon: CheckSquare,
       title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
       description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
-      path: '/portal/approvals'
+      path: '/portal/approvals',
+      roles: ['manager', 'supervisor', 'admin', 'owner'],
     },
     {
       icon: Activity,
@@ -219,19 +226,22 @@ export default function Help() {
       icon: Camera,
       title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
       description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
-      path: '/portal/photos'
+      path: '/portal/photos',
+      roles: ['admin', 'owner'],
     },
     {
       icon: MapPin,
       title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
       description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
-      path: '/portal/approvals/remote-checkout'
+      path: '/portal/approvals/remote-checkout',
+      roles: ['manager', 'supervisor', 'admin', 'owner'],
     },
     {
       icon: FileText,
       title: locale === 'th' ? 'สรุปประจำวัน' : 'Daily Summary',
       description: locale === 'th' ? 'ดูสรุปการทำงานประจำวัน' : 'View daily work summary',
-      path: '/portal/daily-summary'
+      path: '/portal/daily-summary',
+      roles: ['admin', 'owner'],
     },
     {
       icon: XCircle,
@@ -269,19 +279,32 @@ export default function Help() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action, idx) => (
-              <Link
-                key={idx}
-                to={action.path}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
-              >
-                <action.icon className="h-6 w-6 text-primary" />
-                <div>
-                  <p className="font-medium text-sm">{action.title}</p>
-                  <p className="text-xs text-muted-foreground">{action.description}</p>
-                </div>
-              </Link>
-            ))}
+            {quickActions
+              .filter((action: any) => {
+                if (!action.roles) return true;
+                if (action.roles.includes('admin') || action.roles.includes('owner')) {
+                  // Admin-only actions need admin role
+                  if (action.roles.every((r: string) => ['admin', 'owner'].includes(r))) {
+                    return isAdminRole;
+                  }
+                  // Manager-tier actions
+                  return isManagerRole;
+                }
+                return isManagerRole;
+              })
+              .map((action, idx) => (
+                <Link
+                  key={idx}
+                  to={action.path}
+                  className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
+                >
+                  <action.icon className="h-6 w-6 text-primary" />
+                  <div>
+                    <p className="font-medium text-sm">{action.title}</p>
+                    <p className="text-xs text-muted-foreground">{action.description}</p>
+                  </div>
+                </Link>
+              ))}
           </div>
         </CardContent>
       </Card>
