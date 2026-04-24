@@ -7,6 +7,7 @@
       "dependencies": {
         "@hookform/resolvers": "^3.10.0",
         "@line/liff": "^2.27.3",
+        "@lovable.dev/cloud-auth-js": "^1.1.1",
         "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
         "@radix-ui/react-accordion": "^1.2.11",
         "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -297,6 +298,8 @@
     "@line/bot-sdk": ["@line/bot-sdk@10.5.0", "", { "dependencies": { "@types/node": "^24.0.0" }, "optionalDependencies": { "axios": "^1.7.4" } }, "sha512-YmFDH1fr6b3kWiTDld8JID80cI+O5IlYegYeqhvBZx/zh2GBHdeV7i+pdwDjATRY9FHahYkcYmHb27UQldh0qw=="],
 
     "@line/liff": ["@line/liff@2.27.3", "", { "dependencies": { "@liff/analytics": "2.27.3", "@liff/close-window": "2.27.3", "@liff/consts": "2.27.3", "@liff/core": "2.27.3", "@liff/create-shortcut-on-home-screen": "2.27.3", "@liff/extensions": "2.27.3", "@liff/get-app-language": "2.27.3", "@liff/get-friendship": "2.27.3", "@liff/get-language": "2.27.3", "@liff/get-line-version": "2.27.3", "@liff/get-origins": "2.27.3", "@liff/get-os": "2.27.3", "@liff/get-profile": "2.27.3", "@liff/get-version": "2.27.3", "@liff/hooks": "2.27.3", "@liff/i18n": "2.27.3", "@liff/iap": "2.27.3", "@liff/init": "2.27.3", "@liff/is-api-available": "2.27.3", "@liff/is-in-client": "2.27.3", "@liff/is-logged-in": "2.27.3", "@liff/is-sub-window": "2.27.3", "@liff/liff-types": "2.27.3", "@liff/login": "2.27.3", "@liff/logout": "2.27.3", "@liff/native-bridge": "2.27.3", "@liff/open-window": "2.27.3", "@liff/permanent-link": "2.27.3", "@liff/permission": "2.27.3", "@liff/ready": "2.27.3", "@liff/scan-code-v2": "2.27.3", "@liff/send-messages": "2.27.3", "@liff/server-api": "2.27.3", "@liff/share-target-picker": "2.27.3", "@liff/store": "2.27.3", "@liff/sub-window": "2.27.3", "@liff/use": "2.27.3", "@liff/util": "2.27.3", "tslib": "^2.3.0", "whatwg-fetch": "^3.0.0" } }, "sha512-ot82Rqn0WpMICTDpyVFvmbC18y5N9OTrnDPZLv6lEGvGdjLEMWAlRzBYtZRz61gdsEByTgAPXHULq7V0SMxbNQ=="],
+
+    "@lovable.dev/cloud-auth-js": ["@lovable.dev/cloud-auth-js@1.1.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@lovable.dev/cloud-auth-js/-/cloud-auth-js-1.1.1.tgz", {}, "sha512-80elU8dSJG6bho0Xnfj2oy53wp883nYXrG1Wy948LC/ZUaUQ0i9EGXQFmwTLOBFrWqxb6aNaOlZUvQ8BVGhjMQ=="],
 
     "@mapbox/jsonlint-lines-primitives": ["@mapbox/jsonlint-lines-primitives@2.0.2", "", {}, "sha512-rY0o9A5ECsTQRVhv7tL/OyDpGAoUB4tTvLiW1DSzQGq4bvTPhNw1VpSNjDJc5GFZ2XuyOtSWSVN05qOtcD71qQ=="],
 
