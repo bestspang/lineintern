@@ -43,7 +43,17 @@ export function usePageAccess() {
     
     // Find the page config for this path
     const pageConfig = pageConfigs?.find(pc => pc.page_path === path);
-    
+
+    // Hardening: if pageConfigs failed to load (network race / partial load),
+    // fall back to menu group check instead of hard-deny — prevents false
+    // "Access Denied" cards on transient failures. Menu group check is still
+    // enforced, so security is preserved.
+    if (!pageConfigs || pageConfigs.length === 0) {
+      const menuGroup = getMenuGroupFromPath(path);
+      if (!menuGroup) return false;
+      return canAccessMenuGroup(menuGroup);
+    }
+
     // If no specific page config, deny access (security first)
     if (!pageConfig) {
       // Find menu group from path
