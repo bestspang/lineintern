@@ -279,19 +279,32 @@ export default function Help() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action, idx) => (
-              <Link
-                key={idx}
-                to={action.path}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
-              >
-                <action.icon className="h-6 w-6 text-primary" />
-                <div>
-                  <p className="font-medium text-sm">{action.title}</p>
-                  <p className="text-xs text-muted-foreground">{action.description}</p>
-                </div>
-              </Link>
-            ))}
+            {quickActions
+              .filter((action: any) => {
+                if (!action.roles) return true;
+                if (action.roles.includes('admin') || action.roles.includes('owner')) {
+                  // Admin-only actions need admin role
+                  if (action.roles.every((r: string) => ['admin', 'owner'].includes(r))) {
+                    return isAdminRole;
+                  }
+                  // Manager-tier actions
+                  return isManagerRole;
+                }
+                return isManagerRole;
+              })
+              .map((action, idx) => (
+                <Link
+                  key={idx}
+                  to={action.path}
+                  className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
+                >
+                  <action.icon className="h-6 w-6 text-primary" />
+                  <div>
+                    <p className="font-medium text-sm">{action.title}</p>
+                    <p className="text-xs text-muted-foreground">{action.description}</p>
+                  </div>
+                </Link>
+              ))}
           </div>
         </CardContent>
       </Card>
