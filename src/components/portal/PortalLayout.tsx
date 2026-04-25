@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Receipt, Timer, RefreshCw, Loader2, Globe, Bell } from 'lucide-react';
+import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Timer, RefreshCw, Loader2, Globe, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortal } from '@/contexts/PortalContext';
 import { useLiffOptional } from '@/contexts/LiffContext';

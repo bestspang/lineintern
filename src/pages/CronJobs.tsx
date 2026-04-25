@@ -97,8 +97,6 @@ const getJobDescription = (jobname: string): string => {
     'point-daily-reset': 'รีเซ็ตคะแนนประจำวันและอัพเดท streaks',
     'point-health-monthly': 'ตรวจสอบสุขภาพระบบคะแนนรายเดือน',
     'point-streak-weekly': 'คำนวณ streak bonus ทุกวันศุกร์',
-    // Deposit System
-    'deposit-reminder-daily': 'เตือนการส่งใบเสร็จค่าน้ำมัน',
   };
   return descriptions[jobname] || 'Scheduled job';
 };

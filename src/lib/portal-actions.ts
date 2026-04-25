@@ -12,15 +12,14 @@
  *   the `/portal/*` group. Verified routes (2026-04-24):
  *     /portal/checkin, /portal/my-history, /portal/my-leave,
  *     /portal/my-profile, /portal/my-points, /portal/my-redemptions,
- *     /portal/my-bag, /portal/my-receipts, /portal/my-schedule,
+ *     /portal/my-bag, /portal/my-schedule,
  *     /portal/my-payroll, /portal/leaderboard, /portal/status,
  *     /portal/rewards, /portal/request-leave, /portal/request-ot,
  *     /portal/deposit-upload, /portal/approvals,
  *     /portal/approvals/remote-checkout, /portal/team-summary,
  *     /portal/deposit-review-list, /portal/branch-report,
  *     /portal/manager-dashboard, /portal/photos, /portal/daily-summary,
- *     /portal/employees, /portal/receipt-management,
- *     /portal/receipt-analytics, /portal/approve-redemptions,
+ *     /portal/employees, /portal/approve-redemptions,
  *     /portal/payroll-report
  * - `roles` undefined  → visible to everyone (employee+).
  * - Use `isVisibleToRole()` to filter. Role strings are lower-cased.
@@ -30,8 +29,8 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp,
-  Receipt, Gift, Banknote, FileText, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack,
+  Gift, Banknote, FileText, CalendarDays,
+  Wallet, Trophy, Building2, BarChart3, Activity, Backpack,
   LayoutDashboard, Star, User, CheckSquare, CalendarMinus,
   Package, MapPin, XCircle,
 } from 'lucide-react';

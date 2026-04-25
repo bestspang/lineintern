@@ -1,0 +1,1 @@
+DELETE FROM public.portal_faqs WHERE category = 'receipts';

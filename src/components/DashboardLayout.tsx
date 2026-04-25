@@ -57,7 +57,6 @@ import {
   Mail,
   ShoppingBag,
   Backpack,
-  Receipt,
   PieChart,
   Flag,
   Settings2,

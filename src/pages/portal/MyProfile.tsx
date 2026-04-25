@@ -1,13 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { User, Building2, Clock, Calendar, Link2, Link2Off, Loader2, CheckCircle2 } from 'lucide-react';
+import { User, Building2, Clock, Calendar } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 interface WorkSchedule {
   day_of_week: number;
@@ -22,20 +19,11 @@ interface ProfileData {
   schedules: WorkSchedule[];
 }
 
-interface GoogleConnection {
-  connected: boolean;
-  hasDriveFolder: boolean;
-  hasSpreadsheet: boolean;
-  connectedAt?: string;
-}
-
 export default function MyProfile() {
   const { employee, locale } = usePortal();
   const [schedules, setSchedules] = useState<WorkSchedule[]>([]);
   const [employeeDetails, setEmployeeDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [googleConnection, setGoogleConnection] = useState<GoogleConnection | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,11 +38,6 @@ export default function MyProfile() {
       if (!error && data) {
         setSchedules(data.schedules || []);
         setEmployeeDetails(data.employee);
-        
-        // Check Google connection if we have LINE user ID
-        if (data.employee?.line_user_id) {
-          checkGoogleConnection(data.employee.line_user_id);
-        }
       }
 
       setLoading(false);
@@ -62,114 +45,6 @@ export default function MyProfile() {
 
     fetchData();
   }, [employee?.id]);
-
-  const checkGoogleConnection = async (lineUserId: string) => {
-    try {
-      // Google OAuth check still needs direct supabase.functions.invoke
-      const { data, error } = await supabase.functions.invoke('google-oauth', {
-        body: { action: 'check_connection', lineUserId }
-      });
-      
-      if (!error && data) {
-        setGoogleConnection(data);
-      }
-    } catch (err) {
-      console.error('Failed to check Google connection:', err);
-    }
-  };
-
-  const handleConnectGoogle = useCallback(async () => {
-    if (!employee?.line_user_id) {
-      toast.error(locale === 'th' ? 'ไม่พบ LINE User ID' : 'LINE User ID not found');
-      return;
-    }
-
-    setGoogleLoading(true);
-    try {
-      const redirectUri = `${window.location.origin}/portal/my-profile`;
-      
-      // Google OAuth needs direct supabase.functions.invoke
-      const { data, error } = await supabase.functions.invoke('google-oauth', {
-        body: { 
-          action: 'get_auth_url', 
-          lineUserId: employee.line_user_id,
-          employeeId: employee.id,
-          redirectUri 
-        }
-      });
-
-      if (error || !data?.authUrl) {
-        throw new Error(data?.error || 'Failed to get auth URL');
-      }
-
-      // Redirect to Google OAuth
-      window.location.href = data.authUrl;
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to connect Google');
-      setGoogleLoading(false);
-    }
-  }, [employee, locale]);
-
-  const handleDisconnectGoogle = useCallback(async () => {
-    if (!employee?.line_user_id) return;
-
-    setGoogleLoading(true);
-    try {
-      const { error } = await supabase.functions.invoke('google-oauth', {
-        body: { action: 'disconnect', lineUserId: employee.line_user_id }
-      });
-
-      if (error) throw error;
-
-      setGoogleConnection({ connected: false, hasDriveFolder: false, hasSpreadsheet: false });
-      toast.success(locale === 'th' ? 'ยกเลิกการเชื่อมต่อ Google แล้ว' : 'Google disconnected');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to disconnect');
-    } finally {
-      setGoogleLoading(false);
-    }
-  }, [employee, locale]);
-
-  // Handle OAuth callback
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-
-    if (code && state) {
-      const handleCallback = async () => {
-        setGoogleLoading(true);
-        try {
-          const stateData = JSON.parse(atob(state));
-          const { data, error } = await supabase.functions.invoke('google-oauth', {
-            body: {
-              action: 'exchange_code',
-              code,
-              lineUserId: stateData.lineUserId,
-              employeeId: stateData.employeeId,
-              redirectUri: stateData.redirectUri
-            }
-          });
-
-          if (error || !data?.success) {
-            throw new Error(data?.error || 'Failed to connect');
-          }
-
-          toast.success(locale === 'th' ? 'เชื่อมต่อ Google สำเร็จ!' : 'Google connected successfully!');
-          setGoogleConnection({ connected: true, hasDriveFolder: false, hasSpreadsheet: false });
-          
-          // Clean URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (err: any) {
-          toast.error(err.message || 'Failed to complete connection');
-        } finally {
-          setGoogleLoading(false);
-        }
-      };
-
-      handleCallback();
-    }
-  }, [locale]);
 
   const dayNames = locale === 'th' 
     ? ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
@@ -329,79 +204,6 @@ export default function MyProfile() {
         </Card>
       )}
 
-      {/* Google Drive Integration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <svg className="h-5 w-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-            </svg>
-            {locale === 'th' ? 'เชื่อมต่อ Google Drive' : 'Google Drive Integration'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {googleConnection?.connected ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="h-5 w-5" />
-                <span className="font-medium">
-                  {locale === 'th' ? 'เชื่อมต่อแล้ว' : 'Connected'}
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {locale === 'th' 
-                  ? 'ใบเสร็จของคุณจะถูกบันทึกลง Google Drive และ Sheets อัตโนมัติ'
-                  : 'Your receipts will be automatically saved to Google Drive and Sheets'}
-              </p>
-              <div className="flex gap-2">
-                {googleConnection.hasDriveFolder && (
-                  <Badge variant="secondary">📁 Drive Folder</Badge>
-                )}
-                {googleConnection.hasSpreadsheet && (
-                  <Badge variant="secondary">📊 Spreadsheet</Badge>
-                )}
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleDisconnectGoogle}
-                disabled={googleLoading}
-              >
-                {googleLoading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Link2Off className="h-4 w-4 mr-2" />
-                )}
-                {locale === 'th' ? 'ยกเลิกการเชื่อมต่อ' : 'Disconnect'}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                {locale === 'th' 
-                  ? 'เชื่อมต่อ Google Account เพื่อบันทึกใบเสร็จลง Drive และ Sheets อัตโนมัติ'
-                  : 'Connect your Google Account to automatically save receipts to Drive and Sheets'}
-              </p>
-              <Button 
-                onClick={handleConnectGoogle}
-                disabled={googleLoading}
-              >
-                {googleLoading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Link2 className="h-4 w-4 mr-2" />
-                )}
-                {locale === 'th' ? 'เชื่อมต่อ Google' : 'Connect Google'}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
