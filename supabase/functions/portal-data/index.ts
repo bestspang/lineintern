@@ -21,16 +21,146 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const denyAccess = (reason: string, status = 403, details: Record<string, unknown> = {}) => {
+      console.warn('[portal-data] access_denied', {
+        reason,
+        status,
+        ...details,
+      });
+      return new Response(
+        JSON.stringify({ error: 'Access denied' }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    };
 
-    const { endpoint, employee_id, params } = await req.json();
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return denyAccess('missing_or_invalid_authorization_header', 401, {
+        hasAuthHeader: !!authHeader,
+      });
+    }
+
+    const token = authHeader.slice('Bearer '.length).trim();
+    if (!token) {
+      return denyAccess('empty_bearer_token', 401);
+    }
+
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+
+    const { data: authData, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return denyAccess('invalid_or_expired_token', 401, {
+        authError: authError?.message,
+      });
+    }
+
+    const { endpoint, employee_id, params: rawParams } = await req.json();
+    const params = { ...(rawParams || {}) };
 
     if (!employee_id) {
       return new Response(
         JSON.stringify({ error: 'employee_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    const { data: requesterEmployee, error: requesterError } = await supabase
+      .from('employees')
+      .select('id, user_id, branch_id, role:employee_roles(role_key)')
+      .eq('user_id', authData.user.id)
+      .maybeSingle();
+
+    if (requesterError || !requesterEmployee) {
+      return denyAccess('employee_mapping_not_found', 403, {
+        authUserId: authData.user.id,
+        requesterError: requesterError?.message,
+      });
+    }
+
+    const { data: requestedEmployee, error: requestedEmployeeError } = await supabase
+      .from('employees')
+      .select('id, branch_id')
+      .eq('id', employee_id)
+      .maybeSingle();
+
+    if (requestedEmployeeError || !requestedEmployee) {
+      return denyAccess('requested_employee_not_found', 403, {
+        authUserId: authData.user.id,
+        requestedEmployeeId: employee_id,
+      });
+    }
+
+    const roleKey = String((requesterEmployee.role as any)?.role_key || '').toLowerCase();
+    const isAdminRole = roleKey === 'admin';
+    const isManagerRole = roleKey.includes('manager');
+    const isPrivilegedRole = isAdminRole || isManagerRole;
+    const ownsRequestedEmployee = requesterEmployee.id === employee_id;
+
+    if (!ownsRequestedEmployee) {
+      if (!isPrivilegedRole) {
+        return denyAccess('cross_employee_access_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          requestedEmployeeId: employee_id,
+          roleKey,
+        });
+      }
+
+      if (isManagerRole && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
+        return denyAccess('manager_cross_branch_access_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          requestedEmployeeId: employee_id,
+          managerBranchId: requesterEmployee.branch_id,
+          targetBranchId: requestedEmployee.branch_id,
+        });
+      }
+    }
+
+    const managerAdminEndpoints = new Set([
+      'approval-counts',
+      'pending-ot-requests',
+      'approve-ot',
+      'pending-leave-requests',
+      'approve-leave',
+      'pending-early-leave-requests',
+      'approve-early-leave',
+      'pending-remote-checkout-requests',
+      'approve-remote-checkout',
+      'today-photos',
+      'team-summary',
+    ]);
+
+    if (managerAdminEndpoints.has(endpoint)) {
+      if (!isPrivilegedRole) {
+        return denyAccess('manager_admin_endpoint_role_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          endpoint,
+          roleKey,
+        });
+      }
+
+      if (isAdminRole) {
+        params.isAdmin = true;
+      } else {
+        params.isAdmin = false;
+        params.branchId = requesterEmployee.branch_id;
+      }
+    }
+
+    if (endpoint === 'approve-ot' || endpoint === 'approve-leave' || endpoint === 'approve-early-leave' || endpoint === 'approve-remote-checkout') {
+      params.approverEmployeeId = requesterEmployee.id;
     }
 
     console.log(`[portal-data] Endpoint: ${endpoint}, Employee: ${employee_id}`);
