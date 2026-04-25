@@ -1,264 +1,149 @@
-# Plan: Cross-feature consistency audit and minimal-diff stabilization
+# 📋 Phase 4 Checklist — Residual Receipt/Deposit Cleanup
 
-## 1) System analysis
+ผม scan ทุกชั้น (code, edge functions, DB, cron, storage, config tables) แล้ว นี่คือสถานะแบบจริงๆ ครับ — แยกเป็น ✅ ผ่าน / ⚠️ ยังเหลือ / ❌ ต้องแก้ทันที
 
-### Current state
-This project has 4 separate sources of truth that are drifting:
-1. `src/App.tsx` — actual routes
-2. `src/components/DashboardLayout.tsx` + `src/pages/SettingsLayout.tsx` — visible navigation
-3. `src/hooks/usePageAccess.ts` + `webapp_page_config` / `webapp_menu_config` — permission routing
-4. `src/pages/portal/Help.tsx`, `src/pages/portal/PortalHome.tsx`, `bot_commands`, `portal_faqs` — help/quick-action surfaces
+---
 
-### Verified module status
-- `App.tsx` routes: WORKING, but duplicated path strings create drift risk
-- `ProtectedRoute.tsx`: PARTIAL — logic is sound, but depends on inconsistent path matching
-- `usePageAccess.ts`: BROKEN in specific real cases due to stale path mapping
-- `DashboardLayout.tsx`: PARTIAL — nav mostly works, but uses non-canonical paths
-- `SettingsLayout.tsx`: PARTIAL — tabs depend on path checks that can drift
-- `PortalHome.tsx`: WORKING, but uses a separate static action registry
-- `portal/Help.tsx`: PARTIAL — FAQ data is DB-backed, but quick actions are static and not permission-aware
-- `line-webhook /help`: WORKING — already dynamic from `bot_commands`
-- `Commands.tsx`: WORKING — admin command editor is DB-backed
+## 1. 🛣️ Routes (App.tsx & nav)
 
-### What must be preserved
-- Existing auth + RLS behavior
-- Working admin pages and portal pages
-- Existing Google/email login flows
-- Existing portal role behavior (`manager/admin/owner` gating)
-- Dynamic LINE `/help` command behavior from database
-- Zero broad refactor: only surgical alignment changes
+| รายการ | สถานะ | หมายเหตุ |
+|---|---|---|
+| Admin routes `/attendance/deposits`, `/deposit-settings` | ✅ ผ่าน | ลบจาก App.tsx แล้ว |
+| Admin routes `/receipts/*` | ✅ ผ่าน | ลบทั้งกลุ่มแล้ว |
+| Portal routes `/portal/deposit-*`, `/portal/receipt*` | ✅ ผ่าน | ลบครบ |
+| LIFF routes `/liff/receipt-*`, `/liff/businesses` | ✅ ผ่าน | ลบทั้ง block |
+| Bottom nav (PortalLayout) — ปุ่มฝากเงิน | ✅ ผ่าน | เหลือ 6 ปุ่มตามตกลง |
+| Sidebar (DashboardLayout) — Receipts / Deposits group | ✅ ผ่าน | ลบจาก nav แล้ว |
 
-## 2) Problem list
+---
 
-### Real issues already confirmed
-1. **Admin route mismatch**
-   - Dashboard nav uses `/` for Overview
-   - Actual admin landing route is `/overview`
-   - Root redirect sends logged-in web users to `/overview`
-   - Result: inconsistent redirects and permission fallbacks
+## 2. 🤖 LINE Bot Commands
 
-2. **Permission mapper is stale**
-   `usePageAccess.getMenuGroupFromPath()` has real outdated mappings:
-   - `/branch-report` exists, mapper only knows `/branch-reports`
-   - `/health-monitoring` exists, mapper only knows `/health`
-   - `/attendance/payroll-ytd` exists, mapper checks `/attendance/pay-ytd`
-   - `Points & Rewards` mapper misses actual pages like:
-     - `/attendance/happy-points`
-     - `/attendance/point-transactions`
-     - `/attendance/point-rules`
-     - `/attendance/redemption-approvals`
-     - `/attendance/bag-management`
+| รายการ | สถานะ | หมายเหตุ |
+|---|---|---|
+| `command-parser.ts` — `/receipt`, `/businesses`, `/export` | ✅ ผ่าน | ลบจาก commandMap แล้ว |
+| `bot_commands` table (DB) | ❌ **ต้องลบ** | ยังมี 6 rows: `receipt`, `receiptsummary`, `businesses`, `export_month`, `this_month`, `set_default_business` (category='receipt') |
+| `/help` category list — `'receipt'` | ❌ **ต้องลบ** | `index.ts:5177, 5201` ยังโชว์หมวด "Receipts (DM Only)" ใน /help |
 
-3. **DB page-config paths drift from real routes**
-   Confirmed mismatch examples:
-   - DB: `/attendance/employee-history/:id`
-   - Route: `/attendance/employees/:id/history`
-   - DB: `/attendance/employee-settings/:id`
-   - Route: `/attendance/employees/:id/settings`
-   This weakens page-level permission accuracy and forces fallback behavior.
+---
 
-4. **Portal help can advertise inaccessible features**
-   - `portal/Help.tsx` quick actions are static
-   - `PortalHome.tsx` uses a separate static action list
-   - `PortalContext` already provides `employee`, `menuItems`, `isManager`, `isAdmin`
-   - Result: help/actions can get out of sync with actual portal permissions or menu availability
+## 3. ⏰ Cron Jobs
 
-5. **High future-regression risk from duplicated strings**
-   The same paths are duplicated across routes, nav, page-access fallback, settings tabs, and help cards.
-   This is exactly the kind of AI-induced regression loop the user described.
+| รายการ | สถานะ | หมายเหตุ |
+|---|---|---|
+| `deposit-reminder-hourly` | ✅ ผ่าน | unschedule แล้ว |
+| `deposit-reminder-daily` | ✅ ผ่าน | ไม่พบใน `cron.job` |
+| Receipt-related cron | ✅ ผ่าน | ไม่มี cron ที่ reference receipt/deposit แล้ว |
+| `CronJobs.tsx` — แสดงผลในหน้า admin | ✅ ผ่าน | ลบ description ของ deposit-reminder แล้ว |
 
-## 3) Improvement & feature design
+---
 
-### Safe design
-Use small shared registries/helpers instead of a broad refactor.
+## 4. ⚡ Edge Functions (Deno)
 
-#### A. Admin route consistency layer
-Add a small shared module for canonical admin paths + alias matching.
-Purpose:
-- normalize real route paths
-- classify menu groups reliably
-- support dynamic detail routes
-- keep `DashboardLayout`, `SettingsLayout`, and `usePageAccess` in sync
+| รายการ | สถานะ | หมายเหตุ |
+|---|---|---|
+| `receipt-submit`, `receipt-quota`, `receipt-monthly-report` | ✅ ผ่าน | ลบแล้ว |
+| `deposit-submit`, `deposit-reminder` | ✅ ผ่าน | ลบแล้ว |
+| `google-drive-upload`, `google-sheets-append` | ✅ ผ่าน | ลบแล้ว |
+| `google-oauth` | ❌ **ยังอยู่** | AI claim ลบแล้วแต่จริงๆ ยังมีโฟลเดอร์ — ใช้แค่กับ Google Drive (receipt) ต้องลบ |
+| `line-webhook/handlers/receipt-handler.ts` | ✅ ผ่าน | ลบแล้ว |
+| `line-webhook/index.ts` — `handleImageMessage()` | ✅ ผ่าน | stub ดี (log + ignore) |
+| `line-webhook/index.ts` — dead helpers | ⚠️ **dead code** | บรรทัด 8589–~9000 มี `downloadLineImage`, `getDocumentTypeName`, `computeImageHash`, `classifyDocumentType`, `extractDepositDataFromImage`, `determineTransferType`, `buildReimbursementFlex`, `buildDepositFlex` — ไม่ถูกเรียกใช้แล้ว ลบทิ้งได้ปลอดภัย (~400+ บรรทัด) |
+| `index.ts:7876` — `from("receipt_approvers")` | ❌ **ต้องลบ** | query table ที่ drop ไปแล้ว → จะ error 500 ถ้า code path นี้ถูกเรียก |
 
-#### B. Portal action consistency layer
-Add a shared portal action registry used by both:
-- `PortalHome.tsx`
-- `portal/Help.tsx`
+---
 
-This preserves current UI while preventing one screen from advertising actions another screen no longer supports.
+## 5. 🗄️ Database
 
-#### C. Keep database-driven help where it already works
-Do not rewrite dynamic LINE `/help` or Commands admin.
-Only align portal help/quick actions with actual UI permissions and routes.
+| รายการ | สถานะ | หมายเหตุ |
+|---|---|---|
+| Tables หลัก (receipts, receipt_items, daily_deposits ฯลฯ) | ✅ ผ่าน | drop ครบ |
+| `receipt_categories` | ❌ **ต้องลบ** | table ยังเหลือ |
+| `receipt_ocr_corrections` | ❌ **ต้องลบ** | table ยังเหลือ |
+| Functions `update_receipts_updated_at()`, `update_receipt_settings_updated_at()` | ❌ **ต้องลบ** | orphan triggers |
+| `webapp_page_config` rows | ❌ **ต้องลบ** | ยัง 2 rows: `/attendance/deposits`, `/attendance/deposit-settings` (menu_group=`Deposits`) |
+| `portal_faqs` (receipts) | ✅ ผ่าน | 0 rows |
 
-### Why this is safe
-- No auth model change
-- No RLS change
-- No backend contract change required
-- No removal of working screens
-- Fixes are additive and localized to route/action lookup logic
+---
 
-## 4) Step-by-step implementation plan
+## 6. 🪣 Storage Buckets
 
-### Step 1 — Create canonical admin route metadata
-Create a small shared file, e.g. `src/lib/admin-page-registry.ts`, containing:
-- canonical path aliases (`/overview` ↔ `/` handling)
-- menu-group mapping for real current routes
-- support for dynamic routes like employee detail/history/settings
-- first-page priority list used by `getFirstAccessiblePage()`
+| Bucket | สถานะ | หมายเหตุ |
+|---|---|---|
+| `deposit-slips` | ❌ **ยังอยู่** | empty แต่ยังไม่ลบ — ต้อง drop |
+| `receipt-files` | ❌ **ยังอยู่** | ยังอยู่ — ต้อง drop (ตอน Phase 2 บอกว่า manual แต่ลบผ่าน SQL ได้ถ้า empty) |
 
-Files to touch:
-- new `src/lib/admin-page-registry.ts`
-- `src/hooks/usePageAccess.ts`
+---
 
-### Step 2 — Fix admin access matching with minimal diff
-Update `usePageAccess.ts` so it:
-- normalizes paths before checking access
-- matches canonical + legacy aliases safely
-- handles dynamic routes explicitly
-- uses the shared registry instead of hardcoded stale branches
+## 7. 🎨 Frontend UI Residuals
 
-Preserved behavior:
-- owner/admin full access
-- deny-by-default posture
-- menu-group fallback when page-config data is incomplete
+| ไฟล์ | สถานะ | หมายเหตุ |
+|---|---|---|
+| `src/pages/portal/ManagerDashboard.tsx` | ❌ **ต้องแก้** | ยังมี `counts.deposits`, label "ใบฝากเงิน", path `/portal/deposit-review-list` (route ตายแล้ว → คลิกแล้ว 404) |
+| `src/lib/portal-actions.ts` | ⚠️ comment เก่า | บรรทัด 18, 20 — comment อ้าง deposit-upload (ลบ comment) |
+| `src/lib/translations.ts:188` | ⚠️ unused key | `deposit: { th: 'ฝากเงิน', en: 'Deposit' }` — ลบ key ได้ |
+| `src/pages/FeatureFlags.tsx:62` | ⚠️ unused option | dropdown `'deposit'` category — ลบ option |
+| `src/pages/PreDeployChecklist.tsx:65` | ⚠️ unused checklist | "Test deposit slip upload" item — ลบ |
+| `src/pages/settings/RoleManagement.tsx:123` | ❌ **ต้องลบ** | `'Deposits'` permission group ยังโชว์ในหน้า role config |
+| `src/pages/settings/CuteQuotesSettings.tsx` | ⚠️ deposit option | ตัวเลือก "ฝากเงิน (Deposit)" ใน show_time, depositChance state, slider UI |
+| `src/hooks/useCuteQuotes.ts` | ⚠️ deposit option | type `'deposit'` ใน show_time, deposit_chance setting |
+| `src/components/attendance/LivenessCamera.tsx:12` | ⚠️ unused enum | `eventType?: 'deposit'` — ลบ |
 
-### Step 3 — Align dashboard/settings navigation with canonical paths
-Update nav/tabs to use the same canonical paths as access checks.
+> **CuteQuotes deposit option**: ถ้าจะ "เก็บไว้ใช้กับเหตุการณ์อื่น" ก็ปลอดภัย (UI เลือกได้แต่ไม่มี trigger เรียก) แต่ถ้าจะให้สะอาดก็ลบ
 
-Files to touch:
-- `src/components/DashboardLayout.tsx`
-- `src/pages/SettingsLayout.tsx`
+---
 
-Key fixes:
-- make Overview consistently target the canonical admin home path
-- ensure nav items/tabs point to routes that actually exist
-- keep labels/icons unchanged
+## 8. 📦 portal-data Edge Function
 
-### Step 4 — Stabilize protected-route recovery behavior
-Review and minimally adjust these only if needed after Step 2–3:
-- `src/components/ProtectedRoute.tsx`
-- `src/components/RootRedirect.tsx`
-- `src/pages/Auth.tsx`
+| Endpoint / Block | สถานะ | หมายเหตุ |
+|---|---|---|
+| `case 'check-today-deposit'` (line 1019) | ❌ **ต้องลบ** | query `daily_deposits` ที่ drop แล้ว → 500 error |
+| `case 'my-receipt-quota'` (line 1048) | ❌ **ต้องลบ** | query `receipt_usage`, `receipt_subscriptions`, `receipt_plans` (drop หมด) → 500 error |
+| `pending-counts` deposit query (line 640–700) | ❌ **ต้องลบ** | `from('daily_deposits')` → 500 error เมื่อ ManagerDashboard เรียก |
+| `notify_receipts` field (line 1540) | ⚠️ unused | เหลือใน notification preferences default |
 
-Goals:
-- avoid redirect loops caused by alias mismatch
-- keep “Go Home” and “Sign Out / Clear Session” escape hatches intact
-- preserve LIFF vs web behavior exactly
+---
 
-### Step 5 — Unify portal actions across Home and Help
-Create a small shared portal action definition file, e.g. `src/lib/portal-actions.ts`, then use it in:
-- `src/pages/portal/PortalHome.tsx`
-- `src/pages/portal/Help.tsx`
+## 9. 📚 Documentation
 
-Rules:
-- preserve existing card UI and favorites behavior in Portal Home
-- filter Help quick actions by actual role/menu visibility
-- do not show manager/admin actions to non-authorized users
-- only show routes that really exist
+| ไฟล์ | สถานะ |
+|---|---|
+| `SYSTEM_SYNC_CHECKLIST.md` — section 5 (Receipt), 6 (Deposit), 7 (Deposit Detection) | ⚠️ ลบ section ออก |
+| `README.md`, `CLAUDE.md`, `index.html` `<title>` | ⚠️ ยังไม่ rebrand เป็น HR-only |
 
-### Step 6 — Keep FAQ/help content synchronized without breaking existing data
-Portal FAQs are already DB-backed (`portal_faqs` has active content).
-Implementation will:
-- keep DB-driven FAQs as source of truth
-- keep static FAQ fallback only as fallback
-- remove stale quick-action drift by deriving links from the shared action registry
+---
 
-Files to touch:
-- `src/pages/portal/Help.tsx`
+## 🎯 สรุปลำดับความสำคัญ
 
-### Step 7 — Optional compatibility shim for DB path drift
-If needed after implementation, add a code-level compatibility map so current DB `webapp_page_config` values like:
-- `/attendance/employee-history/:id`
-- `/attendance/employee-settings/:id`
-continue to work without requiring a risky DB rewrite.
+### 🔴 P0 — ของพังทันที (ต้องแก้ก่อน deploy)
+1. **portal-data**: ลบ 3 cases (`check-today-deposit`, `my-receipt-quota`, `pending-counts` deposit block) — ป้องกัน 500 error
+2. **ManagerDashboard.tsx**: ลบ deposit card + count + path ตาย
+3. **line-webhook index.ts:7876**: ลบ query `receipt_approvers`
+4. **DB**: drop `receipt_categories`, `receipt_ocr_corrections`, 2 orphan functions
+5. **bot_commands table**: delete 6 receipt rows
+6. **webapp_page_config**: delete 2 deposit rows
+7. **Storage**: drop buckets `receipt-files`, `deposit-slips`
 
-Preferred approach:
-- solve in code first
-- only propose DB migration later if absolutely necessary
+### 🟡 P1 — ขยะที่กวน (รอบเดียวจบ)
+8. ลบ dead helpers ใน line-webhook (~400 บรรทัด)
+9. ลบ category `'receipt'` ใน /help (index.ts:5177, 5201)
+10. ลบ edge function `google-oauth`
+11. RoleManagement: ลบ `'Deposits'` group
+12. ManagerDashboard ใช้ pending-counts → ต้องอัปเดต field interface
 
-### Step 8 — Verification and UI click audit
-After implementation, manually verify the highest-risk routes/buttons in the preview:
-- admin home / overview
-- branch report
-- health monitoring
-- payroll YTD
-- happy points / point transactions / point rules / redemption approvals / bag management
-- settings tabs
-- portal help quick actions
-- manager approval flows entry points
-- recovery buttons on auth / access denied screens
+### 🟢 P2 — เก็บกวาดเล็กๆ
+13. translations.ts, FeatureFlags.tsx, PreDeployChecklist.tsx, LivenessCamera.tsx — ลบ keys/options ที่ไม่ใช้
+14. CuteQuotesSettings + useCuteQuotes — ลบ deposit option (ถ้าตัดสินใจลบ)
+15. portal-actions.ts — ลบ comment เก่า
+16. SYSTEM_SYNC_CHECKLIST.md — ลบ section 5/6/7
+17. notify_receipts field ใน notification defaults
 
-## 5) Technical details
+---
 
-### Expected files to touch
-- `src/hooks/usePageAccess.ts`
-- `src/components/DashboardLayout.tsx`
-- `src/pages/SettingsLayout.tsx`
-- `src/components/ProtectedRoute.tsx` (only if needed)
-- `src/components/RootRedirect.tsx` (only if needed)
-- `src/pages/Auth.tsx` (only if needed)
-- `src/pages/portal/PortalHome.tsx`
-- `src/pages/portal/Help.tsx`
-- new shared helper(s):
-  - `src/lib/admin-page-registry.ts`
-  - `src/lib/portal-actions.ts`
+## ❓ คำถามก่อนรัน Phase 4
 
-### No planned backend/schema changes
-- No auth schema changes
-- No role table changes
-- No RLS changes
-- No edge-function rewrite planned
-- No `bot_commands` schema change planned
+1. **CuteQuotes `'deposit'` option** — เก็บไว้ (เผื่ออนาคต) หรือลบให้เกลี้ยง?
+2. **Storage buckets** — drop ทั้งคู่เลยใช่ไหม? (`deposit-slips` + `receipt-files`)
+3. **Rebrand index.html/README** — ทำใน Phase 4 นี้เลย หรือแยกเป็น Phase 5?
 
-### If a DB adjustment becomes necessary
-Use additive compatibility only, not destructive renames.
-
-## 6) Regression & prevention
-
-### Smoke checklist
-1. Unauthenticated user on `/` goes to `/auth`
-2. Authenticated web user on `/` lands on admin home correctly
-3. LIFF context still goes to `/portal`
-4. Admin sidebar Overview opens correctly
-5. Branch Report opens correctly from nav
-6. Health Monitoring opens correctly from nav
-7. Payroll YTD opens without false access denial
-8. Happy Points / Point Transactions / Point Rules / Redemption Approvals / Bag Management open correctly for allowed roles
-9. Settings tabs only show tabs the role can access
-10. ProtectedRoute redirects to the first accessible real page, not a stale alias
-11. Portal Home still renders cards/favorites correctly
-12. Portal Help shows only actions relevant to the current employee role
-13. Manager-only portal actions are hidden from non-managers
-14. `/help` in LINE still reflects `bot_commands`
-15. Recovery buttons on Auth / Access Denied still work
-
-### Prevention strategy
-- One shared admin path registry instead of repeated string literals
-- One shared portal action registry instead of separate static lists
-- Compatibility matcher for legacy DB page-config paths
-- Keep dynamic DB-driven help where it already works
-
-## 7) Doc updates
-
-Update or create these docs after implementation:
-- `docs/PROJECT_MEMORY.md`
-  - note that admin route/access logic now uses a shared registry
-  - note that portal actions/help share one definition
-- `docs/CONTRACTS.md`
-  - document canonical admin path aliases and permission matching behavior
-- `docs/SMOKE_TEST.md`
-  - add route/access/help consistency checklist
-- `docs/DEVLOG.md`
-  - record the exact desyncs fixed and rollback notes
-
-### DEVLOG entry to add
-- User request summary: audit and fix cross-feature drift so UI/help/routes/permissions stay aligned
-- Scope in: route matching, nav consistency, portal help/action consistency, recovery path safety
-- Scope out: no auth/RLS redesign, no backend rewrite
-- Contracts changed: No external contracts changed; internal canonical path matching added
-- Security impact: preserves deny-by-default access checks while reducing false denials from stale mappings
-- Risk: medium-low, because changes touch shared routing/access helpers
-- Rollback: revert shared registry adoption and restore previous path checks if any unexpected nav regression appears
-
-Approve this plan and I’ll implement it in minimal, verifiable steps.
+ตอบ 3 ข้อนี้แล้วผม execute Phase 4 ครบทุก P0 + P1 + P2 ในรอบเดียวครับ 🚀
