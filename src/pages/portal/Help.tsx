@@ -276,28 +276,6 @@ export default function Help() {
                 : `Found ${faqs.length} question${faqs.length !== 1 ? 's' : ''}`}
             </p>
           )}
-            <Accordion type="single" collapsible className="w-full">
-              {faqs.map((faq, idx) => (
-                <AccordionItem key={idx} value={`faq-${idx}`}>
-                  <AccordionTrigger className="text-left text-sm">
-                    {faq.question}
-                  </AccordionTrigger>
-                  <AccordionContent className="text-muted-foreground text-sm">
-                    {faq.answer}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          )}
-          
-          {/* Results count */}
-          {!isLoadingFaqs && searchQuery && (
-            <p className="text-xs text-muted-foreground text-center">
-              {locale === 'th' 
-                ? `พบ ${faqs.length} คำถาม` 
-                : `Found ${faqs.length} question${faqs.length !== 1 ? 's' : ''}`}
-            </p>
-          )}
         </CardContent>
       </Card>
 
