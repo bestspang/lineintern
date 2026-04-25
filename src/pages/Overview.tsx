@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
+import { MessageSquare, Users, CheckSquare, AlertTriangle, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -258,42 +258,6 @@ export default function Overview() {
           </CardContent>
         </Card>
       )}
-
-      <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/receipts')}>
-        <CardHeader className="p-4 sm:p-6 pb-2">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-emerald-600" />
-            Receipt Statistics
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">AI receipt extraction usage</CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-          {receiptStatsLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-24" />
-              <Skeleton className="h-4 w-32" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-2xl font-bold">{receiptStats?.totalReceipts || 0}</div>
-                <p className="text-xs text-muted-foreground">Total Receipts</p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{receiptStats?.thisMonthReceipts || 0}</div>
-                <p className="text-xs text-muted-foreground">This Month</p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold flex items-center gap-1">
-                  <Sparkles className="h-4 w-4 text-amber-500" />
-                  {receiptStats?.aiUsageThisMonth || 0}
-                </div>
-                <p className="text-xs text-muted-foreground">AI Extractions</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* ✅ NEW: Attendance System Health Card */}
       <Card>
