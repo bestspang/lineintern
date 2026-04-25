@@ -3413,7 +3413,6 @@ export type Database = {
           notify_day_off: boolean
           notify_early_leave: boolean
           notify_overtime: boolean
-          notify_receipts: boolean
           notify_remote_checkout: boolean
           updated_at: string
         }
@@ -3423,7 +3422,6 @@ export type Database = {
           notify_day_off?: boolean
           notify_early_leave?: boolean
           notify_overtime?: boolean
-          notify_receipts?: boolean
           notify_remote_checkout?: boolean
           updated_at?: string
         }
@@ -3433,7 +3431,6 @@ export type Database = {
           notify_day_off?: boolean
           notify_early_leave?: boolean
           notify_overtime?: boolean
-          notify_receipts?: boolean
           notify_remote_checkout?: boolean
           updated_at?: string
         }
@@ -4098,80 +4095,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
-      }
-      receipt_categories: {
-        Row: {
-          business_id: string | null
-          created_at: string | null
-          icon: string | null
-          id: string
-          is_preset: boolean | null
-          name: string
-          name_th: string | null
-        }
-        Insert: {
-          business_id?: string | null
-          created_at?: string | null
-          icon?: string | null
-          id?: string
-          is_preset?: boolean | null
-          name: string
-          name_th?: string | null
-        }
-        Update: {
-          business_id?: string | null
-          created_at?: string | null
-          icon?: string | null
-          id?: string
-          is_preset?: boolean | null
-          name?: string
-          name_th?: string | null
-        }
-        Relationships: []
-      }
-      receipt_ocr_corrections: {
-        Row: {
-          corrected_at: string | null
-          corrected_by_employee_id: string | null
-          corrected_value: string | null
-          created_at: string | null
-          field_name: string
-          id: string
-          original_confidence: number | null
-          original_value: string | null
-          receipt_id: string | null
-        }
-        Insert: {
-          corrected_at?: string | null
-          corrected_by_employee_id?: string | null
-          corrected_value?: string | null
-          created_at?: string | null
-          field_name: string
-          id?: string
-          original_confidence?: number | null
-          original_value?: string | null
-          receipt_id?: string | null
-        }
-        Update: {
-          corrected_at?: string | null
-          corrected_by_employee_id?: string | null
-          corrected_value?: string | null
-          created_at?: string | null
-          field_name?: string
-          id?: string
-          original_confidence?: number | null
-          original_value?: string | null
-          receipt_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "receipt_ocr_corrections_corrected_by_employee_id_fkey"
-            columns: ["corrected_by_employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       recipient_group_members: {
         Row: {

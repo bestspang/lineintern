@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
-  Clock, Calendar, ClipboardList, Gift, Banknote, MapPin,
+  Clock, Calendar, ClipboardList, Gift, MapPin,
   ChevronRight, Users, UserCheck, UserX, LayoutDashboard,
   RefreshCw
 } from 'lucide-react';
@@ -18,7 +18,6 @@ interface PendingCounts {
   earlyLeave: number;
   remoteCheckout: number;
   redemptions: number;
-  deposits: number;
 }
 
 interface TeamSummary {
@@ -33,7 +32,7 @@ interface TeamSummary {
 export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { employee, locale, isAdmin } = usePortal();
-  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, remoteCheckout: 0, redemptions: 0, deposits: 0 });
+  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, remoteCheckout: 0, redemptions: 0 });
   const [teamSummary, setTeamSummary] = useState<TeamSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +72,7 @@ export default function ManagerDashboard() {
     setRefreshing(false);
   };
 
-  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.remoteCheckout + counts.redemptions + counts.deposits;
+  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.remoteCheckout + counts.redemptions;
 
   const approvalItems = [
     { icon: Clock, label: 'คำขอ OT', labelEn: 'OT Requests', count: counts.ot, path: '/portal/approvals/ot', color: 'from-orange-500 to-orange-600' },
@@ -82,9 +81,6 @@ export default function ManagerDashboard() {
     { icon: MapPin, label: 'Checkout นอกสถานที่', labelEn: 'Remote Checkout', count: counts.remoteCheckout, path: '/portal/approvals/remote-checkout', color: 'from-cyan-500 to-cyan-600' },
     ...(['admin', 'owner'].includes(roleKey) ? [{
       icon: Gift, label: 'แลกรางวัล', labelEn: 'Redemptions', count: counts.redemptions, path: '/portal/approve-redemptions', color: 'from-fuchsia-500 to-fuchsia-600'
-    }] : []),
-    ...(['manager', 'admin', 'owner'].includes(roleKey) ? [{
-      icon: Banknote, label: 'ใบฝากเงิน', labelEn: 'Deposits', count: counts.deposits, path: '/portal/deposit-review-list', color: 'from-green-500 to-green-600'
     }] : []),
   ];
 

@@ -9,7 +9,7 @@ import { useCuteQuotes } from "@/hooks/useCuteQuotes";
 interface LivenessCameraProps {
   onCapture: (blob: Blob, livenessData: LivenessData) => void;
   onCancel: () => void;
-  eventType?: 'check_in' | 'check_out' | 'deposit';
+  eventType?: 'check_in' | 'check_out';
   employeeBirthDate?: string;  // 'MM-DD' format
   todayHolidayIds?: string[];
 }

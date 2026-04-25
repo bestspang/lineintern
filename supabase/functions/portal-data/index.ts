@@ -637,11 +637,6 @@ serve(async (req) => {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
 
-        let depositsQuery = supabase
-          .from('daily_deposits')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending');
-
         let remoteCheckoutQuery = supabase
           .from('remote_checkout_requests')
           .select('id', { count: 'exact', head: true })
@@ -649,16 +644,14 @@ serve(async (req) => {
 
         // Manager filter by branch (need to filter after fetch for requests without direct branch_id)
         if (!isAdmin && branchId) {
-          depositsQuery = depositsQuery.eq('branch_id', branchId);
           remoteCheckoutQuery = remoteCheckoutQuery.eq('branch_id', branchId);
         }
 
-        const [otRes, leaveRes, earlyRes, redemptionRes, depositRes, remoteRes] = await Promise.all([
+        const [otRes, leaveRes, earlyRes, redemptionRes, remoteRes] = await Promise.all([
           otQuery,
           leaveQuery,
           earlyLeaveQuery,
           redemptionsQuery,
-          depositsQuery,
           remoteCheckoutQuery
         ]);
 
@@ -688,7 +681,6 @@ serve(async (req) => {
             earlyLeave: earlyBranchRes.count || 0,
             remoteCheckout: remoteRes.count || 0,
             redemptions: 0, // Manager doesn't see redemptions
-            deposits: depositRes.count || 0
           };
         } else {
           data = {
@@ -697,7 +689,6 @@ serve(async (req) => {
             earlyLeave: earlyRes.count || 0,
             remoteCheckout: remoteRes.count || 0,
             redemptions: redemptionRes.count || 0,
-            deposits: depositRes.count || 0
           };
         }
         break;
@@ -1016,98 +1007,7 @@ serve(async (req) => {
         break;
       }
 
-      // Check today deposit for DepositUpload.tsx
-      case 'check-today-deposit': {
-        // Get employee's branch
-        const empResult = await supabase
-          .from('employees')
-          .select('branch_id')
-          .eq('id', employee_id)
-          .maybeSingle();
-
-        if (!empResult.data?.branch_id) {
-          data = null;
-          break;
-        }
-
-        // ⚠️ TIMEZONE: Use Bangkok date
-        const today = getBangkokDateString();
-
-        const result = await supabase
-          .from('daily_deposits')
-          .select('*, employees(full_name)')
-          .eq('branch_id', empResult.data.branch_id)
-          .eq('deposit_date', today)
-          .maybeSingle();
-
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
-      // AI quota for ReceiptBusinesses.tsx
-      case 'my-receipt-quota': {
-        const empResult = await supabase
-          .from('employees')
-          .select('line_user_id')
-          .eq('id', employee_id)
-          .maybeSingle();
-
-        if (!empResult.data?.line_user_id) {
-          data = { used: 0, limit: 5, planName: 'Free' };
-          break;
-        }
-
-        const lineUserId = empResult.data.line_user_id;
-        const now = new Date();
-        const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const today = getBangkokDateString();
-
-        // Get usage
-        const { data: usage } = await supabase
-          .from('receipt_usage')
-          .select('ai_receipts_used')
-          .eq('line_user_id', lineUserId)
-          .eq('period_yyyymm', period)
-          .maybeSingle();
-
-        // Get active subscription
-        const { data: subscription } = await supabase
-          .from('receipt_subscriptions')
-          .select('plan_id')
-          .eq('line_user_id', lineUserId)
-          .lte('current_period_start', today)
-          .gte('current_period_end', today)
-          .maybeSingle();
-
-        // Get plan details
-        let plan = null;
-        if (subscription?.plan_id) {
-          const { data: planData } = await supabase
-            .from('receipt_plans')
-            .select('id, name, ai_receipts_limit')
-            .eq('id', subscription.plan_id)
-            .single();
-          plan = planData;
-        }
-
-        // Default to free plan
-        if (!plan) {
-          const { data: freePlan } = await supabase
-            .from('receipt_plans')
-            .select('id, name, ai_receipts_limit')
-            .eq('id', 'free')
-            .maybeSingle();
-          plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
-        }
-
-        data = {
-          used: usage?.ai_receipts_used || 0,
-          limit: plan?.ai_receipts_limit || 5,
-          planName: plan?.name || 'Free',
-        };
-        break;
-      }
+      // (check-today-deposit and my-receipt-quota endpoints removed in Phase 4 cleanup.)
 
       // ========================================
       // MY POINTS PAGE ENDPOINTS (bypass RLS)
@@ -1537,7 +1437,6 @@ serve(async (req) => {
             notify_early_leave: params?.notify_early_leave ?? true,
             notify_day_off: params?.notify_day_off ?? true,
             notify_remote_checkout: params?.notify_remote_checkout ?? true,
-            notify_receipts: params?.notify_receipts ?? true,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'employee_id' })
           .select()

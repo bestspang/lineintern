@@ -9,15 +9,14 @@
  *
  * Rules of thumb:
  * - Every action `path` MUST exist as a real route in `App.tsx` under
- *   the `/portal/*` group. Verified routes (2026-04-24):
+ *   the `/portal/*` group. Verified routes (2026-04-25, post Phase 4):
  *     /portal/checkin, /portal/my-history, /portal/my-leave,
  *     /portal/my-profile, /portal/my-points, /portal/my-redemptions,
  *     /portal/my-bag, /portal/my-schedule,
  *     /portal/my-payroll, /portal/leaderboard, /portal/status,
  *     /portal/rewards, /portal/request-leave, /portal/request-ot,
- *     /portal/deposit-upload, /portal/approvals,
- *     /portal/approvals/remote-checkout, /portal/team-summary,
- *     /portal/deposit-review-list, /portal/branch-report,
+ *     /portal/approvals, /portal/approvals/remote-checkout,
+ *     /portal/team-summary, /portal/branch-report,
  *     /portal/manager-dashboard, /portal/photos, /portal/daily-summary,
  *     /portal/employees, /portal/approve-redemptions,
  *     /portal/payroll-report
