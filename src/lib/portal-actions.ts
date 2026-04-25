@@ -231,17 +231,6 @@ export const PORTAL_ACTIONS: PortalAction[] = [
     color: 'from-slate-500 to-slate-600',
     group: 'employee',
   },
-  {
-    id: 'deposit-upload',
-    icon: Banknote,
-    label: 'ฝากเงิน',
-    labelEn: 'Deposit',
-    description: 'ส่งใบฝากเงินประจำวัน',
-    descriptionEn: 'Submit daily deposit slip',
-    path: '/portal/deposit-upload',
-    color: 'from-lime-500 to-green-600',
-    group: 'employee',
-  },
 
   // ───── Manager actions ─────
   {
@@ -278,18 +267,6 @@ export const PORTAL_ACTIONS: PortalAction[] = [
     path: '/portal/team-summary',
     color: 'from-cyan-500 to-cyan-600',
     roles: [...TEAM_VIEW_ROLES],
-    group: 'manager',
-  },
-  {
-    id: 'deposit-review-list',
-    icon: Banknote,
-    label: 'ตรวจสอบใบฝาก',
-    labelEn: 'Review Deposits',
-    description: 'ตรวจสอบใบฝากเงินสาขา',
-    descriptionEn: 'Review branch deposits',
-    path: '/portal/deposit-review-list',
-    color: 'from-green-500 to-green-600',
-    roles: ['manager', 'admin', 'owner'],
     group: 'manager',
   },
   {
