@@ -10,31 +10,7 @@ import {
   resolveEntities, retrieveCrossGroupEvidence, generateCrossGroupReply,
   saveQueryMemory, getLastAnswerMemory, formatSourcesReply, logQueryAudit,
 } from "./utils/cross-group-query.ts";
-import {
-  checkReceiptQuota,
-  getUserBusinesses,
-  getDefaultBusiness,
-  getReceiptSummary,
-  submitReceiptImage,
-  getBranchFromGroup,
-  canGroupSubmitReceipts,
-  buildReceiptProcessingFlex,
-  buildReceiptSavedFlex,
-  buildQuotaExceededFlex,
-  buildReceiptSummaryFlex,
-  buildReceiptHelpFlex,
-  buildBusinessSelectQuickReply,
-  setDefaultBusiness,
-  exportReceiptsForMonth,
-  handleReceiptPostback,
-  // Approval system
-  isSameGroupApproval,
-  sendApprovalNotifications,
-  buildApproverFlexMessage,
-  getReceiptImageUrl,
-  getUserDisplayName,
-  getBranchName,
-} from "./handlers/receipt-handler.ts";
+// Receipt system removed (Phase 2 cleanup) — image messages are now logged and ignored.
 
 // =============================
 // UTILITY FUNCTIONS
