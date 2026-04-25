@@ -119,18 +119,12 @@ const TeamSummary = lazy(() => import("./pages/portal/TeamSummary"));
 const TodayPhotos = lazy(() => import("./pages/portal/TodayPhotos"));
 const DailySummary = lazy(() => import("./pages/portal/DailySummary"));
 const ApproveRedemptions = lazy(() => import("./pages/portal/ApproveRedemptions"));
-const MyReceipts = lazy(() => import("./pages/portal/MyReceipts"));
-const ReceiptDetail = lazy(() => import("./pages/portal/ReceiptDetail"));
-const ReceiptBusinesses = lazy(() => import("./pages/portal/ReceiptBusinesses"));
-const ReceiptNew = lazy(() => import("./pages/portal/ReceiptNew"));
 const PayrollReport = lazy(() => import("./pages/portal/PayrollReport"));
 const MySchedule = lazy(() => import("./pages/portal/MySchedule"));
 const MyPayroll = lazy(() => import("./pages/portal/MyPayroll"));
 const PointLeaderboard = lazy(() => import("./pages/portal/PointLeaderboard"));
 const PortalEmployees = lazy(() => import("./pages/portal/PortalEmployees"));
 const PortalEmployeeDetail = lazy(() => import("./pages/portal/PortalEmployeeDetail"));
-const PortalReceiptManagement = lazy(() => import("./pages/portal/PortalReceiptManagement"));
-const PortalReceiptAnalytics = lazy(() => import("./pages/portal/PortalReceiptAnalytics"));
 const PortalBranchReport = lazy(() => import("./pages/portal/PortalBranchReport"));
 const MyBag = lazy(() => import("./pages/portal/MyBag"));
 const GachaBox = lazy(() => import("./pages/portal/GachaBox"));
@@ -141,21 +135,6 @@ const ApproveRemoteCheckout = lazy(() => import("./pages/portal/ApproveRemoteChe
 const MyPoints = lazy(() => import("./pages/portal/MyPoints"));
 const RewardShop = lazy(() => import("./pages/portal/RewardShop"));
 const MyRedemptions = lazy(() => import("./pages/portal/MyRedemptions"));
-
-// Lazy-loaded pages - Receipts admin
-const ReceiptsAdmin = lazy(() => import("./pages/receipts/Receipts"));
-const ReceiptBusinessesAdmin = lazy(() => import("./pages/receipts/ReceiptBusinessesAdmin"));
-const ReceiptExport = lazy(() => import("./pages/receipts/ReceiptExport"));
-const ReceiptAnalytics = lazy(() => import("./pages/receipts/ReceiptAnalytics"));
-const ReceiptSettings = lazy(() => import("./pages/receipts/ReceiptSettings"));
-const ReceiptApprovalLogs = lazy(() => import("./pages/receipts/ReceiptApprovalLogs"));
-const ReceiptQuota = lazy(() => import("./pages/receipts/ReceiptQuota"));
-
-// Lazy-loaded pages - LIFF
-const LiffLayout = lazy(() => import("./pages/liff/LiffLayout"));
-const LiffReceiptEdit = lazy(() => import("./pages/liff/LiffReceiptEdit"));
-const LiffReceiptList = lazy(() => import("./pages/liff/LiffReceiptList"));
-const LiffBusinesses = lazy(() => import("./pages/liff/LiffBusinesses"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
