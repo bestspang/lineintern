@@ -30,7 +30,6 @@ interface NotificationPreferences {
   notify_early_leave: boolean;
   notify_day_off: boolean;
   notify_remote_checkout: boolean;
-  notify_receipts: boolean;
 }
 
 const defaultPrefs: NotificationPreferences = {
@@ -38,7 +37,6 @@ const defaultPrefs: NotificationPreferences = {
   notify_early_leave: true,
   notify_day_off: true,
   notify_remote_checkout: true,
-  notify_receipts: true,
 };
 
 const typeIcons: Record<string, typeof Info> = {
