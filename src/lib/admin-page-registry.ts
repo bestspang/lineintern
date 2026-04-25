@@ -161,8 +161,6 @@ export function resolveAdminMenuGroup(rawPath: string): AdminMenuGroup | null {
 
   if (path.startsWith('/attendance')) return 'Attendance';
 
-  // --- Receipts ---
-  if (path.startsWith('/receipts') || path === '/receipt-settings') return 'Receipts';
 
   // --- Management ---
   if (
