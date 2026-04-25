@@ -144,17 +144,6 @@ export const PORTAL_ACTIONS: PortalAction[] = [
     group: 'employee',
   },
   {
-    id: 'my-receipts',
-    icon: Receipt,
-    label: 'ใบเสร็จของฉัน',
-    labelEn: 'My Receipts',
-    description: 'ดูและจัดการใบเสร็จ',
-    descriptionEn: 'View & manage receipts',
-    path: '/portal/my-receipts',
-    color: 'from-cyan-500 to-cyan-600',
-    group: 'employee',
-  },
-  {
     id: 'leaderboard',
     icon: Trophy,
     label: 'อันดับคะแนน',
