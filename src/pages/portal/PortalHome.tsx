@@ -105,6 +105,11 @@ export default function PortalHome() {
       const { data, error } = await portalApi<{
         points: { current_balance: number } | null;
         todayAttendance: { event_type: string; server_time: string }[];
+        pendingApprovals?: {
+          overtime: number;
+          leave: number;
+          scope: 'self' | 'team' | 'global';
+        };
       }>({
         endpoint: 'home-summary',
         employee_id: employee.id
@@ -119,6 +124,21 @@ export default function PortalHome() {
 
   // Derived state from homeSummary
   const pointBalance = homeSummary?.points?.current_balance || 0;
+  const approvalScope = homeSummary?.pendingApprovals?.scope || 'self';
+  const approvalScopeLabel =
+    locale === 'th'
+      ? approvalScope === 'team'
+        ? 'ทีมของคุณ'
+        : approvalScope === 'global'
+          ? 'ทั้งหมด'
+          : 'ของฉัน'
+      : approvalScope === 'team'
+        ? 'Your Team'
+        : approvalScope === 'global'
+          ? 'All'
+          : 'Mine';
+  const pendingApprovalTotal =
+    (homeSummary?.pendingApprovals?.overtime || 0) + (homeSummary?.pendingApprovals?.leave || 0);
   const checkIn = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-in');
   const checkOut = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-out');
   const canCheckIn = !checkIn;
@@ -236,6 +256,11 @@ export default function PortalHome() {
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
           {locale === 'th' ? 'เลือกเมนูที่ต้องการ' : 'Choose what you need'}
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          {locale === 'th'
+            ? `คำขอรออนุมัติ (${approvalScopeLabel}): ${pendingApprovalTotal}`
+            : `Pending approvals (${approvalScopeLabel}): ${pendingApprovalTotal}`}
         </p>
       </div>
 
