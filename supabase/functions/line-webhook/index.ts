@@ -5174,7 +5174,7 @@ async function handleHelpCommand(
       conversation: { icon: '📝', name_en: 'Conversations', name_th: 'สรุปการสนทนา' },
       work: { icon: '✅', name_en: 'Tasks & Work', name_th: 'งานและการจัดการงาน' },
       attendance: { icon: '🕐', name_en: 'Attendance (DM Only)', name_th: 'ลงเวลาทำงาน (DM เท่านั้น)' },
-      receipt: { icon: '🧾', name_en: 'Receipts (DM Only)', name_th: 'ใบเสร็จ (DM เท่านั้น)' },
+      // 'receipt' category removed in Phase 4 cleanup.
       knowledge: { icon: '📚', name_en: 'Knowledge', name_th: 'ความรู้' },
       analytics: { icon: '📊', name_en: 'Analytics', name_th: 'รายงาน' },
       creative: { icon: '🎨', name_en: 'Creative', name_th: 'สร้างสรรค์' },
@@ -5198,7 +5198,7 @@ async function handleHelpCommand(
 
     // Iterate through categories in order
     // ⚠️ SYNC: Order must include all categories from categoryInfo above
-    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'receipt', 'knowledge', 'analytics', 'creative', 'settings', 'memory'];
+    const categoryOrder = ['general', 'conversation', 'work', 'attendance', 'knowledge', 'analytics', 'creative', 'settings', 'memory'];
     
     for (const category of categoryOrder) {
       const cmds = grouped[category];
@@ -7857,61 +7857,8 @@ async function pushLineMessage(to: string, text: string): Promise<void> {
   }
 }
 
-/**
- * Notify owner/admin when a user exceeds their quota
- * Only sends to USER approvers (not group approvers) via DM
- * @param skipSubmitter - If true, skip sending to approver who is also the submitter (to avoid duplicate messages)
- */
-async function notifyOwnerQuotaExceeded(
-  submitterLineUserId: string,
-  quota: { used: number; limit: number },
-  locale: "th" | "en",
-  skipSubmitter: boolean = false
-): Promise<void> {
-  console.log(`[notifyOwnerQuotaExceeded] Notifying owners about quota exceeded (skipSubmitter=${skipSubmitter})`);
-  
-  try {
-    // Get approvers that are USERS only (not groups)
-    const { data: approvers } = await supabase
-      .from("receipt_approvers")
-      .select("line_user_id, display_name, type")
-      .eq("type", "user")
-      .eq("is_active", true);
-    
-    if (!approvers || approvers.length === 0) {
-      console.log(`[notifyOwnerQuotaExceeded] No user approvers configured`);
-      return;
-    }
-    
-    // Get submitter display name
-    const { data: submitter } = await supabase
-      .from("users")
-      .select("display_name")
-      .eq("line_user_id", submitterLineUserId)
-      .maybeSingle();
-    
-    const submitterName = submitter?.display_name || submitterLineUserId;
-    
-    const message = locale === "th"
-      ? `⚠️ ${submitterName} หมดโควต้า AI แล้ว (${quota.used}/${quota.limit} ใบเดือนนี้)`
-      : `⚠️ ${submitterName} exceeded AI quota (${quota.used}/${quota.limit} this month)`;
-    
-    for (const approver of approvers) {
-      // Skip if approver is the submitter to avoid duplicate messages
-      if (skipSubmitter && approver.line_user_id === submitterLineUserId) {
-        console.log(`[notifyOwnerQuotaExceeded] Skipping submitter ${approver.display_name || approver.line_user_id}`);
-        continue;
-      }
-      
-      if (approver.line_user_id) {
-        await pushLineMessage(approver.line_user_id, message);
-        console.log(`[notifyOwnerQuotaExceeded] Notified ${approver.display_name || approver.line_user_id}`);
-      }
-    }
-  } catch (error) {
-    console.error(`[notifyOwnerQuotaExceeded] Error:`, error);
-  }
-}
+// notifyOwnerQuotaExceeded() removed in Phase 4 — receipt_approvers table dropped.
+
 
 // =============================
 // AUTO-SUMMARY & PERSONALITY HELPERS
