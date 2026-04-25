@@ -38,11 +38,6 @@ export default function MyProfile() {
       if (!error && data) {
         setSchedules(data.schedules || []);
         setEmployeeDetails(data.employee);
-        
-        // Check Google connection if we have LINE user ID
-        if (data.employee?.line_user_id) {
-          checkGoogleConnection(data.employee.line_user_id);
-        }
       }
 
       setLoading(false);
