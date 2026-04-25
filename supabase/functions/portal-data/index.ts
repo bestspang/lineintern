@@ -336,8 +336,58 @@ serve(async (req) => {
       }
 
       case 'home-summary': {
+        /**
+         * Response contract:
+         * - points: personal points summary
+         * - todayAttendance: caller attendance events for today
+         * - pendingApprovals: scoped pending-request counts + scope metadata
+         *   - scope = 'self' | 'team' | 'global'
+         *   - self: caller's own pending requests
+         *   - team: pending requests from caller's branch/team
+         *   - global: all pending requests across branches (policy-gated)
+         */
         // ⚠️ TIMEZONE: Use Bangkok date
         const today = getBangkokDateString();
+
+        // Determine caller role + branch scope from authenticated employee profile
+        const profileResult = await supabase
+          .from('employees')
+          .select('branch_id, role:employee_roles(role_key)')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (profileResult.error) {
+          error = profileResult.error;
+          break;
+        }
+
+        if (!profileResult.data) {
+          error = { message: 'Employee profile not found' };
+          break;
+        }
+
+        const roleKey = String(profileResult.data.role?.role_key || '').toLowerCase();
+        const branchId = profileResult.data.branch_id;
+        const isManagerRole = roleKey === 'manager';
+        const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
+
+        // Policy gate: admin/hr/owner can only see global counts when explicitly enabled.
+        const approvalScopeSetting = await supabase
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', 'portal_home_approval_scope')
+          .maybeSingle();
+
+        const allowGlobalForAdminHr = Boolean(
+          (approvalScopeSetting.data?.setting_value as any)?.allow_global_for_admin_hr
+        );
+
+        let approvalScope: 'self' | 'team' | 'global' = 'self';
+        if (isManagerRole) {
+          approvalScope = 'team';
+        } else if (isAdminOrHrRole && allowGlobalForAdminHr) {
+          approvalScope = 'global';
+        }
         
         // Get points
         const pointsResult = await supabase
@@ -355,16 +405,32 @@ serve(async (req) => {
           .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
-        // Get pending approvals count (for managers)
-        const pendingOTResult = await supabase
+        let pendingOTQuery = supabase
           .from('overtime_requests')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
 
-        const pendingLeaveResult = await supabase
+        let pendingLeaveQuery = supabase
           .from('leave_requests')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
+
+        if (approvalScope === 'self') {
+          pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
+          pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
+        } else if (approvalScope === 'team' && branchId) {
+          pendingOTQuery = pendingOTQuery
+            .eq('employee.branch_id', branchId)
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+          pendingLeaveQuery = pendingLeaveQuery
+            .eq('employee.branch_id', branchId)
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+        }
+
+        const [pendingOTResult, pendingLeaveResult] = await Promise.all([
+          pendingOTQuery,
+          pendingLeaveQuery
+        ]);
 
         data = {
           points: pointsResult.data ? {
@@ -375,10 +441,16 @@ serve(async (req) => {
           todayAttendance: attendanceResult.data || [],
           pendingApprovals: {
             overtime: pendingOTResult.count || 0,
-            leave: pendingLeaveResult.count || 0
+            leave: pendingLeaveResult.count || 0,
+            scope: approvalScope
           }
         };
-        error = pointsResult.error || attendanceResult.error;
+        error =
+          pointsResult.error ||
+          attendanceResult.error ||
+          pendingOTResult.error ||
+          pendingLeaveResult.error ||
+          approvalScopeSetting.error;
         break;
       }
 
