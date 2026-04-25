@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
+import { MessageSquare, Users, CheckSquare, AlertTriangle, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatInTimeZone } from 'date-fns-tz';
