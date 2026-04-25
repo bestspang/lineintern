@@ -29,8 +29,8 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Clock, Calendar, History, Users, Camera,
   CalendarPlus, ClipboardList, TrendingUp,
-  Receipt, Gift, Banknote, FileText, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack,
+  Gift, Banknote, FileText, CalendarDays,
+  Wallet, Trophy, Building2, BarChart3, Activity, Backpack,
   LayoutDashboard, Star, User, CheckSquare, CalendarMinus,
   Package, MapPin, XCircle,
 } from 'lucide-react';
