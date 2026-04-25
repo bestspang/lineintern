@@ -76,7 +76,6 @@ const FAQ_CATEGORIES = [
   { value: 'attendance', label: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' } },
   { value: 'leave-ot', label: { th: 'ลา/OT', en: 'Leave/OT' } },
   { value: 'points', label: { th: 'แต้ม', en: 'Points' } },
-  { value: 'receipts', label: { th: 'ใบเสร็จ', en: 'Receipts' } },
   { value: 'general', label: { th: 'ทั่วไป', en: 'General' } },
 ];
 
