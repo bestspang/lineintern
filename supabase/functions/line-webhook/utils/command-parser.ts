@@ -164,23 +164,8 @@ export function parseCommand(text: string, isDM: boolean = false): ParsedCommand
     'ขอสรุประยะยาว': 'memory_summary',
     'สรุปความจำ': 'memory_summary',
     
-    // Receipt Management
-    '/receipt': 'receipt',
-    '/ใบเสร็จ': 'receipt',
-    '/บันทึกใบเสร็จ': 'receipt',
-    '/receiptsummary': 'receipt_summary',
-    '/สรุปใบเสร็จ': 'receipt_summary',
-    '/businesses': 'businesses',
-    '/ธุรกิจ': 'businesses',
-    
-    // Receipt Export & Shortcuts
-    '/export': 'export_month',
-    '/ส่งออก': 'export_month',
-    '/thismonth': 'this_month',
-    '/เดือนนี้': 'this_month',
-    'เดือนนี้': 'this_month',
-    '/setdefault': 'set_default_business',
-    '/ตั้งค่าเริ่มต้น': 'set_default_business',
+    // Receipt commands removed in Phase 2.
+
   };
   
   let commandType: ParsedCommand['commandType'] = null;
