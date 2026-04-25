@@ -32,8 +32,7 @@ export interface ParsedCommand {
     | 'checkin' | 'checkout' | 'history' | 'work' | 'remind' | 'list_reminders' 
     | 'mentions' | 'imagine' | 'mode' | 'status' | 'progress_report' 
     | 'confirm_with_feedback' | 'find' | 'train' | 'ot' | 'menu' | 'dayoff' | 'cancel_dayoff' 
-    | 'cancel_ot' | 'memory_summary' | 'receipt' | 'receipt_summary' | 'businesses' 
-    | 'export_month' | 'this_month' | 'set_default_business' | null;
+    | 'cancel_ot' | 'memory_summary' | null;
   userQuestion: string;
   rawText: string;
   isMentioned: boolean;
