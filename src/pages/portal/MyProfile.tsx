@@ -1,13 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { User, Building2, Clock, Calendar, Link2, Link2Off, Loader2, CheckCircle2 } from 'lucide-react';
+import { User, Building2, Clock, Calendar } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 interface WorkSchedule {
   day_of_week: number;
@@ -22,20 +19,11 @@ interface ProfileData {
   schedules: WorkSchedule[];
 }
 
-interface GoogleConnection {
-  connected: boolean;
-  hasDriveFolder: boolean;
-  hasSpreadsheet: boolean;
-  connectedAt?: string;
-}
-
 export default function MyProfile() {
   const { employee, locale } = usePortal();
   const [schedules, setSchedules] = useState<WorkSchedule[]>([]);
   const [employeeDetails, setEmployeeDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [googleConnection, setGoogleConnection] = useState<GoogleConnection | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
