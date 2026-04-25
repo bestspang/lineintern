@@ -31,7 +31,7 @@ const HOME_QUICK_ACTION_IDS = [
   'my-leave',
   'request-leave',
   'request-ot',
-  'my-receipts',
+  
   'leaderboard',
   'status',
   'rewards',

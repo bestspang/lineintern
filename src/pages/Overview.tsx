@@ -37,36 +37,6 @@ export default function Overview() {
     refetchInterval: 60000, // Auto-refresh every 60 seconds
   });
 
-  // Fetch receipt stats
-  const { data: receiptStats, isLoading: receiptStatsLoading } = useQuery({
-    queryKey: ['receipt-overview-stats'],
-    queryFn: async (): Promise<{ totalReceipts: number; thisMonthReceipts: number; aiUsageThisMonth: number }> => {
-      const now = new Date();
-      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-      // Fetch counts separately
-      const totalResult = await supabase
-        .from('receipts')
-        .select('*', { count: 'exact', head: true });
-
-      const thisMonthResult = await supabase
-        .from('receipts')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', thisMonthStart);
-
-      // Count AI-extracted receipts - using filter instead of eq to avoid type depth issues
-      const aiQuery = supabase.from('receipts').select('*', { count: 'exact', head: true });
-      const aiExtractedResult = await aiQuery.filter('extraction_source', 'eq', 'ai').gte('created_at', thisMonthStart);
-
-      return {
-        totalReceipts: totalResult.count || 0,
-        thisMonthReceipts: thisMonthResult.count || 0,
-        aiUsageThisMonth: aiExtractedResult.count || 0,
-      };
-    },
-    refetchInterval: 60000,
-  });
-
   // Fetch recent unresolved alerts
   const { data: recentAlerts, isLoading: alertsLoading } = useQuery({
     queryKey: ['recent-alerts'],
@@ -178,12 +148,11 @@ export default function Overview() {
   const { data: actionItems, isLoading: actionItemsLoading } = useQuery({
     queryKey: ['action-items-today'],
     queryFn: async () => {
-      const [otRes, earlyLeaveRes, remoteCheckoutRes, dayOffRes, receiptRes] = await Promise.all([
+      const [otRes, earlyLeaveRes, remoteCheckoutRes, dayOffRes] = await Promise.all([
         supabase.from('overtime_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('early_leave_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('remote_checkout_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('flexible_day_off_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending'),
       ]);
       
       const items: Array<{ label: string; count: number; href: string; emoji: string }> = [];
@@ -191,7 +160,6 @@ export default function Overview() {
       if ((earlyLeaveRes.count || 0) > 0) items.push({ label: 'Early Leave Requests', count: earlyLeaveRes.count || 0, href: '/attendance/early-leave-requests', emoji: '🚪' });
       if ((remoteCheckoutRes.count || 0) > 0) items.push({ label: 'Remote Checkout', count: remoteCheckoutRes.count || 0, href: '/attendance/logs', emoji: '📍' });
       if ((dayOffRes.count || 0) > 0) items.push({ label: 'Day Off Requests', count: dayOffRes.count || 0, href: '/attendance/flexible-day-off-requests', emoji: '📅' });
-      if ((receiptRes.count || 0) > 0) items.push({ label: 'Receipt Approvals', count: receiptRes.count || 0, href: '/receipts', emoji: '🧾' });
       return items;
     },
     refetchInterval: 60000,
