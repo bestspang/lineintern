@@ -21,7 +21,6 @@ export type AdminMenuGroup =
   | 'Overtime'
   | 'Payroll'
   | 'Points & Rewards'
-  | 'Deposits'
   | 'Receipts'
   | 'Management'
   | 'AI Features'
@@ -121,13 +120,6 @@ export function resolveAdminMenuGroup(rawPath: string): AdminMenuGroup | null {
   }
 
   // --- Attendance subgroups (most specific first) ---
-  if (
-    path.startsWith('/attendance/deposits') ||
-    path === '/attendance/deposit-settings'
-  ) {
-    return 'Deposits';
-  }
-
   if (
     path === '/attendance/happy-points' ||
     path === '/attendance/point-transactions' ||
@@ -244,7 +236,6 @@ export const MENU_GROUP_PRIORITY: AdminMenuGroup[] = [
   'Overtime',
   'Payroll',
   'Points & Rewards',
-  'Deposits',
   'Receipts',
   'Management',
   'Content & Knowledge',

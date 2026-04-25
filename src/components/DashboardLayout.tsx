@@ -206,15 +206,6 @@ const navigationGroups = [
     ],
   },
   {
-    title: 'Deposits',
-    titleTh: 'เงินมัดจำ',
-    icon: DollarSign,
-    items: [
-      { title: 'Deposits', titleTh: 'เงินมัดจำ', url: '/attendance/deposits', icon: DollarSign },
-      { title: 'Deposit Settings', titleTh: 'ตั้งค่าเงินมัดจำ', url: '/attendance/deposit-settings', icon: Settings },
-    ],
-  },
-  {
     title: 'Receipts',
     titleTh: 'ใบเสร็จ',
     icon: Receipt,

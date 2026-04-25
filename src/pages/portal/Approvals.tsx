@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, Calendar, ChevronRight, ClipboardList, Gift, Banknote, MapPin } from 'lucide-react';
+import { Clock, Calendar, ChevronRight, ClipboardList, Gift, MapPin } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 
@@ -13,13 +13,12 @@ interface PendingCounts {
   earlyLeave: number;
   remoteCheckout: number;
   redemptions: number;
-  deposits: number;
 }
 
 export default function Approvals() {
   const navigate = useNavigate();
   const { employee, locale, isManager, isAdmin } = usePortal();
-  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, remoteCheckout: 0, redemptions: 0, deposits: 0 });
+  const [counts, setCounts] = useState<PendingCounts>({ ot: 0, leave: 0, earlyLeave: 0, remoteCheckout: 0, redemptions: 0 });
   const [loading, setLoading] = useState(true);
 
   const fetchCounts = useCallback(async () => {
@@ -49,7 +48,7 @@ export default function Approvals() {
     return () => clearInterval(interval);
   }, [fetchCounts]);
 
-  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.remoteCheckout + counts.redemptions + counts.deposits;
+  const totalPending = counts.ot + counts.leave + counts.earlyLeave + counts.remoteCheckout + counts.redemptions;
 
   const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
@@ -89,14 +88,6 @@ export default function Approvals() {
       count: counts.redemptions,
       path: '/portal/approve-redemptions',
       color: 'from-fuchsia-500 to-fuchsia-600',
-    }] : []),
-    // Manager/Admin/Owner: Deposits
-    ...(['manager', 'admin', 'owner'].includes(roleKey) ? [{
-      icon: Banknote,
-      label: locale === 'th' ? 'ใบฝากเงิน' : 'Deposits',
-      count: counts.deposits,
-      path: '/portal/deposit-review-list',
-      color: 'from-green-500 to-green-600',
     }] : []),
   ];
 
