@@ -172,23 +172,6 @@ const App = () => (
               <Route path="/error/server" element={<ServerError />} />
               <Route path="/error/session-expired" element={<SessionExpired />} />
               
-              {/* LIFF Routes - LINE In-App Mini App */}
-              <Route path="/liff/*" element={
-                <LiffProvider>
-                  <LiffDebugOverlay />
-                  <Suspense fallback={<PageLoader />}>
-                    <LiffLayout>
-                      <Routes>
-                        <Route path="/receipts" element={<LiffReceiptList />} />
-                        <Route path="/receipts/:id" element={<LiffReceiptEdit />} />
-                        <Route path="/businesses" element={<LiffBusinesses />} />
-                        <Route path="*" element={<LiffReceiptList />} />
-                      </Routes>
-                    </LiffLayout>
-                  </Suspense>
-                </LiffProvider>
-              } />
-              
               {/* Portal Routes - Employee Mini App */}
               <Route path="/portal/*" element={
                 <LiffProvider>
@@ -220,20 +203,13 @@ const App = () => (
                         <Route path="/my-bag" element={<MyBag />} />
                         <Route path="/gacha" element={<GachaBox />} />
                         <Route path="/gacha-history" element={<GachaHistory />} />
-                        <Route path="/my-receipts" element={<MyReceipts />} />
-                        <Route path="/receipts/:id" element={<ReceiptDetail />} />
-                        <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
-                        <Route path="/receipt-new" element={<ReceiptNew />} />
                         <Route path="/approve-redemptions" element={<ApproveRedemptions />} />
-                        
                         <Route path="/payroll-report" element={<PayrollReport />} />
                         <Route path="/my-schedule" element={<MySchedule />} />
                         <Route path="/my-payroll" element={<MyPayroll />} />
                         <Route path="/leaderboard" element={<PointLeaderboard />} />
                         <Route path="/employees" element={<PortalEmployees />} />
                         <Route path="/employees/:id" element={<PortalEmployeeDetail />} />
-                        <Route path="/receipt-management" element={<PortalReceiptManagement />} />
-                        <Route path="/receipt-analytics" element={<PortalReceiptAnalytics />} />
                         <Route path="/branch-report" element={<PortalBranchReport />} />
                         <Route path="/notifications" element={<Notifications />} />
                         <Route path="/manager-dashboard" element={<ManagerDashboard />} />
