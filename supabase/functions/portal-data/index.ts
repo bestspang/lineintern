@@ -21,16 +21,146 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const denyAccess = (reason: string, status = 403, details: Record<string, unknown> = {}) => {
+      console.warn('[portal-data] access_denied', {
+        reason,
+        status,
+        ...details,
+      });
+      return new Response(
+        JSON.stringify({ error: 'Access denied' }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    };
 
-    const { endpoint, employee_id, params } = await req.json();
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return denyAccess('missing_or_invalid_authorization_header', 401, {
+        hasAuthHeader: !!authHeader,
+      });
+    }
+
+    const token = authHeader.slice('Bearer '.length).trim();
+    if (!token) {
+      return denyAccess('empty_bearer_token', 401);
+    }
+
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+
+    const { data: authData, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return denyAccess('invalid_or_expired_token', 401, {
+        authError: authError?.message,
+      });
+    }
+
+    const { endpoint, employee_id, params: rawParams } = await req.json();
+    const params = { ...(rawParams || {}) };
 
     if (!employee_id) {
       return new Response(
         JSON.stringify({ error: 'employee_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    const { data: requesterEmployee, error: requesterError } = await supabase
+      .from('employees')
+      .select('id, user_id, branch_id, role:employee_roles(role_key)')
+      .eq('user_id', authData.user.id)
+      .maybeSingle();
+
+    if (requesterError || !requesterEmployee) {
+      return denyAccess('employee_mapping_not_found', 403, {
+        authUserId: authData.user.id,
+        requesterError: requesterError?.message,
+      });
+    }
+
+    const { data: requestedEmployee, error: requestedEmployeeError } = await supabase
+      .from('employees')
+      .select('id, branch_id')
+      .eq('id', employee_id)
+      .maybeSingle();
+
+    if (requestedEmployeeError || !requestedEmployee) {
+      return denyAccess('requested_employee_not_found', 403, {
+        authUserId: authData.user.id,
+        requestedEmployeeId: employee_id,
+      });
+    }
+
+    const roleKey = String((requesterEmployee.role as any)?.role_key || '').toLowerCase();
+    const isAdminRole = roleKey === 'admin';
+    const isManagerRole = roleKey.includes('manager');
+    const isPrivilegedRole = isAdminRole || isManagerRole;
+    const ownsRequestedEmployee = requesterEmployee.id === employee_id;
+
+    if (!ownsRequestedEmployee) {
+      if (!isPrivilegedRole) {
+        return denyAccess('cross_employee_access_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          requestedEmployeeId: employee_id,
+          roleKey,
+        });
+      }
+
+      if (isManagerRole && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
+        return denyAccess('manager_cross_branch_access_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          requestedEmployeeId: employee_id,
+          managerBranchId: requesterEmployee.branch_id,
+          targetBranchId: requestedEmployee.branch_id,
+        });
+      }
+    }
+
+    const managerAdminEndpoints = new Set([
+      'approval-counts',
+      'pending-ot-requests',
+      'approve-ot',
+      'pending-leave-requests',
+      'approve-leave',
+      'pending-early-leave-requests',
+      'approve-early-leave',
+      'pending-remote-checkout-requests',
+      'approve-remote-checkout',
+      'today-photos',
+      'team-summary',
+    ]);
+
+    if (managerAdminEndpoints.has(endpoint)) {
+      if (!isPrivilegedRole) {
+        return denyAccess('manager_admin_endpoint_role_denied', 403, {
+          authUserId: authData.user.id,
+          requesterEmployeeId: requesterEmployee.id,
+          endpoint,
+          roleKey,
+        });
+      }
+
+      if (isAdminRole) {
+        params.isAdmin = true;
+      } else {
+        params.isAdmin = false;
+        params.branchId = requesterEmployee.branch_id;
+      }
+    }
+
+    if (endpoint === 'approve-ot' || endpoint === 'approve-leave' || endpoint === 'approve-early-leave' || endpoint === 'approve-remote-checkout') {
+      params.approverEmployeeId = requesterEmployee.id;
     }
 
     console.log(`[portal-data] Endpoint: ${endpoint}, Employee: ${employee_id}`);
@@ -336,8 +466,58 @@ serve(async (req) => {
       }
 
       case 'home-summary': {
+        /**
+         * Response contract:
+         * - points: personal points summary
+         * - todayAttendance: caller attendance events for today
+         * - pendingApprovals: scoped pending-request counts + scope metadata
+         *   - scope = 'self' | 'team' | 'global'
+         *   - self: caller's own pending requests
+         *   - team: pending requests from caller's branch/team
+         *   - global: all pending requests across branches (policy-gated)
+         */
         // ⚠️ TIMEZONE: Use Bangkok date
         const today = getBangkokDateString();
+
+        // Determine caller role + branch scope from authenticated employee profile
+        const profileResult = await supabase
+          .from('employees')
+          .select('branch_id, role:employee_roles(role_key)')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (profileResult.error) {
+          error = profileResult.error;
+          break;
+        }
+
+        if (!profileResult.data) {
+          error = { message: 'Employee profile not found' };
+          break;
+        }
+
+        const roleKey = String(profileResult.data.role?.role_key || '').toLowerCase();
+        const branchId = profileResult.data.branch_id;
+        const isManagerRole = roleKey === 'manager';
+        const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
+
+        // Policy gate: admin/hr/owner can only see global counts when explicitly enabled.
+        const approvalScopeSetting = await supabase
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', 'portal_home_approval_scope')
+          .maybeSingle();
+
+        const allowGlobalForAdminHr = Boolean(
+          (approvalScopeSetting.data?.setting_value as any)?.allow_global_for_admin_hr
+        );
+
+        let approvalScope: 'self' | 'team' | 'global' = 'self';
+        if (isManagerRole) {
+          approvalScope = 'team';
+        } else if (isAdminOrHrRole && allowGlobalForAdminHr) {
+          approvalScope = 'global';
+        }
         
         // Get points
         const pointsResult = await supabase
@@ -355,16 +535,32 @@ serve(async (req) => {
           .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
-        // Get pending approvals count (for managers)
-        const pendingOTResult = await supabase
+        let pendingOTQuery = supabase
           .from('overtime_requests')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
 
-        const pendingLeaveResult = await supabase
+        let pendingLeaveQuery = supabase
           .from('leave_requests')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
+
+        if (approvalScope === 'self') {
+          pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
+          pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
+        } else if (approvalScope === 'team' && branchId) {
+          pendingOTQuery = pendingOTQuery
+            .eq('employee.branch_id', branchId)
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+          pendingLeaveQuery = pendingLeaveQuery
+            .eq('employee.branch_id', branchId)
+            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+        }
+
+        const [pendingOTResult, pendingLeaveResult] = await Promise.all([
+          pendingOTQuery,
+          pendingLeaveQuery
+        ]);
 
         data = {
           points: pointsResult.data ? {
@@ -375,10 +571,16 @@ serve(async (req) => {
           todayAttendance: attendanceResult.data || [],
           pendingApprovals: {
             overtime: pendingOTResult.count || 0,
-            leave: pendingLeaveResult.count || 0
+            leave: pendingLeaveResult.count || 0,
+            scope: approvalScope
           }
         };
-        error = pointsResult.error || attendanceResult.error;
+        error =
+          pointsResult.error ||
+          attendanceResult.error ||
+          pendingOTResult.error ||
+          pendingLeaveResult.error ||
+          approvalScopeSetting.error;
         break;
       }
 

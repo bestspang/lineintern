@@ -105,6 +105,11 @@ export default function PortalHome() {
       const { data, error } = await portalApi<{
         points: { current_balance: number } | null;
         todayAttendance: { event_type: string; server_time: string }[];
+        pendingApprovals?: {
+          overtime: number;
+          leave: number;
+          scope: 'self' | 'team' | 'global';
+        };
       }>({
         endpoint: 'home-summary',
         employee_id: employee.id
@@ -119,22 +124,37 @@ export default function PortalHome() {
 
   // Derived state from homeSummary
   const pointBalance = homeSummary?.points?.current_balance || 0;
-  // API payload can contain legacy kebab-case values.
+  const approvalScope = homeSummary?.pendingApprovals?.scope || 'self';
+  const approvalScopeLabel =
+    locale === 'th'
+      ? approvalScope === 'team'
+        ? 'ทีมของคุณ'
+        : approvalScope === 'global'
+          ? 'ทั้งหมด'
+          : 'ของฉัน'
+      : approvalScope === 'team'
+        ? 'Your Team'
+        : approvalScope === 'global'
+          ? 'All'
+          : 'Mine';
+  const pendingApprovalTotal =
+    (homeSummary?.pendingApprovals?.overtime || 0) + (homeSummary?.pendingApprovals?.leave || 0);
+  // API payload can contain legacy kebab-case values (e.g. 'check-in') in addition to snake_case ('check_in').
   const isCheckInType = (eventType?: string) => eventType === 'check_in' || eventType === 'check-in';
   const isCheckOutType = (eventType?: string) => eventType === 'check_out' || eventType === 'check-out';
   const todayAttendance = homeSummary?.todayAttendance || [];
   const checkIn = todayAttendance.find((a) => isCheckInType(a.event_type));
-  const hasCheckOut = todayAttendance.some((a) => isCheckOutType(a.event_type));
+  const checkOut = todayAttendance.find((a) => isCheckOutType(a.event_type));
   const canCheckIn = !todayAttendance.some((a) => isCheckInType(a.event_type));
-  const isWorking = !!checkIn && !hasCheckOut;
+  const isWorking = !!checkIn && !checkOut;
   
   const minutesWorked = useMemo(() => {
-    if (checkIn && !todayAttendance.some((a) => isCheckOutType(a.event_type))) {
+    if (checkIn && !checkOut) {
       const checkInTime = new Date(checkIn.server_time);
       return Math.floor((Date.now() - checkInTime.getTime()) / 60000);
     }
     return null;
-  }, [checkIn, todayAttendance, currentTime]); // Update when clock ticks
+  }, [checkIn, checkOut, currentTime]); // Update when clock ticks
 
   // Filter actions based on role (uses shared registry helper)
   const visibleManagerActions = managerActions.filter((a) => isVisibleToRole(a, roleKey));
@@ -240,6 +260,11 @@ export default function PortalHome() {
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
           {locale === 'th' ? 'เลือกเมนูที่ต้องการ' : 'Choose what you need'}
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          {locale === 'th'
+            ? `คำขอรออนุมัติ (${approvalScopeLabel}): ${pendingApprovalTotal}`
+            : `Pending approvals (${approvalScopeLabel}): ${pendingApprovalTotal}`}
         </p>
       </div>
 
