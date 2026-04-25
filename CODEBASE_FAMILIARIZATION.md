@@ -69,6 +69,50 @@ From `README.md` + `CLAUDE.md`, this repo supports a broad operational surface:
 - Generated types/client boundaries should be respected to avoid drift.
 - Timezone-sensitive workflows (attendance/payroll/reporting) likely require strict standards.
 
+## 8) Fast update playbook (all features)
+
+If you want to roll out changes quickly across many features with low risk, use this order:
+
+1. **Gate first, build second**
+   - Put new behavior behind a feature flag before shipping UI/function changes.
+   - Start in disabled mode, enable per environment/group after verification.
+
+2. **Update one vertical slice at a time**
+   - For each feature area (attendance, tasks, portal, etc.), apply this mini-checklist:
+     - update UI page/component
+     - update API/data access layer
+     - verify route access/permissions
+     - smoke test happy path + one failure path
+
+3. **Use route groups as rollout units**
+   - Admin routes under dashboard and employee routes under portal can be validated independently.
+   - Ship smaller grouped batches (e.g., attendance-only batch first).
+
+4. **Run a quick regression matrix**
+   - auth/login + protected routes
+   - attendance check-in/check-out
+   - task/assignment creation flow
+   - portal self-service essentials
+   - one analytics/report view
+
+5. **Prioritize high-impact config files**
+   - `src/App.tsx`: routing and page wiring
+   - `src/contexts/*`: global behavior (auth/locale/portal/LIFF)
+   - `src/integrations/supabase/*`: API contract boundaries
+   - `supabase/functions/`: backend behavior and workflows
+
+6. **Adopt a “fast but reversible” release habit**
+   - keep commits small by feature domain
+   - include a rollback note in PR description
+   - deploy in short intervals rather than one large cut
+
+### Suggested “same-day” execution plan
+
+- **Hour 1**: decide scope + add/verify feature flags.
+- **Hour 2-3**: implement first domain batch (highest business impact).
+- **Hour 4**: run regression matrix and fix blockers.
+- **Hour 5**: ship controlled rollout + monitor logs.
+
 ---
 
 This is an initial familiarization pass intended to speed onboarding and planning.
