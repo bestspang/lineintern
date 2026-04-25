@@ -299,13 +299,6 @@ const App = () => (
                         <Route path="/attendance/schedules" element={<Schedules />} />
                         <Route path="/attendance/settings" element={<AttendanceSettings />} />
                         <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
-                        <Route path="/receipts" element={<ReceiptsAdmin />} />
-                        <Route path="/receipts/businesses" element={<ReceiptBusinessesAdmin />} />
-                        <Route path="/receipts/export" element={<ReceiptExport />} />
-                        <Route path="/receipts/analytics" element={<ReceiptAnalytics />} />
-                        <Route path="/receipts/settings" element={<ReceiptSettings />} />
-                        <Route path="/receipts/approval-logs" element={<ReceiptApprovalLogs />} />
-                        <Route path="/receipts/quota" element={<ReceiptQuota />} />
                         <Route path="/health-monitoring" element={<HealthMonitoring />} />
                         <Route path="/config-validator" element={<ConfigurationValidator />} />
                         <Route path="/pre-deploy-checklist" element={<PreDeployChecklist />} />
