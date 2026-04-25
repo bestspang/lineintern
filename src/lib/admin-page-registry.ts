@@ -21,7 +21,7 @@ export type AdminMenuGroup =
   | 'Overtime'
   | 'Payroll'
   | 'Points & Rewards'
-  | 'Receipts'
+  
   | 'Management'
   | 'AI Features'
   | 'Content & Knowledge'
@@ -236,7 +236,7 @@ export const MENU_GROUP_PRIORITY: AdminMenuGroup[] = [
   'Overtime',
   'Payroll',
   'Points & Rewards',
-  'Receipts',
+  
   'Management',
   'Content & Knowledge',
   'AI Features',
