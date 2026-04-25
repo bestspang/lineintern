@@ -119,18 +119,22 @@ export default function PortalHome() {
 
   // Derived state from homeSummary
   const pointBalance = homeSummary?.points?.current_balance || 0;
-  const checkIn = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-in');
-  const checkOut = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-out');
-  const canCheckIn = !checkIn;
-  const isWorking = !!checkIn && !checkOut;
+  // API payload can contain legacy kebab-case values.
+  const isCheckInType = (eventType?: string) => eventType === 'check_in' || eventType === 'check-in';
+  const isCheckOutType = (eventType?: string) => eventType === 'check_out' || eventType === 'check-out';
+  const todayAttendance = homeSummary?.todayAttendance || [];
+  const checkIn = todayAttendance.find((a) => isCheckInType(a.event_type));
+  const hasCheckOut = todayAttendance.some((a) => isCheckOutType(a.event_type));
+  const canCheckIn = !todayAttendance.some((a) => isCheckInType(a.event_type));
+  const isWorking = !!checkIn && !hasCheckOut;
   
   const minutesWorked = useMemo(() => {
-    if (checkIn && !checkOut) {
+    if (checkIn && !todayAttendance.some((a) => isCheckOutType(a.event_type))) {
       const checkInTime = new Date(checkIn.server_time);
       return Math.floor((Date.now() - checkInTime.getTime()) / 60000);
     }
     return null;
-  }, [checkIn, checkOut, currentTime]); // Update when clock ticks
+  }, [checkIn, todayAttendance, currentTime]); // Update when clock ticks
 
   // Filter actions based on role (uses shared registry helper)
   const visibleManagerActions = managerActions.filter((a) => isVisibleToRole(a, roleKey));
