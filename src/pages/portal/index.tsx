@@ -32,8 +32,6 @@ export { default as DailySummary } from './DailySummary';
 export { default as ApproveRedemptions } from './ApproveRedemptions';
 export { default as PortalEmployees } from './PortalEmployees';
 export { default as PortalEmployeeDetail } from './PortalEmployeeDetail';
-export { default as PortalReceiptManagement } from './PortalReceiptManagement';
-export { default as PortalReceiptAnalytics } from './PortalReceiptAnalytics';
 
 // HR pages
 export { default as PayrollReport } from './PayrollReport';
