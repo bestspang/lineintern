@@ -10061,17 +10061,7 @@ async function handlePostbackEvent(event: LineEvent) {
     locale = group?.language === 'en' ? 'en' : 'th';
   }
 
-  // Handle receipt postbacks
-  const receiptResult = await handleReceiptPostback(postbackData, lineUserId, locale);
-  if (receiptResult.handled) {
-    try {
-      await replyToLine(event.replyToken, receiptResult.message);
-      console.log(`[handlePostbackEvent] Sent reply: ${receiptResult.message}`);
-    } catch (error) {
-      console.error('[handlePostbackEvent] Error sending reply:', error);
-    }
-    return;
-  }
+  // Receipt postbacks removed in Phase 2 — fall through to unhandled.
 
   console.log(`[handlePostbackEvent] Unhandled postback: ${postbackData}`);
 }
