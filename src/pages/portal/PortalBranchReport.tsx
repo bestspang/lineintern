@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, TrendingUp, TrendingDown, Receipt } from 'lucide-react';
+import { Building2, TrendingUp, TrendingDown, ShoppingBag } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subDays } from 'date-fns';
@@ -129,7 +129,7 @@ export default function PortalBranchReport() {
           <div className="grid grid-cols-2 gap-3">
             <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
               <CardContent className="p-4">
-                <Receipt className="h-5 w-5 mb-2 opacity-80" />
+                <ShoppingBag className="h-5 w-5 mb-2 opacity-80" />
                 <p className="text-xl font-bold">฿{formatAmount(totalSales)}</p>
                 <p className="text-xs opacity-90">ยอดขายรวม</p>
               </CardContent>
