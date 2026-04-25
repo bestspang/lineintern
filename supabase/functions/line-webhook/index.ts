@@ -9818,82 +9818,20 @@ async function handleMessageEvent(event: LineEvent) {
     return;
   }
 
-  // Handle /receipt command - show receipt help
-  if (parsed.commandType === 'receipt') {
+  // Receipt commands removed in Phase 2 — respond with deprecation notice.
+  if (
+    parsed.commandType === 'receipt' ||
+    parsed.commandType === 'receipt_summary' ||
+    parsed.commandType === 'businesses' ||
+    parsed.commandType === 'this_month' ||
+    parsed.commandType === 'export_month' ||
+    parsed.commandType === 'set_default_business'
+  ) {
     const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const helpFlex = buildReceiptHelpFlex(locale);
-    await sendFlexMessage(event.replyToken, helpFlex);
-    return;
-  }
-
-  // Handle /receiptsummary command - show receipt summary
-  if (parsed.commandType === 'receipt_summary') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const defaultBusiness = await getDefaultBusiness(lineUserId);
-    const summary = await getReceiptSummary(lineUserId, defaultBusiness?.id);
-    const summaryFlex = buildReceiptSummaryFlex(summary, locale);
-    await sendFlexMessage(event.replyToken, summaryFlex);
-    return;
-  }
-
-  // Handle /businesses command - show/manage businesses
-  if (parsed.commandType === 'businesses') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const businesses = await getUserBusinesses(lineUserId);
-    
-    if (businesses.length === 0) {
-      const msg = locale === 'th'
-        ? '📋 คุณยังไม่มีธุรกิจ\n\nส่งรูปใบเสร็จมาเลย ระบบจะสร้างธุรกิจเริ่มต้นให้อัตโนมัติ\n\nหรือจัดการผ่าน Menu → ใบเสร็จ → ธุรกิจของฉัน'
-        : '📋 You have no businesses yet.\n\nSend a receipt image and the system will create a default business automatically.\n\nOr manage via Menu → Receipts → My Businesses';
-      await replyToLine(event.replyToken, msg);
-    } else {
-      const businessList = businesses.map((b: any, i: number) => 
-        `${i + 1}. ${b.name}${b.is_default ? ' ⭐' : ''}`
-      ).join('\n');
-      
-      const msg = locale === 'th'
-        ? `📋 ธุรกิจของคุณ (${businesses.length}):\n\n${businessList}\n\n⭐ = ธุรกิจเริ่มต้น\n\nตั้งค่าเริ่มต้น: /setdefault ชื่อธุรกิจ`
-        : `📋 Your Businesses (${businesses.length}):\n\n${businessList}\n\n⭐ = Default business\n\nSet default: /setdefault business_name`;
-      await replyToLine(event.replyToken, msg);
-    }
-    return;
-  }
-
-  // Handle /thismonth command - shortcut for receipt summary
-  if (parsed.commandType === 'this_month') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const defaultBusiness = await getDefaultBusiness(lineUserId);
-    const summary = await getReceiptSummary(lineUserId, defaultBusiness?.id);
-    const summaryFlex = buildReceiptSummaryFlex(summary, locale);
-    await sendFlexMessage(event.replyToken, summaryFlex);
-    return;
-  }
-
-  // Handle /export command - export receipts for specific month
-  if (parsed.commandType === 'export_month') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const monthArg = parsed.userMessage.trim(); // e.g., "2026-01" or "มกราคม"
-    
-    const result = await exportReceiptsForMonth(lineUserId, monthArg, locale);
-    await replyToLine(event.replyToken, result.message);
-    return;
-  }
-
-  // Handle /setdefault command - set default business
-  if (parsed.commandType === 'set_default_business') {
-    const locale = group.language === 'th' || group.language === 'auto' ? 'th' : 'en';
-    const businessName = parsed.userMessage.trim();
-    
-    if (!businessName) {
-      const msg = locale === 'th'
-        ? '❌ กรุณาระบุชื่อธุรกิจ\n\nตัวอย่าง: /setdefault บริษัทของฉัน'
-        : '❌ Please specify business name\n\nExample: /setdefault My Company';
-      await replyToLine(event.replyToken, msg);
-      return;
-    }
-    
-    const result = await setDefaultBusiness(lineUserId, businessName, locale);
-    await replyToLine(event.replyToken, result.message);
+    const msg = locale === 'th'
+      ? '⚠️ ระบบใบเสร็จถูกปิดให้บริการแล้ว'
+      : '⚠️ The receipt system has been removed.';
+    await replyToLine(event.replyToken, msg);
     return;
   }
 
