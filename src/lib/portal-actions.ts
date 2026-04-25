@@ -33,6 +33,13 @@ import {
   LayoutDashboard, Star, User, CheckSquare, CalendarMinus,
   Package, MapPin, XCircle,
 } from 'lucide-react';
+import {
+  ADMIN_ROLE_KEYS,
+  HR_ROLE_KEYS,
+  MANAGER_ACCESS_ROLE_KEYS,
+  TEAM_VIEW_ROLE_KEYS,
+  normalizeRoleKey,
+} from '@/lib/hr-roles';
 
 export type PortalActionGroup = 'employee' | 'manager' | 'admin' | 'hr';
 
@@ -57,10 +64,10 @@ export interface PortalAction {
  * `Help.tsx` checks. Keep in one place so future role additions only
  * touch this file.
  */
-export const MANAGER_ROLES = ['manager', 'supervisor', 'admin', 'owner'] as const;
-export const ADMIN_ROLES = ['admin', 'owner'] as const;
-export const HR_ROLES = ['hr', 'admin', 'owner'] as const;
-export const TEAM_VIEW_ROLES = ['manager', 'supervisor', 'admin', 'owner', 'hr'] as const;
+export const MANAGER_ROLES = MANAGER_ACCESS_ROLE_KEYS;
+export const ADMIN_ROLES = ADMIN_ROLE_KEYS;
+export const HR_ROLES = HR_ROLE_KEYS;
+export const TEAM_VIEW_ROLES = TEAM_VIEW_ROLE_KEYS;
 
 export const PORTAL_ACTIONS: PortalAction[] = [
   // ───── Employee actions (visible to everyone) ─────
@@ -352,7 +359,7 @@ export const PORTAL_ACTIONS: PortalAction[] = [
  */
 export function isVisibleToRole(action: PortalAction, roleKey: string | null | undefined): boolean {
   if (!action.roles) return true;
-  const key = (roleKey ?? '').toLowerCase();
+  const key = normalizeRoleKey(roleKey);
   return action.roles.includes(key);
 }
 

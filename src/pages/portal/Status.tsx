@@ -8,6 +8,7 @@ import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { formatBangkokTime, formatBangkokISODate } from '@/lib/timezone';
 import { th, enUS } from 'date-fns/locale';
+import { isCheckInType, isCheckOutType } from '@/lib/portal-attendance';
 
 interface TodayLog {
   id: string;
@@ -63,8 +64,8 @@ export default function Status() {
   }
 
   const dateLocale = locale === 'th' ? th : enUS;
-  const checkIn = logs.find(l => l.event_type === 'check_in');
-  const checkOut = logs.find(l => l.event_type === 'check_out');
+  const checkIn = logs.find(l => isCheckInType(l.event_type));
+  const checkOut = logs.find(l => isCheckOutType(l.event_type));
   const isWorking = checkIn && !checkOut;
   const isCompleted = checkIn && checkOut;
 
@@ -169,41 +170,45 @@ export default function Status() {
             </div>
           ) : (
             <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                    log.event_type === 'check_in' 
-                      ? 'bg-emerald-100 text-emerald-600' 
-                      : 'bg-blue-100 text-blue-600'
-                  }`}>
-                    {log.event_type === 'check_in' ? (
-                      <LogIn className="h-4 w-4" />
-                    ) : (
-                      <LogOut className="h-4 w-4" />
-                    )}
+              {logs.map((log) => {
+                const isCheckIn = isCheckInType(log.event_type);
+
+                return (
+                  <div key={log.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                      isCheckIn
+                        ? 'bg-emerald-100 text-emerald-600'
+                        : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      {isCheckIn ? (
+                        <LogIn className="h-4 w-4" />
+                      ) : (
+                        <LogOut className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {isCheckIn
+                          ? (locale === 'th' ? 'เช็คอิน' : 'Check In')
+                          : (locale === 'th' ? 'เช็คเอาท์' : 'Check Out')}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatBangkokTime(log.server_time).slice(0, 5)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {log.is_overtime && (
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-600">OT</Badge>
+                      )}
+                      {log.is_flagged ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">
-                      {log.event_type === 'check_in' 
-                        ? (locale === 'th' ? 'เช็คอิน' : 'Check In')
-                        : (locale === 'th' ? 'เช็คเอาท์' : 'Check Out')}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatBangkokTime(log.server_time).slice(0, 5)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {log.is_overtime && (
-                      <Badge variant="secondary" className="bg-orange-100 text-orange-600">OT</Badge>
-                    )}
-                    {log.is_flagged ? (
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 text-emerald-500" />
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

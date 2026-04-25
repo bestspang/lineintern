@@ -8,11 +8,48 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay, getBangkokNow } from '../_shared/timezone.ts';
+import {
+  CHECK_IN_EVENT_TYPES,
+  CHECK_OUT_EVENT_TYPES,
+  isCheckInType,
+  isCheckOutType,
+} from '../_shared/attendance-events.ts';
+import {
+  hasPortalGlobalScope,
+  hasPortalManagerAccess,
+  hasPortalTeamScope,
+  normalizeRoleKey,
+} from '../_shared/hr-roles.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+function getRoleKey(role: unknown): string {
+  if (Array.isArray(role)) {
+    return getRoleKey(role[0]);
+  }
+
+  if (role && typeof role === 'object' && 'role_key' in role) {
+    return normalizeRoleKey((role as { role_key?: string | null }).role_key);
+  }
+
+  return '';
+}
+
+function getBranchIdFromRelation(relation: unknown): string | null {
+  if (Array.isArray(relation)) {
+    return getBranchIdFromRelation(relation[0]);
+  }
+
+  if (relation && typeof relation === 'object' && 'branch_id' in relation) {
+    const branchId = (relation as { branch_id?: string | null }).branch_id;
+    return typeof branchId === 'string' ? branchId : null;
+  }
+
+  return null;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -100,10 +137,10 @@ serve(async (req) => {
       });
     }
 
-    const roleKey = String((requesterEmployee.role as any)?.role_key || '').toLowerCase();
-    const isAdminRole = roleKey === 'admin';
-    const isManagerRole = roleKey.includes('manager');
-    const isPrivilegedRole = isAdminRole || isManagerRole;
+    const roleKey = getRoleKey(requesterEmployee.role);
+    const hasGlobalScope = hasPortalGlobalScope(roleKey);
+    const hasTeamScope = hasPortalTeamScope(roleKey);
+    const isPrivilegedRole = hasPortalManagerAccess(roleKey);
     const ownsRequestedEmployee = requesterEmployee.id === employee_id;
 
     if (!ownsRequestedEmployee) {
@@ -116,7 +153,7 @@ serve(async (req) => {
         });
       }
 
-      if (isManagerRole && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
+      if (hasTeamScope && !hasGlobalScope && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
         return denyAccess('manager_cross_branch_access_denied', 403, {
           authUserId: authData.user.id,
           requesterEmployeeId: requesterEmployee.id,
@@ -151,7 +188,7 @@ serve(async (req) => {
         });
       }
 
-      if (isAdminRole) {
+      if (hasGlobalScope) {
         params.isAdmin = true;
       } else {
         params.isAdmin = false;
@@ -167,6 +204,52 @@ serve(async (req) => {
 
     let data: any = null;
     let error: any = null;
+
+    const ensureApprovalScope = async (
+      tableName: string,
+      requestId: string | undefined,
+      selectClause: string,
+      readBranchId: (row: Record<string, unknown>) => string | null,
+    ): Promise<boolean> => {
+      if (!requestId) {
+        error = { message: 'requestId is required' };
+        return false;
+      }
+
+      if (params?.isAdmin === true) {
+        return true;
+      }
+
+      const branchId = params?.branchId;
+      if (!branchId) {
+        error = { message: 'Approval scope is missing branch_id' };
+        return false;
+      }
+
+      const { data: requestRow, error: scopeError } = await supabase
+        .from(tableName)
+        .select(selectClause)
+        .eq('id', requestId)
+        .maybeSingle();
+
+      if (scopeError) {
+        error = scopeError;
+        return false;
+      }
+
+      if (!requestRow) {
+        error = { message: 'Request not found' };
+        return false;
+      }
+
+      const requestBranchId = readBranchId(requestRow as Record<string, unknown>);
+      if (requestBranchId !== branchId) {
+        error = { message: 'Request is outside approval scope' };
+        return false;
+      }
+
+      return true;
+    };
 
     switch (endpoint) {
       case 'attendance-history': {
@@ -329,7 +412,7 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('*')
           .eq('employee_id', employee_id)
-          .eq('event_type', 'check_in')
+          .in('event_type', CHECK_IN_EVENT_TYPES)
           .gte('server_time', monthStart.toISOString())
           .lte('server_time', now.toISOString());
 
@@ -496,10 +579,10 @@ serve(async (req) => {
           break;
         }
 
-        const roleKey = String(profileResult.data.role?.role_key || '').toLowerCase();
+        const roleKey = getRoleKey(profileResult.data.role);
         const branchId = profileResult.data.branch_id;
-        const isManagerRole = roleKey === 'manager';
-        const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
+        const isTeamScopeRole = hasPortalTeamScope(roleKey);
+        const isAdminOrHrRole = hasPortalGlobalScope(roleKey);
 
         // Policy gate: admin/hr/owner can only see global counts when explicitly enabled.
         const approvalScopeSetting = await supabase
@@ -513,7 +596,7 @@ serve(async (req) => {
         );
 
         let approvalScope: 'self' | 'team' | 'global' = 'self';
-        if (isManagerRole) {
+        if (isTeamScopeRole) {
           approvalScope = 'team';
         } else if (isAdminOrHrRole && allowGlobalForAdminHr) {
           approvalScope = 'global';
@@ -744,8 +827,8 @@ serve(async (req) => {
           .order('server_time', { ascending: true });
 
         const todayLogs = logsResult.data || [];
-        const checkInLog = todayLogs.find((l: any) => l.event_type === 'check-in' || l.event_type === 'check_in');
-        const checkOutLog = todayLogs.find((l: any) => l.event_type === 'check-out' || l.event_type === 'check_out');
+        const checkInLog = todayLogs.find((l: { event_type?: string | null }) => isCheckInType(l.event_type));
+        const checkOutLog = todayLogs.find((l: { event_type?: string | null }) => isCheckOutType(l.event_type));
 
         // Get branch name if checked in
         let branchName: string | null = null;
@@ -931,6 +1014,14 @@ serve(async (req) => {
       // Approve/Reject OT request
       case 'approve-ot': {
         const { requestId, approved, approverEmployeeId } = params;
+        const inScope = await ensureApprovalScope(
+          'overtime_requests',
+          requestId,
+          'id, employee:employees!overtime_requests_employee_id_fkey(branch_id)',
+          (row) => getBranchIdFromRelation(row.employee),
+        );
+
+        if (!inScope) break;
 
         const { error: updateError } = await supabase
           .from('overtime_requests')
@@ -939,7 +1030,8 @@ serve(async (req) => {
             approved_at: new Date().toISOString(),
             approved_by_admin_id: approverEmployeeId,
           })
-          .eq('id', requestId);
+          .eq('id', requestId)
+          .eq('status', 'pending');
 
         if (updateError) {
           error = updateError;
@@ -981,6 +1073,14 @@ serve(async (req) => {
       // Approve/Reject leave request
       case 'approve-leave': {
         const { requestId, approved, approverEmployeeId } = params;
+        const inScope = await ensureApprovalScope(
+          'leave_requests',
+          requestId,
+          'id, employee:employees!leave_requests_employee_id_fkey(branch_id)',
+          (row) => getBranchIdFromRelation(row.employee),
+        );
+
+        if (!inScope) break;
 
         const { error: updateError } = await supabase
           .from('leave_requests')
@@ -989,7 +1089,8 @@ serve(async (req) => {
             approved_at: new Date().toISOString(),
             approved_by_admin_id: approverEmployeeId,
           })
-          .eq('id', requestId);
+          .eq('id', requestId)
+          .eq('status', 'pending');
 
         if (updateError) {
           error = updateError;
@@ -1031,6 +1132,14 @@ serve(async (req) => {
       // Approve/Reject early leave request
       case 'approve-early-leave': {
         const { requestId, approved, approverEmployeeId } = params;
+        const inScope = await ensureApprovalScope(
+          'early_leave_requests',
+          requestId,
+          'id, employee:employees!early_leave_requests_employee_id_fkey(branch_id)',
+          (row) => getBranchIdFromRelation(row.employee),
+        );
+
+        if (!inScope) break;
 
         const { error: updateError } = await supabase
           .from('early_leave_requests')
@@ -1039,7 +1148,8 @@ serve(async (req) => {
             approved_at: new Date().toISOString(),
             approved_by_admin_id: approverEmployeeId,
           })
-          .eq('id', requestId);
+          .eq('id', requestId)
+          .eq('status', 'pending');
 
         if (updateError) {
           error = updateError;
@@ -1085,6 +1195,14 @@ serve(async (req) => {
       // Approve/Reject remote checkout request
       case 'approve-remote-checkout': {
         const { requestId, approved, approverEmployeeId, rejectionReason } = params;
+        const inScope = await ensureApprovalScope(
+          'remote_checkout_requests',
+          requestId,
+          'id, branch_id',
+          (row) => typeof row.branch_id === 'string' ? row.branch_id : null,
+        );
+
+        if (!inScope) break;
 
         // Call the remote-checkout-approval function
         const approvalUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/remote-checkout-approval`;
@@ -1658,7 +1776,7 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('id, server_time')
           .eq('employee_id', employee_id)
-          .eq('event_type', 'check_in')
+          .in('event_type', CHECK_IN_EVENT_TYPES)
           .gte('server_time', todayStart)
           .lte('server_time', todayEnd)
           .limit(1);
@@ -1699,7 +1817,7 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('id')
           .eq('employee_id', employee_id)
-          .eq('event_type', 'check_out')
+          .in('event_type', CHECK_OUT_EVENT_TYPES)
           .gte('server_time', todayStart)
           .lte('server_time', todayEnd)
           .limit(1);
@@ -1743,7 +1861,7 @@ serve(async (req) => {
           .from('attendance_logs')
           .select('id, server_time')
           .eq('employee_id', employee_id)
-          .eq('event_type', 'check_in')
+          .in('event_type', CHECK_IN_EVENT_TYPES)
           .gte('server_time', `${monthStart}T00:00:00+07:00`)
           .lte('server_time', `${todayStr}T23:59:59+07:00`);
 

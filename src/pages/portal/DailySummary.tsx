@@ -8,6 +8,7 @@ import { Users, UserCheck, UserX, Clock, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { formatBangkokISODate, getBangkokNow, getBangkokHoursMinutes } from '@/lib/timezone';
+import { isCheckInType, isCheckOutType } from '@/lib/portal-attendance';
 
 export default function DailySummary() {
   const { employee, locale } = usePortal();
@@ -53,15 +54,15 @@ export default function DailySummary() {
       const employeeIds = employees?.map(e => e.id) || [];
       const todayLogs = logs?.filter(l => employeeIds.includes(l.employee_id)) || [];
       
-      const checkedInIds = new Set(todayLogs.filter(l => l.event_type === 'check_in').map(l => l.employee_id));
-      const checkedOutIds = new Set(todayLogs.filter(l => l.event_type === 'check_out').map(l => l.employee_id));
+      const checkedInIds = new Set(todayLogs.filter(l => isCheckInType(l.event_type)).map(l => l.employee_id));
+      const checkedOutIds = new Set(todayLogs.filter(l => isCheckOutType(l.event_type)).map(l => l.employee_id));
       const flaggedCount = todayLogs.filter(l => l.is_flagged).length;
 
       // Calculate late (check-in after 09:00 in Bangkok time)
       const lateIds = new Set(
         todayLogs
           .filter(l => {
-            if (l.event_type !== 'check_in') return false;
+            if (!isCheckInType(l.event_type)) return false;
             // Convert server_time to Bangkok hours
             const bangkokTime = getBangkokHoursMinutes(l.server_time);
             return bangkokTime && bangkokTime.hours >= 9;
@@ -201,7 +202,7 @@ export default function DailySummary() {
                 {summary.employees
                   .filter(e => !summary.checkedInIds.includes(e.id))
                   .slice(0, 10)
-                  .map((emp: any) => (
+                  .map((emp) => (
                     <div key={emp.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
                       <span>{emp.full_name}</span>
                       <span className="text-xs text-muted-foreground">{emp.branch?.name}</span>

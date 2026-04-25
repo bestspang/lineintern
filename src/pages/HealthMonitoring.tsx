@@ -36,8 +36,10 @@ import {
   TrendingUp,
   AlertCircle
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { isCheckInType, isCheckOutType } from '@/lib/portal-attendance';
+import { formatBangkokISODate } from '@/lib/timezone';
 
 interface SystemHealth {
   status: 'healthy' | 'degraded' | 'down';
@@ -109,7 +111,7 @@ export default function HealthMonitoring() {
   const { data: attendanceHealth, isLoading: attendanceHealthLoading } = useQuery({
     queryKey: ['attendance-health'],
     queryFn: async () => {
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const today = formatBangkokISODate(new Date());
       
       // Check today's logs - CRITICAL: Must use +07:00 for Bangkok timezone
       const { data: todayLogs } = await supabase
@@ -131,8 +133,8 @@ export default function HealthMonitoring() {
         .eq('status', 'pending')
         .gte('expires_at', new Date().toISOString());
 
-      const checkIns = todayLogs?.filter(l => l.event_type === 'check_in').length || 0;
-      const checkOuts = todayLogs?.filter(l => l.event_type === 'check_out').length || 0;
+      const checkIns = todayLogs?.filter(l => isCheckInType(l.event_type)).length || 0;
+      const checkOuts = todayLogs?.filter(l => isCheckOutType(l.event_type)).length || 0;
       const flaggedLogs = todayLogs?.filter(l => l.is_flagged).length || 0;
       const highRiskLogs = todayLogs?.filter(l => (l.fraud_score || 0) >= 70).length || 0;
 

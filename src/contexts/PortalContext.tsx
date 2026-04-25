@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useLiffOptional } from './LiffContext';
+import { hasPortalAdminAccess, hasPortalManagerAccess, normalizeRoleKey } from '@/lib/hr-roles';
 
 interface EmployeeRole {
   display_name_th: string;
@@ -287,9 +288,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, [searchParams, validateToken, validateLiffUser, liffIsReady, liffIsLoggedIn, liffUserId, liffContext?.error]);
 
   // Determine role permissions
-  const roleKey = employee?.role?.role_key?.toLowerCase() || '';
-  const isManager = roleKey === 'manager' || roleKey === 'supervisor' || roleKey === 'admin' || roleKey === 'owner';
-  const isAdmin = roleKey === 'admin' || roleKey === 'owner';
+  const roleKey = normalizeRoleKey(employee?.role?.role_key);
+  const isManager = hasPortalManagerAccess(roleKey);
+  const isAdmin = hasPortalAdminAccess(roleKey);
 
   return (
     <PortalContext.Provider
@@ -312,6 +313,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function usePortal() {
   const context = useContext(PortalContext);
   if (context === undefined) {

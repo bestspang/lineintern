@@ -10,6 +10,7 @@ import { LogIn, LogOut, Coins } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { portalApi } from '@/lib/portal-api';
+import { isCheckInType, isCheckOutType } from '@/lib/portal-attendance';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -50,8 +51,8 @@ const hrActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'hr')
 
 export default function PortalHome() {
   const navigate = useNavigate();
-  const { employee, locale, isManager, isAdmin } = usePortal();
-  const { favorites, toggleFavorite, isFavorite } = useFavorites(employee?.id || '');
+  const { employee, locale } = usePortal();
+  const { toggleFavorite, isFavorite } = useFavorites(employee?.id || '');
   
   // Clock state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -68,23 +69,24 @@ export default function PortalHome() {
     queryKey: ['pending-counts', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return { ot: 0, dayoff: 0, leave: 0 };
+      type PendingRequest = { status?: string };
       const [otResult, dayOffResult, leaveResult] = await Promise.all([
-        portalApi<any[]>({
+        portalApi<unknown[]>({
           endpoint: 'my-pending-ot-requests',
           employee_id: employee.id
         }),
-        portalApi<any[]>({
+        portalApi<unknown[]>({
           endpoint: 'my-pending-dayoff-requests',
           employee_id: employee.id
         }),
-        portalApi<any[]>({
+        portalApi<PendingRequest[]>({
           endpoint: 'my-leave-requests',
           employee_id: employee.id,
           params: { limit: 50 }
         })
       ]);
       // Filter leave for pending only
-      const pendingLeaves = (leaveResult.data || []).filter((l: any) => l.status === 'pending');
+      const pendingLeaves = (leaveResult.data || []).filter((l) => l.status === 'pending');
       return {
         ot: otResult.data?.length || 0,
         dayoff: dayOffResult.data?.length || 0,
@@ -139,19 +141,16 @@ export default function PortalHome() {
           : 'Mine';
   const pendingApprovalTotal =
     (homeSummary?.pendingApprovals?.overtime || 0) + (homeSummary?.pendingApprovals?.leave || 0);
-  // API payload can contain legacy kebab-case values (e.g. 'check-in') in addition to snake_case ('check_in').
-  const isCheckInType = (eventType?: string) => eventType === 'check_in' || eventType === 'check-in';
-  const isCheckOutType = (eventType?: string) => eventType === 'check_out' || eventType === 'check-out';
   const todayAttendance = homeSummary?.todayAttendance || [];
   const checkIn = todayAttendance.find((a) => isCheckInType(a.event_type));
   const checkOut = todayAttendance.find((a) => isCheckOutType(a.event_type));
-  const canCheckIn = !todayAttendance.some((a) => isCheckInType(a.event_type));
+  const canCheckIn = !checkIn;
   const isWorking = !!checkIn && !checkOut;
   
   const minutesWorked = useMemo(() => {
     if (checkIn && !checkOut) {
       const checkInTime = new Date(checkIn.server_time);
-      return Math.floor((Date.now() - checkInTime.getTime()) / 60000);
+      return Math.floor((currentTime.getTime() - checkInTime.getTime()) / 60000);
     }
     return null;
   }, [checkIn, checkOut, currentTime]); // Update when clock ticks
@@ -170,7 +169,7 @@ export default function PortalHome() {
       if (!aFav && bFav) return 1;
       return 0;
     });
-  }, [favorites, isFavorite]);
+  }, [isFavorite]);
 
   const formatDuration = (mins: number) => {
     const hours = Math.floor(mins / 60);
