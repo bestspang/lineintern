@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Camera, Clock, MapPin, User } from 'lucide-react';
 import { formatBangkokTime } from '@/lib/timezone';
+import { isCheckInType } from '@/lib/portal-attendance';
 
 interface Branch {
   id: string;
@@ -92,44 +93,48 @@ export default function TodayPhotos() {
         </Card>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {photos?.map((log) => (
-            <Card 
-              key={log.id} 
-              className="overflow-hidden cursor-pointer hover:ring-2 ring-primary transition-all"
-              onClick={() => setSelectedPhoto(log.photo_url)}
-            >
-              <div className="aspect-square relative">
-                <img 
-                  src={log.photo_url} 
-                  alt="Check-in" 
-                  className="w-full h-full object-cover"
-                />
-                <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-medium ${
-                  log.event_type === 'check_in' 
-                    ? 'bg-green-500 text-white' 
-                    : 'bg-orange-500 text-white'
-                }`}>
-                  {log.event_type === 'check_in' ? 'IN' : 'OUT'}
-                </div>
-              </div>
-              <CardContent className="p-2 space-y-1">
-                <div className="flex items-center gap-1 text-sm font-medium truncate">
-                  <User className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{log.employee?.full_name}</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  {formatBangkokTime(log.server_time).slice(0, 5)}
-                </div>
-                {log.employee?.branch?.name && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
-                    <MapPin className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{log.employee.branch.name}</span>
+          {photos?.map((log) => {
+            const isCheckIn = isCheckInType(log.event_type);
+
+            return (
+              <Card
+                key={log.id}
+                className="overflow-hidden cursor-pointer hover:ring-2 ring-primary transition-all"
+                onClick={() => setSelectedPhoto(log.photo_url)}
+              >
+                <div className="aspect-square relative">
+                  <img
+                    src={log.photo_url}
+                    alt="Check-in"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-medium ${
+                    isCheckIn
+                      ? 'bg-green-500 text-white'
+                      : 'bg-orange-500 text-white'
+                  }`}>
+                    {isCheckIn ? 'IN' : 'OUT'}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </div>
+                <CardContent className="p-2 space-y-1">
+                  <div className="flex items-center gap-1 text-sm font-medium truncate">
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{log.employee?.full_name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    {formatBangkokTime(log.server_time).slice(0, 5)}
+                  </div>
+                  {log.employee?.branch?.name && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{log.employee.branch.name}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

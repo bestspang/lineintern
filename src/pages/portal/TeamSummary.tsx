@@ -8,6 +8,7 @@ import { portalApi } from '@/lib/portal-api';
 import { format } from 'date-fns';
 import { th, enUS } from 'date-fns/locale';
 import { formatBangkokTime, getBangkokNow } from '@/lib/timezone';
+import { isCheckInType, isCheckOutType } from '@/lib/portal-attendance';
 
 interface EmployeeData {
   id: string;
@@ -67,9 +68,9 @@ export default function TeamSummary() {
         if (!statusMap[log.employee_id]) {
           statusMap[log.employee_id] = { checkIn: null, checkOut: null };
         }
-        if (log.event_type === 'check_in') {
+        if (isCheckInType(log.event_type)) {
           statusMap[log.employee_id].checkIn = log.server_time;
-        } else if (log.event_type === 'check_out') {
+        } else if (isCheckOutType(log.event_type)) {
           statusMap[log.employee_id].checkOut = log.server_time;
         }
       });

@@ -11,6 +11,7 @@ import { usePortal } from '@/contexts/PortalContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, subDays } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { isCheckInType } from '@/lib/portal-attendance';
 
 interface EmployeeData {
   id: string;
@@ -28,6 +29,14 @@ interface AttendanceStats {
   leaveDays: number;
 }
 
+interface RecentAttendanceLog {
+  id: string;
+  event_type: string;
+  server_time: string;
+}
+
+type EmployeeBranch = { name: string | null } | null;
+
 export default function PortalEmployeeDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -35,7 +44,7 @@ export default function PortalEmployeeDetail() {
   const [loading, setLoading] = useState(true);
   const [emp, setEmp] = useState<EmployeeData | null>(null);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
-  const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [recentLogs, setRecentLogs] = useState<RecentAttendanceLog[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -54,7 +63,7 @@ export default function PortalEmployeeDetail() {
           id: empData.id,
           name: empData.full_name || 'ไม่ระบุ',
           role: empData.role || 'พนักงาน',
-          branch: (empData.branch as any)?.name || '-',
+          branch: (empData.branch as EmployeeBranch)?.name || '-',
           joinDate: empData.created_at,
           isActive: empData.is_active ?? true,
         });
@@ -232,7 +241,7 @@ export default function PortalEmployeeDetail() {
                   <div key={log.id} className="flex justify-between items-center text-sm py-2 border-b last:border-0">
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>{log.event_type === 'check_in' ? 'เข้างาน' : 'ออกงาน'}</span>
+                      <span>{isCheckInType(log.event_type) ? 'เข้างาน' : 'ออกงาน'}</span>
                     </div>
                     <span className="text-muted-foreground">
                       {format(new Date(log.server_time), 'dd MMM HH:mm', { 
