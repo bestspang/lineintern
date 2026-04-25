@@ -112,7 +112,6 @@ export default function Notifications() {
           notify_early_leave: data.data.notify_early_leave ?? true,
           notify_day_off: data.data.notify_day_off ?? true,
           notify_remote_checkout: data.data.notify_remote_checkout ?? true,
-          notify_receipts: data.data.notify_receipts ?? true,
         });
       }
     } catch (e) {
@@ -188,7 +187,6 @@ export default function Notifications() {
     { key: 'notify_early_leave', icon: '🚪', label: t('คำขอออกก่อนเวลา', 'Early Leave Requests') },
     { key: 'notify_day_off', icon: '📅', label: t('คำขอวันหยุด', 'Day Off Requests') },
     { key: 'notify_remote_checkout', icon: '📍', label: t('Checkout นอกสถานที่', 'Remote Checkout') },
-    { key: 'notify_receipts', icon: '🧾', label: t('ใบเสร็จ', 'Receipts') },
   ];
 
   if (loading) {
