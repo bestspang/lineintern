@@ -70,14 +70,14 @@ const STATIC_FAQS_EN = [
 // Quick Actions: 20 items, FAQs: 33+, All paths valid
 // DO NOT modify paths unless adding new features
 
-// FAQ Categories for filter
-const FAQ_CATEGORIES = [
-  { value: 'all', label: { th: 'ทั้งหมด', en: 'All' } },
-  { value: 'attendance', label: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' } },
-  { value: 'leave-ot', label: { th: 'ลา/OT', en: 'Leave/OT' } },
-  { value: 'points', label: { th: 'แต้ม', en: 'Points' } },
-  { value: 'general', label: { th: 'ทั่วไป', en: 'General' } },
-];
+// FAQ Category labels (Thai/English). Categories not present in DB are auto-hidden.
+const CATEGORY_LABELS: Record<string, { th: string; en: string }> = {
+  all: { th: 'ทั้งหมด', en: 'All' },
+  attendance: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' },
+  'leave-ot': { th: 'ลา/OT', en: 'Leave/OT' },
+  points: { th: 'แต้ม', en: 'Points' },
+  general: { th: 'ทั่วไป', en: 'General' },
+};
 
 export default function Help() {
   const { locale, employee } = usePortal();
@@ -119,6 +119,28 @@ export default function Help() {
     const matchesCategory = selectedCategory === 'all' || faq.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Build category list dynamically — only show tabs that have at least 1 FAQ.
+  // Auto-rescues UI when a category (e.g. 'receipts') is removed from DB.
+  const availableCategories = (() => {
+    const counts = new Map<string, number>();
+    allFaqs.forEach(f => counts.set(f.category, (counts.get(f.category) || 0) + 1));
+    const cats = [
+      { value: 'all', count: allFaqs.length },
+      ...Array.from(counts.entries())
+        .filter(([_, n]) => n > 0)
+        .map(([value, count]) => ({ value, count })),
+    ];
+    return cats;
+  })();
+
+  // Safety: if user-selected category disappears (e.g. after DB cleanup), reset to 'all'
+  if (selectedCategory !== 'all' && !availableCategories.some(c => c.value === selectedCategory)) {
+    setSelectedCategory('all');
+  }
+
+  const getCategoryLabel = (value: string) =>
+    CATEGORY_LABELS[value]?.[locale === 'th' ? 'th' : 'en'] ?? value;
 
   // Build the role-aware quick action list from the shared registry.
   // Behavior preserved: every action shown to the user maps to a real route
@@ -190,12 +212,12 @@ export default function Help() {
             />
           </div>
 
-          {/* Category Tabs */}
+          {/* Category Tabs (dynamic — only categories with FAQs) */}
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="w-full">
             <TabsList className="w-full h-auto flex-wrap justify-start gap-1">
-              {FAQ_CATEGORIES.map(cat => (
+              {availableCategories.map(cat => (
                 <TabsTrigger key={cat.value} value={cat.value} className="text-xs px-2 py-1">
-                  {locale === 'th' ? cat.label.th : cat.label.en}
+                  {getCategoryLabel(cat.value)} ({cat.count})
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -207,14 +229,53 @@ export default function Help() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : faqs.length === 0 ? (
+          ) : allFaqs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <HelpCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">
-                {locale === 'th' ? 'ไม่พบคำถามที่ตรงกับการค้นหา' : 'No questions match your search'}
+                {locale === 'th' ? 'ยังไม่มีคำถามในระบบ กรุณาติดต่อ HR' : 'No FAQs available yet. Please contact HR.'}
               </p>
             </div>
+          ) : faqs.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground space-y-3">
+              <HelpCircle className="h-8 w-8 mx-auto opacity-50" />
+              <p className="text-sm">
+                {locale === 'th'
+                  ? (searchQuery ? `ไม่พบคำถามที่ตรงกับ "${searchQuery}"` : 'ไม่มีคำถามในหมวดนี้')
+                  : (searchQuery ? `No questions match "${searchQuery}"` : 'No questions in this category')}
+              </p>
+              {(searchQuery || selectedCategory !== 'all') && (
+                <button
+                  onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  {locale === 'th' ? 'ล้างการค้นหา' : 'Clear filters'}
+                </button>
+              )}
+            </div>
           ) : (
+            <Accordion type="single" collapsible className="w-full">
+              {faqs.map((faq, idx) => (
+                <AccordionItem key={idx} value={`faq-${idx}`}>
+                  <AccordionTrigger className="text-left text-sm">
+                    {faq.question}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground text-sm">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          )}
+          
+          {/* Results count */}
+          {!isLoadingFaqs && searchQuery && faqs.length > 0 && (
+            <p className="text-xs text-muted-foreground text-center">
+              {locale === 'th' 
+                ? `พบ ${faqs.length} คำถาม` 
+                : `Found ${faqs.length} question${faqs.length !== 1 ? 's' : ''}`}
+            </p>
+          )}
             <Accordion type="single" collapsible className="w-full">
               {faqs.map((faq, idx) => (
                 <AccordionItem key={idx} value={`faq-${idx}`}>
