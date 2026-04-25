@@ -21,6 +21,7 @@ This file is the working contract for upgrading LINE Intern into a production HR
 
 ## Production Gate
 
+- GitHub Actions CI passes on PRs to `main`: `npm ci --legacy-peer-deps`, `npm run test`, and `npm run build`.
 - `npm run build` passes.
 - `npm run test` passes.
 - Targeted ESLint passes for touched frontend files.
@@ -29,6 +30,7 @@ This file is the working contract for upgrading LINE Intern into a production HR
 - Date boundaries use Bangkok timezone helpers, not raw browser-local dates.
 - Owner/admin/HR/manager/supervisor role behavior is consistent between frontend portal access and `portal-data`.
 - Payroll changes include reconciliation scenarios for billable minutes, late rules, leave, OT, and adjustments.
+- Production/security work tracks risks in `SECURITY_AUDIT_MATRIX.md`; do not treat untriaged service-role functions as production-ready.
 
 ## Implementation Batches
 
