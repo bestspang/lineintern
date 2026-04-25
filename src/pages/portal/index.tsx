@@ -17,12 +17,6 @@ export { default as MySchedule } from './MySchedule';
 export { default as MyPayroll } from './MyPayroll';
 export { default as PointLeaderboard } from './PointLeaderboard';
 
-// Receipt pages
-export { default as MyReceipts } from './MyReceipts';
-export { default as ReceiptDetail } from './ReceiptDetail';
-export { default as ReceiptBusinesses } from './ReceiptBusinesses';
-export { default as ReceiptNew } from './ReceiptNew';
-
 // Manager pages
 export { default as Approvals } from './Approvals';
 export { default as ApproveOT } from './ApproveOT';
