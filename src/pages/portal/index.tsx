@@ -30,7 +30,6 @@ export { default as ApproveLeave } from './ApproveLeave';
 export { default as ApproveEarlyLeave } from './ApproveEarlyLeave';
 export { default as ApproveRemoteCheckout } from './ApproveRemoteCheckout';
 export { default as TeamSummary } from './TeamSummary';
-export { default as DepositReviewList } from './DepositReviewList';
 export { default as PortalBranchReport } from './PortalBranchReport';
 
 // Admin pages

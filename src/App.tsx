@@ -88,8 +88,6 @@ const ConfigurationValidator = lazy(() => import("./pages/ConfigurationValidator
 const PreDeployChecklist = lazy(() => import("./pages/PreDeployChecklist"));
 const FeatureFlags = lazy(() => import("./pages/FeatureFlags"));
 const BranchReportsPage = lazy(() => import("./pages/branch-reports"));
-const Deposits = lazy(() => import("./pages/attendance/Deposits"));
-const DepositSettings = lazy(() => import("./pages/attendance/DepositSettings"));
 const HappyPoints = lazy(() => import("./pages/attendance/HappyPoints"));
 const AttendanceRewards = lazy(() => import("./pages/attendance/Rewards"));
 const PointTransactions = lazy(() => import("./pages/attendance/PointTransactions"));
@@ -117,7 +115,7 @@ const ApproveOT = lazy(() => import("./pages/portal/ApproveOT"));
 const ApproveLeave = lazy(() => import("./pages/portal/ApproveLeave"));
 const ApproveEarlyLeave = lazy(() => import("./pages/portal/ApproveEarlyLeave"));
 const TeamSummary = lazy(() => import("./pages/portal/TeamSummary"));
-const DepositReviewList = lazy(() => import("./pages/portal/DepositReviewList"));
+
 const TodayPhotos = lazy(() => import("./pages/portal/TodayPhotos"));
 const DailySummary = lazy(() => import("./pages/portal/DailySummary"));
 const ApproveRedemptions = lazy(() => import("./pages/portal/ApproveRedemptions"));
@@ -140,8 +138,6 @@ const GachaHistory = lazy(() => import("./pages/portal/GachaHistory"));
 const Notifications = lazy(() => import("./pages/portal/Notifications"));
 const ManagerDashboard = lazy(() => import("./pages/portal/ManagerDashboard"));
 const ApproveRemoteCheckout = lazy(() => import("./pages/portal/ApproveRemoteCheckout"));
-const DepositUpload = lazy(() => import("./pages/portal/DepositUpload"));
-const DepositReview = lazy(() => import("./pages/portal/DepositReview"));
 const MyPoints = lazy(() => import("./pages/portal/MyPoints"));
 const RewardShop = lazy(() => import("./pages/portal/RewardShop"));
 const MyRedemptions = lazy(() => import("./pages/portal/MyRedemptions"));
@@ -239,8 +235,6 @@ const App = () => (
                         <Route path="/team-summary" element={<TeamSummary />} />
                         <Route path="/photos" element={<TodayPhotos />} />
                         <Route path="/daily-summary" element={<DailySummary />} />
-                        <Route path="/deposit-upload" element={<DepositUpload />} />
-                        <Route path="/deposit-review/:id" element={<DepositReview />} />
                         <Route path="/my-points" element={<MyPoints />} />
                         <Route path="/rewards" element={<RewardShop />} />
                         <Route path="/my-redemptions" element={<MyRedemptions />} />
@@ -252,7 +246,7 @@ const App = () => (
                         <Route path="/receipt-businesses" element={<ReceiptBusinesses />} />
                         <Route path="/receipt-new" element={<ReceiptNew />} />
                         <Route path="/approve-redemptions" element={<ApproveRedemptions />} />
-                        <Route path="/deposit-review-list" element={<DepositReviewList />} />
+                        
                         <Route path="/payroll-report" element={<PayrollReport />} />
                         <Route path="/my-schedule" element={<MySchedule />} />
                         <Route path="/my-payroll" element={<MyPayroll />} />
@@ -340,8 +334,6 @@ const App = () => (
                         <Route path="/attendance/payroll" element={<Payroll />} />
                         <Route path="/attendance/payroll-ytd" element={<PayrollYTD />} />
                         <Route path="/attendance/holidays" element={<AttendanceHolidays />} />
-                        <Route path="/attendance/deposits" element={<Deposits />} />
-                        <Route path="/attendance/deposit-settings" element={<DepositSettings />} />
                         <Route path="/attendance/happy-points" element={<HappyPoints />} />
                         <Route path="/attendance/rewards" element={<AttendanceRewards />} />
                         <Route path="/attendance/point-transactions" element={<PointTransactions />} />
