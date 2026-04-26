@@ -5,6 +5,22 @@
 
 ---
 
+## ⚡ Quick Run (Automated)
+
+```bash
+bun run smoke         # full check: build + routes + DB sanity (~30-60s)
+bun run smoke:quick   # skip build, only routes + DB + grep (~3s)
+node scripts/smoke-test.mjs --json   # machine-readable output for CI
+```
+
+ผลลัพธ์เป็นตาราง `[PASS] / [FAIL] / [SKIP]` พร้อม exit code (0 = ทุก check pass, 1 = มี fail).
+Sections **A–D อัตโนมัติ**. Section E เป็น manual checklist ด้านล่างที่ต้องเปิด browser/LINE เอง.
+
+ถ้า script รัน DB sanity แล้วได้ `SKIP` → check ว่ามี `PG*` env vars + `psql` CLI ใน PATH.
+
+---
+
+
 ## A. Build & Type Safety (เครื่อง dev)
 
 ```bash
