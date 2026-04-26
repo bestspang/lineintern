@@ -246,7 +246,13 @@ async function testDatabase() {
       { encoding: "utf8", timeout: 30_000 }
     );
     if (proc.status !== 0) {
-      record(t.id, t.label, "FAIL", `query error: ${(proc.stderr || "").split("\n")[0].slice(0, 100)}`);
+      const err = (proc.stderr || "").split("\n")[0].slice(0, 100);
+      const hint = /permission denied/i.test(err)
+        ? `Permission denied — wrap query in a SECURITY DEFINER function (see public.get_cron_jobs() pattern in supabase/migrations/).`
+        : /does not exist/i.test(err)
+          ? `Table/function missing — schema drifted. Re-run latest migration or update this check's SQL.`
+          : `Run the SQL manually via Lovable Cloud SQL editor to debug.`;
+      record(t.id, t.label, "FAIL", `query error: ${err}`, 0, hint);
       continue;
     }
     const line = (proc.stdout || "").trim().split("\n")[0] || "";
@@ -259,7 +265,7 @@ async function testDatabase() {
       const detail = t.includeNames && names
         ? `found ${n}: ${names.slice(0, 120)}`
         : `expected ${t.expect}, got ${n}`;
-      record(t.id, t.label, "FAIL", detail);
+      record(t.id, t.label, "FAIL", detail, 0, t.hint || "");
     }
   }
 }
@@ -270,18 +276,29 @@ async function testDatabase() {
 function testEdgeFunctions() {
   const dir = "supabase/functions";
   const checks = [
-    { id: "D1", label: "No daily_deposits references", regex: /\bdaily_deposits\b/ },
-    { id: "D2", label: "No receipt_approvers references", regex: /\breceipt_approvers\b/ },
-    { id: "D3", label: "No receipt_quota table references", regex: /from\(['"]receipt_quota['"]/ },
+    {
+      id: "D1", label: "No daily_deposits references", regex: /\bdaily_deposits\b/,
+      hint: `Phase 2 removed daily_deposits. Replace with HR-focused equivalent or delete the call. Likely in supabase/functions/portal-data/index.ts.`,
+    },
+    {
+      id: "D2", label: "No receipt_approvers references", regex: /\breceipt_approvers\b/,
+      hint: `Phase 4 removed receipt approval flow. Delete the approver lookup + any flex message that uses it. Check line-webhook/handlers/.`,
+    },
+    {
+      id: "D3", label: "No receipt_quota table references", regex: /from\(['"]receipt_quota['"]/,
+      hint: `Phase 4 removed quota system. Remove the supabase.from('receipt_quota') call and any quota-check branch.`,
+    },
   ];
   for (const ch of checks) {
     const hits = grepDirRecursive(dir, ch.regex, [".ts"]);
     // Allow references inside __archived__ or .deprecated paths
-    const live = hits.filter((h) => !/__archived__|\.deprecated/.test(h));
+    const live = hits.filter((h) => !/__archived__|\.deprecated/.test(h.file));
     if (live.length === 0) {
       record(ch.id, ch.label, "PASS", hits.length ? `(${hits.length} in archived/deprecated)` : "");
     } else {
-      record(ch.id, ch.label, "FAIL", `${live.length} hit(s); first: ${live[0].slice(0, 100)}`);
+      const locs = live.slice(0, 3).map((h) => `${h.file}:${h.line}`).join(", ");
+      record(ch.id, ch.label, "FAIL", `${live.length} hit(s)`, 0,
+        `Open ${locs}. ${ch.hint}`);
     }
   }
 }
