@@ -110,15 +110,21 @@ async function testBuild() {
     record("A1", "Build (bun run build)", "PASS", `${(dur / 1000).toFixed(1)}s`, dur);
   } else {
     record("A1", "Build (bun run build)", "FAIL",
-      `exit=${proc.status} — ${stderr.split("\n").slice(-3).join(" | ").slice(0, 200)}`, dur);
+      `exit=${proc.status} — ${stderr.split("\n").slice(-3).join(" | ").slice(0, 200)}`, dur,
+      `Run \`bun run build\` directly to see full output. Likely causes: missing import, syntax error, or new dep not installed (\`bun install\`).`);
   }
 
   const tsErrors = combined.match(/TS\d{4}/g) || [];
+  // Extract first "file.tsx(line,col): error TS####" pattern for actionable hint
+  const firstTsLoc = combined.match(/([\w./-]+\.tsx?)\((\d+),\d+\):\s*error\s+(TS\d+)/);
   if (tsErrors.length === 0) {
     record("A2", "No TypeScript errors", "PASS", "");
   } else {
+    const hint = firstTsLoc
+      ? `Open \`${firstTsLoc[1]}:${firstTsLoc[2]}\` — first error: ${firstTsLoc[3]}. Common: undefined var after deletion, wrong .select() chain (see CRITICAL_FILES.md §Supabase Query Patterns), or stale import.`
+      : `Run \`bun run build\` to see file:line of each TS error.`;
     record("A2", "No TypeScript errors", "FAIL",
-      `${tsErrors.length} errors: ${[...new Set(tsErrors)].slice(0, 5).join(", ")}`);
+      `${tsErrors.length} errors: ${[...new Set(tsErrors)].slice(0, 5).join(", ")}`, 0, hint);
   }
 }
 
