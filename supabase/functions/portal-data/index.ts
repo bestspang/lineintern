@@ -543,27 +543,30 @@ serve(async (req) => {
           .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
+        // Build select string upfront — chaining .select() after .eq() breaks TS types
+        // (FilterBuilder.select() doesn't accept count/head options).
+        const isTeamScope = approvalScope === 'team' && Boolean(branchId);
+        const otSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
+        const leaveSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
+
         let pendingOTQuery = supabase
           .from('overtime_requests')
-          .select('id', { count: 'exact', head: true })
+          .select(otSelect, { count: 'exact', head: true })
           .eq('status', 'pending');
 
         let pendingLeaveQuery = supabase
           .from('leave_requests')
-          .select('id', { count: 'exact', head: true })
+          .select(leaveSelect, { count: 'exact', head: true })
           .eq('status', 'pending');
 
         if (approvalScope === 'self') {
           pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
           pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
-        } else if (approvalScope === 'team' && branchId) {
-          pendingOTQuery = pendingOTQuery
-            .eq('employee.branch_id', branchId)
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
-          pendingLeaveQuery = pendingLeaveQuery
-            .eq('employee.branch_id', branchId)
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+        } else if (isTeamScope) {
+          pendingOTQuery = pendingOTQuery.eq('employee.branch_id', branchId);
+          pendingLeaveQuery = pendingLeaveQuery.eq('employee.branch_id', branchId);
         }
+        // approvalScope === 'global' → no extra filter (count all pending)
 
         const [pendingOTResult, pendingLeaveResult] = await Promise.all([
           pendingOTQuery,
