@@ -42,8 +42,11 @@ function grepFile(path, regex) {
   if (!existsSync(path)) return [];
   const txt = readFileSync(path, "utf8");
   const matches = [];
-  for (const line of txt.split("\n")) {
-    if (regex.test(line)) matches.push(line.trim());
+  const lines = txt.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (regex.test(lines[i])) {
+      matches.push({ line: i + 1, text: lines[i].trim(), file: path });
+    }
   }
   return matches;
 }
