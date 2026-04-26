@@ -205,50 +205,39 @@ async function testDatabase() {
     return;
   }
 
-  let pg;
-  try {
-    pg = (await import("pg")).default;
-  } catch (e) {
-    for (const t of tests) record(t.id, t.label, "SKIP", "pg library not installed");
-    return;
-  }
-
-  const client = new pg.Client({
-    host: process.env.PGHOST,
-    port: process.env.PGPORT ? Number(process.env.PGPORT) : 5432,
-    user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
-    database: process.env.PGDATABASE,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 10_000,
-  });
-
-  try {
-    await client.connect();
-  } catch (e) {
-    for (const t of tests) record(t.id, t.label, "SKIP", `connect failed: ${String(e).slice(0, 80)}`);
+  // Use psql CLI — more reliable than pg library against Supabase pooler.
+  // psql inherits PG* env vars automatically.
+  const psqlCheck = spawnSync("psql", ["-tAc", "SELECT 1"], { encoding: "utf8", timeout: 15_000 });
+  if (psqlCheck.status !== 0) {
+    const err = (psqlCheck.stderr || "no psql").split("\n")[0].slice(0, 80);
+    for (const t of tests) record(t.id, t.label, "SKIP", `psql unavailable: ${err}`);
     return;
   }
 
   for (const t of tests) {
-    try {
-      const res = await client.query(t.sql);
-      const row = res.rows[0] || {};
-      const n = Number(row.n ?? 0);
-      if (n === t.expect) {
-        record(t.id, t.label, "PASS", `${n} rows`);
-      } else {
-        const detail = t.includeNames && row.names
-          ? `found ${n}: ${String(row.names).slice(0, 120)}`
-          : `expected ${t.expect}, got ${n}`;
-        record(t.id, t.label, "FAIL", detail);
-      }
-    } catch (e) {
-      record(t.id, t.label, "FAIL", `query error: ${String(e.message || e).slice(0, 100)}`);
+    // -tA = tuples-only, unaligned. -F '|' = field separator.
+    const proc = spawnSync(
+      "psql",
+      ["-tA", "-F", "|", "-c", t.sql.replace(/\s+/g, " ").trim()],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    if (proc.status !== 0) {
+      record(t.id, t.label, "FAIL", `query error: ${(proc.stderr || "").split("\n")[0].slice(0, 100)}`);
+      continue;
+    }
+    const line = (proc.stdout || "").trim().split("\n")[0] || "";
+    const parts = line.split("|");
+    const n = Number(parts[0] || 0);
+    const names = parts[1] || "";
+    if (n === t.expect) {
+      record(t.id, t.label, "PASS", `${n} rows`);
+    } else {
+      const detail = t.includeNames && names
+        ? `found ${n}: ${names.slice(0, 120)}`
+        : `expected ${t.expect}, got ${n}`;
+      record(t.id, t.label, "FAIL", detail);
     }
   }
-
-  await client.end().catch(() => {});
 }
 
 // =================================================================
