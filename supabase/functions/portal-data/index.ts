@@ -482,7 +482,7 @@ serve(async (req) => {
         // Determine caller role + branch scope from authenticated employee profile
         const profileResult = await supabase
           .from('employees')
-          .select('branch_id, role:employee_roles(role_key)')
+          .select('branch_id, employee_roles(role_key)')
           .eq('id', employee_id)
           .maybeSingle();
 
@@ -496,8 +496,16 @@ serve(async (req) => {
           break;
         }
 
-        const roleKey = String(profileResult.data.role?.role_key || '').toLowerCase();
-        const branchId = profileResult.data.branch_id;
+        // Supabase generated types may infer the embed as array; normalize to single object.
+        const profileRow = profileResult.data as {
+          branch_id: string | null;
+          employee_roles: { role_key: string } | { role_key: string }[] | null;
+        };
+        const roleObj = Array.isArray(profileRow.employee_roles)
+          ? profileRow.employee_roles[0]
+          : profileRow.employee_roles;
+        const roleKey = String(roleObj?.role_key || '').toLowerCase();
+        const branchId = profileRow.branch_id;
         const isManagerRole = roleKey === 'manager';
         const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
 
