@@ -190,8 +190,10 @@ async function testDatabase() {
     },
     {
       id: "C5", label: "No active cron jobs referencing receipt/deposit",
-      sql: `SELECT COUNT(*)::int AS n, COALESCE(string_agg(jobname, ','), '') AS names
-            FROM cron.job
+      // Use SECURITY DEFINER function — direct cron schema is restricted
+      sql: `SELECT COUNT(*)::int AS n,
+                   COALESCE(string_agg(jobname, ','), '') AS names
+            FROM public.get_cron_jobs()
             WHERE active = true
               AND (jobname ILIKE '%receipt%' OR jobname ILIKE '%deposit%'
                    OR command ILIKE '%receipt%' OR command ILIKE '%deposit%')`,
