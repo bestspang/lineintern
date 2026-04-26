@@ -184,11 +184,13 @@ async function testDatabase() {
       id: "C1", label: "bot_commands clean (no receipt/deposit)",
       sql: "SELECT COUNT(*)::int AS n FROM bot_commands WHERE category IN ('receipt','deposit')",
       expect: 0,
+      hint: `Create a migration: DELETE FROM bot_commands WHERE category IN ('receipt','deposit'). Also verify command-parser.ts has no matching commandType (CRITICAL_FILES.md §P0).`,
     },
     {
       id: "C2", label: "webapp_page_config clean",
       sql: "SELECT COUNT(*)::int AS n FROM webapp_page_config WHERE menu_group IN ('Receipts','Deposits')",
       expect: 0,
+      hint: `Migration: DELETE FROM webapp_page_config WHERE menu_group IN ('Receipts','Deposits'). These rows drive sidebar nav — leftovers cause ghost menu items.`,
     },
     {
       id: "C3", label: "No receipt/deposit tables in public schema",
@@ -198,11 +200,13 @@ async function testDatabase() {
               AND (table_name LIKE '%receipt%' OR table_name LIKE '%deposit%')`,
       expect: 0,
       includeNames: true,
+      hint: `Migration: DROP TABLE public.<name> CASCADE for each leftover. Check FK refs in information_schema.table_constraints first to avoid breaking other tables.`,
     },
     {
       id: "C4", label: "portal_faqs clean (no receipts/deposits category)",
       sql: "SELECT COUNT(*)::int AS n FROM portal_faqs WHERE category IN ('receipts','deposits')",
       expect: 0,
+      hint: `Migration: DELETE FROM portal_faqs WHERE category IN ('receipts','deposits'). Otherwise Help.tsx may render empty category tabs.`,
     },
     {
       id: "C5", label: "No active cron jobs referencing receipt/deposit",
@@ -215,8 +219,10 @@ async function testDatabase() {
                    OR command ILIKE '%receipt%' OR command ILIKE '%deposit%')`,
       expect: 0,
       includeNames: true,
+      hint: `Migration: SELECT cron.unschedule('<jobname>') for each leftover job. Sync src/pages/CronJobs.tsx description map with reality afterward.`,
     },
   ];
+
 
   if (!process.env.PGHOST) {
     for (const t of tests) record(t.id, t.label, "SKIP", "no PGHOST env");
