@@ -33,8 +33,8 @@ const C = {
 const c = (color, s) => (JSON_OUT ? s : `${C[color]}${s}${C.reset}`);
 
 const results = [];
-function record(id, label, status, detail = "", durationMs = 0) {
-  results.push({ id, label, status, detail, durationMs });
+function record(id, label, status, detail = "", durationMs = 0, hint = "") {
+  results.push({ id, label, status, detail, durationMs, hint });
 }
 
 // ---------------- Test helpers ----------------
