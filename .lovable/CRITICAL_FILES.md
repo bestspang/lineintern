@@ -24,6 +24,7 @@
 | `src/App.tsx` | route group order matters: admin routes ห้ามอยู่หลัง catch-all |
 | `src/components/portal/PortalLayout.tsx` | bottom nav มี exactly 6 items — ลบเพิ่มต้อง coordinate กับ user |
 | `src/pages/portal/Help.tsx` | FAQ rendering ใช้ dynamic categories จาก DB — ห้ามกลับไปเป็น hardcoded |
+| `scripts/smoke-test.mjs` | Phase 4.5 regression guard — ห้ามแก้โดยไม่ขอ user (ถ้าจะเพิ่ม check ใหม่ ให้ append section ใหม่ ไม่ใช่ rewrite) |
 | `SYSTEM_SYNC_CHECKLIST.md` | source of truth สำหรับ cross-module sync — อัปเดตเมื่อเพิ่ม feature |
 
 ## 📌 Behavioral Invariants (พฤติกรรมห้ามเปลี่ยน)
