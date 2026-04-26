@@ -71,13 +71,15 @@ function grepDirRecursive(dir, regex, exts = [".ts", ".tsx", ".js", ".mjs"], { s
       if (st.isDirectory()) stack.push(full);
       else if (exts.some((e) => name.endsWith(e))) {
         const txt = readFileSync(full, "utf8");
-        for (const line of txt.split("\n")) {
-          if (!regex.test(line)) continue;
+        const lines = txt.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const ln = lines[i];
+          if (!regex.test(ln)) continue;
           if (skipComments) {
-            const trimmed = line.trim();
+            const trimmed = ln.trim();
             if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
           }
-          hits.push(`${full}: ${line.trim()}`);
+          hits.push({ file: full, line: i + 1, text: ln.trim() });
         }
       }
     }
