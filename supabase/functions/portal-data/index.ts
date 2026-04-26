@@ -476,6 +476,10 @@ serve(async (req) => {
          *   - team: pending requests from caller's branch/team
          *   - global: all pending requests across branches (policy-gated)
          */
+        // ⚠️ VERIFIED 2026-04-26: home-summary scope logic + Supabase query patterns.
+        // - Embed `employee_roles` is normalized to single object (TS may infer array)
+        // - pendingOT/Leave queries: select string built UPFRONT (chaining .select() after .eq() breaks TS)
+        // See .lovable/CRITICAL_FILES.md for the rules. DO NOT REFACTOR without re-running build.
         // ⚠️ TIMEZONE: Use Bangkok date
         const today = getBangkokDateString();
 
