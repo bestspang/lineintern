@@ -341,18 +341,41 @@ function printResults() {
     console.log(`  ${tag}  ${id} ${label}${detail}`);
   }
   console.log(line);
+
+  // Actionable hints section — only for FAILs
+  const fails = results.filter((r) => r.status === "FAIL");
+  if (fails.length > 0) {
+    console.log(c("bold", "\n  ⚠ Remediation Hints"));
+    console.log("  " + "─".repeat(58));
+    for (const r of fails) {
+      console.log(`  ${c("red", r.id)} ${c("bold", r.label)}`);
+      if (r.detail) console.log(c("dim", `      what: ${r.detail}`));
+      if (r.hint) {
+        // wrap hint at ~80 cols for readability
+        const wrapped = r.hint.match(/.{1,80}(\s|$)/g) || [r.hint];
+        wrapped.forEach((w, i) => {
+          console.log(c("cyan", `      ${i === 0 ? "fix : " : "      "}${w.trim()}`));
+        });
+      } else {
+        console.log(c("dim", "      fix : (no hint registered — see docs/SMOKE_TEST_PHASE4.md)"));
+      }
+      console.log("");
+    }
+  }
+
   const pass = results.filter((r) => r.status === "PASS").length;
-  const fail = results.filter((r) => r.status === "FAIL").length;
+  const fail = fails.length;
   const skip = results.filter((r) => r.status === "SKIP").length;
   const summary =
     `  Result: ${c("green", pass + " pass")}, ` +
     `${fail > 0 ? c("red", fail + " fail") : c("dim", "0 fail")}, ` +
     `${c("yellow", skip + " skip")}`;
+  console.log(line);
   console.log(summary);
   console.log(line + "\n");
 
   if (fail > 0) {
-    console.log(c("red", `  ✗ ${fail} test(s) failed. Review above.`));
+    console.log(c("red", `  ✗ ${fail} test(s) failed. See remediation hints above.`));
   } else {
     console.log(c("green", "  ✓ All automated checks passed."));
   }
