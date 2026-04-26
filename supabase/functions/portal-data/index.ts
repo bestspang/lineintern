@@ -476,13 +476,17 @@ serve(async (req) => {
          *   - team: pending requests from caller's branch/team
          *   - global: all pending requests across branches (policy-gated)
          */
+        // ⚠️ VERIFIED 2026-04-26: home-summary scope logic + Supabase query patterns.
+        // - Embed `employee_roles` is normalized to single object (TS may infer array)
+        // - pendingOT/Leave queries: select string built UPFRONT (chaining .select() after .eq() breaks TS)
+        // See .lovable/CRITICAL_FILES.md for the rules. DO NOT REFACTOR without re-running build.
         // ⚠️ TIMEZONE: Use Bangkok date
         const today = getBangkokDateString();
 
         // Determine caller role + branch scope from authenticated employee profile
         const profileResult = await supabase
           .from('employees')
-          .select('branch_id, role:employee_roles(role_key)')
+          .select('branch_id, employee_roles(role_key)')
           .eq('id', employee_id)
           .maybeSingle();
 
@@ -496,8 +500,16 @@ serve(async (req) => {
           break;
         }
 
-        const roleKey = String(profileResult.data.role?.role_key || '').toLowerCase();
-        const branchId = profileResult.data.branch_id;
+        // Supabase generated types may infer the embed as array; normalize to single object.
+        const profileRow = profileResult.data as {
+          branch_id: string | null;
+          employee_roles: { role_key: string } | { role_key: string }[] | null;
+        };
+        const roleObj = Array.isArray(profileRow.employee_roles)
+          ? profileRow.employee_roles[0]
+          : profileRow.employee_roles;
+        const roleKey = String(roleObj?.role_key || '').toLowerCase();
+        const branchId = profileRow.branch_id;
         const isManagerRole = roleKey === 'manager';
         const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
 
@@ -535,27 +547,30 @@ serve(async (req) => {
           .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
+        // Build select string upfront — chaining .select() after .eq() breaks TS types
+        // (FilterBuilder.select() doesn't accept count/head options).
+        const isTeamScope = approvalScope === 'team' && Boolean(branchId);
+        const otSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
+        const leaveSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
+
         let pendingOTQuery = supabase
           .from('overtime_requests')
-          .select('id', { count: 'exact', head: true })
+          .select(otSelect, { count: 'exact', head: true })
           .eq('status', 'pending');
 
         let pendingLeaveQuery = supabase
           .from('leave_requests')
-          .select('id', { count: 'exact', head: true })
+          .select(leaveSelect, { count: 'exact', head: true })
           .eq('status', 'pending');
 
         if (approvalScope === 'self') {
           pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
           pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
-        } else if (approvalScope === 'team' && branchId) {
-          pendingOTQuery = pendingOTQuery
-            .eq('employee.branch_id', branchId)
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
-          pendingLeaveQuery = pendingLeaveQuery
-            .eq('employee.branch_id', branchId)
-            .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+        } else if (isTeamScope) {
+          pendingOTQuery = pendingOTQuery.eq('employee.branch_id', branchId);
+          pendingLeaveQuery = pendingLeaveQuery.eq('employee.branch_id', branchId);
         }
+        // approvalScope === 'global' → no extra filter (count all pending)
 
         const [pendingOTResult, pendingLeaveResult] = await Promise.all([
           pendingOTQuery,

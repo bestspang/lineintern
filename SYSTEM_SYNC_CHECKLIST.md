@@ -165,10 +165,49 @@
 5. **ทดสอบก่อน deploy** โดยเฉพาะเมื่อแก้ไข edge functions
 6. **อัพเดท Help.tsx** เมื่อเพิ่ม Portal features ใหม่
 7. **เพิ่ม command ใน 3 ที่** เมื่อเพิ่ม bot command: parser, handler, bot_commands table
+8. **อ่าน `.lovable/CRITICAL_FILES.md`** ก่อนแก้ไฟล์ใน critical list
+9. **เคารพ `// ⚠️ VERIFIED [DATE]` comments** — ห้ามแตะ block นั้น เว้นแต่ user สั่งตรงๆ
+
+---
+
+## 10. Supabase Query Patterns (กฎที่เคยพัง — ห้ามทำซ้ำ)
+
+### ❌ ห้าม chain `.select()` หลัง `.eq()`
+
+```ts
+// ❌ TS error: FilterBuilder.select() ไม่รับ {count, head}
+let q = supabase.from('x').select('id', { count: 'exact', head: true }).eq('a', 1);
+q = q.eq('b', 2).select('id, joined:y!inner(z)', { count: 'exact', head: true });
+
+// ✅ Decide select string upfront
+const sel = needsJoin ? 'id, joined:y!inner(z)' : 'id';
+let q = supabase.from('x').select(sel, { count: 'exact', head: true }).eq('a', 1);
+if (needsJoin) q = q.eq('joined.z', val);
+```
+
+### ✅ Cast embed type สำหรับ 1-to-1 relationship
+
+Generated types มอง embed เป็น array เสมอ → cast ตรงๆ + normalize:
+
+```ts
+const { data } = await supabase.from('employees')
+  .select('id, employee_roles(role_key)').single();
+const row = data as { id: string; employee_roles: { role_key: string } | { role_key: string }[] | null };
+const roleObj = Array.isArray(row.employee_roles) ? row.employee_roles[0] : row.employee_roles;
+```
+
+### ✅ Multiple FK to same table → use `!fk_name` syntax
+
+```ts
+// employees มี 2 FK ไป branches: branch_id และ primary_branch_id
+.select('*, branches:branches!branch_id(name)')  // ✅
+.select('*, branches(name)')                      // ❌ ambiguous
+```
 
 ---
 
 ## Last Updated
+- 2026-04-26: Added Section 10 (Supabase Query Patterns) + AI guardrails referencing `.lovable/CRITICAL_FILES.md`
 - 2026-01-11: Added Portal Pages sync (Section 8) and Help.tsx sync (Section 9), updated warnings
 - 2026-01-08: Added Deposit/Reimbursement Detection section (Section 7)
 - 2026-01-07: Initial version - Added Portal Access Mode 'both' support

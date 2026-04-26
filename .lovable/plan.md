@@ -1,182 +1,159 @@
 
-# Phase 4 — Final Cleanup, Smoke Test Guide & Help FAQ Resilience
+# 🚨 Phase 4.5: Hotfix Build Errors + AI Regression Guardrail
 
-แบ่งเป็น 5 ส่วน ตามที่คุณขอ + จัดลำดับตามความเสี่ยง
+## 🔴 Affected Modules & Status
+
+| Module | File | Status | หมายเหตุ |
+|---|---|---|---|
+| `portal-data` edge function | `supabase/functions/portal-data/index.ts` | **BROKEN** | Deploy ไม่ได้ → portal ทั้งระบบจะค้าง |
+| Portal home-summary | endpoint `home-summary` | **BROKEN** (เพราะ portal-data deploy fail) | Pending OT/Leave count ไม่แสดง |
+| ManagerDashboard | `src/pages/portal/ManagerDashboard.tsx` | WORKING | ใช้ count ที่ portal-data ส่งมา |
+| ส่วนอื่นๆ ทั้งหมด | — | **WORKING** | ห้ามแตะ |
+
+## 🧠 Root Cause Analysis (ละเอียดถึงราก)
+
+### Error 1: `Property 'role_key' does not exist on type '{ role_key: any; }[]'`  (บรรทัด 499)
+```ts
+.select('branch_id, role:employee_roles(role_key)')
+// ...
+profileResult.data.role?.role_key  // ❌ TS infers role เป็น array
+```
+**ราก:** Supabase generated types มอง `employee_roles` relationship เป็น **array** (เพราะ FK direction) แต่จริงๆ เป็น 1-to-1 → ต้องบอก TS ว่า single object ด้วย `!inner` hint หรือ cast type / รูปแบบ embed ใหม่
+
+### Error 2 & 3: `Expected 0-1 arguments, but got 2` (บรรทัด 554, 557)
+```ts
+let pendingOTQuery = supabase
+  .from('overtime_requests')
+  .select('id', { count: 'exact', head: true })  // ✅ select #1
+  .eq('status', 'pending');
+
+// ภายหลัง...
+pendingOTQuery = pendingOTQuery
+  .eq('employee.branch_id', branchId)
+  .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true });
+  // ❌ select #2 — query builder ตอนนี้เป็น FilterBuilder แล้ว ไม่ใช่ QueryBuilder
+  //    method .select() ของ FilterBuilder ไม่รับ options arg
+```
+**ราก:** หลัง chain `.eq()` ไปแล้ว type จะเปลี่ยนเป็น `PostgrestFilterBuilder` ซึ่ง `.select()` ของมันรับแค่ 1 arg (column string เท่านั้น ไม่รับ `{count, head}`) → ต้อง **build select ที่ถูกต้องตั้งแต่แรก** แทนการ chain ซ้ำ
 
 ---
 
-## 🚨 ส่วนที่ 1 — แก้ P0 Bug ก่อน (ระบบจะพังถ้าไม่แก้)
+## 🛠️ Minimal-Diff Fix Plan
 
-### 1.1 `supabase/functions/portal-data/index.ts`
-**ปัญหา:** เรียก table `daily_deposits` ที่ถูก DROP ไปแล้ว → ManagerDashboard 500 error
+### Fix 1 — แก้ type ของ `role` embed (บรรทัด 483-499)
+เปลี่ยนจาก embed object → fetch แยก หรือ cast type
+```ts
+// แนวทางที่ปลอดภัยที่สุด: cast ผลลัพธ์
+const profileResult = await supabase
+  .from('employees')
+  .select('branch_id, employee_roles(role_key)')
+  .eq('id', employee_id)
+  .maybeSingle();
 
-- ลบ `case 'check-today-deposit'` (line ~1019-1045)
-- ลบ `case 'my-receipt-quota'` (line ~1048-1110) + query `receipt_usage`, `receipt_subscriptions`, `receipt_plans`
-- ใน `pending-counts-by-branch` (line ~640-700): ลบ `depositsQuery` + `daily_deposits` join + คืนค่า `deposits: 0` ออกจาก response
-- ใน `notification-preferences` (line ~1540): ลบ `notify_receipts` field
-
-### 1.2 `supabase/functions/line-webhook/index.ts`
-**ปัญหา:** Query `receipt_approvers` table ที่ถูก DROP → 500
-
-- ลบ block ที่ query `receipt_approvers` (line ~7876)
-- ลบ helper functions ที่ไม่ใช้แล้ว (~400 บรรทัด): `extractDepositDataFromImage`, `classifyDocumentType`, `determineTransferDirection`, `documentTypeLabels`, prompts การ OCR
-- **เก็บ** stub `handleImageMessage` ไว้ตามเดิม (logging only)
-- **เก็บ** deprecation handler สำหรับ command `/receipt` etc. ไว้ตามเดิม (ตอบ user แบบสุภาพ)
-
----
-
-## 🧹 ส่วนที่ 2 — ลบ Receipt/Deposit residue ตามที่คุณขอ
-
-### 2.1 Frontend cleanup
-- **`src/pages/portal/ManagerDashboard.tsx`**: ลบ `deposits: number` จาก type, ลบจาก `useState`, ลบจาก `totalPending`, ลบการ์ด "ใบฝากเงิน" (`/portal/deposit-review-list`), ลบ import `Banknote` ถ้าไม่ได้ใช้ที่อื่น
-- **`src/pages/settings/RoleManagement.tsx`**: ลบ `'Deposits': { label: 'Deposits', ... }` (line 123)
-- **`src/pages/settings/CuteQuotesSettings.tsx`**: ลบ option `'deposit'` จาก showTime list, ลบ `depositChance` state, ลบการ์ด "ฝากเงิน (Deposit)", ลบ import `Banknote`
-- **`src/hooks/useCuteQuotes.ts`**: ลบ `'deposit'` ออกจาก union types, ลบ `deposit_chance` field, ลบ branch `eventType === 'deposit'` logic
-- **`src/lib/translations.ts`**: ลบ key `deposit`
-- **`src/pages/FeatureFlags.tsx`**: ลบ option `{ value: 'deposit', label: 'Deposit', ... }`
-- **`src/pages/PreDeployChecklist.tsx`**: ลบ checklist item `deposit_upload`
-- **`src/lib/portal-actions.ts`**: ลบ JSDoc references `/portal/deposit-upload`, `/portal/deposit-review-list`
-
-### 2.2 Database cleanup (migration)
-```sql
--- Drop residual tables
-DROP TABLE IF EXISTS public.receipt_ocr_corrections CASCADE;
-DROP TABLE IF EXISTS public.receipt_categories CASCADE;
-
--- Clean bot_commands (6 rows)
-DELETE FROM public.bot_commands WHERE category = 'receipt';
-
--- Clean webapp_page_config (18 rows for Deposits menu)
-DELETE FROM public.webapp_page_config 
-WHERE menu_group = 'Deposits' OR page_path LIKE '/attendance/deposit%';
-
--- Clean profile.notification_preferences notify_receipts (data update via insert tool)
--- handled via UPDATE statement
+const profile = profileResult.data as { branch_id: string | null; employee_roles: { role_key: string } | { role_key: string }[] | null } | null;
+const roleObj = Array.isArray(profile?.employee_roles) ? profile?.employee_roles[0] : profile?.employee_roles;
+const roleKey = String(roleObj?.role_key || '').toLowerCase();
+const branchId = profile?.branch_id ?? null;
 ```
 
-### 2.3 Storage buckets — **ขออนุมัติก่อนลบ**
-- `deposit-slips` (private)
-- `receipt-files` (private)  
-→ ผมจะ list contents ก่อน, ถ้า empty ค่อย drop
+### Fix 2 — Restructure pending OT/Leave queries (บรรทัด 538-558)
+แทนที่จะ chain `.select()` ซ้ำ ให้ **decide select string ก่อน build query**:
+```ts
+const isTeamScope = approvalScope === 'team' && branchId;
+const otSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
+const leaveSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
 
-### 2.4 Edge function deletion
-- ตอน Phase 2 ลบ `receipt-submit/quota/monthly-report` ไปแล้ว — ผมจะรัน `supabase--delete_edge_functions` ให้เพื่อลบจาก deployed runtime ด้วย
+let pendingOTQuery = supabase
+  .from('overtime_requests')
+  .select(otSelect, { count: 'exact', head: true })
+  .eq('status', 'pending');
 
----
+let pendingLeaveQuery = supabase
+  .from('leave_requests')
+  .select(leaveSelect, { count: 'exact', head: true })
+  .eq('status', 'pending');
 
-## 🛡️ ส่วนที่ 3 — Help FAQ Resilience (ทำให้ไม่พังหลังลบ category)
-
-### 3.1 ปัญหาปัจจุบัน
-- `FAQ_CATEGORIES` เป็น **hardcoded array** → ถ้าเพิ่ม/ลบ category ใน DB จะไม่ sync
-- ถ้า user เลือก category ที่ไม่มี FAQ เลย → จะเห็น empty state แต่ไม่รู้ว่าเลือกผิดหรือ DB ว่าง
-- ถ้า DB query fail → fall back to STATIC_FAQS_TH/EN ซึ่งทุกอันถูก label เป็น `'general'` → tab อื่นจะว่างเปล่า
-
-### 3.2 แก้ไข `src/pages/portal/Help.tsx`
-1. **Dynamic categories**: คำนวณ category list จาก `dbFaqs` ที่มีอยู่จริง (`Array.from(new Set(dbFaqs.map(f => f.category)))`) merge กับ static labels
-2. **Auto-hide empty categories**: แสดงเฉพาะ tab ที่มี FAQ จริง + แสดง count ในแต่ละ tab `(N)`
-3. **Better empty states** แยก 3 เคส:
-   - DB ว่าง + ไม่มี static → "ยังไม่มีคำถามในระบบ กรุณาติดต่อ HR"
-   - มี FAQ แต่ search ไม่เจอ → "ไม่พบคำถามที่ตรงกับ '<keyword>' ลองค้นด้วยคำอื่น"
-   - เลือก category ที่ไม่มี → auto-redirect เป็น 'all' + toast แจ้ง
-4. **Reset filter button**: ถ้า no results → ปุ่ม "ล้างการค้นหา" 
-5. **Loading state ที่ดีขึ้น**: skeleton ตาม count จริง (3 → 5 cards)
-
-### 3.3 ไม่แตะ
-- Quick Actions section (ใช้ `getVisibleActions` registry แล้ว — แข็งแรง)
-- Contact card (static)
-- STATIC_FAQS fallback (เก็บไว้กรณี DB error 100%)
-
----
-
-## 🔍 ส่วนที่ 4 — ตรวจ Foreign Key / Reference ที่ค้าง
-
-### 4.1 ผลตรวจ DB (ทำแล้ว)
-- ✅ ไม่มี FK จาก table อื่นชี้กลับเข้า receipt tables  
-- ⚠️ พบ FK เดียว: `receipt_ocr_corrections.corrected_by_employee_id → employees(id) ON DELETE SET NULL` — **ปลอดภัย** (FK ออกไป ไม่ใช่เข้ามา) จะหายไปเมื่อ DROP table
-- ✅ FAQ category='receipts': **ไม่มีอยู่แล้วใน DB** (มีแค่ attendance/general/leave-ot/points) → confirmed clean
-- ⚠️ `bot_commands` 6 rows category='receipt' — ยังค้าง (ผม clean ใน 2.2)
-- ⚠️ `webapp_page_config` 18 rows menu_group='Deposits' — ยังค้าง (clean ใน 2.2)
-
-### 4.2 จะตรวจเพิ่มเติมใน Phase 4
-- Trigger ที่อ้าง receipt/deposit (จาก initial scan: ไม่มี triggers ใน DB เลย — ปลอดภัย)
-- Cron jobs (`get_cron_jobs()`) — confirm ไม่มี receipt/deposit jobs
-- RLS policies orphan
-- Functions ที่ยังอ้าง receipt tables
-
----
-
-## 📋 ส่วนที่ 5 — Smoke Test Guide (สั้น กระชับ)
-
-ผมจะสร้าง **`docs/SMOKE_TEST_PHASE4.md`** มีหัวข้อ:
-
-### A. Build & Type Safety (ในเครื่อง)
-```bash
-bun install
-bunx tsc --noEmit          # ต้องไม่มี error
-bun run build              # build production สำเร็จ
+if (approvalScope === 'self') {
+  pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
+  pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
+} else if (isTeamScope) {
+  pendingOTQuery = pendingOTQuery.eq('employee.branch_id', branchId);
+  pendingLeaveQuery = pendingLeaveQuery.eq('employee.branch_id', branchId);
+}
 ```
 
-### B. Dashboard Smoke Test
-- เปิด `/overview` → เห็น stats ครบ ไม่มี Receipt card
-- เปิด `/dashboard` (admin sidebar) → ไม่มี menu group "Receipts" และ "Deposits"
-- เปิด `/settings/roles` → permission groups ไม่มี "Receipts"/"Deposits"
-- Console: ตรวจว่าไม่มี 404 จาก `*receipt*` หรือ `*deposit*`
+### Fix 3 — Verify ไม่มี regression อื่น
+- `bun run build` → ต้อง pass
+- Deploy `portal-data` → ดู edge logs ว่า boot สำเร็จ
+- เปิด `/p` → home-summary ต้องโหลดได้ทั้ง 3 scopes (self/team/global)
 
-### C. Portal Smoke Test
-- `/portal` → PortalHome render สำเร็จ ไม่มี "ฝากเงิน" ใน bottom nav
-- `/portal/manager-dashboard` (manager role) → ไม่มีการ์ด "ใบฝากเงิน", `totalPending` ถูก
-- `/portal/my-profile` → ไม่มี Google Drive section
-- `/portal/help` → category tabs แสดงเฉพาะที่มีข้อมูลจริง, search ทำงาน, empty state ชัดเจน
-- `/portal/notifications` → ไม่มี toggle `notify_receipts`
+---
 
-### D. LINE Bot Command Test (ผ่าน `/test-bot` หรือ DM จริง)
-ทดสอบว่าคำสั่งเก่าตอบ deprecation ถูกต้อง:
-| ส่ง | คาดหวัง |
+## 🛡️ AI Regression Prevention (สิ่งที่ User ขอ — ป้องกัน AI พังของเดิม)
+
+ผมจะสร้าง **3 ชั้น guardrail** เพื่อกัน AI รอบหน้าไม่ให้พังของเดิม:
+
+### Layer 1: Add `// ⚠️ VERIFIED` comments บน critical functions
+ใส่ comment header ใน:
+- `portal-data/index.ts` → `home-summary` endpoint (เพิ่งซ่อม)
+- `attendance-submit/index.ts` (เคยซ่อมหลายรอบ)
+- `line-webhook/index.ts` → `processTextMessage` dispatcher
+- `command-parser.ts` (มีอยู่แล้ว ✅)
+
+ตามที่ memory `mem://constraints/verified-working-comment-convention` กำหนด
+
+### Layer 2: สร้าง `.lovable/CRITICAL_FILES.md`
+list ไฟล์ห้ามแตะ + reason + รอบล่าสุดที่ verify → AI loops หน้าจะอ่านเป็น context
+
+### Layer 3: Update `SYSTEM_SYNC_CHECKLIST.md`
+เพิ่ม section "Supabase Query Patterns" — กฎ:
+- ห้าม chain `.select()` หลัง `.eq()` (จะ break TS)
+- ใช้ `!inner` hint สำหรับ 1-to-1 embed
+- Cast type อย่างชัดเจนเมื่อ generated types ไม่แม่น
+
+---
+
+## 🔍 Sync Audit (สิ่งที่ User ขอ — เช็คว่าทุกส่วน up-to-date กัน)
+
+หลัง hotfix ผมจะเช็ค 4 จุด sync ที่เสี่ยงตกหล่นจาก Phase 1-4 ที่ลบ Receipt/Deposit:
+
+| จุดที่ตรวจ | วิธีตรวจ |
 |---|---|
-| `/receipt` | "⚠️ ระบบใบเสร็จถูกยกเลิกแล้ว" |
-| `/receiptsummary` | deprecation message |
-| `/businesses` | deprecation message |
-| รูปใบเสร็จ | **ไม่ตอบ** + log ใน `bot_message_logs` |
-| `/help` | ไม่แสดง command receipt/deposit ใน list |
-| `/checkin` | ทำงานปกติ |
+| **Help.tsx FAQ** sync กับ DB categories | grep หา hardcoded 'receipts'/'deposits' string |
+| **App.tsx routes** มี orphan route ไหม | grep `/receipts`, `/deposits` ใน route definitions |
+| **DashboardLayout / PortalLayout** nav links | grep menu items ที่ link ไปหน้าที่ไม่มีแล้ว |
+| **bot_commands** table vs `command-parser.ts` | SQL query เทียบ command_key ในทั้ง 2 ที่ |
+| **CronJobs.tsx** descriptions vs pg_cron jobs จริง | SQL `SELECT jobname FROM cron.job` เทียบกับ description map |
 
-### E. Edge Function Health
-```bash
-# เช็คใน Supabase Cloud > Edge Functions logs
-# ดูว่า portal-data, line-webhook ไม่มี error 
-# "relation receipt_approvers does not exist" / "daily_deposits does not exist"
-```
-
-### F. DB Sanity Queries
-```sql
--- ต้องคืน 0 rows
-SELECT * FROM bot_commands WHERE category IN ('receipt','deposit');
-SELECT * FROM webapp_page_config WHERE menu_group IN ('Receipts','Deposits');
-SELECT table_name FROM information_schema.tables 
-  WHERE table_schema='public' 
-  AND (table_name LIKE '%receipt%' OR table_name LIKE '%deposit%');
-SELECT category, COUNT(*) FROM portal_faqs GROUP BY category;
-```
+ทุกจุดที่เจอ mismatch จะรายงานเป็น **table มี/ไม่มี/แก้แล้ว** ก่อนแก้จริง
 
 ---
 
-## 📝 ลำดับการทำ (atomic, regression-safe)
+## 📋 Regression Checklist (ทำก่อน deploy)
 
-1. **P0 backend fix** (portal-data + line-webhook) → push, ทดสอบว่า 500 หาย
-2. **DB cleanup migration** → tables/bot_commands/webapp_page_config/buckets
-3. **Frontend residue removal** → 8 ไฟล์ตาม 2.1
-4. **Help.tsx dynamic FAQ enhancement**
-5. **สร้าง `docs/SMOKE_TEST_PHASE4.md`**
-6. **รัน typecheck + build verify**
-7. **อัปเดต `.lovable/plan.md`** เป็น Phase 4 complete
+- [ ] `bun run build` pass (no TS errors)
+- [ ] Deploy `portal-data` → edge logs boot OK
+- [ ] เปิด `/p` portal home → ไม่มี 500
+- [ ] Manager login → เห็น team pending counts
+- [ ] Self user login → เห็นแค่ self counts
+- [ ] LINE webhook ยังตอบ /help, /menu, /summary ปกติ
+- [ ] Attendance check-in/out flow ไม่กระทบ
+- [ ] FAQ search ไม่พังหลังลบ 'receipts' category
 
 ---
 
-## ❓ คำถามที่ต้องอนุมัติก่อนเริ่ม
+## 📦 Deliverables
 
-1. **Storage buckets**: drop ทั้งคู่เลย (`deposit-slips` + `receipt-files`) ใช่ไหม? ผมจะ list contents ก่อนยืนยัน
-2. **Cute Quotes 'deposit' option**: ลบทิ้งเลย หรือเก็บไว้เผื่อ deposit feature กลับมาใช้กับ context อื่น?
-3. **`notify_receipts` ใน profile preferences**: ลบ column เลย หรือ deprecate (เก็บ column ไว้ ไม่ render ใน UI)?
-4. **Rebrand `index.html` + `README.md`** จาก "LINE Intern" → "LINE HR" ใน Phase 4 นี้เลย หรือแยก Phase 5?
+1. **Hotfix** `portal-data/index.ts` (3 บรรทัด TS errors)
+2. **Add VERIFIED comments** (4 ไฟล์ critical)
+3. **Create `.lovable/CRITICAL_FILES.md`** (guardrail สำหรับ AI loops หน้า)
+4. **Update `SYSTEM_SYNC_CHECKLIST.md`** (เพิ่ม Supabase query patterns + regression rules)
+5. **Sync audit report** (5 จุดที่ตรวจ + mismatch ที่เจอ)
+6. **Smoke test guide** `docs/SMOKE_TEST_PHASE4.md` (ตามที่ค้างจากรอบก่อน)
 
-ตอบได้สั้นๆ เลยครับ จากนั้นผมจะลุย Phase 4 ให้จบในรอบเดียว ✅
+---
+
+## ❓ คำถามก่อน execute
+
+ขอ confirm 1 ข้อก่อนเริ่ม:
+- **Sync audit** เจอ mismatch → ให้ผม **fix ทันทีในรอบเดียว** หรือ **report กลับมาให้ user ตัดสินใจที่ละจุด**? (ผมแนะนำ fix ทันทีถ้าเป็น dead reference ที่ชัดเจน เช่น route ที่ไม่มี page แล้ว, แต่ถ้าเป็น behavioral change จะถาม)
