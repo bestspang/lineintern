@@ -48,7 +48,7 @@ function grepFile(path, regex) {
   return matches;
 }
 
-function grepDirRecursive(dir, regex, exts = [".ts", ".tsx", ".js", ".mjs"]) {
+function grepDirRecursive(dir, regex, exts = [".ts", ".tsx", ".js", ".mjs"], { skipComments = true } = {}) {
   const hits = [];
   if (!existsSync(dir)) return hits;
   const stack = [dir];
@@ -68,10 +68,13 @@ function grepDirRecursive(dir, regex, exts = [".ts", ".tsx", ".js", ".mjs"]) {
       if (st.isDirectory()) stack.push(full);
       else if (exts.some((e) => name.endsWith(e))) {
         const txt = readFileSync(full, "utf8");
-        if (regex.test(txt)) {
-          for (const line of txt.split("\n")) {
-            if (regex.test(line)) hits.push(`${full}: ${line.trim()}`);
+        for (const line of txt.split("\n")) {
+          if (!regex.test(line)) continue;
+          if (skipComments) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
           }
+          hits.push(`${full}: ${line.trim()}`);
         }
       }
     }
