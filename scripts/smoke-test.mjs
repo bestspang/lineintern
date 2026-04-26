@@ -138,8 +138,10 @@ function testRoutes() {
   if (hits.length === 0) {
     record("B1", "No receipt/deposit routes in App.tsx", "PASS", "");
   } else {
+    const locs = hits.slice(0, 3).map((h) => `${h.file}:${h.line}`).join(", ");
     record("B1", "No receipt/deposit routes in App.tsx", "FAIL",
-      `${hits.length} hit(s): ${hits[0].slice(0, 100)}`);
+      `${hits.length} hit(s): "${hits[0].text.slice(0, 80)}"`, 0,
+      `Open ${locs} and remove the <Route> + lazy import. Phase 2-4 deleted these features (see CRITICAL_FILES.md §Behavioral Invariants #4). Also check src/lib/portal-actions.ts doesn't reference removed paths.`);
   }
 
   // Check src/ for dead imports
@@ -147,21 +149,24 @@ function testRoutes() {
     "src",
     /from\s+["'][^"']*\/(receipts?|deposits?)\b/,
   );
-  // Filter out matches inside scripts/comments etc — just count
   if (importHits.length === 0) {
     record("B2", "No receipt/deposit imports in src/", "PASS", "");
   } else {
+    const locs = importHits.slice(0, 3).map((h) => `${h.file}:${h.line}`).join(", ");
     record("B2", "No receipt/deposit imports in src/", "FAIL",
-      `${importHits.length} import(s) found: ${importHits[0].slice(0, 100)}`);
+      `${importHits.length} import(s) found`, 0,
+      `Open ${locs}. Remove import + the component usage that references the deleted module. If the file itself is dead, delete it.`);
   }
 
   // Portal nav: must have exactly 6 items (per CRITICAL_FILES.md invariant)
   const portalLayout = "src/components/portal/PortalLayout.tsx";
   if (existsSync(portalLayout)) {
-    const txt = readFileSync(portalLayout, "utf8");
-    const hasDeposit = /ฝากเงิน|deposit/i.test(txt);
-    if (hasDeposit) {
-      record("B3", "PortalLayout has no 'ฝากเงิน' nav", "FAIL", "found deposit reference");
+    const matches = grepFile(portalLayout, /ฝากเงิน|deposit/i);
+    if (matches.length > 0) {
+      const locs = matches.slice(0, 2).map((m) => `:${m.line}`).join(", ");
+      record("B3", "PortalLayout has no 'ฝากเงิน' nav", "FAIL",
+        `${matches.length} reference(s)`, 0,
+        `Open ${portalLayout}${locs}. Remove the deposit nav item — bottom nav must stay at exactly 6 items (CRITICAL_FILES.md §P1 invariant).`);
     } else {
       record("B3", "PortalLayout has no 'ฝากเงิน' nav", "PASS", "");
     }
