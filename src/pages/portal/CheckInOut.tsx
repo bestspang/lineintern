@@ -1,3 +1,12 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
+ * Touchpoints: portalApi (check-in/out + GPS validation), attendance-submit edge fn,
+ *              LivenessCamera (lazy-loaded), MediaPipe face verification.
+ * Allowed changes: copy/styling tweaks, new optional badge.
+ * Forbidden: reordering check-in/out flow, removing double-submit guard,
+ *            changing GPS/camera permission retry logic, altering token validation.
+ * Phase 1B verified: skeleton first paint, double-submit guard, lazy MediaPipe.
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

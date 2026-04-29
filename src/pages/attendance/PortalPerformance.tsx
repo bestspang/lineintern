@@ -1,3 +1,12 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — Phase 1B/1C portal_performance_events viewer
+ * Touchpoints: portal_performance_events table, webapp_page_config (9 roles),
+ *              OpsCenter "Open Portal Performance" button.
+ * Allowed changes: additive metric cards, new filter, new sort option.
+ * Forbidden: changing the SQL aggregation logic (p50/p75/p95), removing
+ *            error-rate calculation, breaking the read-only contract.
+ * Phase 1C scope cap: NO Export CSV, NO branch filter, NO trend chart yet.
+ */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

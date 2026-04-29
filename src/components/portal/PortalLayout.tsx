@@ -1,3 +1,12 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
+ * Touchpoints: PortalContext (employee + isManager), LiffContext, useFavorites,
+ *              navItems (6 items, supervisor role IS intentional — keep).
+ * Allowed changes: badge dot tweaks, copy edits, locale toggle styling.
+ * Forbidden: adding/removing nav items without user OK (contract = exactly 6),
+ *            changing roles array on Approvals (manager+supervisor+admin+owner),
+ *            altering the deferred 200ms unread-count fetch (perf-critical).
+ */
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Clock, Calendar, FileText, User, CheckCircle, Coins, Timer, RefreshCw, Loader2, Globe, Bell } from 'lucide-react';
