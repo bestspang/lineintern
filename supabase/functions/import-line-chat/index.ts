@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -178,6 +179,19 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: branch-report ingest — restricted to management roles.
+    try {
+      await requireRole(
+        req,
+        ['admin', 'owner', 'hr', 'manager', 'executive'],
+        { functionName: 'import-line-chat' },
+      );
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);

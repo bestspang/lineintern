@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,19 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: admin/owner only — backfill writes memory items.
+    try {
+      await requireRole(
+        req,
+        ['admin', 'owner'],
+        { functionName: 'memory-backfill' },
+      );
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const body = await req.json().catch(() => ({}));
     const { days_back = 7, limit = 200, group_id } = body;
 
