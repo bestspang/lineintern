@@ -221,14 +221,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: high-impact mass LINE send — admin/owner/hr only.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner', 'hr'],
         { functionName: 'broadcast-send' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
