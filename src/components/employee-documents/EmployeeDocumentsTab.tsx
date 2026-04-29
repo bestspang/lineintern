@@ -235,8 +235,30 @@ export function EmployeeDocumentsTab({ employeeId, autoOpenUpload, onAutoOpenCon
                   </div>
                 </TableCell>
                 <TableCell className="text-right space-x-1">
+                  {(() => {
+                    const meta = (d.metadata ?? {}) as Record<string, unknown>;
+                    const history = Array.isArray((meta as any).confirm_history)
+                      ? ((meta as any).confirm_history as ConfirmHistoryEntry[])
+                      : [];
+                    const showActivity = history.length > 0 || d.upload_status !== "uploaded";
+                    return showActivity ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setActivityTarget(d)}
+                        title="ดูประวัติการยืนยัน"
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                    ) : null;
+                  })()}
                   {d.upload_status === "uploaded" ? (
-                    <Button size="sm" variant="ghost" onClick={() => downloadDoc(d)} disabled={downloadingId === d.id} title="ดาวน์โหลด">
+                    <Button
+                      size="sm" variant="ghost"
+                      onClick={() => downloadDoc(d)}
+                      disabled={downloadingId === d.id || actionsLocked}
+                      title={actionsLocked ? lockedTitle : "ดาวน์โหลด"}
+                    >
                       {downloadingId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     </Button>
                   ) : (
@@ -250,13 +272,15 @@ export function EmployeeDocumentsTab({ employeeId, autoOpenUpload, onAutoOpenCon
                         <Button
                           size="sm" variant="ghost"
                           onClick={() => { setReplaceOldId(d.id); setUploadOpen(true); }}
-                          title="แทนที่ด้วยเอกสารใหม่"
+                          disabled={actionsLocked}
+                          title={actionsLocked ? lockedTitle : "แทนที่ด้วยเอกสารใหม่"}
                         ><Replace className="h-4 w-4" /></Button>
                       )}
                       <Button
                         size="sm" variant="ghost"
                         onClick={() => setArchiveTarget(d)}
-                        title={d.upload_status === "uploaded" ? "เก็บถาวร" : "ลบรายการที่ค้าง"}
+                        disabled={actionsLocked}
+                        title={actionsLocked ? lockedTitle : (d.upload_status === "uploaded" ? "เก็บถาวร" : "ลบรายการที่ค้าง")}
                       ><Archive className="h-4 w-4" /></Button>
                     </>
                   )}
@@ -292,6 +316,17 @@ export function EmployeeDocumentsTab({ employeeId, autoOpenUpload, onAutoOpenCon
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DocumentActivityLogDialog
+        open={!!activityTarget}
+        onOpenChange={(v) => !v && setActivityTarget(null)}
+        documentTitle={activityTarget?.title ?? ""}
+        history={
+          activityTarget && Array.isArray((activityTarget.metadata as any)?.confirm_history)
+            ? ((activityTarget.metadata as any).confirm_history as ConfirmHistoryEntry[])
+            : []
+        }
+      />
     </Card>
   );
 }
