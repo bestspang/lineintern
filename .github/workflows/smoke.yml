@@ -16,14 +16,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          # npm cache keyed on the lockfile hash — auto-busts on any lockfile change.
+          # `npm ci` still verifies integrity hashes against cached tarballs, so
+          # reproducibility is preserved.
           cache: "npm"
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        # --legacy-peer-deps: react-day-picker@8 peer-requires date-fns v2/v3 but the
-        # project uses date-fns@4 (required by date-fns-tz@3 for Asia/Bangkok timezone
-        # helpers — Core memory rule). Local dev uses bun which is more lenient.
-        # The .npmrc at repo root sets the same flag for environments outside CI.
-        run: npm ci --legacy-peer-deps
+      - name: Remove stray bun artifacts (defensive)
+        run: |
+          # GH runners are clean, but if any future caching layer ever restores
+          # a bun-managed tree, npm arborist crashes with
+          # "Cannot read properties of null (reading 'matches')" — we hit this
+          # exact failure once. Cheap insurance.
+          if [ -d node_modules/.bun ]; then
+            echo "::warning::Removing stale node_modules/.bun before npm ci"
+            rm -rf node_modules/.bun node_modules/.package-lock.json
+          fi
+          rm -rf node_modules/.cache
 
       - name: Prepare smoke artifact dir
         if: always()
@@ -32,6 +41,62 @@ jobs:
           # Pre-create placeholder so later steps never fail on missing files,
           # even if a prior step crashes before tests can write output.
           : > smoke-artifacts/smoke-output.txt
+
+      - name: Install dependencies
+        id: install
+        # --legacy-peer-deps: react-day-picker@8 peer-requires date-fns v2/v3 but the
+        # project uses date-fns@4 (required by date-fns-tz@3 for Asia/Bangkok timezone
+        # helpers — Core memory rule). Local dev uses bun which is more lenient.
+        # The .npmrc at repo root sets the same flag for environments outside CI.
+        run: |
+          set -o pipefail
+          npm ci --legacy-peer-deps --no-audit --no-fund 2>&1 \
+            | tee smoke-artifacts/npm-install.log
+
+      - name: Diagnose install failure
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          {
+            echo "## npm ci failed — diagnostic dump"
+            echo ""
+            echo "### Missing / Invalid lockfile entries"
+            echo '```'
+            grep -E '^npm error (Missing|Invalid):' smoke-artifacts/npm-install.log \
+              | sed 's/^npm error //' | sort -u | head -200 \
+              || echo "(none parsed)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Copy the most recent npm debug log into artifacts for download.
+          LOG_DIR="$HOME/.npm/_logs"
+          if [ -d "$LOG_DIR" ]; then
+            LATEST=$(ls -1t "$LOG_DIR"/*-debug-0.log 2>/dev/null | head -1 || true)
+            if [ -n "$LATEST" ]; then
+              cp "$LATEST" smoke-artifacts/npm-debug.log
+              echo "Copied $LATEST → smoke-artifacts/npm-debug.log"
+              {
+                echo ""
+                echo "### Tail of npm debug log (last 80 lines)"
+                echo '```'
+                tail -80 "$LATEST"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Verify lockfile completeness (dry-run)
+        # Re-resolves the lockfile against package.json without touching the
+        # real node_modules. Fails fast if anything drifted (the failure we
+        # just fixed would have surfaced here, with parsed Missing/Invalid
+        # output, instead of silently masking).
+        run: |
+          set -o pipefail
+          VERIFY_DIR="/tmp/npm-verify-$$"
+          mkdir -p "$VERIFY_DIR"
+          npm ci --legacy-peer-deps --ignore-scripts --dry-run \
+            --prefix "$VERIFY_DIR" --cache "/tmp/npm-cache-$$" 2>&1 \
+            | tee smoke-artifacts/npm-verify.log | tail -20
+          rm -rf "$VERIFY_DIR" "/tmp/npm-cache-$$"
 
       - name: Run smoke tests (quick)
         id: smoke
