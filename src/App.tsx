@@ -57,6 +57,7 @@ const SessionExpired = lazy(() => import("./pages/SessionExpired"));
 const Attendance = lazy(() => import("./pages/Attendance"));
 const AttendanceEmployees = lazy(() => import("./pages/attendance/Employees"));
 const EmployeeDetail = lazy(() => import("./pages/attendance/EmployeeDetail"));
+const EmployeeDocuments = lazy(() => import("./pages/attendance/EmployeeDocuments"));
 const AttendanceBranches = lazy(() => import("./pages/attendance/Branches"));
 const AttendanceLogs = lazy(() => import("./pages/attendance/Logs"));
 const AttendanceSummaries = lazy(() => import("./pages/attendance/Summaries"));
@@ -266,6 +267,7 @@ const App = () => (
                         <Route path="/profile-sync-health" element={<ProfileSyncHealth />} />
                         <Route path="/attendance/dashboard" element={<AttendanceDashboard />} />
                         <Route path="/attendance/employees" element={<AttendanceEmployees />} />
+                        <Route path="/attendance/employee-documents" element={<EmployeeDocuments />} />
                         <Route path="/attendance/employees/:id" element={<EmployeeDetail />} />
                         <Route path="/attendance/employees/:id/history" element={<EmployeeHistory />} />
                         <Route path="/attendance/employees/:id/settings" element={<EmployeeSettings />} />
