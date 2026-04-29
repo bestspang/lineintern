@@ -673,6 +673,8 @@ export default function EmployeeDocuments() {
               loading={isFetchingNextPage}
               onLoadMore={() => fetchNextPage()}
               sentinelRef={sentinelRef}
+              hasError={isFetchNextPageError}
+              error={error}
             />
           </>
         ) : (
