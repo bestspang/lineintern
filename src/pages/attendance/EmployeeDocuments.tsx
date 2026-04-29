@@ -244,7 +244,13 @@ export default function EmployeeDocuments() {
   const totalCount = pageData?.pages[0]?.count ?? 0;
 
   // KPI counts
-  const { data: kpiRows = [] } = useQuery({
+  const {
+    data: kpiRows = [],
+    isError: kpiIsError,
+    error: kpiError,
+    refetch: refetchKpi,
+    isFetching: kpiIsFetching,
+  } = useQuery({
     queryKey: ["employee-documents-kpi", branchId],
     queryFn: async () => {
       let q = supabase
