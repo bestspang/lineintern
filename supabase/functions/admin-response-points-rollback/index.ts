@@ -71,6 +71,21 @@ serve(async (req) => {
       total_reversed: result.total_reversed
     });
 
+    await writeAuditLog(supabase, {
+      functionName: 'admin-response-points-rollback',
+      actionType: 'rollback',
+      resourceType: 'points',
+      performedByUserId: actorUserId,
+      callerRole: actorRole,
+      reason: rollbackReason,
+      metadata: {
+        date: targetDate,
+        processed_count: result.processed_count,
+        affected_employees: result.affected_employees?.length ?? 0,
+        total_reversed: result.total_reversed,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
