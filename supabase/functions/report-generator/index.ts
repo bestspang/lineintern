@@ -1053,6 +1053,23 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { groupId: requestedGroupId, type, messageLimit } = body;
 
+    // Phase 0A: HTTP-invoked admin reports require role check.
+    // The 'auto_summary' type is invoked internally by line-webhook (service role),
+    // so we skip the human role guard for that path only.
+    if (type !== 'auto_summary') {
+      try {
+        await requireRole(
+          req,
+          ['admin', 'owner', 'hr', 'manager', 'executive'],
+          { functionName: 'report-generator' },
+        );
+      } catch (e) {
+        const r = authzErrorResponse(e, corsHeaders);
+        if (r) return r;
+        throw e;
+      }
+    }
+
     // === HANDLE AUTO-SUMMARY REQUEST ===
     if (type === 'auto_summary' && requestedGroupId) {
       console.log(`[report-generator] Auto-summary for group ${requestedGroupId}`);
