@@ -28,6 +28,26 @@ function timingSafeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
+/**
+ * Phase 0B — local role→priority ladder (mirrors public.get_user_role_priority +
+ * the can_view_employee_by_priority numeric scale used in employee_roles.priority).
+ * Higher number = more authority.
+ */
+function roleToPriority(role: string | null | undefined): number {
+  switch ((role ?? '').toLowerCase()) {
+    case 'owner': return 10;
+    case 'hr': return 9;
+    case 'admin': return 8;
+    case 'executive': return 5;
+    case 'manager': return 5;
+    case 'moderator': return 1;
+    case 'field': return 1;
+    case 'user': return 0;
+    case 'employee': return 0;
+    default: return 0;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
