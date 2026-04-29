@@ -2075,6 +2075,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          upload_status: string
           uploaded_by_employee_id: string | null
           uploaded_by_user_id: string | null
           visibility: string
@@ -2098,6 +2099,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          upload_status?: string
           uploaded_by_employee_id?: string | null
           uploaded_by_user_id?: string | null
           visibility?: string
@@ -2121,6 +2123,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          upload_status?: string
           uploaded_by_employee_id?: string | null
           uploaded_by_user_id?: string | null
           visibility?: string
@@ -6175,6 +6178,7 @@ export type Database = {
           status: string | null
           title: string | null
           updated_at: string | null
+          upload_status: string | null
           uploaded_by_employee_id: string | null
           uploaded_by_user_id: string | null
           visibility: string | null
@@ -6199,6 +6203,7 @@ export type Database = {
           status?: string | null
           title?: string | null
           updated_at?: string | null
+          upload_status?: string | null
           uploaded_by_employee_id?: string | null
           uploaded_by_user_id?: string | null
           visibility?: string | null
@@ -6223,6 +6228,7 @@ export type Database = {
           status?: string | null
           title?: string | null
           updated_at?: string | null
+          upload_status?: string | null
           uploaded_by_employee_id?: string | null
           uploaded_by_user_id?: string | null
           visibility?: string | null
