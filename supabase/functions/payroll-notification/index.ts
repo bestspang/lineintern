@@ -109,6 +109,16 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A: HTTP-invoked path requires admin/owner/hr.
+    // Cron path (if any is added later) should set CRON_SECRET and short-circuit before this.
+    try {
+      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payroll-notification' });
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const { period_id, employee_ids, action } = await req.json();
 
     if (action !== "send_payroll_notification") {
