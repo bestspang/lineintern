@@ -125,11 +125,15 @@ function check1_routesVsSnapshot() {
   // Snapshot lists "/portal/" with trailing slash — also accept without
   declared.forEach(p => declared.add(p.replace(/\/$/, "")));
 
-  // Ignored: auth + error + wildcard + non-app paths
+  // Ignored: auth + error + wildcard + non-app paths + nested settings sub-routes
   const ignoredExact = new Set(["*", "/", "/auth", "/reset-password",
     "/error/network", "/error/server", "/error/session-expired",
     "/employee-menu/:token", "/employee-menu", "/p/:token", "/checkin/:token"]);
   const ignoredPrefixes = ["/error/", "/employee-menu", "/p/", "/checkin/"];
+  // Settings page uses internal nested routes (api-keys, users, roles, etc.)
+  // — these are children of /settings/* which IS in snapshot
+  const settingsSubRoutes = new Set(["api-keys", "users", "roles", "cute-quotes",
+    "ai-cross-group", "safety", "integrations", "alerts", "/groups"]);
 
   const drift = [...found]
     .map(norm)
