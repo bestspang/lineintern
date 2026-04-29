@@ -370,24 +370,37 @@ function testRegistrySync() {
     portalBlockStart !== -1 && portalBlockEnd !== -1 &&
     lineNo > portalBlockStart && lineNo < portalBlockEnd;
 
+  // Routes intentionally excluded from snapshot comparison (legacy redirects, mobile-only)
+  const EXCLUDED_FROM_SNAPSHOT = new Set([
+    "/attendance",                     // legacy redirect
+    "/attendance/flexible-day-off",    // mobile-only legacy redirect
+  ]);
+
   const adminRoutes = new Set(
     routesWithLine
-      .filter(r => !r.path.startsWith("/portal"))
+      .filter(r => !r.path.startsWith("/portal/"))     // exclude /portal/* nested routes (note trailing slash so /portal-faq-admin stays)
+      .filter(r => r.path !== "/portal")               // exclude bare /portal if any
       .filter(r => !r.path.startsWith("/liff"))
       .filter(r => !r.path.startsWith("/p/"))
       .filter(r => r.path !== "/auth")
       .filter(r => !r.path.startsWith("/error"))
       .filter(r => r.path !== "/employee-menu")
       .filter(r => r.path !== "/reset-password")
-      .filter(r => r.path !== "/attendance" && r.path !== "/attendance/flexible-day-off") // mobile-only legacy redirects
-      .filter(r => !r.path.includes(":")) // dynamic detail pages — covered by parent
-      .filter(r => !isInPortalBlock(r.line)) // exclude routes nested inside <Route path="/portal/*">
+      .filter(r => !EXCLUDED_FROM_SNAPSHOT.has(r.path))
+      .filter(r => !r.path.includes(":"))              // dynamic detail pages — covered by parent
+      .filter(r => !isInPortalBlock(r.line))           // exclude routes nested inside <Route path="/portal/*">
       .map(r => r.path)
   );
 
   const snapshotAdmin = new Set(snapshot.admin_routes || []);
   const missingFromSnapshot = [...adminRoutes].filter(p => !snapshotAdmin.has(p));
-  const extraInSnapshot = [...snapshotAdmin].filter(p => !adminRoutes.has(p) && !p.includes(":") && p !== "/" && p !== "/overview");
+  const extraInSnapshot = [...snapshotAdmin].filter(p =>
+    !adminRoutes.has(p) &&
+    !p.includes(":") &&
+    p !== "/" &&
+    p !== "/overview" &&
+    !EXCLUDED_FROM_SNAPSHOT.has(p)                     // tolerate intentionally-excluded routes in snapshot
+  );
 
   if (missingFromSnapshot.length === 0) {
     record("F3", "App.tsx admin routes match snapshot", "PASS", `${adminRoutes.size} routes`);
