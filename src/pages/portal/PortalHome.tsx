@@ -180,8 +180,10 @@ export default function PortalHome() {
     if (locale === 'th') {
       return `${hours} ชม. ${minutes} นาที`;
     }
-    return `${hours}h ${minutes}m`;
   };
+
+  // Mark first render of portal home (after initial mount + employee resolved)
+  if (employee?.id) perfMark('portal_home_first_render');
 
   return (
     <div className="space-y-6">
