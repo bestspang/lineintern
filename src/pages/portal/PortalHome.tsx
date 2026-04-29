@@ -10,6 +10,7 @@ import { LogIn, LogOut, Coins } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { portalApi } from '@/lib/portal-api';
+import { perfMark, logPortalEvent } from '@/lib/portal-perf';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -63,39 +64,22 @@ export default function PortalHome() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch pending requests count for badge
-  const { data: pendingCounts } = useQuery({
-    queryKey: ['pending-counts', employee?.id],
+  // Fetch pending day-off count (NOT covered by home-summary which only has OT+leave).
+  // Phase 1B: removed redundant my-pending-ot + my-leave-requests queries — derived from homeSummary instead.
+  const { data: pendingDayOffCount } = useQuery({
+    queryKey: ['pending-dayoff-count', employee?.id],
     queryFn: async () => {
-      if (!employee?.id) return { ot: 0, dayoff: 0, leave: 0 };
-      const [otResult, dayOffResult, leaveResult] = await Promise.all([
-        portalApi<any[]>({
-          endpoint: 'my-pending-ot-requests',
-          employee_id: employee.id
-        }),
-        portalApi<any[]>({
-          endpoint: 'my-pending-dayoff-requests',
-          employee_id: employee.id
-        }),
-        portalApi<any[]>({
-          endpoint: 'my-leave-requests',
-          employee_id: employee.id,
-          params: { limit: 50 }
-        })
-      ]);
-      // Filter leave for pending only
-      const pendingLeaves = (leaveResult.data || []).filter((l: any) => l.status === 'pending');
-      return {
-        ot: otResult.data?.length || 0,
-        dayoff: dayOffResult.data?.length || 0,
-        leave: pendingLeaves.length
-      };
+      if (!employee?.id) return 0;
+      const dayOffResult = await portalApi<any[]>({
+        endpoint: 'my-pending-dayoff-requests',
+        employee_id: employee.id,
+      });
+      return dayOffResult.data?.length || 0;
     },
     enabled: !!employee?.id,
     refetchInterval: 60000,
+    staleTime: 30_000,
   });
-
-  const totalPending = (pendingCounts?.ot || 0) + (pendingCounts?.dayoff || 0) + (pendingCounts?.leave || 0);
 
   // Fetch home summary data using useQuery
   const { data: homeSummary, isLoading: isLoadingSummary } = useQuery({
@@ -120,7 +104,29 @@ export default function PortalHome() {
     },
     enabled: !!employee?.id,
     refetchInterval: 60000, // Refresh every minute
+    staleTime: 60_000,
   });
+
+  // Mark portal_first_action_available once homeSummary first arrives.
+  useEffect(() => {
+    if (homeSummary && employee?.id) {
+      perfMark('portal_first_action_available');
+      logPortalEvent({
+        event_name: 'portal_first_action_available',
+        employee_id: employee.id,
+        branch_id: employee.branch_id,
+      });
+    }
+  }, [homeSummary, employee?.id, employee?.branch_id]);
+
+  // Pending counts shown on Work History badge (consolidated from homeSummary + dayoff query)
+  const pendingCounts = useMemo(() => ({
+    ot: homeSummary?.pendingApprovals?.overtime || 0,
+    leave: homeSummary?.pendingApprovals?.leave || 0,
+    dayoff: pendingDayOffCount || 0,
+  }), [homeSummary, pendingDayOffCount]);
+
+  const totalPending = pendingCounts.ot + pendingCounts.leave + pendingCounts.dayoff;
 
   // Derived state from homeSummary
   const pointBalance = homeSummary?.points?.current_balance || 0;
