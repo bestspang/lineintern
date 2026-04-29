@@ -44,7 +44,7 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
 
   // Phase 1A.3 — re-run validation on every render so the submit button stays in sync.
   const fileValidation = useMemo(() => (file ? validateDocumentFile(file) : null), [file]);
-  const fileInvalidReason = fileValidation && !fileValidation.ok ? fileValidation.reason : null;
+  const fileInvalidReason = fileValidation && fileValidation.ok === false ? fileValidation.reason : null;
 
   const reset = () => {
     setDocType("employment_contract"); setTitle(""); setDescription("");
@@ -55,7 +55,7 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
   const handleFile = (f: File | null) => {
     if (!f) { setFile(null); return; }
     const v = validateDocumentFile(f);
-    if (!v.ok) {
+    if (v.ok === false) {
       toast.error(v.reason);
       return;
     }
