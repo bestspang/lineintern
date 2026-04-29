@@ -165,8 +165,12 @@ serve(async (req) => {
 
   try {
     // Phase 0A: backfill jobs are admin/owner/hr only.
+    let callerUserId: string | null = null;
+    let callerRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'branch-report-backfill' });
+      const r = await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'branch-report-backfill' });
+      callerUserId = r.userId;
+      callerRole = r.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
