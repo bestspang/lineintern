@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { APP_BUILD_STAMP } from "@/lib/app-version";
 
 type Range = "1h" | "24h" | "7d";
 
@@ -445,6 +446,8 @@ export default function PortalPerformance() {
           )}
         </CardContent>
       </Card>
+
+      <p className="text-[10px] text-muted-foreground text-center pt-2">build {APP_BUILD_STAMP}</p>
     </div>
   );
 }
