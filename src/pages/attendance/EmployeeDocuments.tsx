@@ -158,7 +158,16 @@ export default function EmployeeDocuments() {
             {isLoading ? (
               <TableRow><TableCell colSpan={8} className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin inline" /></TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">ไม่พบเอกสาร</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <span>ไม่พบเอกสาร</span>
+                    <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" /> เลือกพนักงานเพื่ออัปโหลดเอกสาร
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : rows.map((r: any) => (
               <TableRow key={r.id}>
                 <TableCell className="font-medium">{r.employees?.full_name || "-"}</TableCell>
@@ -196,6 +205,8 @@ export default function EmployeeDocuments() {
           </TableBody>
         </Table>
       </Card>
+
+      <SelectEmployeeForUploadDialog open={pickerOpen} onOpenChange={setPickerOpen} />
     </div>
   );
 }
