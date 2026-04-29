@@ -242,8 +242,9 @@ serve(async (req) => {
       console.error("[health-check] Failed to log health check:", e);
     }
 
-    // Build response
-    const response = {
+    // Build response — full payload only for authorized callers (cron / monitoring).
+    // Anonymous callers receive a minimal status to avoid information disclosure.
+    const fullResponse = {
       status: overallStatus,
       environment: APP_ENV,
       timestamp: new Date().toISOString(),
@@ -256,23 +257,38 @@ serve(async (req) => {
       },
     };
 
-    return new Response(JSON.stringify(response, null, 2), {
-      status: overallStatus === "down" ? 503 : 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const publicResponse = {
+      status: overallStatus,
+      timestamp: fullResponse.timestamp,
+    };
+
+    return new Response(
+      JSON.stringify(isAuthorized ? fullResponse : publicResponse, null, 2),
+      {
+        status: overallStatus === "down" ? 503 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
 
   } catch (error) {
     console.error("[health-check] Critical error:", error);
-    
+
+    const errorTimestamp = new Date().toISOString();
+    const fullError = {
+      status: "down" as const,
+      environment: APP_ENV,
+      timestamp: errorTimestamp,
+      totalResponseTime: Date.now() - startTime,
+      error: String(error),
+      checks,
+    };
+    const publicError = {
+      status: "down" as const,
+      timestamp: errorTimestamp,
+    };
+
     return new Response(
-      JSON.stringify({
-        status: "down",
-        environment: APP_ENV,
-        timestamp: new Date().toISOString(),
-        totalResponseTime: Date.now() - startTime,
-        error: String(error),
-        checks,
-      }, null, 2),
+      JSON.stringify(isAuthorized ? fullError : publicError, null, 2),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
