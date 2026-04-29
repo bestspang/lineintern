@@ -1,105 +1,76 @@
-## ปัญหา (Confirmed)
-- LINE webhook URL ปัจจุบัน: `https://bjzzqfzgnslefqhnsmla.supabase.co/...` (project เก่า)
-- Project ที่ active อยู่: `phhxdgaiwgaiuecvfjgj` (ที่ Lovable connect)
-- ผลกระทบ: ตั้งแต่ 5/3 ข้อมูล LINE ทุกตัว (messages, attendance_logs, tokens, points) ไหลเข้า project เก่า → DB ปัจจุบันว่างเปล่า
 
-## เป้าหมาย
-1. สร้างระบบตรวจ + ยืนยัน webhook URL (manual one-click + cron daily + health endpoint)
-2. ดึงข้อมูลที่ค้างใน project เก่า (5/3 → ปัจจุบัน) กลับมา merge
+## Root Cause ที่เพิ่งเจอ
 
----
+`supabase/config.toml` มีแค่บรรทัดเดียว (`project_id`) — **ไม่มี config block สำหรับ `line-webhook`** → Supabase ใช้ default `verify_jwt = true` → LINE ยิง webhook มาโดยไม่มี Authorization header → ถูก gateway reject ด้วย **401 Unauthorized** ก่อน code ของเราจะรันด้วยซ้ำ
 
-## Part A: Webhook Verification System
+นี่คือสาเหตุที่:
+- LINE Console verify ใหม่ → fail (URL ใหม่)
+- URL เก่า (`bjzzqfzgnslefqhnsmla`) ผ่านได้ → เพราะ project นั้นตั้ง `verify_jwt = false` ไว้แล้ว
+- Project ปัจจุบัน "headless" มาตลอด → ต่อให้ webhook ชี้มา ข้อมูลก็เข้าไม่ได้
 
-### A1. Edge Function ใหม่: `verify-line-webhook`
-เรียก LINE Messaging API endpoint:
+## Part 1: แก้ Webhook ให้ Verify ผ่าน (Critical, ก่อน Part B)
+
+### 1.1 อัพเดท `supabase/config.toml`
+เพิ่ม block:
+```toml
+project_id = "phhxdgaiwgaiuecvfjgj"
+
+[functions.line-webhook]
+verify_jwt = false
+
+[functions.attendance-submit]
+verify_jwt = false
+
+[functions.attendance-validate-token]
+verify_jwt = false
+
+[functions.employee-menu-validate]
+verify_jwt = false
 ```
-GET https://api.line.me/v2/bot/channel/webhook/endpoint
-Authorization: Bearer ${LINE_CHANNEL_ACCESS_TOKEN}
-```
-- เปรียบเทียบ `endpoint` ที่ได้กับ expected URL: `https://phhxdgaiwgaiuecvfjgj.supabase.co/functions/v1/line-webhook`
-- ถ้าไม่ตรง → log alert + return `{ ok: false, current, expected, mismatch: true }`
-- ถ้าตรง → ยิง `POST /v2/bot/channel/webhook/test` เพื่อ verify จริงว่า LINE call ผ่าน → return `{ ok: true, success: true, statusCode, reason }`
-- บันทึกผลลง table ใหม่ `webhook_verification_logs` (id, checked_at, current_url, expected_url, is_match, test_success, test_status_code, raw_response)
+(เพิ่ม `verify_jwt = false` ให้ทุก endpoint ที่ public-facing รับ external traffic — LINE webhook + attendance form + LIFF)
 
-### A2. Migration: `webhook_verification_logs`
-Additive only. RLS: admin/owner read.
+### 1.2 ตรวจ signature handler ใน `line-webhook/index.ts`
+- LINE verify ส่ง POST body `{"events":[],"destination":"..."}` พร้อม header `x-line-signature`
+- Code ต้อง return **HTTP 200** ภายใน 1 วิ ไม่ว่า signature จะตรงหรือไม่ (LINE verify จะ reject ถ้าได้ status อื่น)
+- ผมจะอ่าน signature/body validation block แล้วยืนยันว่า empty events array ไม่ทำให้ throw
 
-### A3. UI: ปุ่ม "ตรวจ Webhook" ใน `Integrations.tsx` (มีอยู่แล้ว)
-- เพิ่ม Card "LINE Webhook Verification"
-- ปุ่ม "ตรวจสด" → invoke `verify-line-webhook` → แสดงผล badge เขียว/แดง + URL ปัจจุบัน + URL ที่ควรเป็น + last test result
-- แสดง history 10 รายการล่าสุดจาก `webhook_verification_logs`
-- ถ้า mismatch แสดงคำแนะนำ + deep link ไปหน้า LINE Developers Console
+### 1.3 ขั้นตอนหลัง deploy
+1. รอ ~1 นาที ให้ config redeploy
+2. คุณกด **Verify** ใน LINE Console อีกครั้ง → ต้องเป็น "Success"
+3. กด **"Verify Now"** ใน app (Settings → Integrations) → ต้องเขียวทุก field
+4. ส่งข้อความทดสอบใน LINE → เช็คใน DB ว่ามี row ใหม่ใน `messages` table
 
-### A4. Cron daily verification
-ตั้ง pg_cron รัน `verify-line-webhook` ทุกวัน 09:00 Bangkok time
-- ถ้า mismatch หรือ test fail → push LINE alert ไป admin group (ใช้ pattern ที่มีอยู่ใน `line-webhook-error-routing` memory)
+## Part 2: Data Recovery (Part B จาก plan เดิม)
 
-### A5. Health endpoint enhancement
-อัพเดท `health` edge function ให้รวม:
-- `webhook_url_match: bool`
-- `last_webhook_verification: timestamp`
-- `last_attendance_log_at`, `last_message_at` (เพื่อ detect stagnation)
-แสดงใน `HealthMonitoring.tsx` page
+หลัง Part 1 ผ่านแล้ว → เริ่มดึงข้อมูล 5/3 → ปัจจุบัน จาก `bjzzqfzgnslefqhnsmla`
 
----
+ขอเลือก 1 ใน 2:
+- **(A) แนะนำ**: คุณส่ง **service_role key** ของ project เก่าให้ผ่าน `add_secret` (ชื่อ `OLD_PROJECT_SERVICE_KEY`) → ผมสร้าง edge function `migrate-old-project-data`:
+  - Dry-run ก่อน → แสดงจำนวน row ต่อ table จะ insert
+  - Tables: `messages`, `attendance_logs`, `attendance_tokens`, `point_transactions`, `happy_points`, `users`, `groups`
+  - Conflict strategy: skip ถ้า unique key (`line_message_id`, `(employee_id, server_time)`, `line_user_id`) ซ้ำ
+  - หลัง confirm → insert จริง + recompute streak/summary
+  - ลบ secret ทิ้งหลังเสร็จ
+- **(B)**: คุณ export CSV จาก dashboard project เก่าเอง แล้ว upload → ผม import
 
-## Part B: Data Recovery from Old Project
+### หา service_role key ของ project เก่า
+1. ไป https://supabase.com/dashboard/project/bjzzqfzgnslefqhnsmla/settings/api
+2. ส่วน "Project API keys" → copy `service_role` (ลับ ห้ามเผยแพร่)
+3. ส่งให้ผมผ่าน secret prompt ที่ผมจะเปิดให้
 
-### B1. ต้องการจากผู้ใช้ก่อนเริ่ม
-ผมเข้าถึง project `bjzzqfzgnslefqhnsmla` ไม่ได้โดยตรง (ไม่ใช่ Lovable Cloud ของ project นี้) — ต้องใช้ **service_role key** ของ project เก่า
-
-ขอ 1 ใน 2:
-- **(a)** ผู้ใช้แปะ service_role key ของ `bjzzqfzgnslefqhnsmla` ให้ ผมจะ store ชั่วคราวเป็น secret `OLD_PROJECT_SERVICE_KEY` แล้ว run script ดึง + merge + ลบ secret ทิ้งหลังเสร็จ
-- **(b)** ผู้ใช้ export CSV จาก dashboard ของ project เก่า (tables: `messages`, `attendance_logs`, `attendance_tokens`, `point_transactions`, `happy_points`, `users`, `groups`) แล้ว upload ให้ ผม import เข้า project ปัจจุบัน
-
-### B2. Migration script (one-shot edge function `migrate-old-project-data`)
-- ดึงข้อมูลจาก 5/3 → now ของ tables ข้างต้นจาก project เก่า ผ่าน REST API (ใช้ service_role)
-- Conflict strategy:
-  - `messages`: insert ถ้า `line_message_id` ไม่ซ้ำ
-  - `attendance_logs`: insert ถ้า (employee_id, server_time) ไม่ซ้ำ
-  - `attendance_tokens`: skip (ไม่มีประโยชน์ย้อนหลัง)
-  - `point_transactions`: insert + recompute `happy_points.point_balance` หลัง merge
-  - `users`/`groups`: upsert ตาม `line_user_id`/`line_group_id`
-- Dry-run mode ก่อน → แสดงจำนวน row จะ insert per table ให้ผู้ใช้ approve
-- ลง audit log ทุกครั้ง
-
-### B3. Post-migration verification
-- เทียบ row count ก่อน/หลัง
-- Recompute streaks (เรียก `point-streak-calculator` สำหรับช่วง 5/3 → now)
-- Recompute attendance summaries (เรียก `attendance-snapshot-update` per missing date)
-
----
-
-## Part C: Order of Execution
-1. **Apply Part A ทั้งหมด** (verification system) — additive ปลอดภัย
-2. **ผู้ใช้ใช้ปุ่ม "ตรวจสด" ครั้งแรก** เพื่อ confirm mismatch
-3. **ผู้ใช้แก้ webhook URL ใน LINE Console** เป็น `https://phhxdgaiwgaiuecvfjgj.supabase.co/functions/v1/line-webhook` แล้วกด Verify
-4. **กดตรวจสดอีกครั้ง** ใน app → ต้องเป็นเขียว
-5. **ส่งข้อความทดสอบใน LINE** → confirm ข้อมูลใหม่เข้า DB ปัจจุบัน
-6. **Part B** เริ่มหลังจาก step 5 ผ่าน (ขอ service_role key หรือ CSV)
-
----
-
-## Files to Create/Edit
+## Files to Edit/Create
 
 ```text
-NEW  supabase/functions/verify-line-webhook/index.ts
-NEW  supabase/functions/migrate-old-project-data/index.ts   (Part B)
-NEW  supabase/migrations/<ts>_webhook_verification_logs.sql
-EDIT supabase/functions/health/index.ts                     (add webhook + stagnation fields)
-EDIT src/pages/Integrations.tsx                             (add verification card)
-EDIT src/pages/HealthMonitoring.tsx                         (show webhook + stagnation status)
-NEW  pg_cron job: 'verify-line-webhook-daily' @ 09:00 ICT
+EDIT supabase/config.toml                                  (Part 1.1 — critical fix)
+NEW  supabase/functions/migrate-old-project-data/index.ts  (Part 2, after key)
 ```
 
 ## Regression Safety
-- ไม่แตะ `line-webhook/index.ts` (// ⚠️ VERIFIED)
-- ไม่แตะ attendance/timezone functions
-- Additive only: table ใหม่, function ใหม่, UI section ใหม่
-- Part B รันแบบ dry-run ก่อนทุกครั้ง
+- ไม่แตะ `line-webhook/index.ts` (// ⚠️ VERIFIED) — แค่ตรวจอ่าน
+- `verify_jwt = false` คือสิ่งที่ webhook สาธารณะ **ต้องมี** อยู่แล้ว — เป็นการ restore default ที่ถูกต้อง ไม่ใช่การลด security (signature validation ทำใน code ด้วย LINE_CHANNEL_SECRET อยู่แล้ว)
+- `attendance-submit`, `attendance-validate-token`, `employee-menu-validate` — public endpoints ที่ user ไม่ login ใช้ token ของตัวเอง → ต้อง `verify_jwt = false` เช่นกัน
 
-## คำถามเดียวที่ค้างก่อนผมเริ่ม build
-สำหรับ **Part B** ขอเลือก: **(a) ส่ง service_role key ของ project เก่า** หรือ **(b) export CSV เอง**?
+## คำถามเพื่อ approve
 
-ถ้าตอบทีหลังก็ได้ — ผมจะเริ่ม Part A ก่อนได้เลยพอ approve plan นี้
+1. **Part 1**: approve แก้ `config.toml` เลยไหม?
+2. **Part 2**: เลือก **(A)** ส่ง service_role key หรือ **(B)** export CSV เอง?

@@ -1,1 +1,18 @@
 project_id = "phhxdgaiwgaiuecvfjgj"
+
+# Public-facing endpoints — must NOT verify JWT
+# (LINE webhook signs with x-line-signature; attendance/portal use one-time tokens)
+[functions.line-webhook]
+verify_jwt = false
+
+[functions.attendance-submit]
+verify_jwt = false
+
+[functions.attendance-validate-token]
+verify_jwt = false
+
+[functions.employee-menu-validate]
+verify_jwt = false
+
+[functions.verify-line-webhook]
+verify_jwt = false
