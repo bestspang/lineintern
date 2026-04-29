@@ -16,14 +16,15 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Plus, Archive, Replace, Loader2, FileText } from "lucide-react";
+import { Download, Plus, Archive, Replace, Loader2, FileText, History } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { UploadDocumentDialog } from "./UploadDocumentDialog";
+import { DocumentActivityLogDialog } from "./DocumentActivityLogDialog";
 import {
   DOCUMENT_TYPE_LABEL_TH, STATUS_LABEL_TH, VISIBILITY_LABEL_TH,
   UPLOAD_STATUS_LABEL_TH, SIGNED_URL_ERROR_CODE_TH,
   type EmployeeDocument, type EmployeeDocumentType, type EmployeeDocumentStatus,
-  type EmployeeDocumentUploadStatus,
+  type EmployeeDocumentUploadStatus, type ConfirmHistoryEntry,
 } from "@/lib/employee-document-types";
 
 type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
@@ -50,11 +51,17 @@ export function EmployeeDocumentsTab({ employeeId, autoOpenUpload, onAutoOpenCon
   }, [autoOpenUpload, onAutoOpenConsumed]);
   const [replaceOldId, setReplaceOldId] = useState<string | undefined>();
   const [archiveTarget, setArchiveTarget] = useState<EmployeeDocument | null>(null);
+  const [activityTarget, setActivityTarget] = useState<EmployeeDocument | null>(null);
   const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active_only");
   const [search, setSearch] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
+
+  // Phase 1A.3 — lock row actions while the upload dialog is open OR the row itself
+  // is still in 'pending' state (the confirm step is mid-flight).
+  const actionsLocked = uploadOpen;
+  const lockedTitle = "กำลังประมวลผล…";
 
   const { data: docs = [], isLoading, refetch } = useQuery({
     queryKey: ["employee-documents", employeeId, typeFilter, statusFilter, search],
