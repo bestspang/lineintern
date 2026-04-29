@@ -153,6 +153,7 @@ const navigationGroups = [
       { title: 'Daily Summaries', titleTh: 'สรุปรายวัน', url: '/attendance/summaries', icon: Calendar },
       { title: 'Reminder Logs', titleTh: 'บันทึกแจ้งเตือน', url: '/attendance/reminder-logs', icon: Bell },
       { title: 'Employees', titleTh: 'พนักงาน', url: '/attendance/employees', icon: Users },
+      { title: 'Employee Documents', titleTh: 'เอกสารพนักงาน', url: '/attendance/employee-documents', icon: FileText },
       { title: 'Employee Roles', titleTh: 'บทบาทพนักงาน', url: '/attendance/roles', icon: UserCog },
       { title: 'Branches', titleTh: 'สาขา', url: '/attendance/branches', icon: Building },
       { title: 'Settings', titleTh: 'ตั้งค่า', url: '/attendance/settings', icon: Settings },
