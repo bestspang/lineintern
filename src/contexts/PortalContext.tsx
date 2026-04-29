@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useLiffOptional } from './LiffContext';
+import { perfMark, perfMeasure, logPortalEvent } from '@/lib/portal-perf';
 
 interface EmployeeRole {
   display_name_th: string;
@@ -117,6 +118,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       hasShownWarning.current = false;
       
       setLoading(false);
+      perfMark('portal_provider_ready');
+      logPortalEvent({
+        event_name: 'portal_ready',
+        duration_ms: perfMeasure('portal_provider_start'),
+        employee_id: data.employee?.id ?? null,
+        branch_id: data.employee?.branch_id ?? null,
+        metadata: { auth: 'token' },
+      });
       return true;
     } catch (err) {
       console.error('Error validating token:', err);
@@ -163,6 +172,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       hasShownWarning.current = false;
       
       setLoading(false);
+      perfMark('portal_provider_ready');
+      logPortalEvent({
+        event_name: 'portal_ready',
+        duration_ms: perfMeasure('portal_provider_start'),
+        employee_id: data.employee?.id ?? null,
+        branch_id: data.employee?.branch_id ?? null,
+        metadata: { auth: 'liff' },
+      });
       return true;
     } catch (err) {
       console.error('[Portal] Error validating LIFF user:', err);
@@ -228,6 +245,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   // Initial authentication
   useEffect(() => {
+    perfMark('portal_provider_start');
+    logPortalEvent({ event_name: 'portal_opened' });
     console.log('[Portal] Auth check:', { 
       tokenFromUrl: !!searchParams.get('token'), 
       storedToken: !!sessionStorage.getItem('portal_token'),

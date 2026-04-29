@@ -4166,6 +4166,64 @@ export type Database = {
           },
         ]
       }
+      portal_performance_events: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          duration_ms: number | null
+          employee_id: string | null
+          error_code: string | null
+          event_name: string
+          id: string
+          metadata: Json | null
+          route: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          employee_id?: string | null
+          error_code?: string | null
+          event_name: string
+          id?: string
+          metadata?: Json | null
+          route?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          employee_id?: string | null
+          error_code?: string | null
+          event_name?: string
+          id?: string
+          metadata?: Json | null
+          route?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_performance_events_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_performance_events_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_performance_events_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
