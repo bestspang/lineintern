@@ -2055,6 +2055,100 @@ export type Database = {
           },
         ]
       }
+      employee_documents: {
+        Row: {
+          archived_at: string | null
+          archived_by_user_id: string | null
+          created_at: string
+          description: string | null
+          document_type: string
+          employee_id: string
+          expiry_date: string | null
+          file_mime_type: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          issue_date: string | null
+          metadata: Json
+          replaced_by_document_id: string | null
+          status: string
+          title: string
+          updated_at: string
+          uploaded_by_employee_id: string | null
+          uploaded_by_user_id: string | null
+          visibility: string
+        }
+        Insert: {
+          archived_at?: string | null
+          archived_by_user_id?: string | null
+          created_at?: string
+          description?: string | null
+          document_type: string
+          employee_id: string
+          expiry_date?: string | null
+          file_mime_type?: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          issue_date?: string | null
+          metadata?: Json
+          replaced_by_document_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          uploaded_by_employee_id?: string | null
+          uploaded_by_user_id?: string | null
+          visibility?: string
+        }
+        Update: {
+          archived_at?: string | null
+          archived_by_user_id?: string | null
+          created_at?: string
+          description?: string | null
+          document_type?: string
+          employee_id?: string
+          expiry_date?: string | null
+          file_mime_type?: string | null
+          file_name?: string
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          issue_date?: string | null
+          metadata?: Json
+          replaced_by_document_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          uploaded_by_employee_id?: string | null
+          uploaded_by_user_id?: string | null
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
+            columns: ["replaced_by_document_id"]
+            isOneToOne: false
+            referencedRelation: "employee_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
+            columns: ["replaced_by_document_id"]
+            isOneToOne: false
+            referencedRelation: "employee_documents_expiring"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_menu_tokens: {
         Row: {
           created_at: string | null
@@ -6059,6 +6153,103 @@ export type Database = {
           user_agent: string | null
         }
         Relationships: []
+      }
+      employee_documents_expiring: {
+        Row: {
+          archived_at: string | null
+          archived_by_user_id: string | null
+          created_at: string | null
+          days_until_expiry: number | null
+          description: string | null
+          document_type: string | null
+          employee_id: string | null
+          expiry_date: string | null
+          file_mime_type: string | null
+          file_name: string | null
+          file_path: string | null
+          file_size_bytes: number | null
+          id: string | null
+          issue_date: string | null
+          metadata: Json | null
+          replaced_by_document_id: string | null
+          status: string | null
+          title: string | null
+          updated_at: string | null
+          uploaded_by_employee_id: string | null
+          uploaded_by_user_id: string | null
+          visibility: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          archived_by_user_id?: string | null
+          created_at?: string | null
+          days_until_expiry?: never
+          description?: string | null
+          document_type?: string | null
+          employee_id?: string | null
+          expiry_date?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string | null
+          issue_date?: string | null
+          metadata?: Json | null
+          replaced_by_document_id?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+          uploaded_by_employee_id?: string | null
+          uploaded_by_user_id?: string | null
+          visibility?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          archived_by_user_id?: string | null
+          created_at?: string | null
+          days_until_expiry?: never
+          description?: string | null
+          document_type?: string | null
+          employee_id?: string | null
+          expiry_date?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string | null
+          issue_date?: string | null
+          metadata?: Json | null
+          replaced_by_document_id?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+          uploaded_by_employee_id?: string | null
+          uploaded_by_user_id?: string | null
+          visibility?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
+            columns: ["replaced_by_document_id"]
+            isOneToOne: false
+            referencedRelation: "employee_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
+            columns: ["replaced_by_document_id"]
+            isOneToOne: false
+            referencedRelation: "employee_documents_expiring"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {

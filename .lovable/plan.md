@@ -1,155 +1,184 @@
-## Phase 0B Completion Plan
+# Phase 1A — Employee Documents Module
 
-Finish the four remaining Phase 0B tasks. Strictly additive. No payroll math, no payslip math, no LINE webhook, no attendance core, no Bangkok timezone helpers, no point ledger semantics.
+## 1. Findings (Existing Document Structure)
 
-### Task 1 — Audit backfill on 6 guarded functions
+**`document_uploads` table (existing) — DO NOT REUSE**
+- Columns: `photo_url`, `photo_hash`, `is_duplicate`, `duplicate_of_id`, `extracted_data` (jsonb), `classification_confidence`, `branch_id`, `upload_date`, `line_message_id`.
+- Clearly designed for **receipt/photo OCR classification**, not HR documents.
+- Currently empty (0 rows) and has **no code references** in the project.
+- Has RLS allowing employees to view their own (correct for receipts, wrong for HR).
+- **Decision**: Create a new dedicated `employee_documents` table. Leave `document_uploads` untouched (additive, low-risk).
 
-Add a single best-effort `writeAuditLog(...)` call right before the success-path `return new Response(...)` in each function. Capture `userId`/`role` returned by the existing `requireRole(...)` (store into local `caller` vars). Audit failure must NOT break the response (already guaranteed by `_shared/audit.ts`).
+**Storage buckets (existing)**: `attendance-photos` (private), `deposit-slips` (private), `receipt-files` (private), `line-bot-assets` (public), `richmenu-images` (public). No HR document bucket exists. → Create new private bucket `employee-documents`.
 
-| Function | actionType | resourceType | Key metadata |
-|---|---|---|---|
-| `payslip-generator` | `generate` | `payslip` | `period_id`, `employee_id`, `record_id`, `source: 'admin_ui'` (no salary numbers) |
-| `payroll-notification` | `send` | `payroll_notification` | `period_id`, `total`, `sent`, `failed`, `skipped`, `source: 'admin_ui'` (no per-employee amounts) |
-| `backfill-work-sessions` | `backfill` | `work_sessions` | `employees_processed`, `sessions_created`, `sessions_skipped`, `errors`, `source: 'backfill'` |
-| `backfill-work-sessions-time-based` | `backfill` | `work_sessions` | `date_range`, `employees_processed`, `sessions_created`, `sessions_skipped`, `errors`, `source: 'backfill'` |
-| `branch-report-backfill` | `backfill` | `branch_report` | `group_id`, `parsed`, `saved`, `skipped`, `failed`, `dry_run`, `source: 'backfill'` |
-| `report-generator` (manual path only) | `generate` | `group_report` | `count`, `mode: manual`. Wrapped in `if (type !== 'auto_summary')` so the cron/internal path is never audited. |
+**Helpers available**: `has_admin_access()`, `has_hr_access()`, `can_view_employee_by_priority()`, `update_updated_at_column()`, `_shared/audit.ts` (`writeAuditLog`), `_shared/auth.ts` (`requireRole`).
 
-Pattern, applied identically:
+**Employee Detail page**: `src/pages/attendance/EmployeeDetail.tsx` already uses Tabs — clean integration point.
 
-```ts
-let callerUserId: string | null = null;
-let callerRole: string | null = null;
-try {
-  const r = await requireRole(req, [...], { functionName: '...' });
-  callerUserId = r.userId; callerRole = r.role;
-} catch (e) { ... }
-// ... existing logic unchanged ...
-await writeAuditLog(supabase, {
-  functionName: '...',
-  actionType: '...',
-  resourceType: '...',
-  resourceId: <uuid or null>,
-  performedByUserId: callerUserId,
-  callerRole,
-  metadata: { ... },
-});
-return new Response(...);
-```
+---
 
-Excluded from audit (intentional): `report-generator` `auto_summary` (cron/internal), error returns, validation 400s, "no records" fast-paths.
+## 2. Database Migration
 
-### Task 2 — Role-priority safety in `remote-checkout-approval`
+Create `public.employee_documents`:
 
-Enforce that the approver's role priority must be ≥ the target employee's role priority, with admin/owner always allowed. Keep both call paths (user JWT + internal `portal-data`) working.
+| column | type | notes |
+|---|---|---|
+| id | uuid PK default gen_random_uuid() | |
+| employee_id | uuid NOT NULL → employees(id) ON DELETE CASCADE | |
+| document_type | text NOT NULL | enum-by-convention (employment_contract, id_card, house_registration, bank_book, work_permit, certificate, warning_letter, probation, salary_adjustment, resignation, other) |
+| title | text NOT NULL | |
+| description | text NULL | |
+| file_path | text NOT NULL | storage path inside bucket |
+| file_name | text NOT NULL | |
+| file_mime_type | text NULL | |
+| file_size_bytes | bigint NULL | |
+| issue_date | date NULL | |
+| expiry_date | date NULL | |
+| status | text NOT NULL default 'active' | CHECK in (active, expired, archived, replaced) |
+| visibility | text NOT NULL default 'hr_only' | CHECK in (hr_only, employee_visible) |
+| uploaded_by_user_id | uuid NULL | |
+| uploaded_by_employee_id | uuid NULL | |
+| replaced_by_document_id | uuid NULL → self | |
+| metadata | jsonb NOT NULL default '{}' | |
+| created_at / updated_at | timestamptz NOT NULL default now() | trigger uses `update_updated_at_column` |
+| archived_at | timestamptz NULL | |
+| archived_by_user_id | uuid NULL | |
 
-Implementation:
+Indexes: employee_id, document_type, status, expiry_date, uploaded_by_user_id.
 
-1. After resolving `request` and target `employee`, fetch the target's role priority:
-   ```sql
-   SELECT er.priority, er.role_key
-     FROM employees e
-     LEFT JOIN employee_roles er ON er.id = e.role_id
-    WHERE e.id = <target>;
-   ```
-2. Resolve the approver's priority:
-   - **User-bearer path**: priority comes from `callerRoleLabel` (already known) using the same number ladder used by `get_user_role_priority` (owner=10, hr=9, admin=8, executive=5, manager=5, field=1, others=0). Use a small local `roleToPriority()` helper instead of inventing a new system.
-   - **Internal path** (`portal-data`): fall back to looking up `approver_employee_id`'s `employee_roles.priority` via the service-role client (the human approver is captured in `approver_employee_id`).
-3. Decision rule:
-   - admin/owner → always allow.
-   - else → allow only if `approver_priority >= target_priority`.
-   - On block → return `403 { code: 'forbidden_role_priority', error: 'ไม่สามารถอนุมัติคำขอของผู้ที่มีระดับสิทธิ์สูงกว่า' }`.
-4. Audit row already exists; add new metadata keys: `target_employee_id`, `target_role`, `target_priority`, `approver_employee_id`, `approver_priority`, `approver_role`, `priority_check_result: 'pass'|'bypass_admin'`. On block, write a `denied` audit row before returning 403.
+**RLS policies** (enable RLS):
+- `admin_hr_manage_all` (ALL): `has_admin_access(auth.uid()) OR has_hr_access(auth.uid())`
+- `employee_view_own_visible` (SELECT): `visibility = 'employee_visible' AND status != 'archived' AND employee_id IN (SELECT id FROM employees WHERE auth_user_id = auth.uid() OR line_user_id IN (SELECT line_user_id FROM users WHERE id = auth.uid()))`
+- `manager_view_scoped` (SELECT): `visibility = 'employee_visible' AND can_view_employee_by_priority(auth.uid(), employee_id)`
+- `service_role_all` (ALL): `auth.role() = 'service_role'`
+- No insert/update/delete for employees/managers.
 
-Do NOT invent any new RPC. Use raw select on existing tables.
+---
 
-### Task 3 — Points RLS review and one minimal fix
+## 3. Storage Bucket
 
-Audit result (from `pg_policies`):
+Migration creates bucket `employee-documents` with `public = false`.
 
-| Table | Verdict |
-|---|---|
-| `happy_points` | ✅ employees see own; admins manage. Keep. |
-| `point_transactions` | ✅ employees see own; only admins/service-role insert. No employee mutate path. Keep. |
-| `point_rewards` | ✅ active rewards public; admins manage. Keep. |
-| `point_redemptions` | ✅ employees see/insert own (WITH CHECK ties `employee_id` to caller); admins manage. Edge function is canonical, but direct INSERT is bound to caller — no escalation. Keep. |
-| `gacha_box_items` | ✅ catalog readable; service-role manages. Keep. |
-| `employee_bag_items` | ⚠️ **Missing employee SELECT policy.** `RewardShop.tsx` reads it directly and silently returns 0 on RLS error → bag count is broken for all non-admin employees. |
+**Storage policies on `storage.objects`** (bucket_id = 'employee-documents'):
+- `hr_admin_all`: ALL operations for `has_admin_access(auth.uid()) OR has_hr_access(auth.uid())`
+- `service_role_all`: ALL for service role
+- **No direct read for employees** → all employee access goes through signed-URL edge function.
 
-**Fix (one migration, additive)**:
+Path convention: `{employee_id}/{document_id}/{safe_filename}`.
 
-```sql
-CREATE POLICY "Employees can view own bag items"
-ON public.employee_bag_items
-FOR SELECT
-TO authenticated
-USING (
-  employee_id IN (
-    SELECT e.id FROM public.employees e
-    WHERE e.auth_user_id = auth.uid()
-       OR e.line_user_id = (auth.jwt() ->> 'sub')
-  )
-);
-```
+---
 
-No INSERT/UPDATE/DELETE policy added — mutations stay admin/HR/service-role only (preserves point ledger integrity). MyPoints/RewardShop/Gacha/admin approval flows untouched.
+## 4. Edge Functions
 
-### Task 4 — Notifications RLS review
+**A) `employee-document-upload`** (POST)
+- `requireRole(['owner','admin','hr'])`
+- Body (multipart or signed-upload pattern): `{ employee_id, document_type, title, description?, issue_date?, expiry_date?, visibility, file_name, file_mime_type, file_size_bytes }`
+- Validates employee exists, document_type whitelist, visibility whitelist, size cap (e.g. 10 MB), mime whitelist (pdf, png, jpeg, jpg, webp, heic).
+- Inserts row → returns `{ document_id, upload_url }` using **Supabase Storage signed upload URL** (`createSignedUploadUrl`) so the file goes browser→Storage directly via the short-lived URL.
+- Writes audit log: `action_type='upload', resource_type='employee_document'`.
 
-Audit result: ✅ no changes needed.
+**B) `employee-document-signed-url`** (POST `{ document_id }`)
+- Auth check:
+  - admin/hr/owner → allowed
+  - manager → allowed only if `visibility='employee_visible'` AND `can_view_employee_by_priority`
+  - employee → allowed only if `visibility='employee_visible'` AND owns the doc
+- Returns 60-second signed download URL.
+- Writes audit log: `action_type='view'`.
 
-- `Employees can read own notifications` — covers both `auth.jwt()->>'sub' = line_user_id` and `auth.users.id = e.line_user_id::uuid` mappings.
-- `Admins can read all notifications` — admin/owner via `has_admin_access`.
-- `Admins can insert notifications` — direct insert restricted to admins; **service role bypasses RLS** so existing edge-function writers (remote-checkout-approval, point-redemption, etc.) keep working.
-- `Employees can update own notifications` — covers mark-as-read.
-- No DELETE policy → employees cannot delete; intentional.
+**C) `employee-document-archive`** (POST `{ document_id, reason? }`)
+- `requireRole(['owner','admin','hr'])`
+- Sets `status='archived'`, `archived_at=now()`, `archived_by_user_id`. Does NOT delete file.
+- Audit log: `action_type='archive'`.
 
-Manager/scope SELECT for notifications is not currently a feature in the portal; nothing to widen. Document as reviewed, no change.
+**D) `employee-document-replace`** (POST) — convenience wrapper: marks old doc `status='replaced'`, sets `replaced_by_document_id` after the new doc is uploaded. Audit log: `action_type='replace'`.
 
-### Task 5 — Docs
+All four functions: `verify_jwt = false` is the project default; we validate JWT in code via `requireRole`. CORS headers on every response.
 
-- Append a **Phase 0B** section to `docs/STATUS.md` summarizing the audit backfill, role-priority enforcement, RLS additions, and updating the "Partial → audit logging" line so the 6 functions are no longer pending.
-- Create `docs/PHASE_0B_SECURITY_REPORT.md` with: completed items, RLS pg_policies snapshot, role-priority decision matrix, manual test checklist, residual risks, Phase 1 readiness verdict.
+**Why edge functions for upload + read**: Direct Storage RLS for employees is complex (need to map storage path → employee_id → visibility). Edge functions centralize the policy and give us auditing for free. Admin/HR could go direct, but unified path keeps audit consistent.
 
-### Task 6 — Verification
+---
 
-- `npm run build` (must pass).
-- `npm run smoke:quick` (and `npm run smoke` if defined and safe — will check `package.json`).
-- Manual checklist in the report: own-redemption ✅, cross-employee redemption 403, gacha own ✅, manager approve redemption ✅, user/field cannot approve, manager remote checkout approval ✅, manager blocked from approving higher-priority target → 403, liff-settings admin ✅ / non-admin 403, payroll notification ✅, branch report import ✅, MyPoints / RewardShop bag count visible after RLS fix.
+## 5. Admin UI
 
-### Files touched
+**A) Employee Detail integration** (`src/pages/attendance/EmployeeDetail.tsx`)
+- New `<TabsTrigger value="documents">เอกสาร</TabsTrigger>` (visible only if `canManageEmployee` OR own profile)
+- New component `src/components/employee-documents/EmployeeDocumentsTab.tsx`:
+  - List with: title, type chip, file name, uploaded date, issue date, expiry date (red if expired/<30 days), status badge, visibility badge.
+  - Actions: View/Download (calls signed-url fn), Archive, Replace.
+  - "Upload" button opens dialog → form (type, title, desc, issue/expiry, visibility, file picker) → calls upload fn → uses returned signed upload URL → PUT file → toast success.
+  - Filters: type, status (default hide archived).
 
-Edge functions (audit add only, no logic change):
-- `supabase/functions/payslip-generator/index.ts`
-- `supabase/functions/payroll-notification/index.ts`
-- `supabase/functions/backfill-work-sessions/index.ts`
-- `supabase/functions/backfill-work-sessions-time-based/index.ts`
-- `supabase/functions/branch-report-backfill/index.ts`
-- `supabase/functions/report-generator/index.ts` (manual path only)
+**B) Cross-employee admin page** `src/pages/attendance/EmployeeDocuments.tsx`
+- Route: `/attendance/employee-documents` (lazy in `App.tsx`, nav entry in `DashboardLayout.tsx` under HR section).
+- Table across all employees with filters: employee search, branch, type, status, expiring window (all / expired / 30d / 60d / 90d).
+- Click row → navigate to employee detail with documents tab.
 
-Edge function (additive role-priority + audit metadata):
-- `supabase/functions/remote-checkout-approval/index.ts`
+UI: shadcn/ui (Card, Table, Dialog, Select, Badge, Tabs), Tailwind, Thai-first labels (เอกสารพนักงาน, ประเภทเอกสาร, วันหมดอายุ, อัปโหลดโดย, มองเห็นโดยพนักงาน, เก็บถาวร, แทนที่ด้วยเอกสารใหม่).
 
-Migration (additive RLS):
-- one new SQL migration adding the `Employees can view own bag items` policy.
+**Document type labels** (Thai): สัญญาจ้าง, สำเนาบัตรประชาชน, สำเนาทะเบียนบ้าน, สำเนาสมุดบัญชี, ใบอนุญาตทำงาน, ประกาศนียบัตร, หนังสือเตือน, เอกสารทดลองงาน, หนังสือปรับเงินเดือน, ใบลาออก, อื่นๆ — centralized in `src/lib/employee-document-types.ts`.
 
-Docs:
-- `docs/STATUS.md`
-- `docs/PHASE_0B_SECURITY_REPORT.md` (new)
+---
 
-### Hard non-goals (will NOT touch)
+## 6. Expiry Foundation
 
-- `supabase/functions/line-webhook/**`
-- `attendance-submit`, `attendance-validate-token`, `claim_attendance_token`
-- Bangkok timezone helpers
-- Payroll calc math, payslip HTML/number math, point ledger math
-- Existing portal check-in/check-out flow
-- Any "// ⚠️ VERIFIED" function
+- Cross-employee admin page filters by `expiry_date` window (≤today, ≤+30d, ≤+60d, ≤+90d).
+- Add SQL view `employee_documents_expiring` (active docs with non-null expiry_date, ordered by expiry) — read-only for HR.
+- **No cron / no notifications yet** — explicit follow-up in Phase 1B.
 
-### Regression checklist
+---
 
-- All 6 audit additions are inside try/catch already; audit insert failure is best-effort.
-- `remote-checkout-approval` internal portal-data path returns same shape; only adds 403 when priority blocks.
-- New RLS policy is SELECT-only; cannot widen mutation surface.
-- No type changes to `src/integrations/supabase/types.ts`.
-- No frontend changes.
+## 7. Audit Logging
+
+Use existing `writeAuditLog` in all four edge functions. Metadata: `employee_id, document_id, document_type, visibility, file_size_bytes, expiry_date, actor_role`. Never log file URL, signed URL, or file content.
+
+---
+
+## 8. Security Checklist (verified post-implementation)
+
+- Bucket private ✓
+- Employee cannot SELECT hr_only docs (RLS) ✓
+- Employee cannot SELECT another employee's docs ✓
+- Manager limited by `can_view_employee_by_priority` + `employee_visible` only ✓
+- Signed URLs expire in 60s ✓
+- Archived docs filtered out of default lists ✓
+- Audit row written on upload/view/archive/replace ✓
+
+---
+
+## 9. Tests
+
+- `npm run build` (auto)
+- `npm run smoke:quick`
+- Manual test checklist included in final report (HR upload contract, hr_only invisibility to employee, employee_visible visibility, archive flow, expiring filter, audit row presence).
+
+---
+
+## 10. Files to Change
+
+**New**
+- `supabase/migrations/<ts>_employee_documents.sql` (table + RLS + bucket + storage policies + view)
+- `supabase/functions/employee-document-upload/index.ts`
+- `supabase/functions/employee-document-signed-url/index.ts`
+- `supabase/functions/employee-document-archive/index.ts`
+- `supabase/functions/employee-document-replace/index.ts`
+- `src/components/employee-documents/EmployeeDocumentsTab.tsx`
+- `src/components/employee-documents/UploadDocumentDialog.tsx`
+- `src/pages/attendance/EmployeeDocuments.tsx`
+- `src/lib/employee-document-types.ts`
+
+**Edited (additive only)**
+- `src/pages/attendance/EmployeeDetail.tsx` — add Documents tab
+- `src/App.tsx` — add `/attendance/employee-documents` route
+- `src/components/DashboardLayout.tsx` — add nav entry
+- `docs/STATUS.md` — Phase 1A entry
+
+**Untouched (per absolute rules)**: line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token, timezone helpers, payroll math, point ledger, portal check-in/out, existing leave/OT/attendance approval logic, `document_uploads` table.
+
+---
+
+## 11. Risks / Notes
+
+- Signed upload URL pattern requires `@supabase/supabase-js` v2.x `createSignedUploadUrl` (already available).
+- File size cap defaults to 10 MB — adjustable later.
+- Manager scope reuses `can_view_employee_by_priority` — same semantics as existing employee visibility, so no new policy decisions.
+- Phase 1B candidates: cron-based expiry reminders to LINE, e-sign workflow, OCR auto-tag for ID card / contract, employee-side upload requests.
