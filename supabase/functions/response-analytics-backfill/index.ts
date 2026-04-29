@@ -112,6 +112,19 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: admin/owner only — backfill writes analytics columns.
+    try {
+      await requireRole(
+        req,
+        ['admin', 'owner'],
+        { functionName: 'response-analytics-backfill' },
+      );
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
