@@ -1,0 +1,57 @@
+name: Phase 0B Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run smoke tests (quick)
+        id: smoke
+        env:
+          # Optional: smoke script may use these if set, but skips DB checks gracefully otherwise.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          mkdir -p smoke-artifacts
+          npm run smoke:quick 2>&1 | tee smoke-artifacts/smoke-output.txt
+
+      - name: Build summary artifact
+        if: always()
+        run: |
+          {
+            echo "# Phase 0B Smoke Test Results"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Ref: \`${GITHUB_REF}\`"
+            echo "- Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo '```'
+            sed -r 's/\x1B\[[0-9;]*[mK]//g' smoke-artifacts/smoke-output.txt || true
+            echo '```'
+          } > smoke-artifacts/SUMMARY.md
+          cat smoke-artifacts/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-0b-smoke-${{ github.run_number }}
+          path: smoke-artifacts/
+          retention-days: 30
