@@ -1,98 +1,85 @@
-## 🎯 Goal
+## ปัญหา
 
-สร้าง **automated smoke test** ที่รันด้วยคำสั่งเดียว แล้วเช็ค Phase 4.5 checklist ครบ:
-1. Build & TypeScript ผ่าน
-2. Key routes ใน `src/App.tsx` มีอยู่จริง (ไม่ orphan)
-3. Database ไม่มี residual receipt/deposit references
-4. พิมพ์ผล **PASS / FAIL / SKIP** เป็นตาราง พร้อม exit code (0 = ทุกอย่าง pass)
+Snapshot ตารางเข้างานค้างที่ 2026-03-05 มา ~55 วัน
 
-## 📦 Deliverables
+**Root cause ที่ยืนยันแล้ว:**
+- Cron jobs ทุกตัว (16 jobs) ยัง run สำเร็จทุก 5 นาที ✅
+- `attendance-snapshot-update` run ปกติ ✅
+- **แต่ไม่มี attendance_logs ใหม่ตั้งแต่ 2026-03-05 02:14 UTC เลย** ❌
+- Active employees ยังมี 10 คน
 
-### 1. `scripts/smoke-test.mjs` (Node ESM, ใช้ bun/node รันได้)
-Test runner ที่:
-- รัน `bun run build` แล้ว parse output หา TS errors
-- อ่าน `src/App.tsx` แล้ว grep หา dead routes (`/receipts`, `/deposits`, `/receipt-management`, etc.)
-- เปิด connection ไป Postgres (ใช้ `PG*` env vars ที่มีอยู่แล้ว) แล้ว run sanity SQL จาก `docs/SMOKE_TEST_PHASE4.md` Section F:
-  ```sql
-  SELECT COUNT(*) FROM bot_commands WHERE category IN ('receipt','deposit');
-  SELECT COUNT(*) FROM webapp_page_config WHERE menu_group IN ('Receipts','Deposits');
-  SELECT COUNT(*) FROM information_schema.tables 
-    WHERE table_schema='public' AND (table_name LIKE '%receipt%' OR table_name LIKE '%deposit%');
-  SELECT COUNT(*) FROM portal_faqs WHERE category IN ('receipts','deposits');
-  ```
-  ทุก query ต้อง return 0 → PASS, > 0 → FAIL พร้อมแสดง count
-- Grep `supabase/functions/` หา references ที่ตกหล่น: `daily_deposits`, `receipt_approvers`, `receipt_quota`
-- Grep `src/` หา dead imports (`from.*receipts`, `from.*deposits`)
-- Output แบบนี้:
-  ```
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Phase 4.5 Smoke Test
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  [PASS]  A1. Build (bun run build)         3.2s
-  [PASS]  A2. No TypeScript errors          
-  [PASS]  B1. No /receipts routes in App.tsx
-  [PASS]  B2. No /deposits routes in App.tsx
-  [PASS]  C1. bot_commands clean (0 rows)
-  [PASS]  C2. webapp_page_config clean (0 rows)
-  [FAIL]  C3. Tables clean — found 2: receipt_categories, deposit_slips_x
-  [PASS]  C4. portal_faqs clean (0 rows)
-  [PASS]  D1. No edge fn references to daily_deposits
-  [PASS]  D2. No edge fn references to receipt_approvers
-  [SKIP]  E1. Storage bucket purge (manual — see docs)
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Result: 10 pass, 1 fail, 1 skip
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ```
-- Exit code: 0 = all pass (skip OK), 1 = any fail
+→ Snapshot ไม่ได้พัง — **flow การ check-in ของพนักงานพัง** ทำให้ snapshot ไม่มี data ใหม่จะเขียน
 
-### 2. `package.json` — เพิ่ม script
-```json
-"scripts": {
-  ...
-  "smoke": "node scripts/smoke-test.mjs",
-  "smoke:quick": "node scripts/smoke-test.mjs --skip-build"  // สำหรับ dev loop ที่ build แล้ว
-}
-```
+## โมดูลที่เกี่ยวข้อง + สถานะ
 
-### 3. Update `docs/SMOKE_TEST_PHASE4.md`
-เพิ่มหัวข้อบนสุด:
-```
-## Quick Run (Automated)
-bun run smoke    # full check: build + routes + DB sanity
-bun run smoke:quick  # skip build (useful in dev loop)
-```
-ส่วน manual checklist (B/C/D ที่ต้องเปิดเบราว์เซอร์เอง) เก็บไว้เหมือนเดิมเพราะ automate ไม่ได้แบบ deterministic
+| Module | Status | หมายเหตุ |
+|---|---|---|
+| `cron.job` ทั้งหมด | WORKING | run ครบทุก schedule |
+| `attendance-snapshot-update` edge fn | WORKING | run สำเร็จ แค่ไม่มี data |
+| `attendance_logs` insert path | **BROKEN** | ไม่มี row ใหม่ 55 วัน |
+| `attendance-submit` edge fn | UNKNOWN | ต้องเช็ค logs |
+| `attendance-validate-token` edge fn | UNKNOWN | ต้องเช็ค logs |
+| `line-webhook` (trigger token) | UNKNOWN | ต้องเช็ค logs |
+| LIFF / portal check-in UI | UNKNOWN | ต้องเทสจริง |
+| RLS policies บน `attendance_logs` | UNKNOWN | อาจเปลี่ยนแล้ว block insert |
 
-## 🛠️ Technical Approach (key details)
+## สิ่งที่ต้อง preserve
 
-| ส่วน | วิธีทำ |
-|---|---|
-| Build check | `child_process.spawn('bun', ['run', 'build'])` + capture stderr, regex `/TS\d+/` |
-| Route check | อ่าน `src/App.tsx` ด้วย `fs.readFileSync` + regex `/path=["']\/(receipts|deposits)/` |
-| DB check | `import pg from 'pg'`; ใช้ env `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` (มีอยู่แล้วใน sandbox); ถ้าไม่มี → SKIP DB tests + warn user |
-| Edge fn grep | `child_process.spawn('rg', [pattern, 'supabase/functions/', '--count'])` |
-| Pretty print | ใช้ ANSI colors แบบง่าย (green ✓, red ✗, yellow -) |
+- Cron jobs ทั้ง 16 ตัว (ห้ามแตะ schedule/command)
+- `attendance-snapshot-update/index.ts` (verified, ทำงานถูก)
+- Timezone helpers ใน `_shared/timezone.ts`
+- `claim_attendance_token` RPC (verified)
+- Validation logic ใน `attendance-submit/validation.ts`
 
-## 🛡️ Safety / Regression Prevention
+## สิ่งที่อาจ broken จริง (ต้อง diagnose)
 
-- Script เป็น **read-only** (SELECT + grep + build) — ไม่แตะ DB หรือ files
-- ติด `// ⚠️ VERIFIED` comment บน critical sections (build parser, SQL queries) ตามคอนเวนชันที่มีอยู่ใน `mem://constraints/verified-working-comment-convention`
-- เพิ่มใน `.lovable/CRITICAL_FILES.md` ว่า `scripts/smoke-test.mjs` คือ regression guard — AI ห้าม "ปรับปรุง" โดยไม่ขอ
-- รับ flag `--json` เพื่อให้ CI/automation parse ผลได้ (optional ใน future)
+1. **Edge function errors** — เช็ค logs ของ `attendance-submit`, `attendance-validate-token`, `line-webhook` ย้อน 55 วัน หา error pattern
+2. **Token lifecycle** — เช็ค `attendance_tokens` ว่ามี row ใหม่ไหม / status ส่วนใหญ่เป็นอะไร
+3. **LINE webhook signature** — secret อาจเปลี่ยน, webhook URL ใน LINE Console อาจหลุด
+4. **RLS regression** — migration ใหม่อาจ block insert
+5. **LIFF endpoint URL** — APP_URL secret หรือ LIFF ID อาจเปลี่ยน
 
-## 📋 Regression Checklist หลัง implement
+## แผน Diagnose (Phase 1 — read-only)
 
-- [ ] `bun run smoke` exit 0 บน main branch ปัจจุบัน
-- [ ] ลอง break ของอย่าง 1 อย่าง (เช่น insert dummy row category='receipt' ใน bot_commands) → script ต้อง FAIL
-- [ ] `bun run build` ยัง pass (script ไม่กระทบ build)
-- [ ] ไม่ต้องแก้ไฟล์ใดๆ ในระบบ production code
+1. **Query DB หา signal:**
+   - `SELECT MAX(created_at), COUNT(*) FROM attendance_tokens WHERE created_at > '2026-03-04'` → มี token ถูกสร้างไหมหลัง 5/3
+   - ถ้ามี token → ปัญหาที่ submit/validate
+   - ถ้าไม่มี token → ปัญหาที่ webhook/token-generator
+2. **อ่าน edge function logs:**
+   - `attendance-submit` ย้อน 7 วัน หา error
+   - `attendance-validate-token` ย้อน 7 วัน
+   - `line-webhook` หา request ที่มี text "checkin" / "เช็คอิน"
+3. **เช็ค RLS ของ `attendance_logs` table** — มี policy ใหม่ที่ block insert จาก service role ไหม
+4. **เช็ค secret `APP_URL` และ `LINE_CHANNEL_ACCESS_TOKEN`** ยัง valid
 
-## ❓ ก่อน execute มี 1 คำถาม
+## แผน Fix (Phase 2 — หลังรู้ root cause)
 
-ตอนรัน DB sanity check, ผมควร:
-- **A) ใช้ `pg` library** (npm install) — pure ESM, ไม่ต้องพึ่ง `psql` CLI, ทำงานได้ทุก env
-- **B) shell out to `psql`** — เบาๆ ไม่เพิ่ม dependency แต่ต้องมี `psql` ติดตั้ง (ใน sandbox มี, ใน CI/local ของ user อาจไม่มี)
+จะแก้แบบ surgical ตาม root cause ที่หาเจอ — **ไม่ refactor cron/snapshot ที่ยังทำงานดีอยู่** ตัวเลือกตามสถานการณ์:
 
-แนะนำ **A** เพราะ portable กว่า + เพิ่ม dep เดียว (`pg` ~50KB) แลกกับการรันได้ทุกที่. โอเคไหม?
+- **ถ้า edge fn error** → fix bug เฉพาะจุด, redeploy
+- **ถ้า RLS block** → เพิ่ม policy ที่หายไป (additive)
+- **ถ้า webhook secret หลุด** → reset secret ใน LINE Console + Lovable Cloud
+- **ถ้า LIFF URL เปลี่ยน** → update APP_URL secret
+- **ถ้าทีมหยุดใช้จริง** → ไม่ต้องแก้โค้ด, ยืนยันกับ user
 
-ถ้าโอเค → approve plan แล้วผมจะลุยเลย
+## Smoke Test หลังแก้
+
+1. Manual check-in ผ่าน LINE → ต้องได้ link
+2. เปิด link → ต้องเห็นฟอร์มกล้อง+GPS
+3. กดส่ง → row ใหม่ใน `attendance_logs` ภายใน 5 วินาที
+4. รอ 5 นาที → `daily_attendance_summaries` วันนี้ต้อง update
+5. รัน `scripts/smoke-test.mjs` ทั้งชุด
+
+## Regression Checklist
+
+- [ ] Cron jobs ทั้ง 16 ตัวยัง active
+- [ ] `attendance-snapshot-update` ยัง run สำเร็จ
+- [ ] ไม่มีการเปลี่ยน schema ของ `attendance_logs` / `daily_attendance_summaries`
+- [ ] Timezone ยังเป็น Asia/Bangkok ทุกจุด
+- [ ] Verified-comment functions ไม่ถูกแตะ
+
+## คำถามก่อนเริ่ม Phase 2
+
+ถ้าหลัง diagnose พบว่า:
+- **(ก)** เป็น bug จริง (edge fn / RLS / secret) → ผมจะแก้ minimal diff แล้วเทส
+- **(ข)** ทีมหยุดใช้งานจริง (ไม่มี bug) → จะยืนยันกับคุณก่อน ไม่แก้โค้ด
