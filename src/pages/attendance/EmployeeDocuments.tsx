@@ -776,6 +776,8 @@ export default function EmployeeDocuments() {
               loading={isFetchingNextPage}
               onLoadMore={() => fetchNextPage()}
               sentinelRef={sentinelRef}
+              hasError={isFetchNextPageError}
+              error={error}
             />
             {isFetching && !isLoading && !isFetchingNextPage && (
               <div className="border-t px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
