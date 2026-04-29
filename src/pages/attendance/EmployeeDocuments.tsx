@@ -12,12 +12,13 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Loader2, FileText, ExternalLink } from "lucide-react";
+import { Loader2, FileText, ExternalLink, Plus } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import {
   DOCUMENT_TYPE_LABEL_TH, STATUS_LABEL_TH, VISIBILITY_LABEL_TH,
   type EmployeeDocument, type EmployeeDocumentType, type EmployeeDocumentStatus,
 } from "@/lib/employee-document-types";
+import { SelectEmployeeForUploadDialog } from "@/components/employee-documents/SelectEmployeeForUploadDialog";
 
 type ExpiryWindow = "all" | "expired" | "30d" | "60d" | "90d";
 type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
@@ -28,6 +29,7 @@ export default function EmployeeDocuments() {
   const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active_only");
   const [expiryWindow, setExpiryWindow] = useState<ExpiryWindow>("all");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches-light"],
@@ -82,13 +84,20 @@ export default function EmployeeDocuments() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <div className="flex items-center gap-2">
-        <FileText className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">เอกสารพนักงาน</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileText className="h-6 w-6" />
+            <h1 className="text-2xl font-bold">เอกสารพนักงาน</h1>
+          </div>
+          <p className="text-muted-foreground">
+            จัดการและติดตามเอกสาร HR ทั้งหมดของพนักงาน รวมถึงการแจ้งเตือนเอกสารใกล้หมดอายุ
+          </p>
+        </div>
+        <Button onClick={() => setPickerOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" /> อัปโหลดเอกสาร
+        </Button>
       </div>
-      <p className="text-muted-foreground">
-        จัดการและติดตามเอกสาร HR ทั้งหมดของพนักงาน รวมถึงการแจ้งเตือนเอกสารใกล้หมดอายุ
-      </p>
 
       <Card className="p-4 grid grid-cols-1 md:grid-cols-5 gap-2">
         <Input placeholder="ค้นหาชื่อเอกสาร..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -149,7 +158,16 @@ export default function EmployeeDocuments() {
             {isLoading ? (
               <TableRow><TableCell colSpan={8} className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin inline" /></TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">ไม่พบเอกสาร</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <span>ไม่พบเอกสาร</span>
+                    <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" /> เลือกพนักงานเพื่ออัปโหลดเอกสาร
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : rows.map((r: any) => (
               <TableRow key={r.id}>
                 <TableCell className="font-medium">{r.employees?.full_name || "-"}</TableCell>
@@ -187,6 +205,8 @@ export default function EmployeeDocuments() {
           </TableBody>
         </Table>
       </Card>
+
+      <SelectEmployeeForUploadDialog open={pickerOpen} onOpenChange={setPickerOpen} />
     </div>
   );
 }
