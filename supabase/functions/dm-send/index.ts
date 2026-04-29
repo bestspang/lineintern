@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: only management roles can send LINE DMs from the admin UI.
+    try {
+      await requireRole(
+        req,
+        ['admin', 'owner', 'hr', 'manager', 'moderator'],
+        { functionName: 'dm-send' },
+      );
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
