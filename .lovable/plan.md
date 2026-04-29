@@ -1,105 +1,107 @@
 ## Goal
 
-Make `/attendance/employee-documents` clearer, faster to scan, and easier to act on — without breaking the existing upload/confirm/signed-URL pipeline already hardened in Phases 1A.1–1A.3.
+Add four UX/perf upgrades to `/attendance/employee-documents`:
+1. Autocomplete search (employee/title/file)
+2. Column visibility toggle for the table view
+3. Pagination / "load more" instead of fetching 500 rows up-front
+4. A single "Reset" button that returns the page to default state
 
-## Affected modules & status
+All changes are additive — current data layer, edge functions, KPI logic, presets, sort, view toggle, CSV export, and tests stay intact.
+
+## Affected modules
 
 | Module | Status | Action |
 |---|---|---|
-| `src/pages/attendance/EmployeeDocuments.tsx` | WORKING (basic table) | Redesign UI shell only |
-| `src/components/employee-documents/UploadDocumentDialog.tsx` | WORKING (locked) | Do not touch |
-| `src/components/employee-documents/EmployeeDocumentsTab.tsx` | WORKING (locked) | Do not touch |
-| `src/components/employee-documents/SelectEmployeeForUploadDialog.tsx` | WORKING | Reuse as-is |
-| Edge functions (signed-url, confirm-upload, archive) | WORKING | No changes |
-| `employee-document-types.ts` | WORKING | No changes |
+| `src/pages/attendance/EmployeeDocuments.tsx` | WORKING | Extend (search box → Combobox, add column-visibility menu, paginate query, add reset button) |
+| `src/components/employee-documents/EmployeeDocumentsCardGrid.tsx` | WORKING | Untouched |
+| `src/components/employee-documents/EmployeeDocumentsKpiStrip.tsx` | WORKING | Untouched (KPIs continue to use the broader 2000-row aggregate query) |
+| `src/components/employee-documents/EmployeeDocumentsRowActions.tsx` | WORKING | Untouched |
+| Edge functions / DB / types | WORKING | No changes |
 
 ## What must be preserved
 
-- All current filters (search, branch, type, status, expiry window) and their query semantics.
-- The "อัปโหลดเอกสาร" entry point → `SelectEmployeeForUploadDialog` flow.
-- The deep-link to `EmployeeDetail` (where row-level Download/Replace/Archive/Activity already live).
-- All Thai labels and the `active_only` / `pending_or_failed` derived filters.
-- 500-row safety limit and current React Query keys (we'll keep the same key shape so cache stays warm).
+- All existing filters, presets, sort, view toggle, CSV export.
+- KPI counts (still computed from the lightweight `kpiRows` query, independent of pagination).
+- Deep-link to employee detail.
+- The `active_only` / `pending_or_failed` derived filter logic.
+- Existing test suite — we don't touch tested files.
 
-## What's actually weak (UX problems to fix)
+## Implementation
 
-1. No at-a-glance health: HR can't see how many docs are expiring or stuck pending without scrolling.
-2. Filters are a flat row of 5 dropdowns — no quick presets ("Expiring soon", "Needs attention").
-3. Table is dense; mobile (<768px) horizontally scrolls and is hard to read.
-4. No row-level quick actions from this page (HR must click into employee detail just to download or archive).
-5. "อัปโหลดค้าง / ล้มเหลว" rows blend in with healthy rows — no visual urgency.
-6. No sort control; expiry-asc is hardcoded.
-7. Empty state is plain — only appears inside the table.
+### 1. Autocomplete search (Combobox)
 
-## Minimal-diff plan
+Use shadcn `Popover` + `Command` (already in repo).
 
-### 1. New summary KPI strip (top of page)
-Compute from the same `rows` already fetched (no extra query) using `useMemo`:
-- Total active documents
-- Expiring ≤30 days (red), ≤90 days (amber)
-- Already expired
-- Pending / failed uploads
-Each KPI is a clickable chip that applies the matching filter preset. Uses existing shadcn `Card` + `Badge`.
+- Replace the plain `<Input>` in the search row with a popover-trigger button styled like the input. Typing inside it opens a `Command` palette listing matching suggestions.
+- Suggestions come from a separate, debounced React Query (`["employee-documents-suggest", q]`) that runs only when `q.length >= 1`. It does three lightweight `ilike` queries on the same `employee_documents` table joined to `employees`:
+  - by document title (`title ilike %q%`) — limit 8
+  - by file name (`file_name ilike %q%`) — limit 5
+  - by employee name (`employees.full_name ilike %q%`) — limit 8
+- Suggestions are grouped in the Command list ("เอกสาร", "ไฟล์", "พนักงาน") and each item shows a small icon + secondary text.
+- Selecting an item:
+  - Document/title item → sets `search` to the document title (existing query already filters `title ilike`).
+  - File item → sets `search` to the file name AND extends the filter logic so the page-level query applies `or(title.ilike, file_name.ilike)` instead of just title.
+  - Employee item → sets a NEW `employeeFilter` state with `{ id, name }` and the page query adds `eq("employee_id", id)`. A removable chip appears next to the search box.
+- The user can still type free text and press Enter to apply as the existing `search` (no employee chip).
+- Debounce typing by 200ms with a `useEffect`/timeout (no extra dep).
 
-### 2. Quick-filter preset bar
-A row of toggle chips above the existing advanced filters:
-- "ทั้งหมด" · "ใกล้หมดอายุ (90 วัน)" · "หมดอายุแล้ว" · "อัปโหลดค้าง" · "เก็บถาวร"
-Each preset just sets the existing `statusFilter` + `expiryWindow` state — no new query logic.
-Advanced filters collapse into a `Collapsible` ("ตัวกรองขั้นสูง") to reduce visual noise; opens by default if any non-default value is set.
+This widens the search semantics without breaking existing behavior — the unmodified `search` text still drives the same `title ilike` query when no suggestion is picked.
 
-### 3. View toggle: Table ↔ Cards
-- Desktop default: improved table (sticky header, zebra rows, urgency-tinted left border for expiring/failed).
-- Mobile / opt-in: card grid — each card shows employee + branch + doc title + type + expiry chip + status chips + quick actions.
-Stored in `useState`; auto-switches to "cards" below `md`.
+### 2. Column visibility toggle (table mode only)
 
-### 4. Inline quick actions per row (page-level, additive)
-Add three buttons on each row, reusing the same edge functions already used by `EmployeeDocumentsTab`:
-- Download (calls `employee-document-signed-url`, same error mapping via `SIGNED_URL_ERROR_CODE_TH`)
-- "ดูประวัติ" (opens existing `DocumentActivityLogDialog` when `confirm_history` exists or upload not OK)
-- "เปิดโปรไฟล์พนักงาน" (existing link)
+- Define a `ColumnKey` union: `employee | branch | title | type | expiry | visibility | status | actions`.
+- `actions` is always visible (locked).
+- Default visibility mirrors current responsive defaults (e.g. `branch` hidden by default on <lg, `visibility` hidden by default on <xl). On large screens default is "all visible."
+- Add a `Columns` button (next to `รีเซ็ต`) that opens a `DropdownMenu` with `DropdownMenuCheckboxItem` for each non-locked column.
+- Persist to `localStorage` under key `employee-documents.columns.v1` so HR's preference sticks across sessions.
+- Render the table header/cells conditionally based on the visibility map. We keep the responsive `hidden lg:table-cell` etc. as the *initial* default but if the user explicitly toggles a column, that explicit choice wins on all viewports.
+- Cards view ignores this setting (cards intentionally show everything compact).
 
-Archive / Replace stay only inside `EmployeeDocumentsTab` (employee detail) — they need richer context and we don't want to duplicate that surface here.
+### 3. Pagination / load-more
 
-### 5. Sortable columns
-Add sort dropdown (วันหมดอายุ ↑/↓, อัปเดตล่าสุด, ชื่อพนักงาน). Sort happens client-side on the already-fetched rows.
+Switch from a single 500-row fetch to **range-based load-more** (simpler than full numbered pagination, mirrors how Supabase apps usually do this).
 
-### 6. Better empty / loading / error states
-- Skeleton rows (5) instead of single spinner.
-- Empty state with illustration-style icon + CTA "เลือกพนักงานเพื่ออัปโหลด".
-- If query errors, show inline retry banner.
+- Page size: 50 (constant `PAGE_SIZE`).
+- Replace `useQuery` with `useInfiniteQuery` (TanStack Query already in project).
+- `queryFn({ pageParam = 0 })` calls the same query but with `.range(pageParam, pageParam + PAGE_SIZE - 1)` instead of `.limit(500)`. We also use Supabase's `count: 'exact'` head=false on the first request so we know the total.
+- `getNextPageParam` returns `pages.flat().length` while it's `< totalCount`.
+- The flattened `rows` feeds the existing sort/render exactly as before. `sortedRows` continues to sort *only what's loaded* — and since the server already orders by `expiry_date asc` (the most common sort) this matches user expectations. When the user picks a different sort key, a small hint "เรียงเฉพาะรายการที่โหลดมาแล้ว" appears (a `Tooltip` on the sort dropdown) so they understand the local-sort caveat. This is the same tradeoff the current code already silently has.
+- "โหลดเพิ่ม" button at the bottom of the table/card list shows "แสดง X จาก Y — โหลดเพิ่ม". Disabled when `!hasNextPage` or `isFetchingNextPage`.
+- Bonus: an `IntersectionObserver`-based sentinel auto-loads the next page when the user scrolls near the bottom — *but* only after the user has clicked "โหลดเพิ่ม" once or scrolled past the first page (avoids surprise auto-loads on initial render). Implementation: a `useRef` + `IntersectionObserver` inside a `useEffect` keyed by `hasNextPage`.
+- The "จำกัด 500" warning is removed — no more hard cap. Counter becomes "แสดง X จาก Y".
 
-### 7. Row urgency styling
-- Expired: subtle red-tinted row + destructive badge.
-- ≤30 days: amber tint.
-- `pending` / `failed`: outline border-l-4 in warning/destructive color.
+### 4. Reset button
 
-### 8. Header polish
-- Show last-refreshed time + manual refresh button.
-- Result counter ("แสดง 42 จาก 500").
-- CSV export button (client-side, exports currently filtered rows — pure-frontend, no new endpoint).
+- Add a `Button variant="ghost"` labeled "รีเซ็ต" with a `RotateCcw` icon, visible whenever any of these differ from default:
+  - `search !== ""`
+  - `employeeFilter !== null` (new from autocomplete)
+  - `branchId !== "all"`
+  - `typeFilter !== "all"`
+  - `statusFilter !== "active_only"`
+  - `expiryWindow !== "all"`
+  - `sortKey !== "expiry_asc"`
+  - `preset !== "all"`
+- Clicking it calls `applyPreset("all")` plus clears `search`, `employeeFilter`, `branchId`, `typeFilter`, `sortKey`. Column visibility is NOT reset (that's a personal display preference, not a filter).
+- Placed in the search/sort row so it's always reachable. Hidden when nothing to reset (avoid noise).
 
 ## Files to change
 
-- `src/pages/attendance/EmployeeDocuments.tsx` — full UI rewrite of the page shell, same data layer.
-- `src/components/employee-documents/EmployeeDocumentsKpiStrip.tsx` (new) — pure presentational.
-- `src/components/employee-documents/EmployeeDocumentsCardGrid.tsx` (new) — mobile-friendly card view.
-- `src/components/employee-documents/EmployeeDocumentsRowActions.tsx` (new) — shared download + activity buttons.
+- `src/pages/attendance/EmployeeDocuments.tsx` — all four features land here (data hook, search box, columns menu, reset button).
+- `src/components/employee-documents/DocumentSearchCombobox.tsx` (new) — encapsulates the Popover+Command autocomplete and emits `onPick({ kind, value, employeeId? })`.
 
-No changes to: edge functions, DB, types, `EmployeeDocumentsTab`, `UploadDocumentDialog`, `SelectEmployeeForUploadDialog`, tests.
+No new dependencies. No DB or edge-function changes. No changes to KPI strip, card grid, row actions, upload dialog, or `EmployeeDocumentsTab`.
 
 ## Regression checklist
 
-- Upload entry-point still works (button + empty state CTA).
-- All 5 existing filters still apply correctly.
-- 500-row cap preserved.
-- Deep-link to employee detail still navigates correctly.
-- Existing test suite (`bun run test`, 7 cases) keeps passing — we don't touch tested files.
-- No new external dependencies.
-- Mobile (<768px) no longer requires horizontal scroll for primary info.
+- KPI counts unchanged (still from `kpiRows`).
+- All existing filters / presets / sort / view toggle still work.
+- CSV export still exports currently-loaded + sorted rows (we'll add a small note "ส่งออกเฉพาะที่โหลดแล้ว" via tooltip; and a "โหลดทั้งหมดก่อนส่งออก" link that loops `fetchNextPage()` until done).
+- Empty state still shows the "เลือกพนักงานเพื่ออัปโหลด" CTA.
+- Mobile auto-switches to cards (unchanged).
+- Existing `bun run test` suite passes (no tested files touched).
 
-## Out of scope (explicitly)
+## Out of scope
 
-- No bulk archive (would need server changes).
-- No new edge functions.
-- No DB migrations.
-- No changes to EmployeeDocumentsTab inside employee detail page.
+- Server-side full-text search index (Postgres trigram). Keep `ilike` for now.
+- Numbered pagination ("Page 3 of 12"). Load-more is sufficient and matches mobile behavior.
+- Saving filters to URL params (could be a future enhancement).
