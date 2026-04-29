@@ -451,8 +451,38 @@ export default function EmployeeDocuments() {
           </div>
         </div>
 
+        {/* Offline banner */}
+        {isOffline && (
+          <Alert className="border-amber-500/50 bg-amber-500/10 text-foreground">
+            <WifiOff className="h-4 w-4 text-amber-600" />
+            <AlertTitle>คุณกำลังออฟไลน์</AlertTitle>
+            <AlertDescription>
+              ข้อมูลที่แสดงอาจไม่อัปเดต เมื่อเชื่อมต่ออินเทอร์เน็ตได้แล้ว ระบบจะดึงข้อมูลล่าสุดให้อัตโนมัติ
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* KPI strip */}
         <EmployeeDocumentsKpiStrip counts={kpi} activePreset={preset} onPreset={(p) => applyPreset(p as Preset)} />
+
+        {/* KPI error (compact, non-blocking) */}
+        {kpiIsError && (
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-2 text-sm">
+              <span>โหลดสรุปตัวเลข KPI ไม่สำเร็จ ตัวเลขด้านบนอาจไม่ถูกต้อง</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => refetchKpi()}
+                disabled={kpiIsFetching}
+              >
+                {kpiIsFetching ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-2" />}
+                โหลด KPI ใหม่
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Search + sort + view + filters */}
         <Card className="p-3 space-y-3">
