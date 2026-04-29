@@ -1,75 +1,89 @@
-# Phase 1C — Real-device Pilot QA & Performance Tuning
+## Phase 1C: Pilot Execution & Real-device QA
 
-## Scope guardrails
-- No new HRIS features. No Employee Documents work.
-- Do **NOT** touch: `line-webhook`, `attendance-submit`, `attendance-validate-token`, `claim_attendance_token`, Bangkok timezone helpers, payroll math, point ledger.
-- Code changes are limited to: 1 nav-config edit + 2 new docs. No edge function changes, no DB migrations (access rules for both routes already exist in `webapp_page_config`).
+Goal: Prepare a pilot QA runbook, add a small "Pilot QA" card on Ops Center, run automated checks, define pass/fail gates. No new features, no refactor, no touching protected modules.
 
-## Affected modules
-| Module | Status | Action |
-|---|---|---|
-| `src/components/DashboardLayout.tsx` (Attendance group) | WORKING | Additive: insert 2 nav items |
-| `webapp_page_config` (rows for ops-center & portal-performance) | WORKING — owner/admin/hr/manager already `can_access=true`, others `false` | No change needed |
-| `docs/PHASE_1C_PILOT_QA.md` | MISSING | Create |
-| `docs/PHASE_1C_PERF_QUERIES.md` | MISSING | Create |
-| `src/pages/attendance/PortalPerformance.tsx` | WORKING (live dashboard) | No change |
-| `src/pages/attendance/OpsCenter.tsx` | WORKING | No change |
+### Note on prior work
+`docs/PHASE_1C_PILOT_QA.md` and `docs/PHASE_1C_PERF_QUERIES.md` already exist (created earlier this phase). The new doc requested here is `PHASE_1C_PILOT_RESULTS.md` — a *results capture* template, not another checklist. I will keep it complementary, not duplicative.
 
-## Plan
+---
 
-### 1. Nav entries (Daily Ops Center + Portal Performance)
-Edit `src/components/DashboardLayout.tsx`, **Attendance** group only. Append two items at the end of `items[]` (lines 159 area), placed after `Settings` so existing order stays intact:
+### Task 1 — Create `docs/PHASE_1C_PILOT_RESULTS.md`
 
-```ts
-{ title: 'Daily Ops Center', titleTh: 'ศูนย์ปฏิบัติการ', url: '/attendance/ops-center', icon: Activity },
-{ title: 'Portal Performance', titleTh: 'ประสิทธิภาพพอร์ทัล', url: '/attendance/portal-performance', icon: Gauge },
-```
+Bilingual (TH/EN) results-capture template with the requested sections:
+1. Tester list (initials + role)
+2. Device list (model / OS / DPR)
+3. LINE app version
+4. Network type (Wi-Fi / 4G / 5G)
+5. Test account / role (owner / admin / hr / manager / employee / field / user)
+6. Test branch
+7. Start / end time (Asia/Bangkok)
+8. PASS / PARTIAL / FAIL counts (table per area: A Portal, B Outside-LINE, C Token, D Admin)
+9. Blocker list (S1/S2 with repro steps, no PII)
+10. Screenshots / evidence links (storage location, naming convention `phase1c_<area>_<id>_<initials>.png`)
+11. Linked `/attendance/portal-performance` snapshot time + p50/p95 numbers captured
 
-Both icons (`Activity`, `Gauge`) are already imported. Visibility is enforced by `canAccessPage(url)` against `webapp_page_config`, which is already configured: owner / admin / hr / manager = true; executive / moderator / field / user / employee = false. No DB migration needed.
+Reference (not copy) `PHASE_1B_QA_CHECKLIST.md` and `PHASE_1C_PILOT_QA.md` as the source checklists.
 
-### 2. `docs/PHASE_1C_PILOT_QA.md` — manual QA template + checklist
-Bilingual (TH/EN). Sections:
-- **Tester metadata table**: device model, OS+version, LINE app version, network (Wi-Fi/4G/5G), tester role, date/time (Asia/Bangkok), perf event id (optional).
-- **A. Employee portal inside LINE** — rich-menu open, skeleton <300ms, portal home render, attendance status loads, check-in/out button visible, no white screen, no infinite spinner.
-- **B. Outside LINE fallback** — open portal URL in Chrome/Safari, friendly fallback shown, no blank state.
-- **C. Check-in token flow** — valid token, expired token (Thai error copy), GPS allow/deny+retry, camera allow/deny+retry, liveness lazy-load only when required, submit success, double-tap → single submission (relies on existing `submitLockRef`).
-- **D. Manager / Ops Center** — `/attendance/ops-center` loads, today check-in/out counts, pending actions, setup issues (missing LINE ID etc.), quick links navigate correctly.
-- **Result template per case**: Pass / Fail / Blocked, observed load time (ms), severity (S1 blocker / S2 major / S3 minor / S4 cosmetic), reproduction steps, screenshots needed (Y/N), perf-event id reference (no PII).
-- **Severity rubric** + **pilot exit criteria**: zero S1, ≤2 S2 with workarounds, p95 portal_ready < 2500ms, token_validate_failed rate < 5%.
+### Task 2 — Add Pilot QA card to Ops Center
 
-### 3. `docs/PHASE_1C_PERF_QUERIES.md` — read-only SQL report
-Pure SQL against `portal_performance_events`. **No tokens, line_user_id, gps, photo_url, or raw error strings exposed** — only `event_name`, `route`, `error_code`, `duration_ms`, aggregates.
+Append a single new `<Card>` at the bottom of `src/pages/attendance/OpsCenter.tsx` (above the final Alert). Minimal additive change, no refactor.
 
-Queries:
-1. **Latency p50/p75/p95** for `portal_ready`, `liff_init_done`, `token_validate_success` over last 24h / 7d using `percentile_cont` in a `WITH` CTE filtered by `event_name`.
-2. **token_validate_failed by error_code** — `count(*) GROUP BY error_code`.
-3. **checkin_submit_failed by error_code** — same pattern.
-4. **Slowest 20 portal_ready** — `SELECT id, route, duration_ms, created_at` ORDER BY duration_ms DESC LIMIT 20 (no employee_id, no metadata blob).
-5. **Events grouped by route** — count + p95 per `route`.
-6. **Daily trend** — bucket by `date_trunc('day', created_at AT TIME ZONE 'Asia/Bangkok')`.
+Card contents:
+- Title: "Pilot QA — รอบทดสอบจริง"
+- Top-7 manual checklist items as a static `<ul>`:
+  - LIFF cold start
+  - Expired link UX
+  - GPS denied retry
+  - Camera denied retry
+  - Double-tap submit guard
+  - Offline submit recovery
+  - Role access control (ops/perf hidden from field/user)
+- Two link buttons:
+  - "Open Portal Performance" → `/attendance/portal-performance`
+  - "View QA Checklist (PHASE_1B)" → static reference text + path (no in-app doc viewer needed)
+- Small footnote: "Record results in `docs/PHASE_1C_PILOT_RESULTS.md`"
 
-Each query is copy-pasteable into Lovable Cloud SQL editor. Includes a short "how to read this" note in Thai+English.
+No state, no fetch, no DB changes. Pure markup.
 
-### 4. Pilot-blocking fixes
-None upfront. Phase 1C is a **QA / observability** phase. Only after a tester reports a true S1 (blank screen, LIFF cannot init, token validate misfires, check-in cannot submit, GPS/camera retry broken, Ops Center inaccessible to allowed role) will a minimal-diff fix be applied — and only with explicit approval before touching any of the protected modules.
+### Task 3 — Run automated checks
 
-### 5. Build / smoke verification
-After the 3 file changes, run `npm run build` and `npm run smoke:quick`. No edge function or DB changes → no new smoke surface.
+- `npm run smoke:quick` (build runs automatically in harness)
+- `bunx vitest run` if test setup is present
+- Report counts in final message
 
-## What is preserved
-- All existing nav items, order, and icons
-- Ops Center & Portal Performance pages (untouched)
-- All `webapp_page_config` rows (already correct)
-- All protected backend modules listed in scope guardrails
+### Task 4 — Pass/Fail gates documented
 
-## Files to change
-1. `src/components/DashboardLayout.tsx` — add 2 lines in Attendance group `items[]`
-2. `docs/PHASE_1C_PILOT_QA.md` — new
-3. `docs/PHASE_1C_PERF_QUERIES.md` — new
+Embed the READY / NOT READY criteria from the user's spec verbatim into the new results doc, so testers sign off against the same gates.
 
-## Deliverables on completion
-1. Pilot QA checklist (doc)
-2. Perf SQL report (doc)
-3. Ops Center + Portal Performance visible in nav for owner/admin/hr/manager only
-4. Build + smoke results
-5. Verdict: READY FOR SMALL PILOT (pending real-device tester sign-off using the new checklist)
+### Task 5 — Blocker fixes (only if found)
+
+Scope-limited fixes allowed only if automated checks expose them:
+- Route typo, access config typo, missing nav link, broken import, null-handling, confusing Thai copy, missing retry button.
+Anything bigger → list as remaining blocker, do NOT fix.
+
+---
+
+### Files to change
+
+| File | Action |
+|---|---|
+| `docs/PHASE_1C_PILOT_RESULTS.md` | Create |
+| `src/pages/attendance/OpsCenter.tsx` | Add one Pilot QA card (additive, ~30 lines) |
+| `.lovable/plan.md` | Append Phase 1C execution note |
+
+### Out of scope (explicit)
+
+- No CSV export, branch filter, trend chart, drilldown, alerting on perf dashboard
+- No changes to `line-webhook`, `attendance-submit`, `attendance-validate-token`, `claim_attendance_token`, timezone helpers, payroll, points, Employee Documents
+- No DB migrations, no RLS changes, no edge function deploys
+- No new routes, no nav changes (Ops Center + Portal Performance already in nav from prior step)
+
+### Final report sections
+
+1. Pilot runbook created (path)
+2. Admin QA card added (file + lines)
+3. Build / smoke / test results
+4. Pilot pass/fail gates (summary)
+5. Any blocker fixes (likely none)
+6. Remaining manual steps (recruit testers, run on iOS+Android in LINE, fill results doc)
+7. Verdict: READY TO RUN PILOT or NOT READY + blockers
