@@ -1,13 +1,14 @@
 /**
  * Phase 1A.2 — End-to-end UI flow test for the Employee Documents module.
  *
- * Covers: upload -> confirm -> signed URL -> upload_status badge update.
+ * Phase 1A.3 — Adds a regression test for the picker → URL param auto-open path.
+ *
  * Uses a mocked Supabase client; no real network calls.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { createMockSupabase, type MockSupabaseHandle } from "./test-utils";
 
 // --- Mocks (must be set up before importing the component) ---
@@ -17,6 +18,7 @@ const hoisted = vi.hoisted(() => {
     mock: null as MockSupabaseHandle | null,
     toastSuccess: vi.fn(),
     toastError: vi.fn(),
+    navigate: vi.fn(),
   };
 });
 
@@ -24,6 +26,7 @@ hoisted.mock = createMockSupabase();
 const mock = hoisted.mock;
 const toastSuccess = hoisted.toastSuccess;
 const toastError = hoisted.toastError;
+const navigateMock = hoisted.navigate;
 
 vi.mock("@/integrations/supabase/client", () => ({
   get supabase() {
@@ -38,11 +41,20 @@ vi.mock("sonner", () => ({
   }),
 }));
 
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => hoisted.navigate,
+  };
+});
+
 // jsdom: window.open
 const openSpy = vi.fn();
 
 // Import AFTER mocks are registered
 import { EmployeeDocumentsTab } from "../EmployeeDocumentsTab";
+import { SelectEmployeeForUploadDialog } from "../SelectEmployeeForUploadDialog";
 
 const EMP_ID = "11111111-1111-1111-1111-111111111111";
 const DOC_ID = "22222222-2222-2222-2222-222222222222";
@@ -72,12 +84,18 @@ const baseDocRow = {
   archived_by_user_id: null,
 };
 
-function renderTab() {
+function renderTab(autoOpenUpload = false, onAutoOpenConsumed?: () => void) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <EmployeeDocumentsTab employeeId={EMP_ID} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <EmployeeDocumentsTab
+          employeeId={EMP_ID}
+          autoOpenUpload={autoOpenUpload}
+          onAutoOpenConsumed={onAutoOpenConsumed}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -88,6 +106,7 @@ beforeEach(() => {
   toastSuccess.mockReset();
   toastError.mockReset();
   openSpy.mockReset();
+  navigateMock.mockReset();
   // @ts-ignore
   window.open = openSpy;
   vi.clearAllMocks();
@@ -124,9 +143,9 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     renderTab();
     await screen.findByText("Contract");
 
-    // Click the download icon button in the row.
+    // Click the download icon button in the row (find by title to avoid coupling to icon order).
     const row = screen.getByText("Contract").closest("tr")!;
-    const downloadBtn = within(row).getAllByRole("button")[0];
+    const downloadBtn = within(row).getByTitle("ดาวน์โหลด");
     fireEvent.click(downloadBtn);
 
     await waitFor(() => {
@@ -154,7 +173,7 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     await screen.findByText("Contract");
 
     const row = screen.getByText("Contract").closest("tr")!;
-    fireEvent.click(within(row).getAllByRole("button")[0]);
+    fireEvent.click(within(row).getByTitle("ดาวน์โหลด"));
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     const message = toastError.mock.calls[0][0] as string;
@@ -178,7 +197,7 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     await screen.findByText("Contract");
 
     const row = screen.getByText("Contract").closest("tr")!;
-    fireEvent.click(within(row).getAllByRole("button")[0]);
+    fireEvent.click(within(row).getByTitle("ดาวน์โหลด"));
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
 
@@ -187,5 +206,46 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
       const r = screen.getByText("Contract").closest("tr")!;
       expect(within(r).getAllByText("อัปโหลดล้มเหลว").length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe("Phase 1A.3 — picker → URL param → auto-open", () => {
+  it("navigates to the employee detail page with ?action=upload-document when an employee is picked", async () => {
+    // Picker queries the employees table — queueSelect is table-agnostic.
+    mock.queueSelect([
+      { id: EMP_ID, full_name: "สมชาย ใจดี", branch_id: null, branches: { name: "สาขากลาง" } },
+    ]);
+
+    const onOpenChange = vi.fn();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <SelectEmployeeForUploadDialog open={true} onOpenChange={onOpenChange} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    const empBtn = await screen.findByText("สมชาย ใจดี");
+    fireEvent.click(empBtn);
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith(
+        `/attendance/employees/${EMP_ID}?action=upload-document`,
+      );
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("auto-opens the upload dialog and consumes the trigger exactly once", async () => {
+    mock.queueSelect([]); // no documents yet
+    const onConsumed = vi.fn();
+    renderTab(true, onConsumed);
+
+    // Upload dialog title should be rendered.
+    await waitFor(() => {
+      expect(screen.getByText("อัปโหลดเอกสารพนักงาน")).toBeInTheDocument();
+    });
+    // Trigger consumed exactly once (no re-open loop).
+    expect(onConsumed).toHaveBeenCalledTimes(1);
   });
 });
