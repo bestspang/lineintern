@@ -112,6 +112,15 @@ serve(async (req) => {
     const successCount = results.filter(r => r.status === "success").length;
     const errorCount = results.filter(r => r.status === "error").length;
 
+    await writeAuditLog(supabase, {
+      functionName: 'fix-user-names',
+      actionType: 'maintenance',
+      resourceType: 'users',
+      performedByUserId: actorUserId,
+      callerRole: actorRole,
+      metadata: { total: usersToFix.length, success: successCount, errors: errorCount },
+    });
+
     return new Response(
       JSON.stringify({
         message: "User name fix completed",

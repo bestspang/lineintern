@@ -116,6 +116,15 @@ Deno.serve(async (req) => {
 
     console.log(`[backfill-primary-groups] Complete: ${results.assigned} assigned, ${results.skipped} skipped`);
 
+    await writeAuditLog(supabase, {
+      functionName: 'backfill-primary-groups',
+      actionType: 'backfill',
+      resourceType: 'users',
+      performedByUserId: actorUserId,
+      callerRole: actorRole,
+      metadata: { total: results.total, assigned: results.assigned, skipped: results.skipped },
+    });
+
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
