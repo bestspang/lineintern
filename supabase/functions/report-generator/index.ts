@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { toZonedTime } from 'npm:date-fns-tz@3.2.0';
 import { getBangkokDateString, toBangkokTime } from '../_shared/timezone.ts';
 import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
+import { writeAuditLog } from '../_shared/audit.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
