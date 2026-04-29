@@ -99,6 +99,7 @@ const BagManagement = lazy(() => import("./pages/attendance/BagManagement"));
 const ShiftTemplates = lazy(() => import("./pages/attendance/ShiftTemplates"));
 const Schedules = lazy(() => import("./pages/attendance/Schedules"));
 const AttendanceOpsCenter = lazy(() => import("./pages/attendance/OpsCenter"));
+const AttendancePortalPerformance = lazy(() => import("./pages/attendance/PortalPerformance"));
 const PortalFaqAdmin = lazy(() => import("./pages/PortalFaqAdmin"));
 const ProfileSyncHealth = lazy(() => import("./pages/ProfileSyncHealth"));
 
@@ -304,6 +305,7 @@ const App = () => (
                         <Route path="/attendance/settings" element={<AttendanceSettings />} />
                         <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                         <Route path="/attendance/ops-center" element={<AttendanceOpsCenter />} />
+                        <Route path="/attendance/portal-performance" element={<AttendancePortalPerformance />} />
                         <Route path="/health-monitoring" element={<HealthMonitoring />} />
                         <Route path="/config-validator" element={<ConfigurationValidator />} />
                         <Route path="/pre-deploy-checklist" element={<PreDeployChecklist />} />
