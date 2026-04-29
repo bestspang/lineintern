@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,10 +16,14 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Loader2, FileText, Plus, Search, RefreshCw, Download as DownloadIcon,
-  LayoutGrid, List, SlidersHorizontal, AlertCircle,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Loader2, FileText, Plus, RefreshCw, Download as DownloadIcon,
+  LayoutGrid, List, SlidersHorizontal, AlertCircle, RotateCcw, Columns3,
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -32,12 +35,46 @@ import { SelectEmployeeForUploadDialog } from "@/components/employee-documents/S
 import { EmployeeDocumentsKpiStrip, type KpiCounts } from "@/components/employee-documents/EmployeeDocumentsKpiStrip";
 import { EmployeeDocumentsRowActions } from "@/components/employee-documents/EmployeeDocumentsRowActions";
 import { EmployeeDocumentsCardGrid, type DocRow } from "@/components/employee-documents/EmployeeDocumentsCardGrid";
+import { DocumentSearchCombobox, type SuggestionPick } from "@/components/employee-documents/DocumentSearchCombobox";
 
 type ExpiryWindow = "all" | "expired" | "30d" | "60d" | "90d";
 type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
 type SortKey = "expiry_asc" | "expiry_desc" | "updated_desc" | "name_asc";
 type ViewMode = "table" | "cards";
 type Preset = "all" | "expiring30" | "expiring90" | "expired" | "pending" | "custom";
+type SearchScope = "title" | "title_or_file";
+
+const PAGE_SIZE = 50;
+
+// --- Column visibility ---
+type ColumnKey = "employee" | "branch" | "title" | "type" | "expiry" | "visibility" | "status";
+const COLUMN_LABELS: Record<ColumnKey, string> = {
+  employee: "พนักงาน",
+  branch: "สาขา",
+  title: "เอกสาร",
+  type: "ประเภท",
+  expiry: "วันหมดอายุ",
+  visibility: "การมองเห็น",
+  status: "สถานะ",
+};
+const ALL_COLUMNS: ColumnKey[] = ["employee", "branch", "title", "type", "expiry", "visibility", "status"];
+const DEFAULT_COLUMNS: Record<ColumnKey, boolean> = {
+  employee: true, branch: true, title: true, type: true,
+  expiry: true, visibility: true, status: true,
+};
+const COLUMN_STORAGE_KEY = "employee-documents.columns.v1";
+
+function loadColumns(): Record<ColumnKey, boolean> {
+  if (typeof window === "undefined") return DEFAULT_COLUMNS;
+  try {
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!raw) return DEFAULT_COLUMNS;
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_COLUMNS, ...parsed };
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+}
 
 function urgencyRowClass(expiry: string | null, uploadStatus: string): string {
   if (uploadStatus === "failed") return "border-l-4 border-l-destructive bg-destructive/5";
@@ -80,17 +117,38 @@ function toCsv(rows: DocRow[]): string {
   return "\uFEFF" + [header.join(","), ...lines].join("\n");
 }
 
+const DEFAULT_STATE = {
+  search: "",
+  employeeFilter: null as { id: string; name: string } | null,
+  branchId: "all",
+  typeFilter: "all" as EmployeeDocumentType | "all",
+  statusFilter: "active_only" as StatusFilter,
+  expiryWindow: "all" as ExpiryWindow,
+  sortKey: "expiry_asc" as SortKey,
+  preset: "all" as Preset,
+  searchScope: "title" as SearchScope,
+};
+
 export default function EmployeeDocuments() {
-  const [search, setSearch] = useState("");
-  const [branchId, setBranchId] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active_only");
-  const [expiryWindow, setExpiryWindow] = useState<ExpiryWindow>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("expiry_asc");
+  const [search, setSearch] = useState(DEFAULT_STATE.search);
+  const [employeeFilter, setEmployeeFilter] = useState<{ id: string; name: string } | null>(DEFAULT_STATE.employeeFilter);
+  const [branchId, setBranchId] = useState<string>(DEFAULT_STATE.branchId);
+  const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">(DEFAULT_STATE.typeFilter);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATE.statusFilter);
+  const [expiryWindow, setExpiryWindow] = useState<ExpiryWindow>(DEFAULT_STATE.expiryWindow);
+  const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_STATE.sortKey);
+  const [searchScope, setSearchScope] = useState<SearchScope>(DEFAULT_STATE.searchScope);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [preset, setPreset] = useState<Preset>("all");
+  const [preset, setPreset] = useState<Preset>(DEFAULT_STATE.preset);
+  const [columns, setColumns] = useState<Record<ColumnKey, boolean>>(() => loadColumns());
+  const [exportingAll, setExportingAll] = useState(false);
+
+  // Persist column prefs
+  useEffect(() => {
+    try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columns)); } catch { /* ignore */ }
+  }, [columns]);
 
   // Auto-switch to cards on small screens
   useEffect(() => {
@@ -110,45 +168,79 @@ export default function EmployeeDocuments() {
     },
   });
 
-  const {
-    data: rows = [], isLoading, isFetching, error, refetch, dataUpdatedAt,
-  } = useQuery({
-    queryKey: ["all-employee-documents", branchId, typeFilter, statusFilter, expiryWindow, search],
-    queryFn: async () => {
-      let q = supabase
-        .from("employee_documents" as any)
-        .select("*, employees!inner(id, full_name, branch_id, branches:branches!employees_branch_id_fkey(name))")
-        .order("expiry_date", { ascending: true, nullsFirst: false });
+  // Build the filtered query (used for both pages and exhaustive export).
+  const buildBaseQuery = (selectClause: string) => {
+    let q = supabase
+      .from("employee_documents" as any)
+      .select(selectClause, { count: "exact" })
+      .order("expiry_date", { ascending: true, nullsFirst: false });
 
-      if (typeFilter !== "all") q = q.eq("document_type", typeFilter);
-      if (statusFilter === "active_only") {
-        q = q.neq("status", "archived").eq("upload_status", "uploaded");
-      } else if (statusFilter === "pending_or_failed") {
-        q = q.in("upload_status", ["pending", "failed"]);
+    if (typeFilter !== "all") q = q.eq("document_type", typeFilter);
+    if (statusFilter === "active_only") {
+      q = q.neq("status", "archived").eq("upload_status", "uploaded");
+    } else if (statusFilter === "pending_or_failed") {
+      q = q.in("upload_status", ["pending", "failed"]);
+    } else {
+      q = q.eq("status", statusFilter);
+    }
+    if (branchId !== "all") q = q.eq("employees.branch_id", branchId);
+    if (employeeFilter) q = q.eq("employee_id", employeeFilter.id);
+
+    if (search.trim()) {
+      const s = search.trim().replace(/[%]/g, "");
+      if (searchScope === "title_or_file") {
+        q = q.or(`title.ilike.%${s}%,file_name.ilike.%${s}%`);
       } else {
-        q = q.eq("status", statusFilter);
+        q = q.ilike("title", `%${s}%`);
       }
-      if (branchId !== "all") q = q.eq("employees.branch_id", branchId);
-      if (search.trim()) q = q.ilike("title", `%${search.trim()}%`);
+    }
 
-      const today = new Date();
-      const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-      if (expiryWindow === "expired") q = q.lt("expiry_date", isoDate(today));
-      else if (expiryWindow !== "all") {
-        const days = expiryWindow === "30d" ? 30 : expiryWindow === "60d" ? 60 : 90;
-        const cutoff = new Date(today); cutoff.setDate(today.getDate() + days);
-        q = q.gte("expiry_date", isoDate(today)).lte("expiry_date", isoDate(cutoff));
-      }
+    const today = new Date();
+    const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+    if (expiryWindow === "expired") q = q.lt("expiry_date", isoDate(today));
+    else if (expiryWindow !== "all") {
+      const days = expiryWindow === "30d" ? 30 : expiryWindow === "60d" ? 60 : 90;
+      const cutoff = new Date(today); cutoff.setDate(today.getDate() + days);
+      q = q.gte("expiry_date", isoDate(today)).lte("expiry_date", isoDate(cutoff));
+    }
 
-      const { data, error } = await q.limit(500);
+    return q;
+  };
+
+  // Infinite-paginated rows
+  const {
+    data: pageData,
+    isLoading, isFetching, error, refetch, dataUpdatedAt,
+    fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: [
+      "all-employee-documents-v2",
+      branchId, typeFilter, statusFilter, expiryWindow, search, searchScope,
+      employeeFilter?.id ?? null,
+    ],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const from = pageParam as number;
+      const to = from + PAGE_SIZE - 1;
+      const q = buildBaseQuery("*, employees!inner(id, full_name, branch_id, branches:branches!employees_branch_id_fkey(name))");
+      const { data, error, count } = await q.range(from, to);
       if (error) throw error;
-      return (data as unknown as DocRow[]) ?? [];
+      return { rows: (data as unknown as DocRow[]) ?? [], count: count ?? 0, from, to };
+    },
+    getNextPageParam: (last, all) => {
+      const loaded = all.reduce((sum, p) => sum + p.rows.length, 0);
+      if (loaded >= last.count) return undefined;
+      return loaded;
     },
   });
 
-  // Compute KPI counts client-side from a separate query of "everything active-ish"
-  // To avoid a second round-trip we compute from current `rows` but ALSO derive from raw rows when possible.
-  // For accurate KPIs we use a lightweight secondary query.
+  const rows: DocRow[] = useMemo(
+    () => (pageData?.pages.flatMap((p) => p.rows) ?? []),
+    [pageData],
+  );
+  const totalCount = pageData?.pages[0]?.count ?? 0;
+
+  // KPI counts
   const { data: kpiRows = [] } = useQuery({
     queryKey: ["employee-documents-kpi", branchId],
     queryFn: async () => {
@@ -167,10 +259,7 @@ export default function EmployeeDocuments() {
     const today = new Date();
     let expired = 0, expiringSoon = 0, expiringLater = 0, total = 0, pendingOrFailed = 0;
     for (const r of kpiRows) {
-      if (r.upload_status !== "uploaded") {
-        pendingOrFailed++;
-        continue;
-      }
+      if (r.upload_status !== "uploaded") { pendingOrFailed++; continue; }
       total++;
       if (!r.expiry_date) continue;
       const days = differenceInCalendarDays(new Date(r.expiry_date), today);
@@ -201,34 +290,99 @@ export default function EmployeeDocuments() {
   const applyPreset = (p: Preset) => {
     setPreset(p);
     switch (p) {
-      case "all":
-        setStatusFilter("active_only"); setExpiryWindow("all"); break;
-      case "expiring30":
-        setStatusFilter("active_only"); setExpiryWindow("30d"); break;
-      case "expiring90":
-        setStatusFilter("active_only"); setExpiryWindow("90d"); break;
-      case "expired":
-        setStatusFilter("active_only"); setExpiryWindow("expired"); break;
-      case "pending":
-        setStatusFilter("pending_or_failed"); setExpiryWindow("all"); break;
+      case "all": setStatusFilter("active_only"); setExpiryWindow("all"); break;
+      case "expiring30": setStatusFilter("active_only"); setExpiryWindow("30d"); break;
+      case "expiring90": setStatusFilter("active_only"); setExpiryWindow("90d"); break;
+      case "expired": setStatusFilter("active_only"); setExpiryWindow("expired"); break;
+      case "pending": setStatusFilter("pending_or_failed"); setExpiryWindow("all"); break;
       case "custom": break;
     }
   };
 
   const onAnyAdvancedChange = () => setPreset("custom");
 
-  const exportCsv = () => {
-    const csv = toCsv(sortedRows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `employee-documents-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // --- Reset detection ---
+  const isDirty =
+    search !== DEFAULT_STATE.search ||
+    employeeFilter !== null ||
+    branchId !== DEFAULT_STATE.branchId ||
+    typeFilter !== DEFAULT_STATE.typeFilter ||
+    statusFilter !== DEFAULT_STATE.statusFilter ||
+    expiryWindow !== DEFAULT_STATE.expiryWindow ||
+    sortKey !== DEFAULT_STATE.sortKey ||
+    preset !== DEFAULT_STATE.preset ||
+    searchScope !== DEFAULT_STATE.searchScope;
+
+  const resetAll = () => {
+    setSearch(DEFAULT_STATE.search);
+    setEmployeeFilter(DEFAULT_STATE.employeeFilter);
+    setBranchId(DEFAULT_STATE.branchId);
+    setTypeFilter(DEFAULT_STATE.typeFilter);
+    setStatusFilter(DEFAULT_STATE.statusFilter);
+    setExpiryWindow(DEFAULT_STATE.expiryWindow);
+    setSortKey(DEFAULT_STATE.sortKey);
+    setSearchScope(DEFAULT_STATE.searchScope);
+    setPreset(DEFAULT_STATE.preset);
   };
 
+  // --- Suggestion picker ---
+  const onSuggestionPick = (pick: SuggestionPick) => {
+    onAnyAdvancedChange();
+    if (pick.kind === "title") {
+      setSearch(pick.value);
+      setSearchScope("title");
+    } else if (pick.kind === "file") {
+      setSearch(pick.value);
+      setSearchScope("title_or_file");
+    } else {
+      setEmployeeFilter({ id: pick.employeeId, name: pick.value });
+      // Don't overwrite the user's typed text — the chip itself filters by employee.
+    }
+  };
+
+  // --- CSV export (loads all pages first if needed) ---
+  const exportCsv = async () => {
+    setExportingAll(true);
+    try {
+      // If everything is already loaded, export directly
+      let allRows = sortedRows;
+      if (hasNextPage) {
+        // Fetch all remaining pages directly (bypass paging UI)
+        const q = buildBaseQuery("*, employees!inner(id, full_name, branch_id, branches:branches!employees_branch_id_fkey(name))");
+        const { data, error } = await q.range(0, Math.max(0, totalCount - 1));
+        if (error) throw error;
+        allRows = ((data as unknown as DocRow[]) ?? []);
+      }
+      const csv = toCsv(allRows);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `employee-documents-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingAll(false);
+    }
+  };
+
+  // --- Auto-load on scroll (sentinel) ---
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage || rows.length < PAGE_SIZE) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, rows.length, fetchNextPage]);
+
   const lastRefreshed = dataUpdatedAt ? format(new Date(dataUpdatedAt), "HH:mm:ss") : "-";
+  const visibleColumns = columns;
+  const sortIsLocal = sortKey !== "expiry_asc";
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -249,8 +403,8 @@ export default function EmployeeDocuments() {
               <RefreshCw className={cn("h-4 w-4 mr-2", isFetching && "animate-spin")} />
               รีเฟรช
             </Button>
-            <Button variant="outline" size="sm" onClick={exportCsv} disabled={sortedRows.length === 0}>
-              <DownloadIcon className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={totalCount === 0 || exportingAll}>
+              {exportingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <DownloadIcon className="h-4 w-4 mr-2" />}
               ส่งออก CSV
             </Button>
             <Button onClick={() => setPickerOpen(true)}>
@@ -262,27 +416,38 @@ export default function EmployeeDocuments() {
         {/* KPI strip */}
         <EmployeeDocumentsKpiStrip counts={kpi} activePreset={preset} onPreset={(p) => applyPreset(p as Preset)} />
 
-        {/* Search + advanced filter toggle */}
+        {/* Search + sort + view + filters */}
         <Card className="p-3 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="ค้นหาชื่อเอกสาร..."
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); onAnyAdvancedChange(); }}
-              />
-            </div>
-            <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="expiry_asc">หมดอายุเร็วสุดก่อน</SelectItem>
-                <SelectItem value="expiry_desc">หมดอายุช้าสุดก่อน</SelectItem>
-                <SelectItem value="updated_desc">อัปเดตล่าสุด</SelectItem>
-                <SelectItem value="name_asc">ชื่อพนักงาน A→ฮ</SelectItem>
-              </SelectContent>
-            </Select>
+            <DocumentSearchCombobox
+              value={search}
+              onValueChange={(v) => { setSearch(v); onAnyAdvancedChange(); }}
+              employeeChip={employeeFilter}
+              onClearEmployee={() => { setEmployeeFilter(null); onAnyAdvancedChange(); }}
+              onPick={onSuggestionPick}
+            />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+                    <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="expiry_asc">หมดอายุเร็วสุดก่อน</SelectItem>
+                      <SelectItem value="expiry_desc">หมดอายุช้าสุดก่อน</SelectItem>
+                      <SelectItem value="updated_desc">อัปเดตล่าสุด</SelectItem>
+                      <SelectItem value="name_asc">ชื่อพนักงาน A→ฮ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </TooltipTrigger>
+              {sortIsLocal && (
+                <TooltipContent side="bottom">
+                  เรียงเฉพาะรายการที่โหลดมาแล้ว ({rows.length}/{totalCount})
+                </TooltipContent>
+              )}
+            </Tooltip>
+
             <ToggleGroup
               type="single"
               size="sm"
@@ -293,6 +458,42 @@ export default function EmployeeDocuments() {
               <ToggleGroupItem value="table" aria-label="ตาราง"><List className="h-4 w-4" /></ToggleGroupItem>
               <ToggleGroupItem value="cards" aria-label="การ์ด"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
             </ToggleGroup>
+
+            {viewMode === "table" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Columns3 className="h-4 w-4 mr-2" />
+                    คอลัมน์
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuLabel>แสดงคอลัมน์</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {ALL_COLUMNS.map((key) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={visibleColumns[key]}
+                      onCheckedChange={(checked) =>
+                        setColumns((prev) => ({ ...prev, [key]: !!checked }))
+                      }
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {COLUMN_LABELS[key]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <button
+                    type="button"
+                    onClick={() => setColumns(DEFAULT_COLUMNS)}
+                    className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent rounded-sm"
+                  >
+                    คืนค่าเริ่มต้น
+                  </button>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -302,6 +503,13 @@ export default function EmployeeDocuments() {
               </CollapsibleTrigger>
               <CollapsibleContent />
             </Collapsible>
+
+            {isDirty && (
+              <Button variant="ghost" size="sm" onClick={resetAll}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                รีเซ็ต
+              </Button>
+            )}
           </div>
 
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
@@ -350,8 +558,11 @@ export default function EmployeeDocuments() {
 
           <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
             <span>
-              แสดง <strong className="text-foreground tabular-nums">{sortedRows.length}</strong> รายการ
-              {rows.length >= 500 && <span className="text-amber-600 dark:text-amber-400 ml-1">(จำกัด 500)</span>}
+              แสดง <strong className="text-foreground tabular-nums">{rows.length}</strong>
+              {totalCount > 0 && <> จาก <strong className="text-foreground tabular-nums">{totalCount}</strong></>} รายการ
+              {searchScope === "title_or_file" && search.trim() && (
+                <span className="ml-2 text-muted-foreground/80">(ค้นในชื่อ + ชื่อไฟล์)</span>
+              )}
             </span>
             <span>อัปเดตล่าสุด {lastRefreshed}</span>
           </div>
@@ -381,27 +592,37 @@ export default function EmployeeDocuments() {
             <FileText className="h-12 w-12 mx-auto text-muted-foreground/40" />
             <p className="text-muted-foreground mt-3">ไม่พบเอกสารที่ตรงกับตัวกรอง</p>
             <div className="flex items-center justify-center gap-2 mt-4">
-              <Button variant="outline" size="sm" onClick={() => applyPreset("all")}>ล้างตัวกรอง</Button>
+              <Button variant="outline" size="sm" onClick={resetAll}>ล้างตัวกรอง</Button>
               <Button size="sm" onClick={() => setPickerOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" /> เลือกพนักงานเพื่ออัปโหลด
               </Button>
             </div>
           </Card>
         ) : viewMode === "cards" ? (
-          <EmployeeDocumentsCardGrid rows={sortedRows} onStateChanged={() => refetch()} />
+          <>
+            <EmployeeDocumentsCardGrid rows={sortedRows} onStateChanged={() => refetch()} />
+            <PaginationFooter
+              loaded={rows.length}
+              total={totalCount}
+              hasNext={!!hasNextPage}
+              loading={isFetchingNextPage}
+              onLoadMore={() => fetchNextPage()}
+              sentinelRef={sentinelRef}
+            />
+          </>
         ) : (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-muted/30 sticky top-0">
                   <TableRow>
-                    <TableHead>พนักงาน</TableHead>
-                    <TableHead className="hidden lg:table-cell">สาขา</TableHead>
-                    <TableHead>เอกสาร</TableHead>
-                    <TableHead className="hidden md:table-cell">ประเภท</TableHead>
-                    <TableHead>วันหมดอายุ</TableHead>
-                    <TableHead className="hidden xl:table-cell">การมองเห็น</TableHead>
-                    <TableHead>สถานะ</TableHead>
+                    {visibleColumns.employee && <TableHead>พนักงาน</TableHead>}
+                    {visibleColumns.branch && <TableHead>สาขา</TableHead>}
+                    {visibleColumns.title && <TableHead>เอกสาร</TableHead>}
+                    {visibleColumns.type && <TableHead>ประเภท</TableHead>}
+                    {visibleColumns.expiry && <TableHead>วันหมดอายุ</TableHead>}
+                    {visibleColumns.visibility && <TableHead>การมองเห็น</TableHead>}
+                    {visibleColumns.status && <TableHead>สถานะ</TableHead>}
                     <TableHead className="text-right">การดำเนินการ</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -411,42 +632,60 @@ export default function EmployeeDocuments() {
                       ? ((r.metadata as any).confirm_history as ConfirmHistoryEntry[]) : [];
                     return (
                       <TableRow key={r.id} className={cn(urgencyRowClass(r.expiry_date, r.upload_status))}>
-                        <TableCell className="font-medium">
-                          <div>{r.employees?.full_name || "-"}</div>
-                          <div className="text-xs text-muted-foreground lg:hidden">{r.employees?.branches?.name || ""}</div>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">{r.employees?.branches?.name || "-"}</TableCell>
-                        <TableCell>
-                          <div className="font-medium line-clamp-1">{r.title}</div>
-                          <div className="text-xs text-muted-foreground line-clamp-1">{r.file_name}</div>
-                          <div className="text-xs text-muted-foreground md:hidden mt-0.5">
-                            {DOCUMENT_TYPE_LABEL_TH[r.document_type]}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">{DOCUMENT_TYPE_LABEL_TH[r.document_type]}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm">{r.expiry_date ? format(new Date(r.expiry_date), "dd MMM yyyy") : "-"}</span>
-                            {expiryBadge(r.expiry_date)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden xl:table-cell">
-                          <Badge variant={r.visibility === "hr_only" ? "secondary" : "outline"}>
-                            {VISIBILITY_LABEL_TH[r.visibility]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1 items-start">
-                            <Badge variant={r.status === "active" ? "default" : "secondary"}>
-                              {STATUS_LABEL_TH[r.status]}
-                            </Badge>
-                            {r.upload_status !== "uploaded" && (
-                              <Badge variant={r.upload_status === "failed" ? "destructive" : "outline"}>
-                                {UPLOAD_STATUS_LABEL_TH[r.upload_status]}
-                              </Badge>
+                        {visibleColumns.employee && (
+                          <TableCell className="font-medium">
+                            <div>{r.employees?.full_name || "-"}</div>
+                            {!visibleColumns.branch && (
+                              <div className="text-xs text-muted-foreground">{r.employees?.branches?.name || ""}</div>
                             )}
-                          </div>
-                        </TableCell>
+                          </TableCell>
+                        )}
+                        {visibleColumns.branch && (
+                          <TableCell>{r.employees?.branches?.name || "-"}</TableCell>
+                        )}
+                        {visibleColumns.title && (
+                          <TableCell>
+                            <div className="font-medium line-clamp-1">{r.title}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-1">{r.file_name}</div>
+                            {!visibleColumns.type && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {DOCUMENT_TYPE_LABEL_TH[r.document_type]}
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
+                        {visibleColumns.type && (
+                          <TableCell>{DOCUMENT_TYPE_LABEL_TH[r.document_type]}</TableCell>
+                        )}
+                        {visibleColumns.expiry && (
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm">{r.expiry_date ? format(new Date(r.expiry_date), "dd MMM yyyy") : "-"}</span>
+                              {expiryBadge(r.expiry_date)}
+                            </div>
+                          </TableCell>
+                        )}
+                        {visibleColumns.visibility && (
+                          <TableCell>
+                            <Badge variant={r.visibility === "hr_only" ? "secondary" : "outline"}>
+                              {VISIBILITY_LABEL_TH[r.visibility]}
+                            </Badge>
+                          </TableCell>
+                        )}
+                        {visibleColumns.status && (
+                          <TableCell>
+                            <div className="flex flex-col gap-1 items-start">
+                              <Badge variant={r.status === "active" ? "default" : "secondary"}>
+                                {STATUS_LABEL_TH[r.status]}
+                              </Badge>
+                              {r.upload_status !== "uploaded" && (
+                                <Badge variant={r.upload_status === "failed" ? "destructive" : "outline"}>
+                                  {UPLOAD_STATUS_LABEL_TH[r.upload_status]}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell className="text-right">
                           <EmployeeDocumentsRowActions
                             documentId={r.id}
@@ -463,7 +702,15 @@ export default function EmployeeDocuments() {
                 </TableBody>
               </Table>
             </div>
-            {isFetching && !isLoading && (
+            <PaginationFooter
+              loaded={rows.length}
+              total={totalCount}
+              hasNext={!!hasNextPage}
+              loading={isFetchingNextPage}
+              onLoadMore={() => fetchNextPage()}
+              sentinelRef={sentinelRef}
+            />
+            {isFetching && !isLoading && !isFetchingNextPage && (
               <div className="border-t px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
                 <Loader2 className="h-3 w-3 animate-spin" /> กำลังอัปเดต…
               </div>
@@ -474,5 +721,34 @@ export default function EmployeeDocuments() {
         <SelectEmployeeForUploadDialog open={pickerOpen} onOpenChange={setPickerOpen} />
       </div>
     </TooltipProvider>
+  );
+}
+
+interface PaginationFooterProps {
+  loaded: number;
+  total: number;
+  hasNext: boolean;
+  loading: boolean;
+  onLoadMore: () => void;
+  sentinelRef: React.RefObject<HTMLDivElement>;
+}
+
+function PaginationFooter({ loaded, total, hasNext, loading, onLoadMore, sentinelRef }: PaginationFooterProps) {
+  if (total === 0) return null;
+  return (
+    <div className="border-t px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">
+        แสดง <strong className="text-foreground tabular-nums">{loaded}</strong> จาก <strong className="text-foreground tabular-nums">{total}</strong> รายการ
+      </span>
+      {hasNext ? (
+        <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+          โหลดเพิ่ม
+        </Button>
+      ) : loaded > 0 ? (
+        <span className="text-xs text-muted-foreground">โหลดครบทุกรายการแล้ว</span>
+      ) : null}
+      <div ref={sentinelRef} aria-hidden className="h-1 w-full sm:hidden" />
+    </div>
   );
 }
