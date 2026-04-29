@@ -5565,6 +5565,51 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_verification_logs: {
+        Row: {
+          checked_at: string
+          created_at: string
+          current_url: string | null
+          error_message: string | null
+          expected_url: string
+          id: string
+          is_match: boolean
+          raw_response: Json | null
+          test_reason: string | null
+          test_status_code: number | null
+          test_success: boolean | null
+          triggered_by: string
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          current_url?: string | null
+          error_message?: string | null
+          expected_url: string
+          id?: string
+          is_match?: boolean
+          raw_response?: Json | null
+          test_reason?: string | null
+          test_status_code?: number | null
+          test_success?: boolean | null
+          triggered_by?: string
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          current_url?: string | null
+          error_message?: string | null
+          expected_url?: string
+          id?: string
+          is_match?: boolean
+          raw_response?: Json | null
+          test_reason?: string | null
+          test_status_code?: number | null
+          test_success?: boolean | null
+          triggered_by?: string
+        }
+        Relationships: []
+      }
       weekly_schedules: {
         Row: {
           branch_id: string

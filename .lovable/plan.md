@@ -1,85 +1,105 @@
-## ปัญหา
+## ปัญหา (Confirmed)
+- LINE webhook URL ปัจจุบัน: `https://bjzzqfzgnslefqhnsmla.supabase.co/...` (project เก่า)
+- Project ที่ active อยู่: `phhxdgaiwgaiuecvfjgj` (ที่ Lovable connect)
+- ผลกระทบ: ตั้งแต่ 5/3 ข้อมูล LINE ทุกตัว (messages, attendance_logs, tokens, points) ไหลเข้า project เก่า → DB ปัจจุบันว่างเปล่า
 
-Snapshot ตารางเข้างานค้างที่ 2026-03-05 มา ~55 วัน
+## เป้าหมาย
+1. สร้างระบบตรวจ + ยืนยัน webhook URL (manual one-click + cron daily + health endpoint)
+2. ดึงข้อมูลที่ค้างใน project เก่า (5/3 → ปัจจุบัน) กลับมา merge
 
-**Root cause ที่ยืนยันแล้ว:**
-- Cron jobs ทุกตัว (16 jobs) ยัง run สำเร็จทุก 5 นาที ✅
-- `attendance-snapshot-update` run ปกติ ✅
-- **แต่ไม่มี attendance_logs ใหม่ตั้งแต่ 2026-03-05 02:14 UTC เลย** ❌
-- Active employees ยังมี 10 คน
+---
 
-→ Snapshot ไม่ได้พัง — **flow การ check-in ของพนักงานพัง** ทำให้ snapshot ไม่มี data ใหม่จะเขียน
+## Part A: Webhook Verification System
 
-## โมดูลที่เกี่ยวข้อง + สถานะ
+### A1. Edge Function ใหม่: `verify-line-webhook`
+เรียก LINE Messaging API endpoint:
+```
+GET https://api.line.me/v2/bot/channel/webhook/endpoint
+Authorization: Bearer ${LINE_CHANNEL_ACCESS_TOKEN}
+```
+- เปรียบเทียบ `endpoint` ที่ได้กับ expected URL: `https://phhxdgaiwgaiuecvfjgj.supabase.co/functions/v1/line-webhook`
+- ถ้าไม่ตรง → log alert + return `{ ok: false, current, expected, mismatch: true }`
+- ถ้าตรง → ยิง `POST /v2/bot/channel/webhook/test` เพื่อ verify จริงว่า LINE call ผ่าน → return `{ ok: true, success: true, statusCode, reason }`
+- บันทึกผลลง table ใหม่ `webhook_verification_logs` (id, checked_at, current_url, expected_url, is_match, test_success, test_status_code, raw_response)
 
-| Module | Status | หมายเหตุ |
-|---|---|---|
-| `cron.job` ทั้งหมด | WORKING | run ครบทุก schedule |
-| `attendance-snapshot-update` edge fn | WORKING | run สำเร็จ แค่ไม่มี data |
-| `attendance_logs` insert path | **BROKEN** | ไม่มี row ใหม่ 55 วัน |
-| `attendance-submit` edge fn | UNKNOWN | ต้องเช็ค logs |
-| `attendance-validate-token` edge fn | UNKNOWN | ต้องเช็ค logs |
-| `line-webhook` (trigger token) | UNKNOWN | ต้องเช็ค logs |
-| LIFF / portal check-in UI | UNKNOWN | ต้องเทสจริง |
-| RLS policies บน `attendance_logs` | UNKNOWN | อาจเปลี่ยนแล้ว block insert |
+### A2. Migration: `webhook_verification_logs`
+Additive only. RLS: admin/owner read.
 
-## สิ่งที่ต้อง preserve
+### A3. UI: ปุ่ม "ตรวจ Webhook" ใน `Integrations.tsx` (มีอยู่แล้ว)
+- เพิ่ม Card "LINE Webhook Verification"
+- ปุ่ม "ตรวจสด" → invoke `verify-line-webhook` → แสดงผล badge เขียว/แดง + URL ปัจจุบัน + URL ที่ควรเป็น + last test result
+- แสดง history 10 รายการล่าสุดจาก `webhook_verification_logs`
+- ถ้า mismatch แสดงคำแนะนำ + deep link ไปหน้า LINE Developers Console
 
-- Cron jobs ทั้ง 16 ตัว (ห้ามแตะ schedule/command)
-- `attendance-snapshot-update/index.ts` (verified, ทำงานถูก)
-- Timezone helpers ใน `_shared/timezone.ts`
-- `claim_attendance_token` RPC (verified)
-- Validation logic ใน `attendance-submit/validation.ts`
+### A4. Cron daily verification
+ตั้ง pg_cron รัน `verify-line-webhook` ทุกวัน 09:00 Bangkok time
+- ถ้า mismatch หรือ test fail → push LINE alert ไป admin group (ใช้ pattern ที่มีอยู่ใน `line-webhook-error-routing` memory)
 
-## สิ่งที่อาจ broken จริง (ต้อง diagnose)
+### A5. Health endpoint enhancement
+อัพเดท `health` edge function ให้รวม:
+- `webhook_url_match: bool`
+- `last_webhook_verification: timestamp`
+- `last_attendance_log_at`, `last_message_at` (เพื่อ detect stagnation)
+แสดงใน `HealthMonitoring.tsx` page
 
-1. **Edge function errors** — เช็ค logs ของ `attendance-submit`, `attendance-validate-token`, `line-webhook` ย้อน 55 วัน หา error pattern
-2. **Token lifecycle** — เช็ค `attendance_tokens` ว่ามี row ใหม่ไหม / status ส่วนใหญ่เป็นอะไร
-3. **LINE webhook signature** — secret อาจเปลี่ยน, webhook URL ใน LINE Console อาจหลุด
-4. **RLS regression** — migration ใหม่อาจ block insert
-5. **LIFF endpoint URL** — APP_URL secret หรือ LIFF ID อาจเปลี่ยน
+---
 
-## แผน Diagnose (Phase 1 — read-only)
+## Part B: Data Recovery from Old Project
 
-1. **Query DB หา signal:**
-   - `SELECT MAX(created_at), COUNT(*) FROM attendance_tokens WHERE created_at > '2026-03-04'` → มี token ถูกสร้างไหมหลัง 5/3
-   - ถ้ามี token → ปัญหาที่ submit/validate
-   - ถ้าไม่มี token → ปัญหาที่ webhook/token-generator
-2. **อ่าน edge function logs:**
-   - `attendance-submit` ย้อน 7 วัน หา error
-   - `attendance-validate-token` ย้อน 7 วัน
-   - `line-webhook` หา request ที่มี text "checkin" / "เช็คอิน"
-3. **เช็ค RLS ของ `attendance_logs` table** — มี policy ใหม่ที่ block insert จาก service role ไหม
-4. **เช็ค secret `APP_URL` และ `LINE_CHANNEL_ACCESS_TOKEN`** ยัง valid
+### B1. ต้องการจากผู้ใช้ก่อนเริ่ม
+ผมเข้าถึง project `bjzzqfzgnslefqhnsmla` ไม่ได้โดยตรง (ไม่ใช่ Lovable Cloud ของ project นี้) — ต้องใช้ **service_role key** ของ project เก่า
 
-## แผน Fix (Phase 2 — หลังรู้ root cause)
+ขอ 1 ใน 2:
+- **(a)** ผู้ใช้แปะ service_role key ของ `bjzzqfzgnslefqhnsmla` ให้ ผมจะ store ชั่วคราวเป็น secret `OLD_PROJECT_SERVICE_KEY` แล้ว run script ดึง + merge + ลบ secret ทิ้งหลังเสร็จ
+- **(b)** ผู้ใช้ export CSV จาก dashboard ของ project เก่า (tables: `messages`, `attendance_logs`, `attendance_tokens`, `point_transactions`, `happy_points`, `users`, `groups`) แล้ว upload ให้ ผม import เข้า project ปัจจุบัน
 
-จะแก้แบบ surgical ตาม root cause ที่หาเจอ — **ไม่ refactor cron/snapshot ที่ยังทำงานดีอยู่** ตัวเลือกตามสถานการณ์:
+### B2. Migration script (one-shot edge function `migrate-old-project-data`)
+- ดึงข้อมูลจาก 5/3 → now ของ tables ข้างต้นจาก project เก่า ผ่าน REST API (ใช้ service_role)
+- Conflict strategy:
+  - `messages`: insert ถ้า `line_message_id` ไม่ซ้ำ
+  - `attendance_logs`: insert ถ้า (employee_id, server_time) ไม่ซ้ำ
+  - `attendance_tokens`: skip (ไม่มีประโยชน์ย้อนหลัง)
+  - `point_transactions`: insert + recompute `happy_points.point_balance` หลัง merge
+  - `users`/`groups`: upsert ตาม `line_user_id`/`line_group_id`
+- Dry-run mode ก่อน → แสดงจำนวน row จะ insert per table ให้ผู้ใช้ approve
+- ลง audit log ทุกครั้ง
 
-- **ถ้า edge fn error** → fix bug เฉพาะจุด, redeploy
-- **ถ้า RLS block** → เพิ่ม policy ที่หายไป (additive)
-- **ถ้า webhook secret หลุด** → reset secret ใน LINE Console + Lovable Cloud
-- **ถ้า LIFF URL เปลี่ยน** → update APP_URL secret
-- **ถ้าทีมหยุดใช้จริง** → ไม่ต้องแก้โค้ด, ยืนยันกับ user
+### B3. Post-migration verification
+- เทียบ row count ก่อน/หลัง
+- Recompute streaks (เรียก `point-streak-calculator` สำหรับช่วง 5/3 → now)
+- Recompute attendance summaries (เรียก `attendance-snapshot-update` per missing date)
 
-## Smoke Test หลังแก้
+---
 
-1. Manual check-in ผ่าน LINE → ต้องได้ link
-2. เปิด link → ต้องเห็นฟอร์มกล้อง+GPS
-3. กดส่ง → row ใหม่ใน `attendance_logs` ภายใน 5 วินาที
-4. รอ 5 นาที → `daily_attendance_summaries` วันนี้ต้อง update
-5. รัน `scripts/smoke-test.mjs` ทั้งชุด
+## Part C: Order of Execution
+1. **Apply Part A ทั้งหมด** (verification system) — additive ปลอดภัย
+2. **ผู้ใช้ใช้ปุ่ม "ตรวจสด" ครั้งแรก** เพื่อ confirm mismatch
+3. **ผู้ใช้แก้ webhook URL ใน LINE Console** เป็น `https://phhxdgaiwgaiuecvfjgj.supabase.co/functions/v1/line-webhook` แล้วกด Verify
+4. **กดตรวจสดอีกครั้ง** ใน app → ต้องเป็นเขียว
+5. **ส่งข้อความทดสอบใน LINE** → confirm ข้อมูลใหม่เข้า DB ปัจจุบัน
+6. **Part B** เริ่มหลังจาก step 5 ผ่าน (ขอ service_role key หรือ CSV)
 
-## Regression Checklist
+---
 
-- [ ] Cron jobs ทั้ง 16 ตัวยัง active
-- [ ] `attendance-snapshot-update` ยัง run สำเร็จ
-- [ ] ไม่มีการเปลี่ยน schema ของ `attendance_logs` / `daily_attendance_summaries`
-- [ ] Timezone ยังเป็น Asia/Bangkok ทุกจุด
-- [ ] Verified-comment functions ไม่ถูกแตะ
+## Files to Create/Edit
 
-## คำถามก่อนเริ่ม Phase 2
+```text
+NEW  supabase/functions/verify-line-webhook/index.ts
+NEW  supabase/functions/migrate-old-project-data/index.ts   (Part B)
+NEW  supabase/migrations/<ts>_webhook_verification_logs.sql
+EDIT supabase/functions/health/index.ts                     (add webhook + stagnation fields)
+EDIT src/pages/Integrations.tsx                             (add verification card)
+EDIT src/pages/HealthMonitoring.tsx                         (show webhook + stagnation status)
+NEW  pg_cron job: 'verify-line-webhook-daily' @ 09:00 ICT
+```
 
-ถ้าหลัง diagnose พบว่า:
-- **(ก)** เป็น bug จริง (edge fn / RLS / secret) → ผมจะแก้ minimal diff แล้วเทส
-- **(ข)** ทีมหยุดใช้งานจริง (ไม่มี bug) → จะยืนยันกับคุณก่อน ไม่แก้โค้ด
+## Regression Safety
+- ไม่แตะ `line-webhook/index.ts` (// ⚠️ VERIFIED)
+- ไม่แตะ attendance/timezone functions
+- Additive only: table ใหม่, function ใหม่, UI section ใหม่
+- Part B รันแบบ dry-run ก่อนทุกครั้ง
+
+## คำถามเดียวที่ค้างก่อนผมเริ่ม build
+สำหรับ **Part B** ขอเลือก: **(a) ส่ง service_role key ของ project เก่า** หรือ **(b) export CSV เอง**?
+
+ถ้าตอบทีหลังก็ได้ — ผมจะเริ่ม Part A ก่อนได้เลยพอ approve plan นี้
