@@ -395,3 +395,44 @@ Audit logs now include `error_code` on failure paths.
 
 ### Verdict
 **READY FOR PHASE 1B PERFORMANCE.** Phase 1A.1 closed.
+
+---
+
+## Phase 1A.2 — Upload entry point + E2E test coverage (2026-04-29)
+
+### Why
+- HR users on `/attendance/employee-documents` reported there was no visible upload button — that page was read-only and required navigating to a specific employee first.
+- Phase 1A.1 added states (`pending` / `uploaded` / `failed`) and structured signed-URL errors but had no automated regression coverage.
+
+### What changed (additive, no schema/RLS/edge-function changes)
+- `src/pages/attendance/EmployeeDocuments.tsx` — header "อัปโหลดเอกสาร" button + empty-state CTA → opens the new picker.
+- `src/components/employee-documents/SelectEmployeeForUploadDialog.tsx` — new searchable employee picker (active employees only); on select navigates to `/attendance/employees/:id?action=upload-document`.
+- `src/components/employee-documents/EmployeeDocumentsTab.tsx` — accepts `autoOpenUpload` + `onAutoOpenConsumed` props and opens the upload dialog once on mount.
+- `src/pages/attendance/EmployeeDetail.tsx` — reads `?action=upload-document` and passes it through; clears the param after opening so a refresh doesn't re-trigger.
+
+### E2E test coverage (Vitest + Testing Library, jsdom)
+File: `src/components/employee-documents/__tests__/upload-flow.test.tsx` — 5 passing scenarios:
+1. `pending` rows render the "กำลังอัปโหลด" badge and have no download button.
+2. `failed` rows render the "อัปโหลดล้มเหลว" badge.
+3. Downloading an `uploaded` row calls `employee-document-signed-url` and opens the returned signed URL.
+4. Signed URL returning `not_yet_uploaded` triggers the Thai toast and does NOT open a window.
+5. Signed URL returning `file_missing` triggers a refetch and the row reappears with `failed`.
+
+Test infrastructure added: `vitest.config.ts`, `src/test/setup.ts`, `npm run test` script. Mocks isolate the Supabase client and `sonner` toasts; no real network.
+
+### Files changed
+- `src/pages/attendance/EmployeeDocuments.tsx`
+- `src/pages/attendance/EmployeeDetail.tsx`
+- `src/components/employee-documents/EmployeeDocumentsTab.tsx`
+- `src/components/employee-documents/SelectEmployeeForUploadDialog.tsx` (new)
+- `src/components/employee-documents/__tests__/upload-flow.test.tsx` (new)
+- `src/components/employee-documents/__tests__/test-utils.tsx` (new)
+- `vitest.config.ts` (new), `src/test/setup.ts` (new)
+- `package.json` (test scripts + vitest devDeps)
+- `docs/STATUS.md`
+
+### Test result
+`bunx vitest run` → 5/5 passed. Smoke + build still expected to pass (no production-code logic changes outside additive UI wiring).
+
+### Verdict
+**READY FOR PHASE 1B PERFORMANCE.**
