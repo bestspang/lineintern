@@ -28,8 +28,12 @@ serve(async (req) => {
 
   try {
     // Phase 0A: payslip generation is sensitive — admin/owner/hr only.
+    let callerUserId: string | null = null;
+    let callerRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payslip-generator' });
+      const r = await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payslip-generator' });
+      callerUserId = r.userId;
+      callerRole = r.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -93,6 +97,21 @@ serve(async (req) => {
 
     // Generate HTML payslip
     const payslipHtml = generatePayslipHTML(record, period);
+
+    // Phase 0B — best-effort audit (no salary numbers in metadata).
+    await writeAuditLog(supabase, {
+      functionName: 'payslip-generator',
+      actionType: 'generate',
+      resourceType: 'payslip',
+      resourceId: record.id ?? null,
+      performedByUserId: callerUserId,
+      callerRole,
+      metadata: {
+        period_id,
+        employee_id,
+        source: 'admin_ui',
+      },
+    });
 
     return new Response(
       JSON.stringify({ 
