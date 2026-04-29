@@ -340,7 +340,24 @@ serve(async (req) => {
       const successMessage = wasAlreadyCheckedOut
         ? `✅ Archive คำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ (มี checkout อยู่แล้ว)`
         : `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`;
-      
+
+      // Phase 0A.1 — structured audit log (best-effort).
+      await writeAuditLog(supabase, {
+        functionName: 'remote-checkout-approval',
+        actionType: wasAlreadyCheckedOut ? 'archive' : 'approve',
+        resourceType: 'remote_checkout_request',
+        resourceId: request_id,
+        performedByUserId: callerUserId,
+        performedByEmployeeId: approver_employee_id,
+        callerRole: callerRoleLabel,
+        metadata: {
+          source: callerSource,
+          employee_id: employee.id,
+          checkout_log_id: checkoutLogId,
+          was_already_checked_out: wasAlreadyCheckedOut,
+        },
+      });
+
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -350,6 +367,7 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+
 
     } else {
       // === REJECTION FLOW ===
