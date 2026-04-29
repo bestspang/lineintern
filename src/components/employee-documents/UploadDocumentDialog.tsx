@@ -70,7 +70,7 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
     // Phase 1A.3 — validate AGAIN before invoking the signed-url function
     // so we never create an orphan 'pending' row from a doomed upload.
     const v = validateDocumentFile(file);
-    if (!v.ok) { toast.error(v.reason); return; }
+    if (v.ok === false) { toast.error(v.reason); return; }
 
     setPhase("uploading");
     let createdDocumentId: string | undefined;
