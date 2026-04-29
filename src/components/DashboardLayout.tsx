@@ -157,6 +157,8 @@ const navigationGroups = [
       { title: 'Employee Roles', titleTh: 'บทบาทพนักงาน', url: '/attendance/roles', icon: UserCog },
       { title: 'Branches', titleTh: 'สาขา', url: '/attendance/branches', icon: Building },
       { title: 'Settings', titleTh: 'ตั้งค่า', url: '/attendance/settings', icon: Settings },
+      { title: 'Daily Ops Center', titleTh: 'ศูนย์ปฏิบัติการ', url: '/attendance/ops-center', icon: Activity },
+      { title: 'Portal Performance', titleTh: 'ประสิทธิภาพพอร์ทัล', url: '/attendance/portal-performance', icon: Gauge },
     ],
   },
   {
