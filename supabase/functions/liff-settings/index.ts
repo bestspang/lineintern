@@ -297,6 +297,16 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }, { onConflict: 'setting_key' });
 
+        await writeAuditLog(supabase, {
+          functionName: 'liff-settings',
+          actionType: 'update_endpoint',
+          resourceType: 'liff_settings',
+          resourceId: null,
+          performedByUserId: userId,
+          callerRole: role,
+          metadata: { liff_id: liffId, endpoint_url: endpointUrl },
+        });
+
         return new Response(
           JSON.stringify({
             success: true,
