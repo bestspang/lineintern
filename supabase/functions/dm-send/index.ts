@@ -130,6 +130,22 @@ Deno.serve(async (req) => {
 
     console.log('Message saved to database:', insertedMessage?.id);
 
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'dm-send',
+      actionType: 'send',
+      resourceType: 'dm',
+      resourceId: group_id,
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        line_user_id_masked: maskLineUserId(line_user_id),
+        group_id,
+        char_count: typeof message === 'string' ? message.length : 0,
+        message_id: insertedMessage?.id ?? null,
+      },
+    });
+
     return new Response(
       JSON.stringify({ 
         success: true, 
