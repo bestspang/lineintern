@@ -164,6 +164,7 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
             <SelectItem value="archived">เก็บถาวร</SelectItem>
             <SelectItem value="replaced">ถูกแทนที่</SelectItem>
             <SelectItem value="expired">หมดอายุ</SelectItem>
+            <SelectItem value="pending_or_failed">อัปโหลดค้าง / ล้มเหลว</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -205,22 +206,35 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
                     {VISIBILITY_LABEL_TH[d.visibility]}
                   </Badge>
                 </TableCell>
-                <TableCell>{statusBadge(d.status)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1 items-start">
+                    {statusBadge(d.status)}
+                    {uploadStatusBadge(d.upload_status)}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => downloadDoc(d)} disabled={downloadingId === d.id}>
-                    {downloadingId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  </Button>
+                  {d.upload_status === "uploaded" ? (
+                    <Button size="sm" variant="ghost" onClick={() => downloadDoc(d)} disabled={downloadingId === d.id} title="ดาวน์โหลด">
+                      {downloadingId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground mr-2">
+                      {d.upload_status === "pending" ? "ยังอัปโหลดไม่เสร็จ" : "อัปโหลดล้มเหลว"}
+                    </span>
+                  )}
                   {d.status !== "archived" && d.status !== "replaced" && (
                     <>
-                      <Button
-                        size="sm" variant="ghost"
-                        onClick={() => { setReplaceOldId(d.id); setUploadOpen(true); }}
-                        title="แทนที่ด้วยเอกสารใหม่"
-                      ><Replace className="h-4 w-4" /></Button>
+                      {d.upload_status === "uploaded" && (
+                        <Button
+                          size="sm" variant="ghost"
+                          onClick={() => { setReplaceOldId(d.id); setUploadOpen(true); }}
+                          title="แทนที่ด้วยเอกสารใหม่"
+                        ><Replace className="h-4 w-4" /></Button>
+                      )}
                       <Button
                         size="sm" variant="ghost"
                         onClick={() => setArchiveTarget(d)}
-                        title="เก็บถาวร"
+                        title={d.upload_status === "uploaded" ? "เก็บถาวร" : "ลบรายการที่ค้าง"}
                       ><Archive className="h-4 w-4" /></Button>
                     </>
                   )}
