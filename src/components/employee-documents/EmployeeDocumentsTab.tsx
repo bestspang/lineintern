@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -28,11 +28,26 @@ import {
 
 type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
 
-interface Props { employeeId: string; }
+interface Props {
+  employeeId: string;
+  /** Phase 1A.2 — when true, auto-opens the upload dialog once on mount. */
+  autoOpenUpload?: boolean;
+  /** Called after the auto-open has been consumed so the parent can clear the trigger (e.g. URL param). */
+  onAutoOpenConsumed?: () => void;
+}
 
-export function EmployeeDocumentsTab({ employeeId }: Props) {
+export function EmployeeDocumentsTab({ employeeId, autoOpenUpload, onAutoOpenConsumed }: Props) {
   const qc = useQueryClient();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const autoOpenedRef = useRef(false);
+
+  useEffect(() => {
+    if (autoOpenUpload && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setUploadOpen(true);
+      onAutoOpenConsumed?.();
+    }
+  }, [autoOpenUpload, onAutoOpenConsumed]);
   const [replaceOldId, setReplaceOldId] = useState<string | undefined>();
   const [archiveTarget, setArchiveTarget] = useState<EmployeeDocument | null>(null);
   const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
