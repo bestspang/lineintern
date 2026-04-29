@@ -202,6 +202,24 @@ serve(async (req) => {
         const consolidateResult = await consolidateResponse.json();
         console.log(`[Memory Backfill] Consolidation result:`, consolidateResult);
         
+        // Phase 0A.1 — structured audit log (best-effort).
+        await writeAuditLog(supabase, {
+          functionName: 'memory-backfill',
+          actionType: 'backfill',
+          resourceType: 'memory',
+          resourceId: targetGroupId ?? null,
+          performedByUserId: callerUserId,
+          callerRole: callerRoleLabel,
+          metadata: {
+            days_back,
+            limit,
+            messages_processed: messages.length,
+            memories_extracted: memoriesExtracted,
+            working_memories_created: workingMemoriesCreated,
+            consolidated: true,
+          },
+        });
+
         return new Response(
           JSON.stringify({
             success: true,
