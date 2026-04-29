@@ -130,6 +130,19 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Phase 0A: only admin/owner may read or modify LIFF endpoint settings.
+  let userId: string | null = null;
+  let role: string | null = null;
+  try {
+    const r = await requireRole(req, ['admin', 'owner'], { functionName: 'liff-settings' });
+    userId = r.userId;
+    role = r.role ?? null;
+  } catch (e) {
+    const r = authzErrorResponse(e, corsHeaders);
+    if (r) return r;
+    throw e;
+  }
+
   try {
     const url = new URL(req.url);
     const action = url.searchParams.get('action');
