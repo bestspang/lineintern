@@ -1,184 +1,105 @@
-# Phase 1A — Employee Documents Module
 
-## 1. Findings (Existing Document Structure)
+# Phase 1A QA Patch — Employee Documents
 
-**`document_uploads` table (existing) — DO NOT REUSE**
-- Columns: `photo_url`, `photo_hash`, `is_duplicate`, `duplicate_of_id`, `extracted_data` (jsonb), `classification_confidence`, `branch_id`, `upload_date`, `line_message_id`.
-- Clearly designed for **receipt/photo OCR classification**, not HR documents.
-- Currently empty (0 rows) and has **no code references** in the project.
-- Has RLS allowing employees to view their own (correct for receipts, wrong for HR).
-- **Decision**: Create a new dedicated `employee_documents` table. Leave `document_uploads` untouched (additive, low-risk).
+Read-only review complete. One real bug found, one documented risk. Scope strictly limited to Phase 1A files. No protected systems touched.
 
-**Storage buckets (existing)**: `attendance-photos` (private), `deposit-slips` (private), `receipt-files` (private), `line-bot-assets` (public), `richmenu-images` (public). No HR document bucket exists. → Create new private bucket `employee-documents`.
+## Findings
 
-**Helpers available**: `has_admin_access()`, `has_hr_access()`, `can_view_employee_by_priority()`, `update_updated_at_column()`, `_shared/audit.ts` (`writeAuditLog`), `_shared/auth.ts` (`requireRole`).
+### 1. Build / JSX / Imports — OK (no fix needed)
+- `EmployeeDetail.tsx` line 31 imports `EmployeeDocumentsTab` correctly.
+- Line 688 uses **valid** JSX comment: `{/* Phase 1A — Employee Documents */}`. The malformed `{/ ... /}` form does **not** exist in the file.
+- All four edge functions, the dialog, the tab, the page, and `lib/employee-document-types.ts` are present.
+- Will run `npm run build` + `npm run smoke:quick` in build mode to confirm; no code change expected from this task.
 
-**Employee Detail page**: `src/pages/attendance/EmployeeDetail.tsx` already uses Tabs — clean integration point.
+### 2. signed-url ownership query — REAL BUG (must fix)
+File: `supabase/functions/employee-document-signed-url/index.ts` line 74
 
----
+```ts
+.or(`auth_user_id.eq.${auth.userId},line_user_id.in.(select line_user_id from users where id = '${auth.userId}')`)
+```
 
-## 2. Database Migration
+PostgREST does **not** evaluate SQL subqueries inside `.or()`. The `select ...` text is parsed as a literal value list, so the `line_user_id.in.(...)` branch silently never matches. Worse, this couples a user-controlled-shape filter with raw interpolation. Result today: employees linked **only via LINE** (no `auth_user_id`) cannot fetch their own visible documents — falls through to 403.
 
-Create `public.employee_documents`:
+**Fix (two-step, no behavior weakening):**
 
-| column | type | notes |
-|---|---|---|
-| id | uuid PK default gen_random_uuid() | |
-| employee_id | uuid NOT NULL → employees(id) ON DELETE CASCADE | |
-| document_type | text NOT NULL | enum-by-convention (employment_contract, id_card, house_registration, bank_book, work_permit, certificate, warning_letter, probation, salary_adjustment, resignation, other) |
-| title | text NOT NULL | |
-| description | text NULL | |
-| file_path | text NOT NULL | storage path inside bucket |
-| file_name | text NOT NULL | |
-| file_mime_type | text NULL | |
-| file_size_bytes | bigint NULL | |
-| issue_date | date NULL | |
-| expiry_date | date NULL | |
-| status | text NOT NULL default 'active' | CHECK in (active, expired, archived, replaced) |
-| visibility | text NOT NULL default 'hr_only' | CHECK in (hr_only, employee_visible) |
-| uploaded_by_user_id | uuid NULL | |
-| uploaded_by_employee_id | uuid NULL | |
-| replaced_by_document_id | uuid NULL → self | |
-| metadata | jsonb NOT NULL default '{}' | |
-| created_at / updated_at | timestamptz NOT NULL default now() | trigger uses `update_updated_at_column` |
-| archived_at | timestamptz NULL | |
-| archived_by_user_id | uuid NULL | |
+```ts
+// Resolve LINE id from auth user (best-effort)
+const { data: linkedUser } = await supabase
+  .from("users")
+  .select("line_user_id")
+  .eq("id", auth.userId)
+  .maybeSingle();
+const lineUserId = linkedUser?.line_user_id ?? null;
 
-Indexes: employee_id, document_type, status, expiry_date, uploaded_by_user_id.
+// Find an employee row matching this caller AND owning this document
+let ownEmp: { id: string } | null = null;
+{
+  const q = supabase
+    .from("employees")
+    .select("id")
+    .eq("id", doc.employee_id);
+  const { data } = lineUserId
+    ? await q.or(`auth_user_id.eq.${auth.userId},line_user_id.eq.${lineUserId}`).maybeSingle()
+    : await q.eq("auth_user_id", auth.userId).maybeSingle();
+  ownEmp = data ?? null;
+}
 
-**RLS policies** (enable RLS):
-- `admin_hr_manage_all` (ALL): `has_admin_access(auth.uid()) OR has_hr_access(auth.uid())`
-- `employee_view_own_visible` (SELECT): `visibility = 'employee_visible' AND status != 'archived' AND employee_id IN (SELECT id FROM employees WHERE auth_user_id = auth.uid() OR line_user_id IN (SELECT line_user_id FROM users WHERE id = auth.uid()))`
-- `manager_view_scoped` (SELECT): `visibility = 'employee_visible' AND can_view_employee_by_priority(auth.uid(), employee_id)`
-- `service_role_all` (ALL): `auth.role() = 'service_role'`
-- No insert/update/delete for employees/managers.
+let allowed = !!ownEmp;
+if (!allowed && (role === "manager" || role === "executive" || role === "moderator")) {
+  const { data: scopeOk } = await supabase.rpc("can_view_employee_by_priority", {
+    viewer_user_id: auth.userId,
+    target_employee_id: doc.employee_id,
+  });
+  allowed = !!scopeOk;
+}
+if (!allowed) return jsonResponse({ error: "forbidden" }, 403);
+```
 
----
+Preserved invariants:
+- Non-HR still blocked from `hr_only` (early `visibility !== 'employee_visible'` check kept).
+- Employee A still cannot fetch employee B's docs (filter `id = doc.employee_id`).
+- Manager priority gate unchanged (`can_view_employee_by_priority`).
+- HR/Admin/Owner short-circuit unchanged.
+- `auth.userId` is a UUID from JWT validation in `requireRole`, but we still use `.or()` with parameter syntax — no raw SQL, no subquery, no injection surface.
 
-## 3. Storage Bucket
+### 3. Upload-failure orphan rows — DOCUMENT AS RISK (defer)
+Current flow: insert metadata row → return signed upload URL → client uploads to Storage. If the browser dies between step 2 and step 3, a metadata row exists with no Storage object.
 
-Migration creates bucket `employee-documents` with `public = false`.
+**Decision: Option B (defer to Phase 1A.1).**
+Rationale:
+- Adding `upload_status` + a confirm function touches the schema, the upload edge fn, the dialog, the tab list filter, the admin page filter, and the signed-url fn. That is no longer a "QA patch" — it is a feature change with regression risk on a freshly shipped module.
+- Existing rollback already covers the most common failure (signed-URL creation itself failing — we delete the row).
+- Orphan rows are HR-visible (`hr_only` default) and cause a clean "file not found" on signed-URL fetch, not a security issue.
 
-**Storage policies on `storage.objects`** (bucket_id = 'employee-documents'):
-- `hr_admin_all`: ALL operations for `has_admin_access(auth.uid()) OR has_hr_access(auth.uid())`
-- `service_role_all`: ALL for service role
-- **No direct read for employees** → all employee access goes through signed-URL edge function.
+Will document in `docs/STATUS.md` as **Phase 1A.1 Risk** with proposed remediation:
+- Add `upload_status text NOT NULL DEFAULT 'pending'` (`pending|uploaded|failed`).
+- Add `employee-document-confirm-upload` function (HR/admin/owner) that verifies the Storage object exists then sets `uploaded`.
+- List/expiring queries filter `upload_status = 'uploaded'`.
+- Nightly cleanup cron deletes `pending` rows older than 24 h.
 
-Path convention: `{employee_id}/{document_id}/{safe_filename}`.
+### 4. Manual security checklist — to verify after deploy
+Cannot execute in plan mode. Will add the 10-item checklist to `docs/STATUS.md` and walk through it during the patch:
+1. HR uploads `hr_only` contract → row + object created, audit `upload`.
+2. HR fetches signed URL → 200, audit `view`.
+3. Employee A (own) fetches `hr_only` → 403 (visibility gate).
+4. Employee A fetches own `employee_visible` → 200 (after fix).
+5. Employee B fetches A's `employee_visible` → 403 (`id = doc.employee_id` mismatch).
+6. Manager in scope fetches `employee_visible` → 200 via priority RPC.
+7. Manager fetches `hr_only` → 403 (visibility gate).
+8. Archive: `status='archived'` excluded from default tab list & employee/manager RLS.
+9. Replace: old row `status='replaced'`, `replaced_by_document_id` set.
+10. `audit_logs` rows present for `upload`, `view`, `archive`, `replace`.
 
----
+## Files to change
+1. `supabase/functions/employee-document-signed-url/index.ts` — replace lines 71–89 with safe two-step ownership query.
+2. `docs/STATUS.md` — append Phase 1A QA Patch section with build/smoke results, fix summary, manual checklist, and Phase 1A.1 risk note.
 
-## 4. Edge Functions
+## Will NOT change
+- Any line-webhook, attendance, payroll, points, leave/OT, portal check-in, or Bangkok timezone code.
+- Schema (`employee_documents` table untouched).
+- Storage policies.
+- RLS on `employee_documents` (the SQL `IN (SELECT …)` in the RLS policy is real SQL inside a Postgres policy — it works correctly; only the PostgREST `.or()` string was broken).
+- `employee-document-upload`, `-archive`, `-replace`, the React tab, dialog, or admin page.
 
-**A) `employee-document-upload`** (POST)
-- `requireRole(['owner','admin','hr'])`
-- Body (multipart or signed-upload pattern): `{ employee_id, document_type, title, description?, issue_date?, expiry_date?, visibility, file_name, file_mime_type, file_size_bytes }`
-- Validates employee exists, document_type whitelist, visibility whitelist, size cap (e.g. 10 MB), mime whitelist (pdf, png, jpeg, jpg, webp, heic).
-- Inserts row → returns `{ document_id, upload_url }` using **Supabase Storage signed upload URL** (`createSignedUploadUrl`) so the file goes browser→Storage directly via the short-lived URL.
-- Writes audit log: `action_type='upload', resource_type='employee_document'`.
-
-**B) `employee-document-signed-url`** (POST `{ document_id }`)
-- Auth check:
-  - admin/hr/owner → allowed
-  - manager → allowed only if `visibility='employee_visible'` AND `can_view_employee_by_priority`
-  - employee → allowed only if `visibility='employee_visible'` AND owns the doc
-- Returns 60-second signed download URL.
-- Writes audit log: `action_type='view'`.
-
-**C) `employee-document-archive`** (POST `{ document_id, reason? }`)
-- `requireRole(['owner','admin','hr'])`
-- Sets `status='archived'`, `archived_at=now()`, `archived_by_user_id`. Does NOT delete file.
-- Audit log: `action_type='archive'`.
-
-**D) `employee-document-replace`** (POST) — convenience wrapper: marks old doc `status='replaced'`, sets `replaced_by_document_id` after the new doc is uploaded. Audit log: `action_type='replace'`.
-
-All four functions: `verify_jwt = false` is the project default; we validate JWT in code via `requireRole`. CORS headers on every response.
-
-**Why edge functions for upload + read**: Direct Storage RLS for employees is complex (need to map storage path → employee_id → visibility). Edge functions centralize the policy and give us auditing for free. Admin/HR could go direct, but unified path keeps audit consistent.
-
----
-
-## 5. Admin UI
-
-**A) Employee Detail integration** (`src/pages/attendance/EmployeeDetail.tsx`)
-- New `<TabsTrigger value="documents">เอกสาร</TabsTrigger>` (visible only if `canManageEmployee` OR own profile)
-- New component `src/components/employee-documents/EmployeeDocumentsTab.tsx`:
-  - List with: title, type chip, file name, uploaded date, issue date, expiry date (red if expired/<30 days), status badge, visibility badge.
-  - Actions: View/Download (calls signed-url fn), Archive, Replace.
-  - "Upload" button opens dialog → form (type, title, desc, issue/expiry, visibility, file picker) → calls upload fn → uses returned signed upload URL → PUT file → toast success.
-  - Filters: type, status (default hide archived).
-
-**B) Cross-employee admin page** `src/pages/attendance/EmployeeDocuments.tsx`
-- Route: `/attendance/employee-documents` (lazy in `App.tsx`, nav entry in `DashboardLayout.tsx` under HR section).
-- Table across all employees with filters: employee search, branch, type, status, expiring window (all / expired / 30d / 60d / 90d).
-- Click row → navigate to employee detail with documents tab.
-
-UI: shadcn/ui (Card, Table, Dialog, Select, Badge, Tabs), Tailwind, Thai-first labels (เอกสารพนักงาน, ประเภทเอกสาร, วันหมดอายุ, อัปโหลดโดย, มองเห็นโดยพนักงาน, เก็บถาวร, แทนที่ด้วยเอกสารใหม่).
-
-**Document type labels** (Thai): สัญญาจ้าง, สำเนาบัตรประชาชน, สำเนาทะเบียนบ้าน, สำเนาสมุดบัญชี, ใบอนุญาตทำงาน, ประกาศนียบัตร, หนังสือเตือน, เอกสารทดลองงาน, หนังสือปรับเงินเดือน, ใบลาออก, อื่นๆ — centralized in `src/lib/employee-document-types.ts`.
-
----
-
-## 6. Expiry Foundation
-
-- Cross-employee admin page filters by `expiry_date` window (≤today, ≤+30d, ≤+60d, ≤+90d).
-- Add SQL view `employee_documents_expiring` (active docs with non-null expiry_date, ordered by expiry) — read-only for HR.
-- **No cron / no notifications yet** — explicit follow-up in Phase 1B.
-
----
-
-## 7. Audit Logging
-
-Use existing `writeAuditLog` in all four edge functions. Metadata: `employee_id, document_id, document_type, visibility, file_size_bytes, expiry_date, actor_role`. Never log file URL, signed URL, or file content.
-
----
-
-## 8. Security Checklist (verified post-implementation)
-
-- Bucket private ✓
-- Employee cannot SELECT hr_only docs (RLS) ✓
-- Employee cannot SELECT another employee's docs ✓
-- Manager limited by `can_view_employee_by_priority` + `employee_visible` only ✓
-- Signed URLs expire in 60s ✓
-- Archived docs filtered out of default lists ✓
-- Audit row written on upload/view/archive/replace ✓
-
----
-
-## 9. Tests
-
-- `npm run build` (auto)
-- `npm run smoke:quick`
-- Manual test checklist included in final report (HR upload contract, hr_only invisibility to employee, employee_visible visibility, archive flow, expiring filter, audit row presence).
-
----
-
-## 10. Files to Change
-
-**New**
-- `supabase/migrations/<ts>_employee_documents.sql` (table + RLS + bucket + storage policies + view)
-- `supabase/functions/employee-document-upload/index.ts`
-- `supabase/functions/employee-document-signed-url/index.ts`
-- `supabase/functions/employee-document-archive/index.ts`
-- `supabase/functions/employee-document-replace/index.ts`
-- `src/components/employee-documents/EmployeeDocumentsTab.tsx`
-- `src/components/employee-documents/UploadDocumentDialog.tsx`
-- `src/pages/attendance/EmployeeDocuments.tsx`
-- `src/lib/employee-document-types.ts`
-
-**Edited (additive only)**
-- `src/pages/attendance/EmployeeDetail.tsx` — add Documents tab
-- `src/App.tsx` — add `/attendance/employee-documents` route
-- `src/components/DashboardLayout.tsx` — add nav entry
-- `docs/STATUS.md` — Phase 1A entry
-
-**Untouched (per absolute rules)**: line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token, timezone helpers, payroll math, point ledger, portal check-in/out, existing leave/OT/attendance approval logic, `document_uploads` table.
-
----
-
-## 11. Risks / Notes
-
-- Signed upload URL pattern requires `@supabase/supabase-js` v2.x `createSignedUploadUrl` (already available).
-- File size cap defaults to 10 MB — adjustable later.
-- Manager scope reuses `can_view_employee_by_priority` — same semantics as existing employee visibility, so no new policy decisions.
-- Phase 1B candidates: cron-based expiry reminders to LINE, e-sign workflow, OCR auto-tag for ID card / contract, employee-side upload requests.
+## Verdict path
+After applying the one-file fix and confirming `npm run build` + `npm run smoke:quick` pass: **READY FOR PHASE 1B PERFORMANCE**, with Phase 1A.1 (upload confirm) tracked as a non-blocking follow-up.

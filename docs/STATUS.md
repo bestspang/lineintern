@@ -268,3 +268,69 @@ audit-log spot-check SQL for the 7 hardened functions.
 - Admin UI: Documents card on EmployeeDetail + cross-employee page at `/attendance/employee-documents`.
 - Audit logs written for upload/view/archive/replace.
 - Smoke: 11 pass / 0 fail / 5 skip (unchanged baseline).
+
+## Phase 1A QA Patch (2026-04-29)
+
+**Status: COMPLETE — READY FOR PHASE 1B**
+
+### Build / smoke
+- `npm run build`: passes (harness build verified — JSX, imports, types compile).
+- `npm run smoke:quick`: 11 pass / 0 fail / 5 skip (unchanged baseline).
+
+### EmployeeDetail JSX verification
+- Import on line 31 OK: `import { EmployeeDocumentsTab } from '@/components/employee-documents/EmployeeDocumentsTab'`.
+- JSX comment on line 688 is **valid** (`{/* Phase 1A — Employee Documents */}`); the malformed `{/ ... /}` form does not exist.
+- Tab guarded by `id && canManageEmployee`.
+
+### signed-url ownership query — FIXED
+File: `supabase/functions/employee-document-signed-url/index.ts`.
+
+**Before:** `.or("auth_user_id.eq.${uid},line_user_id.in.(select line_user_id from users where id = '${uid}')")`
+PostgREST does not evaluate SQL subqueries inside `.or()`, so the LINE-only branch silently never matched. Employees linked only via LINE could not read their own visible docs.
+
+**After:** two-step lookup —
+1. `users.line_user_id` resolved by `auth.userId`.
+2. `employees` filtered with `id = doc.employee_id` AND (`auth_user_id = uid` OR `line_user_id = resolvedLineId`), with the LINE branch only added when a LINE id exists.
+
+Invariants preserved (and re-checked):
+- Non-HR cannot fetch `hr_only` (early visibility gate).
+- Employee A cannot fetch employee B docs (`id = doc.employee_id` is always pinned).
+- Manager / executive / moderator still gated by `can_view_employee_by_priority` RPC.
+- HR / Admin / Owner short-circuit unchanged.
+- No raw SQL, no string-built subquery, no injection surface.
+
+### Upload-failure behavior — DEFERRED to Phase 1A.1 (documented risk)
+If the browser dies between metadata insert and signed-URL upload, an `employee_documents` row exists with no Storage object. Decision: do **not** patch in this QA pass.
+
+- Not a security issue: orphan rows default to `hr_only`; signed-URL fetch returns clean "file not found".
+- Existing rollback already deletes the row when *signed URL creation itself* fails.
+- Adding `upload_status` would touch schema + 3 edge fns + 2 UIs — outside QA-patch scope.
+
+**Phase 1A.1 plan (next slice, not now):**
+- `ALTER TABLE employee_documents ADD COLUMN upload_status text NOT NULL DEFAULT 'pending'` (`pending|uploaded|failed`).
+- New `employee-document-confirm-upload` (HR/Admin/Owner) verifies Storage object exists then sets `uploaded`.
+- List queries filter `upload_status = 'uploaded'`.
+- Daily cron deletes `pending` rows older than 24 h.
+
+### Manual security checklist (to run on staging)
+1. HR uploads `hr_only` contract → row + object created, `audit_logs` `upload`.
+2. HR fetches signed URL → 200, `audit_logs` `view`.
+3. Employee A requests `hr_only` → 403 (visibility gate).
+4. Employee A requests own `employee_visible` → 200 (works for both auth-linked and LINE-only after fix).
+5. Employee B requests A's `employee_visible` → 403 (employee_id pin).
+6. In-scope manager requests `employee_visible` → 200 via priority RPC.
+7. Manager requests `hr_only` → 403.
+8. Archived doc hidden from default tab list and from employee/manager RLS.
+9. Replace: old row → `status='replaced'`, `replaced_by_document_id` set; new row active.
+10. `audit_logs` rows present for all of upload / view / archive / replace.
+
+### Files changed
+- `supabase/functions/employee-document-signed-url/index.ts` (ownership query hardening)
+- `docs/STATUS.md` (this section)
+
+### Remaining risks
+- Phase 1A.1 (upload confirm + cleanup cron) — non-blocking, documented above.
+- Manual staging walkthrough of the 10-item checklist still recommended before broad HR rollout.
+
+### Verdict
+**READY FOR PHASE 1B PERFORMANCE.**

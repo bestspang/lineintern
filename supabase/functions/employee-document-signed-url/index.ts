@@ -64,20 +64,42 @@ Deno.serve(async (req) => {
   const isHr = role === "owner" || role === "admin" || role === "hr";
 
   if (!isHr) {
-    // Must be employee_visible for non-HR
+    // Must be employee_visible for non-HR (blocks hr_only docs)
     if (doc.visibility !== "employee_visible") return jsonResponse({ error: "forbidden" }, 403);
 
-    // Employee path: must own it
-    const { data: ownEmp } = await supabase
-      .from("employees")
-      .select("id")
-      .or(`auth_user_id.eq.${auth.userId},line_user_id.in.(select line_user_id from users where id = '${auth.userId}')`)
-      .eq("id", doc.employee_id)
+    // Step 1: resolve caller's LINE id (best-effort) so employees linked only via LINE still work.
+    // PostgREST .or() does NOT evaluate SQL subqueries — must do this in two steps.
+    const { data: linkedUser } = await supabase
+      .from("users")
+      .select("line_user_id")
+      .eq("id", auth.userId)
       .maybeSingle();
+    const lineUserId: string | null = linkedUser?.line_user_id ?? null;
+
+    // Step 2: must own the exact employee row referenced by the document.
+    // Always pin .eq("id", doc.employee_id) so employee A can NEVER fetch employee B's docs.
+    let ownEmp: { id: string } | null = null;
+    if (lineUserId) {
+      const { data } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("id", doc.employee_id)
+        .or(`auth_user_id.eq.${auth.userId},line_user_id.eq.${lineUserId}`)
+        .maybeSingle();
+      ownEmp = data ?? null;
+    } else {
+      const { data } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("id", doc.employee_id)
+        .eq("auth_user_id", auth.userId)
+        .maybeSingle();
+      ownEmp = data ?? null;
+    }
 
     let allowed = !!ownEmp;
 
-    // Manager / executive scope check
+    // Manager / executive scope check (priority-based)
     if (!allowed && (role === "manager" || role === "executive" || role === "moderator")) {
       const { data: scopeOk } = await supabase.rpc("can_view_employee_by_priority", {
         viewer_user_id: auth.userId,
