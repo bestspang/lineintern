@@ -32,7 +32,7 @@
     "/attendance/redemption-approvals", "/attendance/reminder-logs",
     "/attendance/rewards", "/attendance/roles", "/attendance/schedules",
     "/attendance/settings", "/attendance/shift-templates", "/attendance/summaries",
-    "/attendance/work-history", "/attendance/ops-center"
+    "/attendance/work-history", "/attendance/ops-center", "/attendance/portal-performance"
   ],
 
   "portal_routes": [

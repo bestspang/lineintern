@@ -305,6 +305,7 @@ const App = () => (
                         <Route path="/attendance/settings" element={<AttendanceSettings />} />
                         <Route path="/attendance/analytics" element={<AttendanceAnalytics />} />
                         <Route path="/attendance/ops-center" element={<AttendanceOpsCenter />} />
+                        <Route path="/attendance/portal-performance" element={<AttendancePortalPerformance />} />
                         <Route path="/health-monitoring" element={<HealthMonitoring />} />
                         <Route path="/config-validator" element={<ConfigurationValidator />} />
                         <Route path="/pre-deploy-checklist" element={<PreDeployChecklist />} />
