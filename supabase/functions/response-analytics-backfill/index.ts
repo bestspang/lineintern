@@ -112,14 +112,19 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: admin/owner only — backfill writes analytics columns.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner'],
         { functionName: 'response-analytics-backfill' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
