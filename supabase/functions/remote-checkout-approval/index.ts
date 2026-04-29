@@ -474,6 +474,22 @@ serve(async (req) => {
         console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
       }
 
+      // Phase 0A.1 — structured audit log (best-effort).
+      await writeAuditLog(supabase, {
+        functionName: 'remote-checkout-approval',
+        actionType: 'reject',
+        resourceType: 'remote_checkout_request',
+        resourceId: request_id,
+        performedByUserId: callerUserId,
+        performedByEmployeeId: approver_employee_id,
+        callerRole: callerRoleLabel,
+        reason: rejection_reason ?? null,
+        metadata: {
+          source: callerSource,
+          employee_id: employee.id,
+        },
+      });
+
       return new Response(
         JSON.stringify({ 
           success: true, 
