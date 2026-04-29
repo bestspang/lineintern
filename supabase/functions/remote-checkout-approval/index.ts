@@ -7,10 +7,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokDateString } from '../_shared/timezone.ts';
+import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-source',
 };
 
 serve(async (req) => {
@@ -19,6 +20,30 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: allow internal calls from portal-data (service-role bearer
+    // + explicit x-internal-source header). Otherwise require manager-level role.
+    const internalSource = req.headers.get('x-internal-source');
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const isInternal =
+      internalSource === 'portal-data' &&
+      serviceKey.length > 0 &&
+      authHeader === `Bearer ${serviceKey}`;
+
+    if (!isInternal) {
+      try {
+        await requireRole(
+          req,
+          ['admin', 'owner', 'hr', 'manager', 'executive'],
+          { functionName: 'remote-checkout-approval' },
+        );
+      } catch (e) {
+        const r = authzErrorResponse(e, corsHeaders);
+        if (r) return r;
+        throw e;
+      }
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
