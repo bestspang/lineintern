@@ -24,7 +24,10 @@ import {
 import {
   Loader2, FileText, Plus, RefreshCw, Download as DownloadIcon,
   LayoutGrid, List, SlidersHorizontal, AlertCircle, RotateCcw, Columns3,
+  WifiOff, ChevronDown, ChevronUp, ShieldAlert, ServerCrash, Clock,
 } from "lucide-react";
+import { toast } from "sonner";
+import { describeDocError, type FriendlyError } from "@/lib/employee-document-errors";
 import { format, differenceInCalendarDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -211,7 +214,7 @@ export default function EmployeeDocuments() {
   const {
     data: pageData,
     isLoading, isFetching, error, refetch, dataUpdatedAt,
-    fetchNextPage, hasNextPage, isFetchingNextPage,
+    fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError,
   } = useInfiniteQuery({
     queryKey: [
       "all-employee-documents-v2",
@@ -241,7 +244,13 @@ export default function EmployeeDocuments() {
   const totalCount = pageData?.pages[0]?.count ?? 0;
 
   // KPI counts
-  const { data: kpiRows = [] } = useQuery({
+  const {
+    data: kpiRows = [],
+    isError: kpiIsError,
+    error: kpiError,
+    refetch: refetchKpi,
+    isFetching: kpiIsFetching,
+  } = useQuery({
     queryKey: ["employee-documents-kpi", branchId],
     queryFn: async () => {
       let q = supabase
@@ -342,6 +351,7 @@ export default function EmployeeDocuments() {
 
   // --- CSV export (loads all pages first if needed) ---
   const exportCsv = async () => {
+    if (exportingAll) return;
     setExportingAll(true);
     try {
       // If everything is already loaded, export directly
@@ -361,6 +371,17 @@ export default function EmployeeDocuments() {
       a.download = `employee-documents-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success("ส่งออก CSV สำเร็จ", {
+        description: `${allRows.length.toLocaleString()} รายการ`,
+      });
+    } catch (err) {
+      const friendly = describeDocError(err);
+      toast.error(friendly.title, {
+        description: friendly.hint,
+        action: friendly.canRetry
+          ? { label: "ลองใหม่", onClick: () => exportCsv() }
+          : undefined,
+      });
     } finally {
       setExportingAll(false);
     }
@@ -371,6 +392,8 @@ export default function EmployeeDocuments() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasNextPage || rows.length < PAGE_SIZE) return;
+    // หยุด auto-load หากหน้าก่อนหน้า fail เพื่อกัน retry วน — ผู้ใช้ต้องกด "ลองใหม่" เอง
+    if (isFetchNextPageError) return;
     const io = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
         fetchNextPage();
@@ -378,7 +401,22 @@ export default function EmployeeDocuments() {
     }, { rootMargin: "200px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [hasNextPage, isFetchingNextPage, rows.length, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, rows.length, fetchNextPage]);
+
+  // --- Offline awareness ---
+  const [isOffline, setIsOffline] = useState<boolean>(
+    typeof navigator !== "undefined" ? navigator.onLine === false : false,
+  );
+  useEffect(() => {
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   const lastRefreshed = dataUpdatedAt ? format(new Date(dataUpdatedAt), "HH:mm:ss") : "-";
   const visibleColumns = columns;
@@ -413,8 +451,38 @@ export default function EmployeeDocuments() {
           </div>
         </div>
 
+        {/* Offline banner */}
+        {isOffline && (
+          <Alert className="border-amber-500/50 bg-amber-500/10 text-foreground">
+            <WifiOff className="h-4 w-4 text-amber-600" />
+            <AlertTitle>คุณกำลังออฟไลน์</AlertTitle>
+            <AlertDescription>
+              ข้อมูลที่แสดงอาจไม่อัปเดต เมื่อเชื่อมต่ออินเทอร์เน็ตได้แล้ว ระบบจะดึงข้อมูลล่าสุดให้อัตโนมัติ
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* KPI strip */}
         <EmployeeDocumentsKpiStrip counts={kpi} activePreset={preset} onPreset={(p) => applyPreset(p as Preset)} />
+
+        {/* KPI error (compact, non-blocking) */}
+        {kpiIsError && (
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-2 text-sm">
+              <span>โหลดสรุปตัวเลข KPI ไม่สำเร็จ ตัวเลขด้านบนอาจไม่ถูกต้อง</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => refetchKpi()}
+                disabled={kpiIsFetching}
+              >
+                {kpiIsFetching ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-2" />}
+                โหลด KPI ใหม่
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Search + sort + view + filters */}
         <Card className="p-3 space-y-3">
@@ -568,16 +636,13 @@ export default function EmployeeDocuments() {
           </div>
         </Card>
 
-        {/* Error banner */}
+        {/* Error banner (friendly) */}
         {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>โหลดข้อมูลไม่สำเร็จ</AlertTitle>
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span className="truncate">{(error as any)?.message || "เกิดข้อผิดพลาด"}</span>
-              <Button size="sm" variant="outline" onClick={() => refetch()}>ลองใหม่</Button>
-            </AlertDescription>
-          </Alert>
+          <FriendlyErrorAlert
+            friendly={describeDocError(error)}
+            isRetrying={isFetching}
+            onRetry={() => refetch()}
+          />
         )}
 
         {/* Content */}
@@ -608,6 +673,8 @@ export default function EmployeeDocuments() {
               loading={isFetchingNextPage}
               onLoadMore={() => fetchNextPage()}
               sentinelRef={sentinelRef}
+              hasError={isFetchNextPageError}
+              error={error}
             />
           </>
         ) : (
@@ -709,6 +776,8 @@ export default function EmployeeDocuments() {
               loading={isFetchingNextPage}
               onLoadMore={() => fetchNextPage()}
               sentinelRef={sentinelRef}
+              hasError={isFetchNextPageError}
+              error={error}
             />
             {isFetching && !isLoading && !isFetchingNextPage && (
               <div className="border-t px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
@@ -731,10 +800,35 @@ interface PaginationFooterProps {
   loading: boolean;
   onLoadMore: () => void;
   sentinelRef: React.RefObject<HTMLDivElement>;
+  hasError?: boolean;
+  error?: unknown;
 }
 
-function PaginationFooter({ loaded, total, hasNext, loading, onLoadMore, sentinelRef }: PaginationFooterProps) {
+function PaginationFooter({
+  loaded, total, hasNext, loading, onLoadMore, sentinelRef, hasError, error,
+}: PaginationFooterProps) {
   if (total === 0) return null;
+
+  // หน้าถัดไปโหลดไม่สำเร็จ → โชว์ข้อความและปุ่มลองใหม่ (กดเองเท่านั้น, IO ถูกปิด)
+  if (hasError) {
+    const friendly = describeDocError(error);
+    return (
+      <div className="border-t px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm bg-destructive/5">
+        <div className="flex items-center gap-2 text-destructive min-w-0">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <div className="font-medium truncate">โหลดรายการเพิ่มเติมไม่สำเร็จ</div>
+            <div className="text-xs text-muted-foreground truncate">{friendly.hint}</div>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          ลองใหม่
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="border-t px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
       <span className="text-muted-foreground">
@@ -752,3 +846,49 @@ function PaginationFooter({ loaded, total, hasNext, loading, onLoadMore, sentine
     </div>
   );
 }
+
+// ----- Friendly error alert -----
+function FriendlyErrorAlert({
+  friendly, isRetrying, onRetry,
+}: { friendly: FriendlyError; isRetrying: boolean; onRetry: () => void }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const Icon =
+    friendly.variant === "offline" ? WifiOff
+    : friendly.variant === "permission" ? ShieldAlert
+    : friendly.variant === "timeout" ? Clock
+    : friendly.variant === "server" ? ServerCrash
+    : AlertCircle;
+
+  return (
+    <Alert variant="destructive">
+      <Icon className="h-4 w-4" />
+      <AlertTitle>{friendly.title}</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p className="text-sm">{friendly.hint}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {friendly.canRetry && (
+            <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying}>
+              {isRetrying ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-2" />}
+              ลองใหม่
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowDetails((v) => !v)}
+            className="text-xs"
+          >
+            {showDetails ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+            {showDetails ? "ซ่อนรายละเอียดทางเทคนิค" : "ดูรายละเอียดทางเทคนิค"}
+          </Button>
+        </div>
+        {showDetails && (
+          <pre className="mt-2 max-h-32 overflow-auto rounded bg-background/40 p-2 text-xs whitespace-pre-wrap break-all">
+            {friendly.technical}
+          </pre>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+

@@ -1,107 +1,62 @@
-## Goal
+## เป้าหมาย
 
-Add four UX/perf upgrades to `/attendance/employee-documents`:
-1. Autocomplete search (employee/title/file)
-2. Column visibility toggle for the table view
-3. Pagination / "load more" instead of fetching 500 rows up-front
-4. A single "Reset" button that returns the page to default state
+ปรับการแสดงผล error บนหน้า **เอกสารพนักงาน** ให้ HR เข้าใจง่ายและกู้คืนสถานการณ์เองได้ด้วยปุ่ม "ลองใหม่" ในทุกจุดที่ดึงข้อมูล (รายการหลัก, KPI, การโหลดหน้าเพิ่ม infinite scroll, การดึงทั้งหมดสำหรับ CSV)
 
-All changes are additive — current data layer, edge functions, KPI logic, presets, sort, view toggle, CSV export, and tests stay intact.
+## สถานะปัจจุบัน (สิ่งที่ขาด)
 
-## Affected modules
+- Error banner หลักแสดงเฉพาะ `error.message` ดิบ ๆ ภาษาอังกฤษ — HR อ่านไม่เข้าใจ
+- KPI strip (`useQuery employee-documents-kpi`) ไม่มี UI แจ้ง error เลย ถ้า fail ตัวเลขจะเป็น 0 เงียบ ๆ
+- Infinite scroll: ถ้า `fetchNextPage` ล้มเหลว ปุ่ม "โหลดเพิ่ม" จะกลับมาเป็น idle โดยไม่บอกผู้ใช้ว่าพลาด
+- Export CSV: ถ้าดึงข้อมูลทั้งหมดเพื่อ export ล้มเหลว แค่ throw เงียบ ไม่มี toast/retry
+- ไม่แยกประเภท error (network offline / permission denied / timeout / server error) → ข้อความไม่ตรงสาเหตุ
 
-| Module | Status | Action |
-|---|---|---|
-| `src/pages/attendance/EmployeeDocuments.tsx` | WORKING | Extend (search box → Combobox, add column-visibility menu, paginate query, add reset button) |
-| `src/components/employee-documents/EmployeeDocumentsCardGrid.tsx` | WORKING | Untouched |
-| `src/components/employee-documents/EmployeeDocumentsKpiStrip.tsx` | WORKING | Untouched (KPIs continue to use the broader 2000-row aggregate query) |
-| `src/components/employee-documents/EmployeeDocumentsRowActions.tsx` | WORKING | Untouched |
-| Edge functions / DB / types | WORKING | No changes |
+## สิ่งที่จะทำ
 
-## What must be preserved
+### 1. Helper แปลง error เป็นข้อความภาษาไทยที่เข้าใจง่าย
+สร้างฟังก์ชันใน `src/pages/attendance/EmployeeDocuments.tsx` (หรือแยกไฟล์ `src/lib/employee-document-errors.ts` เพื่อเรียกใช้ซ้ำได้):
 
-- All existing filters, presets, sort, view toggle, CSV export.
-- KPI counts (still computed from the lightweight `kpiRows` query, independent of pagination).
-- Deep-link to employee detail.
-- The `active_only` / `pending_or_failed` derived filter logic.
-- Existing test suite — we don't touch tested files.
+```ts
+function describeDocError(err: unknown): { title: string; hint: string; canRetry: boolean }
+```
 
-## Implementation
+แม็พจาก Supabase/Postgrest error code + `navigator.onLine`:
+- offline → "ขาดการเชื่อมต่ออินเทอร์เน็ต" + "ตรวจสอบ Wi-Fi/4G แล้วลองใหม่"
+- 401/403 / RLS → "ไม่มีสิทธิ์เข้าถึงเอกสาร" + แนะนำให้ติดต่อแอดมิน (ไม่แสดงปุ่ม retry)
+- 408/504 timeout → "เซิร์ฟเวอร์ตอบช้า กรุณาลองใหม่"
+- 5xx → "ระบบขัดข้องชั่วคราว"
+- default → ข้อความทั่วไป + ขีดข้อความเทคนิคเล็ก ๆ ให้ดู (ใต้ collapsible "รายละเอียด")
 
-### 1. Autocomplete search (Combobox)
+### 2. ปรับ Error banner หลัก (เอกสารหลัก)
+แทนที่ Alert บรรทัด 572-581 ด้วยเวอร์ชันใหม่:
+- หัวข้อ + คำแนะนำเป็นภาษาไทย
+- ปุ่ม "ลองใหม่" (พร้อม spinner ตอน `isFetching`)
+- ปุ่ม "ดูรายละเอียดทางเทคนิค" แบบ toggle เพื่อโชว์ข้อความ error จริง (ช่วย debug แต่ไม่รบกวนสายตา)
+- ซ่อนปุ่ม retry สำหรับ permission error
 
-Use shadcn `Popover` + `Command` (already in repo).
+### 3. KPI Strip error state
+เพิ่ม `isError`, `error`, `refetch` จาก `useQuery employee-documents-kpi` แล้วแสดงแถบบางๆ เหนือ KPI พร้อมปุ่ม "โหลด KPI ใหม่" เมื่อ fail (ไม่บล็อกตารางหลัก)
 
-- Replace the plain `<Input>` in the search row with a popover-trigger button styled like the input. Typing inside it opens a `Command` palette listing matching suggestions.
-- Suggestions come from a separate, debounced React Query (`["employee-documents-suggest", q]`) that runs only when `q.length >= 1`. It does three lightweight `ilike` queries on the same `employee_documents` table joined to `employees`:
-  - by document title (`title ilike %q%`) — limit 8
-  - by file name (`file_name ilike %q%`) — limit 5
-  - by employee name (`employees.full_name ilike %q%`) — limit 8
-- Suggestions are grouped in the Command list ("เอกสาร", "ไฟล์", "พนักงาน") and each item shows a small icon + secondary text.
-- Selecting an item:
-  - Document/title item → sets `search` to the document title (existing query already filters `title ilike`).
-  - File item → sets `search` to the file name AND extends the filter logic so the page-level query applies `or(title.ilike, file_name.ilike)` instead of just title.
-  - Employee item → sets a NEW `employeeFilter` state with `{ id, name }` and the page query adds `eq("employee_id", id)`. A removable chip appears next to the search box.
-- The user can still type free text and press Enter to apply as the existing `search` (no employee chip).
-- Debounce typing by 200ms with a `useEffect`/timeout (no extra dep).
+### 4. Infinite scroll: แสดง error และ retry ในแถวล่างสุด
+ขยาย `PaginationFooter` (บรรทัด 727-754) ให้รับ `error?: unknown` และ `onRetry`:
+- ถ้า `error` มีค่า → โชว์ icon + ข้อความ "โหลดหน้าถัดไปไม่สำเร็จ" + ปุ่ม "ลองใหม่" แทนปุ่ม "โหลดเพิ่ม"
+- หยุด IntersectionObserver auto-trigger เมื่ออยู่ในสถานะ error เพื่อไม่ให้ retry วนซ้ำเอง (ต้องกดเอง)
+- ดึง error ของหน้าล่าสุดผ่าน `useInfiniteQuery` (`isFetchNextPageError`, error) มาส่งให้
 
-This widens the search semantics without breaking existing behavior — the unmodified `search` text still drives the same `title ilike` query when no suggestion is picked.
+### 5. CSV Export: toast + retry
+- ห่อ `exportCsv` ด้วย try/catch
+- เมื่อสำเร็จ: `toast.success("ส่งออก CSV สำเร็จ")`
+- เมื่อล้มเหลว: `toast.error("ส่งออก CSV ไม่สำเร็จ", { description, action: { label: "ลองใหม่", onClick: exportCsv } })`
+- ปิดปุ่ม Export ระหว่างทำงาน (มี state `isExporting`) เพื่อกัน double-click
 
-### 2. Column visibility toggle (table mode only)
+### 6. Offline awareness (เล็ก)
+เพิ่ม listener `online`/`offline` แสดง banner บน ๆ "คุณกำลังออฟไลน์ — ข้อมูลที่แสดงอาจไม่อัปเดต" เมื่อ `navigator.onLine === false` (ไม่ขัดจังหวะการดูข้อมูลที่ cache อยู่แล้ว)
 
-- Define a `ColumnKey` union: `employee | branch | title | type | expiry | visibility | status | actions`.
-- `actions` is always visible (locked).
-- Default visibility mirrors current responsive defaults (e.g. `branch` hidden by default on <lg, `visibility` hidden by default on <xl). On large screens default is "all visible."
-- Add a `Columns` button (next to `รีเซ็ต`) that opens a `DropdownMenu` with `DropdownMenuCheckboxItem` for each non-locked column.
-- Persist to `localStorage` under key `employee-documents.columns.v1` so HR's preference sticks across sessions.
-- Render the table header/cells conditionally based on the visibility map. We keep the responsive `hidden lg:table-cell` etc. as the *initial* default but if the user explicitly toggles a column, that explicit choice wins on all viewports.
-- Cards view ignores this setting (cards intentionally show everything compact).
+## ไฟล์ที่จะแก้
 
-### 3. Pagination / load-more
+- `src/pages/attendance/EmployeeDocuments.tsx` — Error banner, KPI error, PaginationFooter ใหม่, CSV toast, offline banner
+- `src/lib/employee-document-errors.ts` (ใหม่) — `describeDocError()` helper แชร์ใช้ได้กับ EmployeeDocumentsTab ถ้าต้องการในอนาคต
 
-Switch from a single 500-row fetch to **range-based load-more** (simpler than full numbered pagination, mirrors how Supabase apps usually do this).
-
-- Page size: 50 (constant `PAGE_SIZE`).
-- Replace `useQuery` with `useInfiniteQuery` (TanStack Query already in project).
-- `queryFn({ pageParam = 0 })` calls the same query but with `.range(pageParam, pageParam + PAGE_SIZE - 1)` instead of `.limit(500)`. We also use Supabase's `count: 'exact'` head=false on the first request so we know the total.
-- `getNextPageParam` returns `pages.flat().length` while it's `< totalCount`.
-- The flattened `rows` feeds the existing sort/render exactly as before. `sortedRows` continues to sort *only what's loaded* — and since the server already orders by `expiry_date asc` (the most common sort) this matches user expectations. When the user picks a different sort key, a small hint "เรียงเฉพาะรายการที่โหลดมาแล้ว" appears (a `Tooltip` on the sort dropdown) so they understand the local-sort caveat. This is the same tradeoff the current code already silently has.
-- "โหลดเพิ่ม" button at the bottom of the table/card list shows "แสดง X จาก Y — โหลดเพิ่ม". Disabled when `!hasNextPage` or `isFetchingNextPage`.
-- Bonus: an `IntersectionObserver`-based sentinel auto-loads the next page when the user scrolls near the bottom — *but* only after the user has clicked "โหลดเพิ่ม" once or scrolled past the first page (avoids surprise auto-loads on initial render). Implementation: a `useRef` + `IntersectionObserver` inside a `useEffect` keyed by `hasNextPage`.
-- The "จำกัด 500" warning is removed — no more hard cap. Counter becomes "แสดง X จาก Y".
-
-### 4. Reset button
-
-- Add a `Button variant="ghost"` labeled "รีเซ็ต" with a `RotateCcw` icon, visible whenever any of these differ from default:
-  - `search !== ""`
-  - `employeeFilter !== null` (new from autocomplete)
-  - `branchId !== "all"`
-  - `typeFilter !== "all"`
-  - `statusFilter !== "active_only"`
-  - `expiryWindow !== "all"`
-  - `sortKey !== "expiry_asc"`
-  - `preset !== "all"`
-- Clicking it calls `applyPreset("all")` plus clears `search`, `employeeFilter`, `branchId`, `typeFilter`, `sortKey`. Column visibility is NOT reset (that's a personal display preference, not a filter).
-- Placed in the search/sort row so it's always reachable. Hidden when nothing to reset (avoid noise).
-
-## Files to change
-
-- `src/pages/attendance/EmployeeDocuments.tsx` — all four features land here (data hook, search box, columns menu, reset button).
-- `src/components/employee-documents/DocumentSearchCombobox.tsx` (new) — encapsulates the Popover+Command autocomplete and emits `onPick({ kind, value, employeeId? })`.
-
-No new dependencies. No DB or edge-function changes. No changes to KPI strip, card grid, row actions, upload dialog, or `EmployeeDocumentsTab`.
-
-## Regression checklist
-
-- KPI counts unchanged (still from `kpiRows`).
-- All existing filters / presets / sort / view toggle still work.
-- CSV export still exports currently-loaded + sorted rows (we'll add a small note "ส่งออกเฉพาะที่โหลดแล้ว" via tooltip; and a "โหลดทั้งหมดก่อนส่งออก" link that loops `fetchNextPage()` until done).
-- Empty state still shows the "เลือกพนักงานเพื่ออัปโหลด" CTA.
-- Mobile auto-switches to cards (unchanged).
-- Existing `bun run test` suite passes (no tested files touched).
-
-## Out of scope
-
-- Server-side full-text search index (Postgres trigram). Keep `ilike` for now.
-- Numbered pagination ("Page 3 of 12"). Load-more is sufficient and matches mobile behavior.
-- Saving filters to URL params (could be a future enhancement).
+## สิ่งที่จะ "ไม่" แตะ
+- Logic การ query ข้อมูล / RLS / pagination math — เปลี่ยนเฉพาะการแสดงผล error
+- โครงสร้าง `useInfiniteQuery` keys (กันไม่ให้ cache invalidate โดยไม่ตั้งใจ)
+- คอมโพเนนต์ row/card ที่ทำงานเสถียรอยู่แล้ว
