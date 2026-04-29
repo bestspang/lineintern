@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { toZonedTime } from 'npm:date-fns-tz@3.2.0';
 import { getBangkokDateString, toBangkokTime } from '../_shared/timezone.ts';
+import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1051,6 +1052,23 @@ serve(async (req) => {
     // Parse request body
     const body = await req.json().catch(() => ({}));
     const { groupId: requestedGroupId, type, messageLimit } = body;
+
+    // Phase 0A: HTTP-invoked admin reports require role check.
+    // The 'auto_summary' type is invoked internally by line-webhook (service role),
+    // so we skip the human role guard for that path only.
+    if (type !== 'auto_summary') {
+      try {
+        await requireRole(
+          req,
+          ['admin', 'owner', 'hr', 'manager', 'executive'],
+          { functionName: 'report-generator' },
+        );
+      } catch (e) {
+        const r = authzErrorResponse(e, corsHeaders);
+        if (r) return r;
+        throw e;
+      }
+    }
 
     // === HANDLE AUTO-SUMMARY REQUEST ===
     if (type === 'auto_summary' && requestedGroupId) {
