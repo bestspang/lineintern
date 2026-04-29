@@ -48,6 +48,11 @@ serve(async (req) => {
   const startTime = Date.now();
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // Authorize full diagnostic disclosure: cron/admin uses x-cron-secret.
+  // Anonymous callers receive a minimal { status, timestamp } response.
+  const providedSecret = req.headers.get("x-cron-secret") || "";
+  const isAuthorized = CRON_SECRET.length > 0 && safeEqual(providedSecret, CRON_SECRET);
+
   const checks: HealthCheck[] = [];
   let overallStatus: "ok" | "degraded" | "down" = "ok";
 
