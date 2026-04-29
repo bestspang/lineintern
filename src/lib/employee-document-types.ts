@@ -86,7 +86,54 @@ export const ALLOWED_MIME_TYPES = [
   "application/pdf", "image/png", "image/jpeg", "image/jpg",
   "image/webp", "image/heic", "image/heif",
 ];
+export const ALLOWED_EXTENSIONS = [
+  ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif",
+];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILE_LABEL_TH = "10MB";
+export const ALLOWED_TYPES_LABEL_TH = "PDF, JPG, PNG, WebP, HEIC";
+
+/**
+ * Phase 1A.3 — Client-side validation gate.
+ * Validates BOTH MIME type AND extension (HEIC on Safari often arrives with empty MIME),
+ * and enforces the 10MB cap. Returns Thai-first reason strings.
+ */
+export type FileValidationResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export function validateDocumentFile(file: File): FileValidationResult {
+  if (!file) return { ok: false, reason: "ไม่พบไฟล์" };
+  if (file.size > MAX_FILE_BYTES) {
+    return { ok: false, reason: `ไฟล์ใหญ่เกิน ${MAX_FILE_LABEL_TH}` };
+  }
+  const mimeOk = !!file.type && ALLOWED_MIME_TYPES.includes(file.type);
+  const lower = (file.name || "").toLowerCase();
+  const extOk = ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  if (!mimeOk && !extOk) {
+    return {
+      ok: false,
+      reason: `ประเภทไฟล์ไม่รองรับ — รองรับเฉพาะ ${ALLOWED_TYPES_LABEL_TH}`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Outcomes recorded in employee_documents.metadata.confirm_history. */
+export type ConfirmHistoryOutcome = "uploaded" | "failed" | "file_missing";
+
+export interface ConfirmHistoryEntry {
+  at: string;
+  outcome: ConfirmHistoryOutcome;
+  reason?: string | null;
+  by_user_id?: string | null;
+}
+
+export const CONFIRM_OUTCOME_LABEL_TH: Record<ConfirmHistoryOutcome, string> = {
+  uploaded: "อัปโหลดสำเร็จ",
+  failed: "ล้มเหลว",
+  file_missing: "ไฟล์หาย (รอลองใหม่)",
+};
 
 export interface EmployeeDocument {
   id: string;
