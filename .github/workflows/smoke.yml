@@ -84,6 +84,21 @@ jobs:
             fi
           fi
 
+      - name: Upload npm install logs (on failure)
+        if: failure() && steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-logs-${{ github.run_number }}
+          # Both files always exist by this point: npm-install.log is written
+          # by `tee` in the install step; npm-debug.log is copied by the
+          # `Diagnose install failure` step above. Dedicated artifact name
+          # makes them one-click discoverable on a broken run page.
+          path: |
+            smoke-artifacts/npm-install.log
+            smoke-artifacts/npm-debug.log
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Verify lockfile completeness (dry-run)
         # Re-resolves the lockfile against package.json without touching the
         # real node_modules. Fails fast if anything drifted (the failure we
