@@ -21,6 +21,15 @@ serve(async (req) => {
   console.log("[fix-user-names] Starting user name fix...");
 
   try {
+    // Phase 0A: admin/owner only.
+    try {
+      await requireRole(req, ['admin', 'owner'], { functionName: 'fix-user-names' });
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     // Find all users where display_name looks generic (LINE ID starting with U or "User " pattern) or missing avatar
     const { data: usersToFix, error: fetchError } = await supabase
       .from("users")
