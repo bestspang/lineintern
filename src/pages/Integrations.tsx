@@ -2,10 +2,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Webhook, CheckCircle } from 'lucide-react';
+import { WebhookVerificationCard } from '@/components/settings/WebhookVerificationCard';
 
 export default function Integrations() {
   return (
     <div className="space-y-4 sm:space-y-6">
+
+      <WebhookVerificationCard />
 
       <Card>
         <CardHeader className="p-4 sm:p-6">
