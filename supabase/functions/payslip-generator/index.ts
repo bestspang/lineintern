@@ -26,6 +26,15 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A: payslip generation is sensitive — admin/owner/hr only.
+    try {
+      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payslip-generator' });
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const { employee_id, period_id } = await req.json();
 
     if (!employee_id || !period_id) {
