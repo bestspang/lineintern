@@ -133,6 +133,7 @@ export default function Attendance() {
   }, [searchParams, toast]);
 
   const validateToken = async (token: string) => {
+    perfMark('checkin_token_validate_start');
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-validate-token?t=${token}`,
@@ -144,25 +145,38 @@ export default function Attendance() {
       );
 
       const data = await response.json();
-      
+      perfMark('checkin_token_validate_end');
+
       if (!response.ok || !data.valid) {
         setError(data.error || 'Invalid token');
         setLoading(false);
+        logPortalEvent({
+          event_name: 'token_validate_failed',
+          duration_ms: perfMeasure('checkin_token_validate_start'),
+          error_code: data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`,
+        });
         return;
       }
 
       setTokenData(data);
-      
+      logPortalEvent({
+        event_name: 'token_validate_success',
+        duration_ms: perfMeasure('checkin_token_validate_start'),
+        employee_id: data?.employee?.id ?? null,
+        branch_id: data?.employee?.branch_id ?? null,
+      });
+
       // Auto-request location if required
       if (data.settings?.require_location) {
         requestLocation();
       }
-      
+
       setLoading(false);
     } catch (err) {
       console.error('Validation error:', err);
       setError('Failed to validate token');
       setLoading(false);
+      logPortalEvent({ event_name: 'token_validate_failed', error_code: 'network_error' });
     }
   };
 
@@ -1039,15 +1053,24 @@ export default function Attendance() {
         </p>
       </div>
 
-      {/* Liveness Camera Modal */}
+      {/* Liveness Camera Modal (lazy-loaded — MediaPipe only fetched when opened) */}
       {showLivenessCamera && (
-        <LivenessCamera
-          onCapture={handleLivenessCapture}
-          onCancel={handleLivenessCancel}
-          eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
-          employeeBirthDate={tokenData?.employee?.birth_date?.slice(5)} // 'MM-DD' format
-          todayHolidayIds={todayHolidayIds}
-        />
+        <Suspense fallback={
+          <div className="fixed inset-0 z-50 bg-background/95 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">กำลังเปิดกล้อง...</p>
+            </div>
+          </div>
+        }>
+          <LivenessCamera
+            onCapture={handleLivenessCapture}
+            onCancel={handleLivenessCancel}
+            eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
+            employeeBirthDate={tokenData?.employee?.birth_date?.slice(5)}
+            todayHolidayIds={todayHolidayIds}
+          />
+        </Suspense>
       )}
 
       {/* Early Leave Request Dialog */}
