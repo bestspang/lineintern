@@ -87,6 +87,7 @@ const HealthMonitoring = lazy(() => import("./pages/HealthMonitoring"));
 const ConfigurationValidator = lazy(() => import("./pages/ConfigurationValidator"));
 const PreDeployChecklist = lazy(() => import("./pages/PreDeployChecklist"));
 const FeatureFlags = lazy(() => import("./pages/FeatureFlags"));
+const AuditLogs = lazy(() => import("./pages/AuditLogs"));
 const BranchReportsPage = lazy(() => import("./pages/branch-reports"));
 const HappyPoints = lazy(() => import("./pages/attendance/HappyPoints"));
 const AttendanceRewards = lazy(() => import("./pages/attendance/Rewards"));
