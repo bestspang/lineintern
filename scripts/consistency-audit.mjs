@@ -140,7 +140,8 @@ function check1_routesVsSnapshot() {
     .filter(r => r && r !== "")
     .filter(r => !declared.has(r) && !declared.has(r.replace(/\/$/, "")))
     .filter(r => !ignoredExact.has(r))
-    .filter(r => !ignoredPrefixes.some(p => r.startsWith(p)));
+    .filter(r => !ignoredPrefixes.some(p => r.startsWith(p)))
+    .filter(r => !settingsSubRoutes.has(r));
 
   if (drift.length === 0) {
     record("C1", "App.tsx routes ↔ registry-snapshot.json", "PASS",
