@@ -434,12 +434,14 @@ function testCommandSync() {
   catch { record("G1", "Bot command parser ↔ snapshot sync", "SKIP", "invalid snapshot JSON"); return; }
 
   const parserSrc = readFileSync(parserPath, "utf8");
-  // Extract right-side command types from commandMap entries: '/cmd': 'commandType',
-  const typeMatches = [...parserSrc.matchAll(/:\s*'([a-z_]+)'\s*,/g)].map(m => m[1]);
-  // Filter: only types that appear at least 2x (commandMap entries) and aren't generic words
+  // Extract command types from two patterns:
+  //   1) commandMap entries:        '/cmd': 'commandType',
+  //   2) imperative assignments:    commandType = 'commandType';   (separate code paths e.g. /history)
+  const mapMatches = [...parserSrc.matchAll(/:\s*'([a-z_]+)'\s*,/g)].map(m => m[1]);
+  const assignMatches = [...parserSrc.matchAll(/commandType\s*=\s*'([a-z_]+)'/g)].map(m => m[1]);
+  const typeMatches = [...mapMatches, ...assignMatches];
   const counts = typeMatches.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
   const parserTypes = new Set(Object.keys(counts).filter(k => counts[k] >= 1 && /^[a-z_]+$/.test(k)));
-  // Strip non-command words (literal mode keys, etc.) by intersecting with snapshot baseline + new ones
   const snapshotTypes = new Set(snapshot.bot_command_types || []);
   // Find types in parser that aren't in snapshot (could be new commands)
   const newInParser = [...parserTypes].filter(t => !snapshotTypes.has(t) && counts[t] >= 2);
