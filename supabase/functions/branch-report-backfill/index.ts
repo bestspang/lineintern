@@ -163,6 +163,15 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A: backfill jobs are admin/owner/hr only.
+    try {
+      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'branch-report-backfill' });
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
