@@ -160,3 +160,125 @@ jobs:
           name: phase-0b-smoke-${{ github.run_number }}
           path: smoke-artifacts/
           retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Full vitest suite — runs in parallel with `smoke` so a failure here
+  # surfaces as an independent PR check (doesn't mask or get masked by the
+  # smoke job). Reuses the same install hardening for consistent dep-error
+  # reporting across both jobs.
+  # ─────────────────────────────────────────────────────────────────────────
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Remove stray bun artifacts (defensive)
+        run: |
+          if [ -d node_modules/.bun ]; then
+            echo "::warning::Removing stale node_modules/.bun before npm ci"
+            rm -rf node_modules/.bun node_modules/.package-lock.json
+          fi
+          rm -rf node_modules/.cache
+
+      - name: Prepare vitest artifact dir
+        if: always()
+        run: |
+          mkdir -p vitest-artifacts
+          : > vitest-artifacts/vitest-output.txt
+
+      - name: Install dependencies
+        id: install
+        run: |
+          set -o pipefail
+          npm ci --legacy-peer-deps --no-audit --no-fund 2>&1 \
+            | tee vitest-artifacts/npm-install.log
+
+      - name: Diagnose install failure
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          {
+            echo "## npm ci failed (vitest job) — diagnostic dump"
+            echo ""
+            echo "### Missing / Invalid lockfile entries"
+            echo '```'
+            grep -E '^npm error (Missing|Invalid):' vitest-artifacts/npm-install.log \
+              | sed 's/^npm error //' | sort -u | head -200 \
+              || echo "(none parsed)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          LOG_DIR="$HOME/.npm/_logs"
+          if [ -d "$LOG_DIR" ]; then
+            LATEST=$(ls -1t "$LOG_DIR"/*-debug-0.log 2>/dev/null | head -1 || true)
+            if [ -n "$LATEST" ]; then
+              cp "$LATEST" vitest-artifacts/npm-debug.log
+              {
+                echo ""
+                echo "### Tail of npm debug log (last 80 lines)"
+                echo '```'
+                tail -80 "$LATEST"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Upload npm install logs (on failure)
+        if: failure() && steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-logs-vitest-${{ github.run_number }}
+          path: |
+            vitest-artifacts/npm-install.log
+            vitest-artifacts/npm-debug.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Run full vitest suite
+        id: vitest
+        run: |
+          set -o pipefail
+          # Reuses the existing `test` script (`vitest run`). The `--`
+          # forwards extra flags to vitest so we also emit a JUnit XML
+          # alongside human-readable console output (captured via tee).
+          # No new dependencies — both reporters ship with vitest 3.x.
+          npm test -- \
+            --reporter=default \
+            --reporter=junit \
+            --outputFile.junit=vitest-artifacts/junit.xml 2>&1 \
+            | tee vitest-artifacts/vitest-output.txt
+
+      - name: Build vitest summary
+        if: always()
+        run: |
+          OUTPUT_FILE="vitest-artifacts/vitest-output.txt"
+          {
+            echo "# Full Vitest Suite Results"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Ref: \`${GITHUB_REF}\`"
+            echo "- Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo '```'
+            if [ -s "$OUTPUT_FILE" ]; then
+              sed -r 's/\x1B\[[0-9;]*[mK]//g' "$OUTPUT_FILE" | tail -200
+            else
+              echo "(no vitest output captured — earlier step likely failed before tests ran; see job logs)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload vitest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-0b-vitest-${{ github.run_number }}
+          path: vitest-artifacts/
+          retention-days: 30
+
