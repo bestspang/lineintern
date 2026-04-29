@@ -13,14 +13,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: only management roles can send LINE DMs from the admin UI.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner', 'hr', 'manager', 'moderator'],
         { functionName: 'dm-send' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
