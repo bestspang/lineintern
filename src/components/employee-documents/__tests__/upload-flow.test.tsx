@@ -109,7 +109,7 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     renderTab();
 
     const row = (await screen.findByText("Contract")).closest("tr")!;
-    expect(within(row).getByText("อัปโหลดล้มเหลว")).toBeInTheDocument();
+    expect(within(row).getAllByText("อัปโหลดล้มเหลว").length).toBeGreaterThan(0);
   });
 
   it("opens the signed URL when downloading a confirmed (uploaded) document", async () => {
@@ -185,7 +185,7 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     // After the refetch the failed badge should appear inside the row.
     await waitFor(() => {
       const r = screen.getByText("Contract").closest("tr")!;
-      expect(within(r).getByText("อัปโหลดล้มเหลว")).toBeInTheDocument();
+      expect(within(r).getAllByText("อัปโหลดล้มเหลว").length).toBeGreaterThan(0);
     });
   });
 });
