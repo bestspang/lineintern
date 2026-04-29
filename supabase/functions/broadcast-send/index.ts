@@ -221,6 +221,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Phase 0A guard: high-impact mass LINE send — admin/owner/hr only.
+    try {
+      await requireRole(
+        req,
+        ['admin', 'owner', 'hr'],
+        { functionName: 'broadcast-send' },
+      );
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const { broadcast_id, dry_run = false } = await req.json();
 
     if (!broadcast_id) {
