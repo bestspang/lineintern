@@ -12,24 +12,30 @@ import { createMockSupabase, type MockSupabaseHandle } from "./test-utils";
 
 // --- Mocks (must be set up before importing the component) ---
 
-const mock: MockSupabaseHandle = createMockSupabase();
+const hoisted = vi.hoisted(() => {
+  return {
+    mock: null as MockSupabaseHandle | null,
+    toastSuccess: vi.fn(),
+    toastError: vi.fn(),
+  };
+});
+
+hoisted.mock = createMockSupabase();
+const mock = hoisted.mock;
+const toastSuccess = hoisted.toastSuccess;
+const toastError = hoisted.toastError;
 
 vi.mock("@/integrations/supabase/client", () => ({
   get supabase() {
-    return mock.supabase;
+    return hoisted.mock!.supabase;
   },
 }));
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
 vi.mock("sonner", () => ({
-  toast: Object.assign(
-    (...args: any[]) => {
-      // default toast() call
-      void args;
-    },
-    { success: toastSuccess, error: toastError },
-  ),
+  toast: Object.assign((..._args: any[]) => {}, {
+    success: hoisted.toastSuccess,
+    error: hoisted.toastError,
+  }),
 }));
 
 // jsdom: window.open
