@@ -28,6 +28,26 @@ function timingSafeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
+/**
+ * Phase 0B — local role→priority ladder (mirrors public.get_user_role_priority +
+ * the can_view_employee_by_priority numeric scale used in employee_roles.priority).
+ * Higher number = more authority.
+ */
+function roleToPriority(role: string | null | undefined): number {
+  switch ((role ?? '').toLowerCase()) {
+    case 'owner': return 10;
+    case 'hr': return 9;
+    case 'admin': return 8;
+    case 'executive': return 5;
+    case 'manager': return 5;
+    case 'moderator': return 1;
+    case 'field': return 1;
+    case 'user': return 0;
+    case 'employee': return 0;
+    default: return 0;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -145,8 +165,88 @@ serve(async (req) => {
       );
     }
 
-    const employee = request.employee as { id: string; full_name: string; line_user_id?: string; branch_id?: string };
+    const employee = request.employee as { id: string; full_name: string; line_user_id?: string; branch_id?: string; };
     const now = new Date().toISOString();
+
+    // Phase 0B — role-priority enforcement.
+    // Rule: admin/owner always allowed. Otherwise approver_priority must be >= target_priority.
+    // Both call paths (user JWT + internal portal-data) are checked; on the internal path
+    // the human approver is resolved from approver_employee_id since there is no JWT role.
+    let targetRoleKey: string | null = null;
+    let targetPriority = 0;
+    {
+      const { data: targetRow } = await supabase
+        .from('employees')
+        .select('role_id, employee_roles:role_id ( role_key, priority )')
+        .eq('id', employee.id)
+        .maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const er = (targetRow as any)?.employee_roles ?? null;
+      targetRoleKey = er?.role_key ?? null;
+      targetPriority = typeof er?.priority === 'number' ? er.priority : 0;
+    }
+
+    let approverRoleKey: string | null = null;
+    let approverPriority = 0;
+    if (callerSource === 'user') {
+      approverRoleKey = callerRoleLabel;
+      approverPriority = roleToPriority(callerRoleLabel);
+    } else {
+      // Internal path: derive approver authority from approver_employee_id.
+      const { data: approverRow } = await supabase
+        .from('employees')
+        .select('role_id, employee_roles:role_id ( role_key, priority )')
+        .eq('id', approver_employee_id)
+        .maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const er = (approverRow as any)?.employee_roles ?? null;
+      approverRoleKey = er?.role_key ?? null;
+      approverPriority = typeof er?.priority === 'number' ? er.priority : 0;
+    }
+
+    const isAdminBypass =
+      approverRoleKey === 'admin' || approverRoleKey === 'owner' ||
+      callerRoleLabel === 'admin' || callerRoleLabel === 'owner';
+    const priorityOk = isAdminBypass || approverPriority >= targetPriority;
+    const priorityCheckResult = isAdminBypass
+      ? 'bypass_admin'
+      : (priorityOk ? 'pass' : 'blocked');
+
+    if (!priorityOk) {
+      console.warn(
+        `[authz] remote-checkout-approval priority-block approver_role=${approverRoleKey} ` +
+          `approver_pri=${approverPriority} target_role=${targetRoleKey} target_pri=${targetPriority}`,
+      );
+      // Best-effort denial audit.
+      await writeAuditLog(supabase, {
+        functionName: 'remote-checkout-approval',
+        actionType: 'denied',
+        resourceType: 'remote_checkout_request',
+        resourceId: request_id,
+        performedByUserId: callerUserId,
+        performedByEmployeeId: approver_employee_id,
+        callerRole: callerRoleLabel,
+        reason: 'role_priority_block',
+        metadata: {
+          source: callerSource,
+          target_employee_id: employee.id,
+          target_role: targetRoleKey,
+          target_priority: targetPriority,
+          approver_employee_id,
+          approver_role: approverRoleKey,
+          approver_priority: approverPriority,
+          priority_check_result: priorityCheckResult,
+        },
+      });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'forbidden_role_priority',
+          error: 'ไม่สามารถอนุมัติคำขอของผู้ที่มีระดับสิทธิ์สูงกว่าได้',
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (approved) {
       // === APPROVAL FLOW ===
@@ -355,6 +455,13 @@ serve(async (req) => {
           employee_id: employee.id,
           checkout_log_id: checkoutLogId,
           was_already_checked_out: wasAlreadyCheckedOut,
+          target_employee_id: employee.id,
+          target_role: targetRoleKey,
+          target_priority: targetPriority,
+          approver_employee_id,
+          approver_role: approverRoleKey,
+          approver_priority: approverPriority,
+          priority_check_result: priorityCheckResult,
         },
       });
 
@@ -487,6 +594,14 @@ serve(async (req) => {
         metadata: {
           source: callerSource,
           employee_id: employee.id,
+          target_employee_id: employee.id,
+          target_role: targetRoleKey,
+          target_priority: targetPriority,
+          approver_employee_id,
+          approver_role: approverRoleKey,
+          approver_priority: approverPriority,
+          priority_check_result: priorityCheckResult,
+          decision: 'reject',
         },
       });
 

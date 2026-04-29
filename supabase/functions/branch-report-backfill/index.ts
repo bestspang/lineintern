@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,8 +165,12 @@ serve(async (req) => {
 
   try {
     // Phase 0A: backfill jobs are admin/owner/hr only.
+    let callerUserId: string | null = null;
+    let callerRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'branch-report-backfill' });
+      const r = await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'branch-report-backfill' });
+      callerUserId = r.userId;
+      callerRole = r.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -303,6 +308,26 @@ serve(async (req) => {
     }
 
     console.log('Backfill complete:', results);
+
+    // Phase 0B — best-effort audit (counts only; no raw message text).
+    await writeAuditLog(supabase, {
+      functionName: 'branch-report-backfill',
+      actionType: 'backfill',
+      resourceType: 'branch_report',
+      resourceId: group.id,
+      performedByUserId: callerUserId,
+      callerRole,
+      metadata: {
+        group_id: group.id,
+        total: results.total,
+        parsed: results.parsed,
+        saved: results.saved,
+        skipped: results.skipped,
+        errors: results.errors,
+        dry_run: dryRun,
+        source: 'backfill',
+      },
+    });
 
     return new Response(
       JSON.stringify({ 
