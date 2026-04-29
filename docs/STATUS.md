@@ -256,3 +256,15 @@ audit-row spot-check SQL, and Phase 1 readiness verdict).
 
 See `docs/PHASE_0A_VERIFICATION.md` for the full curl-based test matrix and
 audit-log spot-check SQL for the 7 hardened functions.
+
+## Phase 1A — Employee Documents Module (2026-04-29)
+
+**Status: COMPLETE**
+
+- New table `public.employee_documents` (RLS: HR/Admin manage; employees see own employee_visible non-archived; managers see scoped employee_visible).
+- New private storage bucket `employee-documents` (HR/Admin direct; others via signed-URL edge function).
+- New edge functions: `employee-document-upload`, `employee-document-signed-url`, `employee-document-archive`, `employee-document-replace`.
+- New view `employee_documents_expiring` (security_invoker).
+- Admin UI: Documents card on EmployeeDetail + cross-employee page at `/attendance/employee-documents`.
+- Audit logs written for upload/view/archive/replace.
+- Smoke: 11 pass / 0 fail / 5 skip (unchanged baseline).
