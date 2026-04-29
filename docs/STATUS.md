@@ -436,3 +436,44 @@ Test infrastructure added: `vitest.config.ts`, `src/test/setup.ts`, `npm run tes
 
 ### Verdict
 **READY FOR PHASE 1B PERFORMANCE.**
+
+---
+
+## Phase 1A.3 — Activity log + progress + client validation (2026-04-29)
+
+### Why
+- HR needed visibility into *every* confirm attempt (not just terminal outcomes) to troubleshoot rows stuck in `pending` or repeatedly hitting `file_missing`.
+- Picker → URL-param auto-open path had no automated regression coverage.
+- Uploaders had no progress feedback and could trigger conflicting actions (download/replace/archive) on the same row mid-upload.
+- Unsupported file types only failed *after* a signed URL was issued, leaving orphan `pending` rows behind.
+
+### What changed (additive only — no schema migration)
+
+**Backend — `employee-document-confirm-upload`**
+- New audit `actionType: "upload_pending_check"` for the `file_missing` (410) branch so retries are observable.
+- Every audit row now carries `metadata.attempt_at` (Bangkok ISO with `+07:00` offset) and `metadata.outcome` ∈ `uploaded | failed | file_missing`.
+- Mirror append into `employee_documents.metadata.confirm_history` (capped at 20 most-recent entries) so the per-row activity drawer needs zero extra queries.
+
+**Frontend**
+- New `DocumentActivityLogDialog.tsx` — read-only drawer renders `confirm_history` with Bangkok timestamps, color-coded outcome badges, and a Thai legend. Triggered by a new `History` icon in the row actions (only shown when history exists or the row is non-uploaded).
+- `UploadDocumentDialog.tsx` — replaced binary `busy` with `phase: idle | uploading | confirming`, added two-step `<Progress>` bar (50% uploading → 90% confirming), inline Thai status text, and explicit `disabled` on every input + the close handler while busy.
+- Added inline allowed-types/size hint above the file picker (`รองรับ: PDF, JPG, PNG, WebP, HEIC • สูงสุด 10MB`).
+- New `validateDocumentFile()` helper in `employee-document-types.ts` (MIME + extension fallback for Safari HEIC) — runs on file selection AND immediately before invoking `employee-document-upload`, blocking orphan-row creation for unsupported types.
+- `EmployeeDocumentsTab.tsx` — Download / Replace / Archive buttons now disable while the upload dialog is open (prevents conflicting actions on the same row).
+
+### Tests
+- New integration test: picker click → asserts `navigate("/attendance/employees/<id>?action=upload-document")` and `onOpenChange(false)` fire.
+- New regression test: `EmployeeDocumentsTab` mounted with `autoOpenUpload={true}` → upload dialog opens AND `onAutoOpenConsumed` fires exactly once (guards against re-open loops).
+- `bun run test` → **7/7 passed** (5 existing + 2 new).
+
+### Files touched
+- `supabase/functions/employee-document-confirm-upload/index.ts`
+- `src/lib/employee-document-types.ts`
+- `src/components/employee-documents/UploadDocumentDialog.tsx`
+- `src/components/employee-documents/EmployeeDocumentsTab.tsx`
+- `src/components/employee-documents/DocumentActivityLogDialog.tsx` (new)
+- `src/components/employee-documents/__tests__/upload-flow.test.tsx` (extended)
+- `docs/STATUS.md`
+
+### Verdict
+**READY FOR PHASE 1B PERFORMANCE.** Pure additive observability + UX hardening on top of Phase 1A.2 — no changes to attendance, Bangkok helpers, RLS policies, or DB schema.
