@@ -1,146 +1,71 @@
-# Publish Failure Debug v2 Plan
+# Root Cause: Stale Deploy Artifact
 
-## Current read-only findings
+## Live URL Status (verified 2026-04-29 15:11 UTC)
 
-1. **Affected modules**
-   - Publishing flow / Lovable deploy platform
-   - Package manager lockfiles: `package.json`, `package-lock.json`, `bun.lock`, `bun.lockb`
-   - Build entrypoints: `vite.config.ts`, `vitest.config.ts`, `src/App.tsx`
-   - Recent admin routes: `/attendance/ops-center`, `/attendance/portal-performance`
-   - Route registry: `.lovable/registry-snapshot.json`
-   - Page access database config: `webapp_page_config`
-   - Security scan gate
-   - Custom domain: `intern.gem.me`
+| URL | HTTP | Serves index.html | React renders | Source 404 |
+|---|---|---|---|---|
+| intern.gem.me/overview | 200 | yes | yes | no |
+| intern.gem.me/attendance/ops-center | 200 | yes | yes | **shows in-app NotFound** |
+| intern.gem.me/attendance/portal-performance | 200 | yes | yes | **shows in-app NotFound** |
+| lineintern.lovable.app/* (same paths) | 200 | yes | yes | same as above |
 
-2. **Status of each module so far**
-   - `package.json`: readable; test dependencies are present in `devDependencies`.
-   - `package-lock.json`: contains the same top-level test dependencies as `package.json`; exact sync still must be verified by running `npm install --package-lock-only` in build mode.
-   - `bun.lock` / `bun.lockb`: both present, meaning the repo has mixed npm and Bun lockfiles.
-   - `src/App.tsx`: routes for `/attendance/ops-center` and `/attendance/portal-performance` exist and lazy-import the expected files.
-   - `.lovable/registry-snapshot.json`: valid JSON by inspection; includes both routes.
-   - `webapp_page_config`: rows exist for both routes. Access is `true` for `owner`, `admin`, `hr`, `manager`; `false` for `employee`, `user`, `field`, plus `executive` and `moderator`.
-   - Security scan results: currently no active findings in loaded scan results; this does not look like a publish-blocking security gate from current available data.
-   - Domain: `intern.gem.me` is connected and serves the app. Published fallback `lineintern.lovable.app` also serves the app. Domain/DNS does not appear broken from current available data.
-   - Browser logs/network snapshot: no publish error captured from current preview snapshot.
+The server is NOT returning a real 404. SPA fallback works correctly — `index.html` is served on every path. The "404" the user sees is React Router's `NotFound` page rendering because **the deployed JS bundle does not know about the new routes**.
 
-3. **What must be preserved**
-   - Do not touch `line-webhook`, `attendance-submit`, `attendance-validate-token`, `claim_attendance_token`, Bangkok timezone helpers, payroll math, point ledger, `pg_net`, auth/storage/vault functions, broad RLS policies, Employee Documents logic, or portal performance logic unless a build error proves it is the blocker.
-   - Do not continue feature work or security hardening.
-   - Do not refactor.
-   - Keep all working routes and access behavior intact.
+## Smoking Gun
 
-## What is actually broken
+Live bundle: `https://intern.gem.me/assets/index-BOuFb-tr.js` (215 KB)
 
-The exact publish/deploy blocker has **not yet been captured** in read-only mode. I cannot click Publish/Update or run state-changing commands/tests from the current mode. The current evidence narrows the likely areas to:
+```
+grep "ops-center"          → 0 matches
+grep "portal-performance"  → 0 matches
+grep "OpsCenter"           → 0 matches
+grep "PortalPerformance"   → 0 matches
+```
 
-- A platform-side publish error not visible in current browser/network snapshots.
-- A stale `package-lock.json` only detectable by running `npm install --package-lock-only` and checking if it changes.
-- A build/deploy step failure only visible when executing the required npm/Bun commands.
+Yet in source (verified):
+- `src/App.tsx` line 101–102: lazy imports present
+- `src/App.tsx` line 307–308: `<Route path="/attendance/ops-center" …>` and `…/portal-performance` registered inside the protected `DashboardLayout` block
+- `src/pages/attendance/OpsCenter.tsx` and `PortalPerformance.tsx` exist with `export default`
+- `.lovable/registry-snapshot.json` lists both routes
+- `webapp_page_config` has matching rows (verified in earlier session)
 
-## Minimal-diff execution plan after approval
+**Conclusion**: code, registry, and DB are all correct. The published frontend artifact on both `intern.gem.me` and `lineintern.lovable.app` is from a publish that happened BEFORE the OpsCenter / PortalPerformance routes were added. Every "Publishing failed" toast the user reported caused the publish pipeline to keep serving the previous successful build.
 
-### Step 1 — Capture the real publish error
-- Attempt Publish / Update once.
-- Capture raw error text, timestamp, deployment/request id if shown, and classify the stage:
-  - install
-  - build
-  - deploy/upload
-  - domain assignment
-  - security gate
-  - unknown platform error
-- If the UI gives only a generic banner, inspect available browser network details/logs for the publish request body and response.
+## Why this kept happening
 
-### Step 2 — Verify package manager / lockfile mismatch
-- Run exactly:
-  - `npm install --package-lock-only`
-- Check whether `package-lock.json` changes.
-- If it changes, keep only that lockfile sync change and treat stale npm lockfile as a likely publish blocker, then continue verification.
-- Do not edit `package.json` unless the install/build error proves a specific dependency declaration is wrong.
+This matches the entire arc of this conversation: the user has been clicking "Publish / Update" repeatedly and seeing "Publishing failed". Each failure leaves the previous bundle in place, so the new routes never go live. App-side debug found nothing wrong because nothing app-side IS wrong.
 
-### Step 3 — Run full npm build and required validation
-- Run:
-  - `npm run build`
-  - `npm run smoke:quick`
-  - `bun run test`
-- If build fails, fix only the exact file/line in the error.
-- Priority inspection targets only if the build points there:
-  - `src/App.tsx`
-  - `src/pages/attendance/OpsCenter.tsx`
-  - `src/pages/attendance/PortalPerformance.tsx`
-  - `src/lib/portal-perf.ts`
-  - `src/contexts/LiffContext.tsx`
-  - `src/contexts/PortalContext.tsx`
-  - `src/components/portal/PortalLayout.tsx`
-  - `src/pages/portal/PortalHome.tsx`
-  - `src/pages/Attendance.tsx`
-  - `vitest.config.ts`
-  - `src/test/setup.ts`
-  - `package.json`
-  - `package-lock.json`
+## Files to Change
 
-### Step 4 — Route / registry / DB consistency verification
-- Re-run or manually verify:
-  - `/attendance/ops-center` route exists and compiles.
-  - `/attendance/portal-performance` route exists and compiles.
-  - `.lovable/registry-snapshot.json` parses as valid JSON.
-  - Registry routes match `App.tsx`.
-  - `webapp_page_config` has both route rows.
-  - `owner/admin/hr/manager` are allowed only.
-  - `employee/user/field` are denied.
-- No route additions or access-policy changes unless validation proves a blocker.
+**None.** No source change can fix a stale artifact. The fix is to trigger a successful publish.
 
-### Step 5 — Security gate only if proven blocking
-- If publish error explicitly cites a security gate, capture the exact finding, severity, and whether accepted findings are recognized by publish.
-- Do not modify `pg_net`, auth/storage/vault schema functions, broad RLS policies, or accepted warnings.
-- If no security gate appears in the publish error, leave security untouched.
+## The Fix (smallest safe action)
 
-### Step 6 — Domain/deployment status
-- Verify:
-  - `intern.gem.me` is still connected.
-  - DNS/domain is not the cause.
-  - Failure occurs before/after domain assignment.
-- If domain is the blocker, report the exact domain/DNS error and do not edit app code.
+1. Make a no-op version stamp bump in a non-functional file so the publish pipeline produces a new bundle hash. Candidate: append a single dated comment line to `.lovable/plan.md` (already used as a build/publish marker in this project).
+2. Trigger Publish via the editor's "Update" button.
+3. Re-fetch `https://intern.gem.me/` and verify the new `index-*.js` hash is different from `index-BOuFb-tr.js`.
+4. Re-grep the new bundle for `ops-center` and `portal-performance`. Both must appear.
+5. Re-hit all 6 URLs and confirm the React app no longer renders the in-app NotFound for the two new paths (will redirect to `/auth` if not signed in — that is the correct behavior, not 404).
 
-### Step 7 — Final publish verification
-- After the minimal proven fix, run again:
-  - `npm run build`
-  - `npm run smoke:quick`
-  - `bun run test`
-- Attempt Publish / Update again.
-- Capture final publish result.
+## Validation Commands
 
-## Expected code changes
+```bash
+npm run build              # local sanity (registry already verified)
+npm run smoke:quick        # 16 tests should pass
+bunx vitest run            # 7 tests should pass
+curl -s https://intern.gem.me/ | grep -oE '/assets/index-[^"]+\.js'
+curl -s https://intern.gem.me/assets/<new-hash>.js | grep -c ops-center
+```
 
-Only one of these, depending on the proven blocker:
+## What This Plan Does NOT Touch
 
-1. **If stale lockfile is proven:** update `package-lock.json` only.
-2. **If build fails:** edit only the exact build-breaking line/file.
-3. **If route registry mismatch is proven:** edit only the stale registry or missing page access migration needed for the two existing routes.
-4. **If security/domain/platform gate is proven:** no app-code edits unless the raw error identifies an app-owned blocker.
+- line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token
+- Bangkok timezone helpers, payroll math, point ledger
+- Employee Documents, RLS policies, security findings
+- pg_net, auth/storage/vault schemas
+- Any business logic, any database migration
+- Any existing route, page, or component
 
-## Regression checklist
+## Verdict After Approval
 
-- Build passes with npm.
-- Smoke quick passes.
-- Bun test suite passes.
-- Existing sensitive/verified files remain untouched.
-- No feature work added.
-- No security hardening changes unless publish explicitly blocks on security.
-- Domain still serves the current app.
-- Publish/Update either succeeds or reports a precise remaining platform blocker.
-
-## Final report format I will return
-
-1. Exact publish error
-2. Root cause
-3. Whether package-lock was stale
-4. Files changed
-5. Build result
-6. Smoke result
-7. Test result
-8. Security gate status
-9. Domain status
-10. Publish result
-11. Verdict: `PUBLISH FIXED` or `STILL BLOCKED with exact blocker`
-
-Approve this plan and I will execute only these steps with the smallest safe fix.
+Expected: **404 FIXED** — the in-app NotFound for the two routes disappears once the bundle hash changes and contains the new route strings. If the new publish still fails (the underlying intermittent publish-pipeline issue), the verdict will be **STILL 404, blocker = Lovable publish pipeline failure** and we will need to capture the exact red-toast error from the editor at that moment, because nothing in the project repo can fix a platform-side publish failure.

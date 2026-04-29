@@ -1,3 +1,4 @@
+// publish-stamp: 2026-04-29T15:11Z (force fresh bundle hash for ops-center & portal-performance routes)
 import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
