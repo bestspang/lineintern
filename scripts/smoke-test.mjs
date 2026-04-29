@@ -313,6 +313,111 @@ function listManual() {
 }
 
 // =================================================================
+// SECTION F — REGISTRY SYNC (routes ↔ snapshot)
+// Added 2026-04-29 to prevent AI from shipping new admin routes
+// without registering them in webapp_page_config / snapshot file.
+// =================================================================
+function testRegistrySync() {
+  const snapshotPath = ".lovable/registry-snapshot.json";
+  if (!existsSync(snapshotPath)) {
+    record("F1", "Registry snapshot exists", "FAIL", "missing .lovable/registry-snapshot.json", 0,
+      "Create the snapshot file or run the page-registry sync migration. See SYSTEM_SYNC_CHECKLIST.md §8.");
+    return;
+  }
+  record("F1", "Registry snapshot exists", "PASS", "");
+
+  let snapshot;
+  try {
+    snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+  } catch (e) {
+    record("F2", "Registry snapshot is valid JSON", "FAIL", String(e?.message || e).slice(0, 120), 0,
+      "Fix JSON syntax in .lovable/registry-snapshot.json.");
+    return;
+  }
+  record("F2", "Registry snapshot is valid JSON", "PASS", "");
+
+  // Parse admin routes from App.tsx
+  const appPath = "src/App.tsx";
+  if (!existsSync(appPath)) {
+    record("F3", "App.tsx admin routes match snapshot", "SKIP", "src/App.tsx not found");
+    return;
+  }
+  const appSrc = readFileSync(appPath, "utf8");
+  // Capture path="..." that does NOT start with /portal, /liff, /auth, /error, /employee-menu, /attendance (root mobile redirect), /reset-password, /p/, * (wildcard)
+  const routeMatches = [...appSrc.matchAll(/<Route\s+path="(\/[^"*][^"]*)"/g)].map(m => m[1]);
+  const adminRoutes = new Set(
+    routeMatches
+      .filter(p => !p.startsWith("/portal"))
+      .filter(p => !p.startsWith("/liff"))
+      .filter(p => !p.startsWith("/p/"))
+      .filter(p => p !== "/auth")
+      .filter(p => !p.startsWith("/error"))
+      .filter(p => p !== "/employee-menu")
+      .filter(p => p !== "/reset-password")
+      .filter(p => p !== "/attendance" && p !== "/attendance/flexible-day-off") // mobile-only legacy redirects
+      .filter(p => !p.includes(":")) // skip dynamic detail pages — covered by parent
+  );
+
+  const snapshotAdmin = new Set(snapshot.admin_routes || []);
+  const missingFromSnapshot = [...adminRoutes].filter(p => !snapshotAdmin.has(p));
+  const extraInSnapshot = [...snapshotAdmin].filter(p => !adminRoutes.has(p) && !p.includes(":") && p !== "/" && p !== "/overview");
+
+  if (missingFromSnapshot.length === 0) {
+    record("F3", "App.tsx admin routes match snapshot", "PASS", `${adminRoutes.size} routes`);
+  } else {
+    record("F3", "App.tsx admin routes match snapshot", "FAIL",
+      `${missingFromSnapshot.length} new route(s) not in snapshot`, 0,
+      `Add to .lovable/registry-snapshot.json admin_routes: ${missingFromSnapshot.slice(0, 5).join(", ")}${missingFromSnapshot.length > 5 ? "..." : ""}. Then create a webapp_page_config migration. See SYSTEM_SYNC_CHECKLIST.md §8.`);
+  }
+
+  if (extraInSnapshot.length === 0) {
+    record("F4", "Snapshot has no stale routes", "PASS", "");
+  } else {
+    record("F4", "Snapshot has no stale routes", "FAIL",
+      `${extraInSnapshot.length} stale: ${extraInSnapshot.slice(0, 3).join(", ")}`, 0,
+      "Remove deleted routes from .lovable/registry-snapshot.json admin_routes.");
+  }
+}
+
+// =================================================================
+// SECTION G — BOT COMMAND SYNC (parser ↔ snapshot)
+// =================================================================
+function testCommandSync() {
+  const snapshotPath = ".lovable/registry-snapshot.json";
+  const parserPath = "supabase/functions/line-webhook/utils/command-parser.ts";
+  if (!existsSync(snapshotPath) || !existsSync(parserPath)) {
+    record("G1", "Bot command parser ↔ snapshot sync", "SKIP", "snapshot or parser missing");
+    return;
+  }
+  let snapshot;
+  try { snapshot = JSON.parse(readFileSync(snapshotPath, "utf8")); }
+  catch { record("G1", "Bot command parser ↔ snapshot sync", "SKIP", "invalid snapshot JSON"); return; }
+
+  const parserSrc = readFileSync(parserPath, "utf8");
+  // Extract right-side command types from commandMap entries: '/cmd': 'commandType',
+  const typeMatches = [...parserSrc.matchAll(/:\s*'([a-z_]+)'\s*,/g)].map(m => m[1]);
+  // Filter: only types that appear at least 2x (commandMap entries) and aren't generic words
+  const counts = typeMatches.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+  const parserTypes = new Set(Object.keys(counts).filter(k => counts[k] >= 1 && /^[a-z_]+$/.test(k)));
+  // Strip non-command words (literal mode keys, etc.) by intersecting with snapshot baseline + new ones
+  const snapshotTypes = new Set(snapshot.bot_command_types || []);
+  // Find types in parser that aren't in snapshot (could be new commands)
+  const newInParser = [...parserTypes].filter(t => !snapshotTypes.has(t) && counts[t] >= 2);
+  // Find types in snapshot but missing from parser (deleted commands)
+  const droppedFromParser = [...snapshotTypes].filter(t => !parserTypes.has(t));
+
+  if (newInParser.length === 0 && droppedFromParser.length === 0) {
+    record("G1", "Bot command parser ↔ snapshot sync", "PASS", `${snapshotTypes.size} commands`);
+  } else {
+    const issues = [];
+    if (newInParser.length) issues.push(`new in parser: ${newInParser.join(", ")}`);
+    if (droppedFromParser.length) issues.push(`dropped: ${droppedFromParser.join(", ")}`);
+    record("G1", "Bot command parser ↔ snapshot sync", "FAIL", issues.join(" | "), 0,
+      "Update bot_command_types in .lovable/registry-snapshot.json AND create a bot_commands migration if a new command was added. See SYSTEM_SYNC_CHECKLIST.md §2.");
+  }
+}
+
+// =================================================================
 // MAIN
 // =================================================================
 function printResults() {
@@ -391,6 +496,8 @@ function printResults() {
     testRoutes();
     await testDatabase();
     testEdgeFunctions();
+    testRegistrySync();
+    testCommandSync();
     listManual();
     printResults();
     const fail = results.filter((r) => r.status === "FAIL").length;

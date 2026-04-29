@@ -1,0 +1,83 @@
+{
+  "_comment": "AUTO-GENERATED SOURCE OF TRUTH — read by AI before modifying routes/commands/pages. Last sync: 2026-04-29 (Page Registry Sync migration). Update when adding new admin route, bot command, or portal FAQ category.",
+  "_purpose": "Prevent AI regression by giving fresh agents a single file to check 'what currently exists' before touching cross-surface features.",
+  "_update_protocol": [
+    "1. When adding a new admin route in src/App.tsx, add the path to admin_routes below AND insert into webapp_page_config via migration.",
+    "2. When adding a new bot command in command-parser.ts, add the commandType below AND insert into bot_commands via migration.",
+    "3. When adding a new portal FAQ category, add it to portal_faq_categories.",
+    "4. Run `node scripts/smoke-test.mjs --skip-build` to verify Sections F+G pass.",
+    "5. Update _last_synced_at and _last_sync_migration."
+  ],
+  "_last_synced_at": "2026-04-29",
+  "_last_sync_migration": "sync_page_registry_v1",
+
+  "admin_routes": [
+    "/", "/overview", "/audit-logs", "/branch-report", "/bot-logs", "/broadcast",
+    "/commands", "/config-validator", "/cron-jobs", "/direct-messages",
+    "/faq-logs", "/feature-flags", "/groups", "/health-monitoring",
+    "/knowledge", "/memory", "/memory-analytics", "/personality",
+    "/portal-faq-admin", "/pre-deploy-checklist", "/profile-sync-health",
+    "/summaries", "/tasks", "/test-bot", "/training", "/users",
+    "/analytics",
+    "/settings", "/settings/roles",
+    "/attendance/analytics", "/attendance/bag-management", "/attendance/birthdays",
+    "/attendance/branches", "/attendance/dashboard", "/attendance/early-leave-requests",
+    "/attendance/employee-documents", "/attendance/employees",
+    "/attendance/flexible-day-off", "/attendance/flexible-day-off-requests",
+    "/attendance/fraud-detection", "/attendance/gacha-box-settings",
+    "/attendance/happy-points", "/attendance/holidays", "/attendance/leave-balance",
+    "/attendance/live-tracking", "/attendance/logs",
+    "/attendance/overtime-management", "/attendance/overtime-requests",
+    "/attendance/overtime-summary", "/attendance/payroll-ytd",
+    "/attendance/photos", "/attendance/point-rules", "/attendance/point-transactions",
+    "/attendance/redemption-approvals", "/attendance/reminder-logs",
+    "/attendance/rewards", "/attendance/roles", "/attendance/schedules",
+    "/attendance/settings", "/attendance/shift-templates", "/attendance/summaries",
+    "/attendance/work-history"
+  ],
+
+  "portal_routes": [
+    "/portal/", "/portal/checkin", "/portal/my-history", "/portal/my-leave",
+    "/portal/request-leave", "/portal/request-ot", "/portal/my-profile",
+    "/portal/status", "/portal/help", "/portal/approvals", "/portal/approvals/ot",
+    "/portal/approvals/leave", "/portal/approvals/early-leave",
+    "/portal/approvals/remote-checkout", "/portal/team-summary", "/portal/photos",
+    "/portal/daily-summary", "/portal/my-points", "/portal/rewards",
+    "/portal/my-redemptions", "/portal/my-bag", "/portal/gacha",
+    "/portal/gacha-history", "/portal/approve-redemptions",
+    "/portal/payroll-report", "/portal/my-schedule", "/portal/my-payroll",
+    "/portal/leaderboard", "/portal/employees", "/portal/branch-report",
+    "/portal/notifications", "/portal/manager-dashboard"
+  ],
+
+  "bot_command_types": [
+    "ask", "summary", "faq", "todo", "report", "help", "tasks",
+    "checkin", "checkout", "history", "work", "remind", "list_reminders",
+    "mentions", "imagine", "mode", "status", "progress_report",
+    "confirm_with_feedback", "find", "train", "ot", "menu", "dayoff",
+    "cancel_dayoff", "cancel_ot", "memory_summary"
+  ],
+
+  "portal_faq_categories": ["attendance", "leave-ot", "points", "general"],
+
+  "menu_groups": [
+    "Dashboard", "Attendance", "Schedule & Leaves", "Overtime", "Payroll",
+    "Points & Rewards", "Management", "AI Features", "Content & Knowledge",
+    "Monitoring & Tools", "Configuration"
+  ],
+
+  "verified_stable_components": {
+    "_note": "Files marked '⚠️ VERIFIED' — DO NOT modify without explicit user request. See .lovable/CRITICAL_FILES.md.",
+    "files": [
+      "supabase/functions/portal-data/index.ts",
+      "supabase/functions/line-webhook/index.ts",
+      "supabase/functions/line-webhook/utils/command-parser.ts",
+      "supabase/functions/attendance-submit/index.ts",
+      "src/pages/attendance/EmployeeDocuments.tsx",
+      "src/components/employee-documents/DocumentSearchCombobox.tsx",
+      "src/lib/employee-document-errors.ts",
+      "src/lib/admin-page-registry.ts",
+      "src/hooks/usePageAccess.ts"
+    ]
+  }
+}
