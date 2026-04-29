@@ -218,6 +218,16 @@ serve(async (req) => {
           );
         }
 
+        await writeAuditLog(supabase, {
+          functionName: 'liff-settings',
+          actionType: 'get',
+          resourceType: 'liff_settings',
+          resourceId: null,
+          performedByUserId: userId,
+          callerRole: role,
+          metadata: { liff_id: app.liffId, view_type: app.view.type },
+        });
+
         return new Response(
           JSON.stringify({
             success: true,
