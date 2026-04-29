@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Upload, Loader2, FileText, CheckCircle } from 'lucide-react';
 import { useBranchReportContext } from '../context/BranchReportContext';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Props {
   open: boolean;
@@ -40,26 +41,23 @@ export default function BranchReportImport({ open, onOpenChange }: Props) {
     setResult(null);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/import-line-chat`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ content }),
-        }
-      );
+      // Phase 0A: use supabase.functions.invoke so the user's JWT is auto-attached.
+      // The import-line-chat edge function now requires a management-role bearer.
+      const { data, error } = await supabase.functions.invoke('import-line-chat', {
+        body: { content },
+      });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Import failed');
+      if (error) {
+        throw new Error(error.message || 'Import failed');
+      }
+      if (data && (data as any).error) {
+        throw new Error((data as any).error);
       }
 
-      setResult({ inserted: data.inserted || 0, updated: data.updated || 0 });
-      toast.success(`นำเข้าสำเร็จ: ${data.inserted || 0} รายการใหม่, ${data.updated || 0} อัพเดท`);
+      const inserted = (data as any)?.inserted || 0;
+      const updated = (data as any)?.updated || 0;
+      setResult({ inserted, updated });
+      toast.success(`นำเข้าสำเร็จ: ${inserted} รายการใหม่, ${updated} อัพเดท`);
       refetch();
     } catch (error) {
       console.error('Import error:', error);
