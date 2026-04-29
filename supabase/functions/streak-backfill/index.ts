@@ -418,6 +418,20 @@ serve(async (req) => {
       }
     }
 
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'streak-backfill',
+      actionType: 'backfill',
+      resourceType: 'streak',
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        total: happyPoints?.length || 0,
+        updated,
+        unchanged,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
