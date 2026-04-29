@@ -800,10 +800,35 @@ interface PaginationFooterProps {
   loading: boolean;
   onLoadMore: () => void;
   sentinelRef: React.RefObject<HTMLDivElement>;
+  hasError?: boolean;
+  error?: unknown;
 }
 
-function PaginationFooter({ loaded, total, hasNext, loading, onLoadMore, sentinelRef }: PaginationFooterProps) {
+function PaginationFooter({
+  loaded, total, hasNext, loading, onLoadMore, sentinelRef, hasError, error,
+}: PaginationFooterProps) {
   if (total === 0) return null;
+
+  // หน้าถัดไปโหลดไม่สำเร็จ → โชว์ข้อความและปุ่มลองใหม่ (กดเองเท่านั้น, IO ถูกปิด)
+  if (hasError) {
+    const friendly = describeDocError(error);
+    return (
+      <div className="border-t px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm bg-destructive/5">
+        <div className="flex items-center gap-2 text-destructive min-w-0">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <div className="font-medium truncate">โหลดรายการเพิ่มเติมไม่สำเร็จ</div>
+            <div className="text-xs text-muted-foreground truncate">{friendly.hint}</div>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          ลองใหม่
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="border-t px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
       <span className="text-muted-foreground">
@@ -821,3 +846,49 @@ function PaginationFooter({ loaded, total, hasNext, loading, onLoadMore, sentine
     </div>
   );
 }
+
+// ----- Friendly error alert -----
+function FriendlyErrorAlert({
+  friendly, isRetrying, onRetry,
+}: { friendly: FriendlyError; isRetrying: boolean; onRetry: () => void }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const Icon =
+    friendly.variant === "offline" ? WifiOff
+    : friendly.variant === "permission" ? ShieldAlert
+    : friendly.variant === "timeout" ? Clock
+    : friendly.variant === "server" ? ServerCrash
+    : AlertCircle;
+
+  return (
+    <Alert variant="destructive">
+      <Icon className="h-4 w-4" />
+      <AlertTitle>{friendly.title}</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p className="text-sm">{friendly.hint}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {friendly.canRetry && (
+            <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying}>
+              {isRetrying ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-2" />}
+              ลองใหม่
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowDetails((v) => !v)}
+            className="text-xs"
+          >
+            {showDetails ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+            {showDetails ? "ซ่อนรายละเอียดทางเทคนิค" : "ดูรายละเอียดทางเทคนิค"}
+          </Button>
+        </div>
+        {showDetails && (
+          <pre className="mt-2 max-h-32 overflow-auto rounded bg-background/40 p-2 text-xs whitespace-pre-wrap break-all">
+            {friendly.technical}
+          </pre>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
