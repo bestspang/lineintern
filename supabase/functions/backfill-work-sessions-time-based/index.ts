@@ -216,6 +216,23 @@ Deno.serve(async (req) => {
 
     console.log('Backfill complete:', summary);
 
+    // Phase 0B — best-effort audit (counts + window only).
+    await writeAuditLog(supabase, {
+      functionName: 'backfill-work-sessions-time-based',
+      actionType: 'backfill',
+      resourceType: 'work_sessions',
+      performedByUserId: callerUserId,
+      callerRole,
+      metadata: {
+        date_range: { start: startDate, end: endDate },
+        employees_processed: employees.length,
+        sessions_created: totalCreated,
+        sessions_skipped: totalSkipped,
+        errors: totalErrors,
+        source: 'backfill',
+      },
+    });
+
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
