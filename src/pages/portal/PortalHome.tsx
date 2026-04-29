@@ -1,3 +1,13 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
+ * Touchpoints: PORTAL_ACTIONS (src/lib/portal-actions.ts), PortalLayout bottom-nav,
+ *              Help.tsx quick actions, useFavorites hook.
+ * Allowed changes: additive UI (new card via PORTAL_ACTIONS, new badge).
+ * Forbidden: changing data fetch (portalApi), HOME_QUICK_ACTION_IDS shape,
+ *            role gating logic, layout grid, hero card structure.
+ * Pattern: if a card needs a new path, add it to portal-actions.ts FIRST,
+ *          then reference its `id` here — never hardcode `path` strings.
+ */
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';

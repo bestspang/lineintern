@@ -32,7 +32,10 @@
     "/attendance/redemption-approvals", "/attendance/reminder-logs",
     "/attendance/rewards", "/attendance/roles", "/attendance/schedules",
     "/attendance/settings", "/attendance/shift-templates", "/attendance/summaries",
-    "/attendance/work-history", "/attendance/ops-center", "/attendance/portal-performance"
+    "/attendance/work-history", "/attendance/ops-center", "/attendance/portal-performance",
+    "/attendance", "/groups/:id", "/users/:id",
+    "/attendance/employees/:id", "/attendance/employees/:id/history",
+    "/attendance/employees/:id/settings", "/attendance/work-history/:id"
   ],
 
   "portal_routes": [
@@ -45,8 +48,8 @@
     "/portal/my-redemptions", "/portal/my-bag", "/portal/gacha",
     "/portal/gacha-history", "/portal/approve-redemptions",
     "/portal/payroll-report", "/portal/my-schedule", "/portal/my-payroll",
-    "/portal/leaderboard", "/portal/employees", "/portal/branch-report",
-    "/portal/notifications", "/portal/manager-dashboard"
+    "/portal/leaderboard", "/portal/employees", "/portal/employees/:id",
+    "/portal/branch-report", "/portal/notifications", "/portal/manager-dashboard"
   ],
 
   "bot_command_types": [

@@ -206,8 +206,50 @@ const roleObj = Array.isArray(row.employee_roles) ? row.employee_roles[0] : row.
 
 ---
 
+## 11. Cross-Surface Dependency Map (NEW 2026-04-29)
+
+> **เป้าหมาย:** หยุด pattern "AI แก้ feature A แต่ลืมอัปเดต B/C ที่ผูกกัน"
+>
+> **กฎทอง:** ก่อน sign-off ทุก phase รัน `npm run audit:consistency` — ถ้า WARN/FAIL ต้องอธิบายเหตุผล
+
+### ตารางความสัมพันธ์ "ถ้าเปลี่ยน X ต้องอัปเดต Y"
+
+| ถ้าคุณเปลี่ยน… | คุณต้องอัปเดต… | Audit check |
+|---|---|---|
+| เพิ่ม **bot command** ใหม่ | `bot_commands` DB row + `command-parser.ts` commandMap + `ParsedCommand['commandType']` union + handler ใน `line-webhook/index.ts` + (อาจ) Help.tsx | C3 |
+| เพิ่ม **admin route** ใน `App.tsx` | `webapp_page_config` (1 row × 9 roles) + `DashboardLayout.tsx` nav + `registry-snapshot.json` admin_routes | C1, C7 |
+| เพิ่ม **portal route** ใน `App.tsx` | `registry-snapshot.json` portal_routes + (ถ้า user-facing) `portal-actions.ts` + Help.tsx quick actions | C1, C2 |
+| เพิ่ม **portal action** ใน `portal-actions.ts` | route จริงใน `App.tsx` `/portal/*` group | C2 |
+| เปลี่ยน **FAQ category** ใน `portal_faqs` table | `Help.tsx` `categoryLabels` map (Tabs auto-rebuild from DB) | manual |
+| เพิ่ม **role** ใหม่ใน `app_role` enum | `role_access_levels` + `MANAGER_ROLES`/`ADMIN_ROLES`/`HR_ROLES`/`TEAM_VIEW_ROLES` ใน portal-actions + `PortalLayout` navItems roles + `PortalContext` isManager/isAdmin + `line-webhook` role-priority map | C5 |
+| ลบ `// ⚠️ VERIFIED` marker | ห้ามทำเด็ดขาด — ถ้าจำเป็นต้องขอ user OK ก่อน | C6 |
+| ย้าย/ลบไฟล์ใน `CRITICAL_FILES.md` | อัปเดต `.lovable/CRITICAL_FILES.md` ด้วย | C4 |
+
+### กลไกป้องกัน (ใช้ทุก phase)
+
+1. **`npm run audit:consistency`** — read-only checker 7 หัวข้อ (ดู `scripts/consistency-audit.mjs`)
+2. **`npm run smoke:quick`** — Phase 4.5 regression guard (16 checks, build skipped)
+3. **AI Guard Headers** — ไฟล์ที่มี `/** ⚠️ VERIFIED ... STABLE, DO NOT REFACTOR */` block — อ่าน "Allowed/Forbidden" ก่อนแก้ทุกครั้ง
+4. **`.lovable/CRITICAL_FILES.md`** — รายการไฟล์ P0/P1 + behavioral invariants
+
+### เมื่อ AI รอบใหม่เข้ามาแก้โค้ด
+
+```
+□ อ่าน .lovable/CRITICAL_FILES.md ก่อน
+□ เปิดไฟล์ที่จะแก้ — มี ⚠️ VERIFIED header ไหม? อ่าน Allowed/Forbidden
+□ รัน `npm run audit:consistency` (baseline)
+□ ทำการแก้ไขแบบ additive
+□ รัน `npm run audit:consistency` อีกครั้ง — ผล PASS/WARN/FAIL ต้องไม่แย่กว่าเดิม
+□ รัน `npm run smoke:quick` — ต้อง 16/16
+□ commit + อัปเดต SYSTEM_SYNC_CHECKLIST + registry-snapshot ถ้าจำเป็น
+```
+
+---
+
 ## Last Updated
+- **2026-04-29**: Added Section 11 (Cross-Surface Dependency Map) + `consistency-audit.mjs` + AI Guard Header pattern
 - 2026-04-26: Added Section 10 (Supabase Query Patterns) + AI guardrails referencing `.lovable/CRITICAL_FILES.md`
 - 2026-01-11: Added Portal Pages sync (Section 8) and Help.tsx sync (Section 9), updated warnings
 - 2026-01-08: Added Deposit/Reimbursement Detection section (Section 7)
 - 2026-01-07: Initial version - Added Portal Access Mode 'both' support
+

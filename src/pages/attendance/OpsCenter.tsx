@@ -1,3 +1,11 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — Phase 1B/1C admin OpsCenter, STABLE
+ * Touchpoints: webapp_page_config (9 roles), DashboardLayout nav,
+ *              PortalPerformance link, Pilot QA card.
+ * Allowed changes: additive cards, new metric tiles, new shortcut buttons.
+ * Forbidden: removing existing cards, changing the Pilot QA checklist text,
+ *            altering the navigate target of "Open Portal Performance".
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
