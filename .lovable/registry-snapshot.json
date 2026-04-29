@@ -48,8 +48,8 @@
     "/portal/my-redemptions", "/portal/my-bag", "/portal/gacha",
     "/portal/gacha-history", "/portal/approve-redemptions",
     "/portal/payroll-report", "/portal/my-schedule", "/portal/my-payroll",
-    "/portal/leaderboard", "/portal/employees", "/portal/branch-report",
-    "/portal/notifications", "/portal/manager-dashboard"
+    "/portal/leaderboard", "/portal/employees", "/portal/employees/:id",
+    "/portal/branch-report", "/portal/notifications", "/portal/manager-dashboard"
   ],
 
   "bot_command_types": [
