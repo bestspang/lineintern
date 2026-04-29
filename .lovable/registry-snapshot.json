@@ -57,6 +57,7 @@
     "confirm_with_feedback", "find", "train", "ot", "menu", "dayoff",
     "cancel_dayoff", "cancel_ot", "memory_summary"
   ],
+  "_command_notes": "history command is parsed via a separate code path in command-parser.ts (not in commandMap), but is handled by the webhook dispatcher. Intentional.",
 
   "portal_faq_categories": ["attendance", "leave-ot", "points", "general"],
 
