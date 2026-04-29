@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-04-29 (Phase 0A.2 — point-redemption hardened, audit retention live)_
+_Last updated: 2026-04-29 (Phase 0B complete — full audit coverage, role-priority enforcement, RLS pass)_
 
 ## Product positioning
 
@@ -24,10 +24,10 @@ Bilingual Thai/English. Asia/Bangkok timezone is canonical.
 - Permissions UI: DB-backed but historically over-permissive; tightened in Phase 0A.
 - Audit logging: structured for 7 Phase 0A.1 functions + `point-redemption`,
   `liff-settings`, `admin-response-points-rollback`, `fix-user-names`,
-  `backfill-primary-groups` in 0A.2. Still pending audit (role guard only):
+  `backfill-primary-groups` in 0A.2 + Phase 0B closes the remaining 6:
   `payslip-generator`, `payroll-notification`, `backfill-work-sessions`,
   `backfill-work-sessions-time-based`, `branch-report-backfill`,
-  `report-generator` (manual path).
+  `report-generator` (manual path only — `auto_summary` cron is intentionally not audited).
 - Payroll: calculation logic works but spread across SQL + frontend; not modularized.
 - Receipts/Deposits admin menus: surfaces exist but business flows are not fully implemented.
 - Notifications center: real-time wiring works; preferences UI partial.
@@ -208,19 +208,37 @@ audit (deferred — see Phase 0B queue): `payslip-generator`, `payroll-notificat
 
 ---
 
-## Phase 0B candidates (queue)
+## Phase 0B — Audit completion + role-priority + RLS pass (2026-04-29)
 
-1. Finish audit backfill on the 6 remaining guarded functions
+All four queued items resolved. See `docs/PHASE_0B_SECURITY_REPORT.md`
+for the full report (file list, decision matrix, manual test checklist,
+audit-row spot-check SQL, and Phase 1 readiness verdict).
+
+1. **Audit backfill complete** on 6 remaining guarded functions
    (`payslip-generator`, `payroll-notification`, `backfill-work-sessions`,
    `backfill-work-sessions-time-based`, `branch-report-backfill`,
-   `report-generator` manual path). Pattern is the same: capture
-   `userId`/`role` from `requireRole`, call `writeAuditLog` on the
-   success-path before returning.
-2. Enforce role priority on `remote-checkout-approval` body so a manager
-   cannot approve the checkout of someone with a higher priority role.
-3. Real RLS pass on `point_transactions`, `employee_bag_items`,
-   `point_redemptions`.
-4. Tighten `notifications` RLS: confirm employees only see their own.
+   `report-generator` manual path only). Pattern: capture `userId`/`role`
+   from `requireRole`, write one best-effort `writeAuditLog` before the
+   success-path return. Counts/IDs only — no salaries, no raw payloads,
+   no LINE tokens, no photo URLs.
+2. **`remote-checkout-approval` role-priority enforced** on both call
+   paths. admin/owner bypass; otherwise approver priority must be ≥
+   target priority. Internal portal-data path resolves approver
+   priority from `approver_employee_id → employee_roles.priority`.
+   Block returns `403 forbidden_role_priority` and writes a `denied`
+   audit row.
+3. **Points RLS reviewed.** All point/redemption/gacha tables already
+   correctly scoped. **One missing policy added** —
+   `Employees can view own bag items` SELECT on `employee_bag_items`
+   (Reward Shop bag count was silently 0 for non-admin employees). No
+   new mutation surface.
+4. **Notifications RLS reviewed.** No changes needed — own-read,
+   admin-all-read, admin-insert (service-role bypass for edge writers),
+   own-update; no DELETE policy by design.
+
+### Phase 0B candidates (carried out)
+
+✅ Done. Phase 0B is closed. Next phase = HRIS expansion (Phase 1).
 
 ## Phase 1 candidates (HRIS expansion, after 0B)
 
