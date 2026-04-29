@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -226,9 +226,8 @@ export default function AuditLogs() {
                   };
                   const isOpen = expanded === r.id;
                   return (
-                    <>
+                    <Fragment key={r.id}>
                       <TableRow
-                        key={r.id}
                         className="cursor-pointer"
                         onClick={() => setExpanded(isOpen ? null : r.id)}
                       >
@@ -249,7 +248,7 @@ export default function AuditLogs() {
                         </TableCell>
                       </TableRow>
                       {isOpen && (
-                        <TableRow key={r.id + "-detail"}>
+                        <TableRow>
                           <TableCell colSpan={7} className="bg-muted/40">
                             <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs">
                               {JSON.stringify(
@@ -267,7 +266,7 @@ export default function AuditLogs() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </TableBody>
