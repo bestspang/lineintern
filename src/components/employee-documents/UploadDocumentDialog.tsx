@@ -59,6 +59,7 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
     if (!file) { toast.error("เลือกไฟล์ก่อน"); return; }
     if (!title.trim()) { toast.error("ระบุชื่อเอกสาร"); return; }
     setBusy(true);
+    let createdDocumentId: string | undefined;
     try {
       const { data: meta, error: fnErr } = await supabase.functions.invoke("employee-document-upload", {
         body: {
@@ -77,6 +78,7 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
       if (fnErr || !meta?.success) {
         throw new Error(meta?.error || fnErr?.message || "อัปโหลดล้มเหลว");
       }
+      createdDocumentId = meta.document_id;
 
       // Use the returned signed upload URL
       const { error: upErr } = await supabase.storage
@@ -85,6 +87,15 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
           contentType: file.type || undefined,
         });
       if (upErr) throw upErr;
+
+      // Phase 1A.1 — confirm the upload so the row flips from 'pending' to 'uploaded'.
+      const { data: confirmData, error: confirmErr } = await supabase.functions.invoke(
+        "employee-document-confirm-upload",
+        { body: { document_id: meta.document_id } },
+      );
+      if (confirmErr || !confirmData?.success) {
+        throw new Error(confirmData?.error || confirmErr?.message || "ยืนยันการอัปโหลดล้มเหลว");
+      }
 
       if (replaceOldDocumentId) {
         await supabase.functions.invoke("employee-document-replace", {
@@ -98,7 +109,24 @@ export function UploadDocumentDialog({ open, onOpenChange, employeeId, onUploade
       onUploaded?.();
     } catch (e: any) {
       console.error(e);
-      toast.error(e.message || "อัปโหลดล้มเหลว");
+      // Mark the row as failed so HR can clean it up later.
+      if (createdDocumentId) {
+        try {
+          await supabase.functions.invoke("employee-document-confirm-upload", {
+            body: {
+              document_id: createdDocumentId,
+              failed: true,
+              failure_reason: (e?.message || String(e)).slice(0, 500),
+            },
+          });
+        } catch (cleanupErr) {
+          console.error("failed to mark document failed:", cleanupErr);
+        }
+        toast.error("อัปโหลดล้มเหลว — เอกสารถูกทำเครื่องหมายว่าล้มเหลว");
+        onUploaded?.(); // refresh list so HR sees the failed row
+      } else {
+        toast.error(e.message || "อัปโหลดล้มเหลว");
+      }
     } finally {
       setBusy(false);
     }
