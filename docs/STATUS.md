@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-04-29 (Phase 0A finalized)_
+_Last updated: 2026-04-29 (Phase 0A.2 — point-redemption hardened, audit retention live)_
 
 ## Product positioning
 
@@ -22,7 +22,12 @@ Bilingual Thai/English. Asia/Bangkok timezone is canonical.
 
 **Partial**
 - Permissions UI: DB-backed but historically over-permissive; tightened in Phase 0A.
-- Audit logging: now structured for 7 guarded functions; not yet covered for the rest.
+- Audit logging: structured for 7 Phase 0A.1 functions + `point-redemption`,
+  `liff-settings`, `admin-response-points-rollback`, `fix-user-names`,
+  `backfill-primary-groups` in 0A.2. Still pending audit (role guard only):
+  `payslip-generator`, `payroll-notification`, `backfill-work-sessions`,
+  `backfill-work-sessions-time-based`, `branch-report-backfill`,
+  `report-generator` (manual path).
 - Payroll: calculation logic works but spread across SQL + frontend; not modularized.
 - Receipts/Deposits admin menus: surfaces exist but business flows are not fully implemented.
 - Notifications center: real-time wiring works; preferences UI partial.
@@ -114,45 +119,77 @@ Menu groups `Monitoring & Tools`, `AI Features`, `Configuration`, and
 
 ---
 
-## Known risks
+## Phase 0A.2 — Point-redemption hardening + audit retention (2026-04-29)
 
-### P1 — `point-redemption` trusts `employee_id` from request body
+### 1. `point-redemption` — RESOLVED (was P1)
 
-**Problem.** `supabase/functions/point-redemption/index.ts` accepts
-`employee_id` from the JSON body and uses the service-role client to deduct
-points, mark items used, and pull gacha — with **no JWT validation**, no
-caller↔employee linkage, and no audit row.
+`supabase/functions/point-redemption/index.ts` now requires a valid user JWT
+on every action and enforces ownership / role per action:
 
-**Risk.** Any party with the public anon key (i.e. anyone who can load the
-SPA) can:
-- Redeem rewards on behalf of any employee, draining their balance.
-- Trigger gacha pulls on someone else's account.
-- Mark another employee's bag items as used.
-- Approve / reject redemptions if they guess the action name.
+| Action group | Allowed callers | Enforcement |
+|---|---|---|
+| `redeem`, `redeem_to_bag`, `use_bag_item`, `gacha_pull` | Any authenticated user with a linked `employees` row | `body.employee_id` MUST equal `caller.employee_id` (resolved via `employees.auth_user_id`). Mismatch → 403 `forbidden_employee_mismatch`. No employee link → 403 `no_employee_link`. |
+| `approve`, `reject`, `use` | `admin`, `owner`, `hr`, `manager` | Role check via `requireRole(strict:false)` + role allow-list. |
 
-**Current behavior.** Function entry has zero auth; only `action` switch.
+Every successful action writes a structured `audit_logs` row with
+`metadata.function='point-redemption'`, the action name, target employee,
+reward / bag item id, points spent, new balance, and the caller's role.
+`gacha.ts` was not modified — audit happens in `index.ts` after `gachaPull`
+returns. No frontend wiring change was needed (all 4 callers already use
+`supabase.functions.invoke`, which auto-attaches the user JWT).
 
-**Recommended Phase 0B fix (minimal, do NOT do in 0A):**
-1. Call `requireRole(req, [<all roles>], { strict: false })` to capture caller user id.
-2. Resolve caller's `employees.id` via `auth_user_id`.
-3. For `redeem`, `redeem_to_bag`, `use_bag_item`, `gacha_pull`:
-   enforce `body.employee_id === caller.employee_id`.
-4. For `approve`, `reject`, `use`: require `admin|owner|hr|manager`
-   (use existing `has_management_access`).
-5. Write a `writeAuditLog` row per action: `action`, `reward_id`,
-   `points`, `balance_after`, `caller_role`.
+### 2. `liff-settings` — guarded + audited
 
-### Other risks
+Backend now requires `admin` or `owner` for both `get` and `update-endpoint`.
+Frontend (`src/components/settings/LiffSettingsCard.tsx`) was switched from
+publishable-key-only fetches to authed fetches that attach the signed-in
+user's bearer token. Both actions write audit rows.
+
+### 3. Audit-logs retention — LIVE
+
+- New SQL function `public.cleanup_audit_logs(retention_days int default 180)`
+  (`SECURITY DEFINER`, `search_path=public`). Returns deleted row count and
+  records its own cleanup as an audit row.
+- Cron job `audit-logs-cleanup-daily` runs `SELECT public.cleanup_audit_logs(180);`
+  every day at `15 17 * * *` UTC = 00:15 Asia/Bangkok.
+- Retention window: **180 days**. Rationale: covers two quarterly review
+  cycles + a monthly audit; current audit categories (approvals, backfills,
+  sends, redemptions) are operational, not legal/financial — no statutory
+  minimum applies. Rows that need longer retention must be exported to a
+  separate archive table before the cron runs.
+- Manual override: `SELECT public.cleanup_audit_logs(<days>);` (service role
+  or authenticated DB user only — `anon` is revoked).
+
+### 4. Frontend raw-fetch + publishable-key inventory
+
+Three files use raw `fetch` with `VITE_SUPABASE_*_KEY`:
+
+| File | Risk | Action |
+|---|---|---|
+| `src/pages/Attendance.tsx` (7 sites) | **Low — accepted.** Token-gated unauthenticated check-in page; users are not logged into Supabase Auth, so the anon-key bearer is the intended boundary. The one-time attendance token is the real auth control. | None. |
+| `src/lib/offline-queue.ts` (2 sites) | Same as above — runs from the same token-gated page. | None. |
+| `src/components/settings/LiffSettingsCard.tsx` (2 sites) | **High — fixed.** Admin-dashboard component; previously authed only with the publishable key. | Now sends user JWT + publishable key as `apikey`. Backend rejects non-admins. |
+
+### 5. Audit-coverage backfill (partial)
+
+`writeAuditLog` added to `admin-response-points-rollback`, `fix-user-names`,
+`backfill-primary-groups`. Remaining role-guarded functions still pending
+audit (deferred — see Phase 0B queue): `payslip-generator`, `payroll-notification`,
+`backfill-work-sessions`, `backfill-work-sessions-time-based`,
+`branch-report-backfill`, `report-generator` (manual path only — never the
+`auto_summary` cron path).
+
+---
+
+## Known risks (post-0A.2)
 
 - **Receipts / Deposits admin menus** still visible to non-admins because
   removing them would also affect portal references. Deferred until the
   receipts/deposits admin flows are either implemented or formally deprecated.
 - **Payroll calculation logic** (Payroll.tsx, payslip-generator math) was
-  not touched in Phase 0A. Still works as before — but no test coverage.
+  not touched. Still works as before — but no test coverage.
 - **LINE webhook core** (`line-webhook/index.ts`) was not modified.
-- **`audit_logs`** has no retention policy yet.
-- **Frontend raw-fetch + publishable-key callers** other than the one we
-  fixed should be inventoried in Phase 0B.
+- 6 guarded functions still lack audit writes (see #5 above).
 
 ---
 
@@ -165,25 +202,25 @@ SPA) can:
 - `supabase/functions/attendance-submit/**` and `attendance-validate-token/**`.
 - Payroll calculation math in `Payroll.tsx`, `payslip-generator/index.ts`,
   `payroll-notification/index.ts`.
+- `src/pages/Attendance.tsx` and `src/lib/offline-queue.ts` raw-fetch sites
+  (token-gated, intentional).
 - Any function or component carrying a `// ⚠️ VERIFIED` comment.
 
 ---
 
-## Phase 0B candidates (queue, not yet started)
+## Phase 0B candidates (queue)
 
-1. Harden `point-redemption` (the P1 above).
-2. Inventory and fix any remaining raw-fetch + publishable-key edge-function
-   callers in the frontend.
-3. Add audit-log retention (e.g. drop rows older than 180 days nightly).
-4. Add `writeAuditLog` to `payslip-generator`, `payroll-notification`,
-   `admin-response-points-rollback`, `fix-user-names`.
-5. Enforce role priority on `remote-checkout-approval` body so a manager
+1. Finish audit backfill on the 6 remaining guarded functions
+   (`payslip-generator`, `payroll-notification`, `backfill-work-sessions`,
+   `backfill-work-sessions-time-based`, `branch-report-backfill`,
+   `report-generator` manual path). Pattern is the same: capture
+   `userId`/`role` from `requireRole`, call `writeAuditLog` on the
+   success-path before returning.
+2. Enforce role priority on `remote-checkout-approval` body so a manager
    cannot approve the checkout of someone with a higher priority role.
-6. Real RLS pass on `point_transactions`, `employee_bag_items`,
+3. Real RLS pass on `point_transactions`, `employee_bag_items`,
    `point_redemptions`.
-7. Tighten `notifications` RLS: confirm employees only see their own.
-8. Replace any UI that still uses `VITE_SUPABASE_PUBLISHABLE_KEY` as a
-   bearer with `supabase.functions.invoke()`.
+4. Tighten `notifications` RLS: confirm employees only see their own.
 
 ## Phase 1 candidates (HRIS expansion, after 0B)
 
