@@ -304,6 +304,7 @@ const App = () => (
                         <Route path="/config-validator" element={<ConfigurationValidator />} />
                         <Route path="/pre-deploy-checklist" element={<PreDeployChecklist />} />
                         <Route path="/feature-flags" element={<FeatureFlags />} />
+                        <Route path="/audit-logs" element={<AuditLogs />} />
                         <Route path="/branch-report" element={<BranchReportsPage />} />
                         <Route path="/settings" element={<SettingsLayout />}>
                           <Route index element={<Settings />} />

@@ -100,6 +100,7 @@ const navigationGroups = [
       { title: 'Health Monitoring', titleTh: 'ตรวจสอบสุขภาพ', url: '/health-monitoring', icon: Activity },
       { title: 'Pre-Deploy Checklist', titleTh: 'เช็คลิสต์ก่อน Deploy', url: '/pre-deploy-checklist', icon: ClipboardCheck },
       { title: 'Feature Flags', titleTh: 'Feature Flags', url: '/feature-flags', icon: Flag },
+      { title: 'Audit Logs', titleTh: 'บันทึกการตรวจสอบ', url: '/audit-logs', icon: Shield },
       { title: 'Config Validator', titleTh: 'ตรวจสอบการตั้งค่า', url: '/config-validator', icon: Settings },
     ],
   },
