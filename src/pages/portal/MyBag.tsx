@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { formatBangkokDate } from '@/lib/timezone';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,12 +52,15 @@ export default function MyBag() {
 
   const useMutation_ = useMutation({
     mutationFn: async (itemId: string) => {
-      const response = await supabase.functions.invoke('point-redemption', {
-        body: { action: 'use_bag_item', bag_item_id: itemId, employee_id: employee?.id },
+      if (!employee?.id) throw new Error('Employee not found');
+      const { data, error } = await portalApi<any>({
+        endpoint: 'use-bag-item',
+        employee_id: employee.id,
+        params: { bag_item_id: itemId },
       });
-      if (response.error) throw new Error(response.error.message);
-      if (!response.data.success) throw new Error(response.data.error || 'Failed');
-      return response.data;
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed');
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bag-items'] });

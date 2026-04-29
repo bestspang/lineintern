@@ -11,7 +11,7 @@ import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay, getBang
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-token, x-portal-line-user-id',
 };
 
 serve(async (req) => {
@@ -37,35 +37,15 @@ serve(async (req) => {
       );
     };
 
-    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return denyAccess('missing_or_invalid_authorization_header', 401, {
-        hasAuthHeader: !!authHeader,
-      });
-    }
-
-    const token = authHeader.slice('Bearer '.length).trim();
-    if (!token) {
-      return denyAccess('empty_bearer_token', 401);
-    }
-
-    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
-
-    const { data: authData, error: authError } = await authClient.auth.getUser(token);
-    if (authError || !authData?.user) {
-      return denyAccess('invalid_or_expired_token', 401, {
-        authError: authError?.message,
-      });
-    }
-
-    const { endpoint, employee_id, params: rawParams } = await req.json();
+    const { endpoint, employee_id, params: rawParams } = await req.json().catch(() => ({}));
     const params = { ...(rawParams || {}) };
+
+    if (!endpoint || typeof endpoint !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'endpoint is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!employee_id) {
       return new Response(
@@ -74,15 +54,93 @@ serve(async (req) => {
       );
     }
 
-    const { data: requesterEmployee, error: requesterError } = await supabase
-      .from('employees')
-      .select('id, user_id, branch_id, role:employee_roles(role_key)')
-      .eq('user_id', authData.user.id)
-      .maybeSingle();
+    const employeeSelect = 'id, auth_user_id, branch_id, line_user_id, role:employee_roles(role_key)';
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : '';
+    const portalToken = req.headers.get('x-portal-token')?.trim() || '';
+    const portalLineUserId = req.headers.get('x-portal-line-user-id')?.trim() || '';
+
+    let authUserId: string | null = null;
+    let requesterEmployee: any = null;
+    let requesterError: any = null;
+    let authFailureReason: string | null = null;
+
+    if (bearerToken) {
+      const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+      });
+
+      const { data: authData, error: authError } = await authClient.auth.getUser(bearerToken);
+      if (authError || !authData?.user) {
+        authFailureReason = authError?.message || 'invalid_or_expired_token';
+      } else {
+        authUserId = authData.user.id;
+        const result = await supabase
+          .from('employees')
+          .select(employeeSelect)
+          .eq('auth_user_id', authData.user.id)
+          .maybeSingle();
+        requesterEmployee = result.data;
+        requesterError = result.error;
+      }
+    }
+
+    if (!requesterEmployee && portalToken) {
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('employee_menu_tokens')
+        .select('id, employee_id, expires_at, used_at')
+        .eq('token', portalToken)
+        .maybeSingle();
+
+      if (tokenError || !tokenData) {
+        authFailureReason = tokenError?.message || 'invalid_portal_token';
+      } else {
+        const usedAt = tokenData.used_at ? new Date(tokenData.used_at) : null;
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const expiresAt = new Date(tokenData.expires_at);
+
+        if (usedAt && usedAt < oneHourAgo) {
+          authFailureReason = 'portal_token_session_expired';
+        } else if (new Date() > expiresAt) {
+          authFailureReason = 'portal_token_expired';
+        } else {
+          await supabase
+            .from('employee_menu_tokens')
+            .update({ used_at: new Date().toISOString() })
+            .eq('id', tokenData.id);
+
+          const result = await supabase
+            .from('employees')
+            .select(employeeSelect)
+            .eq('id', tokenData.employee_id)
+            .maybeSingle();
+          requesterEmployee = result.data;
+          requesterError = result.error;
+        }
+      }
+    }
+
+    if (!requesterEmployee && portalLineUserId) {
+      const result = await supabase
+        .from('employees')
+        .select(employeeSelect)
+        .eq('line_user_id', portalLineUserId)
+        .maybeSingle();
+      requesterEmployee = result.data;
+      requesterError = result.error;
+      if (result.error || !result.data) {
+        authFailureReason = result.error?.message || 'line_user_mapping_not_found';
+      }
+    }
 
     if (requesterError || !requesterEmployee) {
       return denyAccess('employee_mapping_not_found', 403, {
-        authUserId: authData.user.id,
+        authUserId,
+        authFailureReason,
         requesterError: requesterError?.message,
       });
     }
@@ -95,13 +153,13 @@ serve(async (req) => {
 
     if (requestedEmployeeError || !requestedEmployee) {
       return denyAccess('requested_employee_not_found', 403, {
-        authUserId: authData.user.id,
+        authUserId,
         requestedEmployeeId: employee_id,
       });
     }
 
     const roleKey = String((requesterEmployee.role as any)?.role_key || '').toLowerCase();
-    const isAdminRole = roleKey === 'admin';
+    const isAdminRole = roleKey === 'admin' || roleKey === 'owner';
     const isManagerRole = roleKey.includes('manager');
     const isPrivilegedRole = isAdminRole || isManagerRole;
     const ownsRequestedEmployee = requesterEmployee.id === employee_id;
@@ -109,7 +167,7 @@ serve(async (req) => {
     if (!ownsRequestedEmployee) {
       if (!isPrivilegedRole) {
         return denyAccess('cross_employee_access_denied', 403, {
-          authUserId: authData.user.id,
+          authUserId,
           requesterEmployeeId: requesterEmployee.id,
           requestedEmployeeId: employee_id,
           roleKey,
@@ -118,7 +176,7 @@ serve(async (req) => {
 
       if (isManagerRole && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
         return denyAccess('manager_cross_branch_access_denied', 403, {
-          authUserId: authData.user.id,
+          authUserId,
           requesterEmployeeId: requesterEmployee.id,
           requestedEmployeeId: employee_id,
           managerBranchId: requesterEmployee.branch_id,
@@ -137,6 +195,9 @@ serve(async (req) => {
       'approve-early-leave',
       'pending-remote-checkout-requests',
       'approve-remote-checkout',
+      'pending-redemptions',
+      'approve-redemption',
+      'reject-redemption',
       'today-photos',
       'team-summary',
     ]);
@@ -144,7 +205,7 @@ serve(async (req) => {
     if (managerAdminEndpoints.has(endpoint)) {
       if (!isPrivilegedRole) {
         return denyAccess('manager_admin_endpoint_role_denied', 403, {
-          authUserId: authData.user.id,
+          authUserId,
           requesterEmployeeId: requesterEmployee.id,
           endpoint,
           roleKey,
@@ -159,9 +220,47 @@ serve(async (req) => {
       }
     }
 
-    if (endpoint === 'approve-ot' || endpoint === 'approve-leave' || endpoint === 'approve-early-leave' || endpoint === 'approve-remote-checkout') {
+    if (endpoint === 'approve-ot' || endpoint === 'approve-leave' || endpoint === 'approve-early-leave' || endpoint === 'approve-remote-checkout' || endpoint === 'approve-redemption' || endpoint === 'reject-redemption') {
       params.approverEmployeeId = requesterEmployee.id;
     }
+
+    const selfMutationEndpoints = new Set([
+      'redeem-reward',
+      'use-bag-item',
+      'gacha-pull',
+    ]);
+
+    if (selfMutationEndpoints.has(endpoint) && !ownsRequestedEmployee) {
+      return denyAccess('self_mutation_cross_employee_denied', 403, {
+        authUserId,
+        requesterEmployeeId: requesterEmployee.id,
+        requestedEmployeeId: employee_id,
+        endpoint,
+      });
+    }
+
+    const invokePointRedemption = async (body: Record<string, unknown>) => {
+      const response = await fetch(`${supabaseUrl}/functions/v1/point-redemption`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+          'content-type': 'application/json',
+          'x-internal-source': 'portal-data',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        return {
+          data: null,
+          error: { message: payload?.error || 'Failed to process point redemption' },
+        };
+      }
+
+      return { data: payload, error: null };
+    };
 
     console.log(`[portal-data] Endpoint: ${endpoint}, Employee: ${employee_id}`);
 
@@ -874,7 +973,7 @@ serve(async (req) => {
 
         // For manager, we need to filter OT/Leave/EarlyLeave by fetching with branch
         if (!isAdmin && branchId) {
-          const [otBranchRes, leaveBranchRes, earlyBranchRes] = await Promise.all([
+          const [otBranchRes, leaveBranchRes, earlyBranchRes, redemptionBranchRes] = await Promise.all([
             supabase
               .from('overtime_requests')
               .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
@@ -890,6 +989,11 @@ serve(async (req) => {
               .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
               .eq('status', 'pending')
               .eq('employee.branch_id', branchId),
+            supabase
+              .from('point_redemptions')
+              .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
+              .eq('status', 'pending')
+              .eq('employee.branch_id', branchId),
           ]);
 
           data = {
@@ -897,7 +1001,7 @@ serve(async (req) => {
             leave: leaveBranchRes.count || 0,
             earlyLeave: earlyBranchRes.count || 0,
             remoteCheckout: remoteRes.count || 0,
-            redemptions: 0, // Manager doesn't see redemptions
+            redemptions: redemptionBranchRes.count || 0,
           };
         } else {
           data = {
@@ -908,6 +1012,67 @@ serve(async (req) => {
             redemptions: redemptionRes.count || 0,
           };
         }
+        break;
+      }
+
+      // Pending reward redemptions for ApproveRedemptions.tsx
+      case 'pending-redemptions': {
+        const branchId = params?.branchId;
+        const isAdmin = params?.isAdmin === true;
+
+        let query = supabase
+          .from('point_redemptions')
+          .select(`
+            id, point_cost, status, created_at, notes,
+            employee:employees!inner(id, full_name, code, branch_id),
+            reward:point_rewards!inner(id, name, name_th, icon)
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
+
+        if (!isAdmin && branchId) {
+          query = query.eq('employee.branch_id', branchId);
+        }
+
+        const result = await query;
+        data = result.data || [];
+        error = result.error;
+        break;
+      }
+
+      case 'approve-redemption': {
+        const { redemptionId, approverEmployeeId, notes } = params;
+        if (!redemptionId) {
+          error = { message: 'redemptionId is required' };
+          break;
+        }
+
+        const result = await invokePointRedemption({
+          action: 'approve',
+          redemption_id: redemptionId,
+          admin_id: approverEmployeeId,
+          notes,
+        });
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'reject-redemption': {
+        const { redemptionId, approverEmployeeId, rejectionReason } = params;
+        if (!redemptionId) {
+          error = { message: 'redemptionId is required' };
+          break;
+        }
+
+        const result = await invokePointRedemption({
+          action: 'reject',
+          redemption_id: redemptionId,
+          admin_id: approverEmployeeId,
+          rejection_reason: rejectionReason,
+        });
+        data = result.data;
+        error = result.error;
         break;
       }
 
@@ -1220,6 +1385,24 @@ serve(async (req) => {
           .eq('employee_id', employee_id)
           .order('created_at', { ascending: false });
 
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'redeem-reward': {
+        const rewardId = params?.reward_id;
+        if (!rewardId) {
+          error = { message: 'reward_id is required' };
+          break;
+        }
+
+        const result = await invokePointRedemption({
+          action: params?.to_bag ? 'redeem_to_bag' : 'redeem',
+          employee_id,
+          reward_id: rewardId,
+          notes: params?.notes,
+        });
         data = result.data;
         error = result.error;
         break;
@@ -1568,6 +1751,35 @@ serve(async (req) => {
         break;
       }
 
+      case 'my-bag-count': {
+        const result = await supabase
+          .from('employee_bag_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('employee_id', employee_id)
+          .eq('status', 'active');
+
+        data = result.count || 0;
+        error = result.error;
+        break;
+      }
+
+      case 'use-bag-item': {
+        const bagItemId = params?.bag_item_id;
+        if (!bagItemId) {
+          error = { message: 'bag_item_id is required' };
+          break;
+        }
+
+        const result = await invokePointRedemption({
+          action: 'use_bag_item',
+          employee_id,
+          bag_item_id: bagItemId,
+        });
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
       case 'employee-bag-items': {
         const targetEmployeeId = params?.target_employee_id;
         if (!targetEmployeeId) {
@@ -1628,6 +1840,23 @@ serve(async (req) => {
           .eq('transaction_type', 'spend')
           .order('created_at', { ascending: false })
           .limit(limit);
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      case 'gacha-pull': {
+        const rewardId = params?.reward_id;
+        if (!rewardId) {
+          error = { message: 'reward_id is required' };
+          break;
+        }
+
+        const result = await invokePointRedemption({
+          action: 'gacha_pull',
+          employee_id,
+          reward_id: rewardId,
+        });
         data = result.data;
         error = result.error;
         break;
