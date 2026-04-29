@@ -1253,6 +1253,25 @@ serve(async (req) => {
 
     console.log(`[report-generator] Generated ${results.length} reports`);
 
+    // Phase 0B — best-effort audit on the human-invoked manual path only.
+    // The cron/internal `auto_summary` path is intentionally NOT audited (returns earlier at line ~1169).
+    if (type !== 'auto_summary') {
+      await writeAuditLog(supabase, {
+        functionName: 'report-generator',
+        actionType: 'generate',
+        resourceType: 'group_report',
+        resourceId: requestedGroupId ?? null,
+        performedByUserId: callerUserId,
+        callerRole,
+        metadata: {
+          count: results.length,
+          mode: 'manual',
+          requested_group_id: requestedGroupId ?? null,
+          source: 'admin_ui',
+        },
+      });
+    }
+
     return new Response(
       JSON.stringify({ 
         message: 'Reports generated successfully', 
