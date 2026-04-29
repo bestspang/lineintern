@@ -99,6 +99,7 @@ const BagManagement = lazy(() => import("./pages/attendance/BagManagement"));
 const ShiftTemplates = lazy(() => import("./pages/attendance/ShiftTemplates"));
 const Schedules = lazy(() => import("./pages/attendance/Schedules"));
 const AttendanceOpsCenter = lazy(() => import("./pages/attendance/OpsCenter"));
+const AttendancePortalPerformance = lazy(() => import("./pages/attendance/PortalPerformance"));
 const PortalFaqAdmin = lazy(() => import("./pages/PortalFaqAdmin"));
 const ProfileSyncHealth = lazy(() => import("./pages/ProfileSyncHealth"));
 
