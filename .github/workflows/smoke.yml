@@ -19,7 +19,19 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        # --legacy-peer-deps: react-day-picker@8 peer-requires date-fns v2/v3 but the
+        # project uses date-fns@4 (required by date-fns-tz@3 for Asia/Bangkok timezone
+        # helpers — Core memory rule). Local dev uses bun which is more lenient.
+        # The .npmrc at repo root sets the same flag for environments outside CI.
+        run: npm ci --legacy-peer-deps
+
+      - name: Prepare smoke artifact dir
+        if: always()
+        run: |
+          mkdir -p smoke-artifacts
+          # Pre-create placeholder so later steps never fail on missing files,
+          # even if a prior step crashes before tests can write output.
+          : > smoke-artifacts/smoke-output.txt
 
       - name: Run smoke tests (quick)
         id: smoke
@@ -29,12 +41,15 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -o pipefail
-          mkdir -p smoke-artifacts
           npm run smoke:quick 2>&1 | tee smoke-artifacts/smoke-output.txt
 
       - name: Build summary artifact
         if: always()
         run: |
+          mkdir -p smoke-artifacts
+          OUTPUT_FILE="smoke-artifacts/smoke-output.txt"
+          SUMMARY_FILE="smoke-artifacts/SUMMARY.md"
+
           {
             echo "# Phase 0B Smoke Test Results"
             echo ""
@@ -43,10 +58,20 @@ jobs:
             echo "- Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
             echo ""
             echo '```'
-            sed -r 's/\x1B\[[0-9;]*[mK]//g' smoke-artifacts/smoke-output.txt || true
+            if [ -s "$OUTPUT_FILE" ]; then
+              sed -r 's/\x1B\[[0-9;]*[mK]//g' "$OUTPUT_FILE"
+            else
+              echo "(no smoke output captured — earlier step likely failed before tests ran; see job logs)"
+            fi
             echo '```'
-          } > smoke-artifacts/SUMMARY.md
-          cat smoke-artifacts/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          } > "$SUMMARY_FILE"
+
+          # Guard: only append to job summary if SUMMARY.md actually exists & is non-empty.
+          if [ -s "$SUMMARY_FILE" ]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ SUMMARY.md missing or empty — skipping job-summary append." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload smoke artifact
         if: always()
