@@ -13,7 +13,8 @@
     "smoke:quick": "node scripts/smoke-test.mjs --skip-build",
     "audit:consistency": "node scripts/consistency-audit.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "clean:bun": "rm -rf node_modules/.bun node_modules/.package-lock.json node_modules/.cache"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
