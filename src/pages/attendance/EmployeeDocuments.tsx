@@ -351,6 +351,7 @@ export default function EmployeeDocuments() {
 
   // --- CSV export (loads all pages first if needed) ---
   const exportCsv = async () => {
+    if (exportingAll) return;
     setExportingAll(true);
     try {
       // If everything is already loaded, export directly
@@ -370,6 +371,17 @@ export default function EmployeeDocuments() {
       a.download = `employee-documents-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success("ส่งออก CSV สำเร็จ", {
+        description: `${allRows.length.toLocaleString()} รายการ`,
+      });
+    } catch (err) {
+      const friendly = describeDocError(err);
+      toast.error(friendly.title, {
+        description: friendly.hint,
+        action: friendly.canRetry
+          ? { label: "ลองใหม่", onClick: () => exportCsv() }
+          : undefined,
+      });
     } finally {
       setExportingAll(false);
     }
@@ -380,6 +392,8 @@ export default function EmployeeDocuments() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasNextPage || rows.length < PAGE_SIZE) return;
+    // หยุด auto-load หากหน้าก่อนหน้า fail เพื่อกัน retry วน — ผู้ใช้ต้องกด "ลองใหม่" เอง
+    if (isFetchNextPageError) return;
     const io = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
         fetchNextPage();
@@ -387,7 +401,22 @@ export default function EmployeeDocuments() {
     }, { rootMargin: "200px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [hasNextPage, isFetchingNextPage, rows.length, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, rows.length, fetchNextPage]);
+
+  // --- Offline awareness ---
+  const [isOffline, setIsOffline] = useState<boolean>(
+    typeof navigator !== "undefined" ? navigator.onLine === false : false,
+  );
+  useEffect(() => {
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   const lastRefreshed = dataUpdatedAt ? format(new Date(dataUpdatedAt), "HH:mm:ss") : "-";
   const visibleColumns = columns;
