@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,8 +14,12 @@ Deno.serve(async (req) => {
 
   try {
     // Phase 0A: backfill jobs are admin/owner only.
+    let actorUserId: string | null = null;
+    let actorRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-primary-groups' });
+      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-primary-groups' });
+      actorUserId = r.userId;
+      actorRole = r.role ?? null;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;

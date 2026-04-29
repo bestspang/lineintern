@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -22,8 +23,12 @@ serve(async (req) => {
 
   try {
     // Phase 0A: admin/owner only.
+    let actorUserId: string | null = null;
+    let actorRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner'], { functionName: 'fix-user-names' });
+      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'fix-user-names' });
+      actorUserId = r.userId;
+      actorRole = r.role ?? null;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
