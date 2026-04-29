@@ -346,19 +346,15 @@ function testRegistrySync() {
   // Detect the line range of the /portal/* nested block — routes inside it are
   // portal pages even if their path attribute doesn't start with /portal.
   const lines = appSrc.split("\n");
-  let portalBlockStart = -1, portalBlockEnd = -1, depth = 0;
+  let portalBlockStart = -1, portalBlockEnd = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (portalBlockStart === -1 && /<Route\s+path="\/portal\/\*"/.test(lines[i])) {
+    if (/<Route\s+path="\/portal\/\*"/.test(lines[i])) {
       portalBlockStart = i;
-      depth = 0;
-      continue;
-    }
-    if (portalBlockStart !== -1 && portalBlockEnd === -1) {
-      // Track open/close of <Route> tags to find the matching </Route> for portal/*
-      const opens = (lines[i].match(/<Route(\s|>)/g) || []).length;
-      const closes = (lines[i].match(/<\/Route>/g) || []).length;
-      depth += opens - closes;
-      if (depth < 0) { portalBlockEnd = i; break; }
+      // Outer Route uses self-closing `} />`. Use the inner </Routes> close as boundary.
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/<\/Routes>/.test(lines[j])) { portalBlockEnd = j; break; }
+      }
+      break;
     }
   }
 
