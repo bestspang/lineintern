@@ -285,12 +285,13 @@ export default function EmployeeDocuments() {
             </Select>
             <ToggleGroup
               type="single"
+              size="sm"
               value={viewMode}
               onValueChange={(v) => v && setViewMode(v as ViewMode)}
               className="hidden md:flex"
             >
-              <ToggleGroupItem value="table" size="sm" aria-label="ตาราง"><List className="h-4 w-4" /></ToggleGroupItem>
-              <ToggleGroupItem value="cards" size="sm" aria-label="การ์ด"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
+              <ToggleGroupItem value="table" aria-label="ตาราง"><List className="h-4 w-4" /></ToggleGroupItem>
+              <ToggleGroupItem value="cards" aria-label="การ์ด"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
             </ToggleGroup>
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger asChild>
