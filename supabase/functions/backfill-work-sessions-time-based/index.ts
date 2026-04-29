@@ -36,8 +36,12 @@ Deno.serve(async (req) => {
 
   try {
     // Phase 0A: backfill jobs are admin/owner only.
+    let callerUserId: string | null = null;
+    let callerRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-work-sessions-time-based' });
+      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-work-sessions-time-based' });
+      callerUserId = r.userId;
+      callerRole = r.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
