@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Activity, AlertCircle, CheckCircle2, ClipboardList, ExternalLink,
-  RefreshCw, Settings, ShieldAlert, Users, MapPin,
+  RefreshCw, Settings, ShieldAlert, Users, MapPin, Gauge, ClipboardCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBangkokISODate } from "@/lib/timezone";
@@ -169,6 +169,38 @@ export default function OpsCenter() {
           <Button variant="outline" size="sm" onClick={() => navigate("/attendance/employee-documents")}>Employee Documents</Button>
           <Button variant="outline" size="sm" onClick={() => navigate("/attendance/branches")}>Branches / Geofence</Button>
           <Button variant="outline" size="sm" onClick={() => navigate("/settings")}><Settings className="h-3 w-3 mr-1" /> Settings</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4" /> Pilot QA — รอบทดสอบจริง
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            เช็คลิสต์ย่อสำหรับทดสอบบนอุปกรณ์จริง — รายละเอียดเต็มอยู่ใน{" "}
+            <code className="text-xs">docs/PHASE_1B_QA_CHECKLIST.md</code> และ{" "}
+            <code className="text-xs">docs/PHASE_1C_PILOT_QA.md</code>
+          </p>
+          <ul className="text-sm space-y-1 list-disc pl-5">
+            <li>LIFF cold start (เปิดครั้งแรกใน LINE)</li>
+            <li>Expired link UX (ลิงก์หมดอายุ → ข้อความไทยชัดเจน)</li>
+            <li>GPS denied → retry ได้</li>
+            <li>Camera denied → retry ได้</li>
+            <li>Double-tap submit guard (ไม่สร้าง log ซ้ำ)</li>
+            <li>Offline submit recovery</li>
+            <li>Role access control (field/user เข้า ops/perf ไม่ได้)</li>
+          </ul>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button size="sm" variant="outline" onClick={() => navigate("/attendance/portal-performance")}>
+              <Gauge className="h-3 w-3 mr-1" /> Open Portal Performance
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground pt-1">
+            บันทึกผลใน <code className="text-xs">docs/PHASE_1C_PILOT_RESULTS.md</code>
+          </p>
         </CardContent>
       </Card>
 
