@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
 import LocationHeatmap from '@/components/attendance/LocationHeatmap';
+import { EmployeeDocumentsTab } from '@/components/employee-documents/EmployeeDocumentsTab';
 import { 
   LineChart, 
   Line, 
@@ -683,6 +684,9 @@ export default function EmployeeDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* Phase 1A — Employee Documents */}
+      {id && canManageEmployee && <EmployeeDocumentsTab employeeId={id} />}
     </div>
   );
 }
