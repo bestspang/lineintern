@@ -1,76 +1,146 @@
-## Goal
+# Publish Failure Debug v2 Plan
 
-Address the 2 actionable security findings without touching anything that already works. The "Publishing failed" red banner has no actionable error text — these advisory warnings are the only items the security scanner can flag, so clearing them removes the noise. After this, retry Publish.
+## Current read-only findings
 
-## Affected Modules & Status
+1. **Affected modules**
+   - Publishing flow / Lovable deploy platform
+   - Package manager lockfiles: `package.json`, `package-lock.json`, `bun.lock`, `bun.lockb`
+   - Build entrypoints: `vite.config.ts`, `vitest.config.ts`, `src/App.tsx`
+   - Recent admin routes: `/attendance/ops-center`, `/attendance/portal-performance`
+   - Route registry: `.lovable/registry-snapshot.json`
+   - Page access database config: `webapp_page_config`
+   - Security scan gate
+   - Custom domain: `intern.gem.me`
 
-| Module | Status | Action |
-|---|---|---|
-| `supabase/functions/health-check/index.ts` | WORKING (but leaks internal details to anonymous callers) | Gate full diagnostics behind `CRON_SECRET` header |
-| DB function `public.update_feature_flags_updated_at` | WORKING (missing `SET search_path`) | Add `SET search_path = public` via migration |
-| All other DB functions | WORKING + already hardened | **Do not touch** |
-| Publish pipeline / frontend / RLS / edge functions | WORKING | **Do not touch** |
+2. **Status of each module so far**
+   - `package.json`: readable; test dependencies are present in `devDependencies`.
+   - `package-lock.json`: contains the same top-level test dependencies as `package.json`; exact sync still must be verified by running `npm install --package-lock-only` in build mode.
+   - `bun.lock` / `bun.lockb`: both present, meaning the repo has mixed npm and Bun lockfiles.
+   - `src/App.tsx`: routes for `/attendance/ops-center` and `/attendance/portal-performance` exist and lazy-import the expected files.
+   - `.lovable/registry-snapshot.json`: valid JSON by inspection; includes both routes.
+   - `webapp_page_config`: rows exist for both routes. Access is `true` for `owner`, `admin`, `hr`, `manager`; `false` for `employee`, `user`, `field`, plus `executive` and `moderator`.
+   - Security scan results: currently no active findings in loaded scan results; this does not look like a publish-blocking security gate from current available data.
+   - Domain: `intern.gem.me` is connected and serves the app. Published fallback `lineintern.lovable.app` also serves the app. Domain/DNS does not appear broken from current available data.
+   - Browser logs/network snapshot: no publish error captured from current preview snapshot.
 
-Verified via live linter query: only **one** function in `public` is missing `search_path` — `update_feature_flags_updated_at`. Every other function already has `SET search_path TO 'public'`.
+3. **What must be preserved**
+   - Do not touch `line-webhook`, `attendance-submit`, `attendance-validate-token`, `claim_attendance_token`, Bangkok timezone helpers, payroll math, point ledger, `pg_net`, auth/storage/vault functions, broad RLS policies, Employee Documents logic, or portal performance logic unless a build error proves it is the blocker.
+   - Do not continue feature work or security hardening.
+   - Do not refactor.
+   - Keep all working routes and access behavior intact.
 
-## Changes
+## What is actually broken
 
-### 1. Harden `health-check` edge function
+The exact publish/deploy blocker has **not yet been captured** in read-only mode. I cannot click Publish/Update or run state-changing commands/tests from the current mode. The current evidence narrows the likely areas to:
 
-Anonymous callers (no auth header, no `x-cron-secret`) get only:
+- A platform-side publish error not visible in current browser/network snapshots.
+- A stale `package-lock.json` only detectable by running `npm install --package-lock-only` and checking if it changes.
+- A build/deploy step failure only visible when executing the required npm/Bun commands.
 
-```json
-{ "status": "ok" | "degraded" | "down", "timestamp": "..." }
-```
+## Minimal-diff execution plan after approval
 
-Authenticated callers (request includes header `x-cron-secret: <CRON_SECRET>`) keep the full payload they get today: per-check details, response times, environment, summary counts. This is what cron and admin monitoring already use, so no breakage.
+### Step 1 — Capture the real publish error
+- Attempt Publish / Update once.
+- Capture raw error text, timestamp, deployment/request id if shown, and classify the stage:
+  - install
+  - build
+  - deploy/upload
+  - domain assignment
+  - security gate
+  - unknown platform error
+- If the UI gives only a generic banner, inspect available browser network details/logs for the publish request body and response.
 
-Implementation detail (single file edit, additive):
-- Read `req.headers.get("x-cron-secret")` and `Deno.env.get("CRON_SECRET")` at the top.
-- Run all existing checks unchanged so the `system_health_logs` insert and overall status calc are preserved.
-- Right before the response, branch:
-  - If header matches secret → return current full response (unchanged shape).
-  - Otherwise → return minimal `{ status, timestamp }` with the same HTTP status code (200 / 503).
-- CORS, OPTIONS handling, and the catch-all error handler stay as-is (the catch block also returns a minimal shape for anonymous callers).
+### Step 2 — Verify package manager / lockfile mismatch
+- Run exactly:
+  - `npm install --package-lock-only`
+- Check whether `package-lock.json` changes.
+- If it changes, keep only that lockfile sync change and treat stale npm lockfile as a likely publish blocker, then continue verification.
+- Do not edit `package.json` unless the install/build error proves a specific dependency declaration is wrong.
 
-No removal of checks, no new dependencies, no behavior change for cron callers.
+### Step 3 — Run full npm build and required validation
+- Run:
+  - `npm run build`
+  - `npm run smoke:quick`
+  - `bun run test`
+- If build fails, fix only the exact file/line in the error.
+- Priority inspection targets only if the build points there:
+  - `src/App.tsx`
+  - `src/pages/attendance/OpsCenter.tsx`
+  - `src/pages/attendance/PortalPerformance.tsx`
+  - `src/lib/portal-perf.ts`
+  - `src/contexts/LiffContext.tsx`
+  - `src/contexts/PortalContext.tsx`
+  - `src/components/portal/PortalLayout.tsx`
+  - `src/pages/portal/PortalHome.tsx`
+  - `src/pages/Attendance.tsx`
+  - `vitest.config.ts`
+  - `src/test/setup.ts`
+  - `package.json`
+  - `package-lock.json`
 
-### 2. Migration: set `search_path` on the one remaining function
+### Step 4 — Route / registry / DB consistency verification
+- Re-run or manually verify:
+  - `/attendance/ops-center` route exists and compiles.
+  - `/attendance/portal-performance` route exists and compiles.
+  - `.lovable/registry-snapshot.json` parses as valid JSON.
+  - Registry routes match `App.tsx`.
+  - `webapp_page_config` has both route rows.
+  - `owner/admin/hr/manager` are allowed only.
+  - `employee/user/field` are denied.
+- No route additions or access-policy changes unless validation proves a blocker.
 
-```sql
-ALTER FUNCTION public.update_feature_flags_updated_at()
-  SET search_path = public;
-```
+### Step 5 — Security gate only if proven blocking
+- If publish error explicitly cites a security gate, capture the exact finding, severity, and whether accepted findings are recognized by publish.
+- Do not modify `pg_net`, auth/storage/vault schema functions, broad RLS policies, or accepted warnings.
+- If no security gate appears in the publish error, leave security untouched.
 
-Pure metadata change. Function body and trigger behavior are unchanged.
+### Step 6 — Domain/deployment status
+- Verify:
+  - `intern.gem.me` is still connected.
+  - DNS/domain is not the cause.
+  - Failure occurs before/after domain assignment.
+- If domain is the blocker, report the exact domain/DNS error and do not edit app code.
 
-## What Must Be Preserved
+### Step 7 — Final publish verification
+- After the minimal proven fix, run again:
+  - `npm run build`
+  - `npm run smoke:quick`
+  - `bun run test`
+- Attempt Publish / Update again.
+- Capture final publish result.
 
-- Full health-check JSON shape for cron / authenticated monitoring callers.
-- All `system_health_logs` insertions (still happen for every call).
-- HTTP 503 on `down`, 200 otherwise.
-- Trigger behavior of `update_feature_flags_updated_at` (it just sets `updated_at = now()` on `feature_flags`).
-- All other edge functions, migrations, RLS, cron jobs.
+## Expected code changes
 
-## Regression Checklist
+Only one of these, depending on the proven blocker:
 
-- [ ] `curl <project>/functions/v1/health-check` (no header) returns `{status, timestamp}` only, status 200/503.
-- [ ] `curl -H "x-cron-secret: $CRON_SECRET" .../health-check` returns the full diagnostic payload (same as today).
-- [ ] `system_health_logs` continues to receive a row per call.
-- [ ] `feature_flags` row update still bumps `updated_at` (trigger fires).
-- [ ] Re-run security scan → the `INFO_LEAKAGE` and the remaining `search_path` warning are gone.
-- [ ] Publish dialog → Update succeeds.
+1. **If stale lockfile is proven:** update `package-lock.json` only.
+2. **If build fails:** edit only the exact build-breaking line/file.
+3. **If route registry mismatch is proven:** edit only the stale registry or missing page access migration needed for the two existing routes.
+4. **If security/domain/platform gate is proven:** no app-code edits unless the raw error identifies an app-owned blocker.
 
-## Files Touched
+## Regression checklist
 
-- `supabase/functions/health-check/index.ts` — minimal, additive edit
-- One new migration: `ALTER FUNCTION public.update_feature_flags_updated_at() SET search_path = public;`
+- Build passes with npm.
+- Smoke quick passes.
+- Bun test suite passes.
+- Existing sensitive/verified files remain untouched.
+- No feature work added.
+- No security hardening changes unless publish explicitly blocks on security.
+- Domain still serves the current app.
+- Publish/Update either succeeds or reports a precise remaining platform blocker.
 
-## Not Doing (intentionally)
+## Final report format I will return
 
-- No changes to public storage buckets (`attendance-photos`, `richmenu-images`, `line-bot-assets`) — accepted by design.
-- No changes to `portal_favorites` RLS — accepted for LIFF.
-- No changes to other security-definer views/functions — already hardened.
-- No refactor of health-check checks themselves.
+1. Exact publish error
+2. Root cause
+3. Whether package-lock was stale
+4. Files changed
+5. Build result
+6. Smoke result
+7. Test result
+8. Security gate status
+9. Domain status
+10. Publish result
+11. Verdict: `PUBLISH FIXED` or `STILL BLOCKED with exact blocker`
 
-Approve to apply.
+Approve this plan and I will execute only these steps with the smallest safe fix.
