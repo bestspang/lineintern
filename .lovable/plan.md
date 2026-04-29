@@ -1,134 +1,93 @@
-## เป้าหมาย
-ตรวจ "ความสอดคล้อง" (consistency) ของระบบทั้งหมด — ทุก function/feature/UI ที่ผูกกัน ต้อง up-to-date กัน — **โดยไม่แตะของที่ทำงานดีอยู่แล้ว** และ **เพิ่มกลไกป้องกัน AI รอบถัดไปแก้ของดีให้พัง**
+## Goal / เป้าหมาย
 
-> Memory rule: "AI ชอบเข้าไปปรับ function ที่ทำงานได้ดีแล้วให้พัง" → แผนนี้ออกแบบมาเพื่อแก้ pattern นี้โดยตรง
+เพิ่มเอกสาร 2 ไฟล์ใน `docs/` เพื่อให้คุณ (1) เช็กความปลอดภัยก่อน/หลัง deploy ว่าไม่มีใครไปแตะ logic core และ (2) จับผลทดสอบ Pilot QA ต่ออุปกรณ์จริง iOS/Android ได้อย่างเป็นระบบ พร้อม PASS/FAIL, network type, p50/p95, และที่แนบ log/screenshot
 
----
-
-## ผลการสำรวจ (sources of truth ที่มีอยู่แล้ว)
-
-ระบบมี source-of-truth files เหล่านี้แล้ว (ดี — เราจะเสริม ไม่ใช่สร้างใหม่):
-- `.lovable/registry-snapshot.json` — รายการ admin/portal routes + bot command types
-- `.lovable/CRITICAL_FILES.md` — รายการไฟล์ห้ามแตะ + behavioral invariants
-- `src/lib/portal-actions.ts` — canonical portal action registry (path↔role↔label)
-- `scripts/smoke-test.mjs` — Phase 4.5 regression guard (16/16 ผ่าน)
-- DB tables: `bot_commands` (27 rows), `portal_faqs` (35 rows, 4 categories), `webapp_page_config` (64 distinct paths)
-
-## รายการ "consistency drift" ที่พบ (ที่ต้องแก้จริง)
-
-| # | จุด | สถานะ | ความเสี่ยง |
-|---|---|---|---|
-| D1 | `Help.tsx` มี static fallback FAQ — เนื้อหาบางส่วน hardcoded ไม่ตรงกับ DB ปัจจุบัน (DB มี 35 / static มี ~15) | drift แต่ไม่พัง (DB มาก่อน static) | ต่ำ |
-| D2 | Phone placeholder `02-XXX-XXXX` ใน Help.tsx | ไม่ใช่เบอร์จริง | ต่ำ — UX |
-| D3 | `PortalLayout` bottom-nav ใช้ role string `'supervisor'` แต่ระบบจริงใช้ `'manager'` (ตาม CRITICAL_FILES) | อาจซ่อนปุ่ม Approvals ผิด role | กลาง |
-| D4 | `webapp_page_config` มี ops-center/portal-performance ครบ 9 roles แล้ว (ผ่านจริง) | ✅ ตรง | — |
-| D5 | `bot_commands` ครบ 27 รายการ ตรงกับ `command-parser.ts` commandMap | ✅ ตรง | — |
-| D6 | Phone/email ใน Help.tsx เป็น placeholder | ผู้ใช้กดแล้วไม่ติดต่อใคร | ต่ำ |
-
-**ที่ "ดีอยู่แล้ว" และห้ามแตะ:**
-- `line-webhook/index.ts`, `attendance-submit`, `command-parser.ts`, `portal-data` — ทุก ⚠️ VERIFIED comment
-- `EmployeeDocuments.tsx` — Phase 1A เสร็จแล้ว
-- Bangkok timezone helpers, payroll, points ledger
-- ปุ่ม UI ทั้งหมดใน Ops Center / Portal Performance — เพิ่งทำเสร็จ Phase 1B/1C
+**Scope (สำคัญ):** ไม่แก้โค้ด, ไม่แก้ DB, ไม่แตะ edge functions, ไม่แตะ `// ⚠️ VERIFIED` files. เพิ่มเฉพาะไฟล์ Markdown ใหม่ 2 ไฟล์เท่านั้น เพื่อรักษานโยบาย Phase 1C "no refactor / no new features".
 
 ---
 
-## แผนงาน 4 task (additive only, no refactor)
+## Files to create / ไฟล์ที่จะสร้าง
 
-### Task 1 — สร้าง Cross-Surface Sync Audit Tool (กลไกป้องกัน)
+### 1) `docs/PHASE_1C_ROLLBACK_SAFE_CHECKLIST.md` (ใหม่)
 
-สร้าง `scripts/consistency-audit.mjs` (read-only, ไม่ mutate อะไรเลย) ที่ตรวจ:
+Checklist ที่คุณเดินตามข้อต่อข้อ ก่อน deploy และหลัง deploy เพื่อยืนยันว่า "ไม่มีอะไรไปแตะ core" ครอบคลุม:
 
-1. **Routes ↔ Snapshot** — ทุก route ใน `App.tsx` ต้องอยู่ใน `registry-snapshot.json` (smoke test มี F3 อยู่แล้ว — ไม่ซ้ำ)
-2. **Routes ↔ webapp_page_config** — admin route ทุก path ต้องมี config (ตรวจหารายการ "missing")
-3. **portal-actions.ts ↔ App.tsx** — ทุก `path` ใน `PORTAL_ACTIONS` ต้องมี route จริง
-4. **bot_commands ↔ command-parser.ts** — ทุก `command_key` ใน DB ต้องมีใน `commandMap`/`ParsedCommand['commandType']`
-5. **portal_faqs categories ↔ Help.tsx tabs** — ทุก category ใน DB ต้องมีใน Help tabs (ปัจจุบัน: attendance, leave-ot, points, general)
-6. **Role strings consistency** — สแกนหา `'supervisor'` ในโค้ดที่ไม่ควรมี (ระบบใช้ `'manager'`)
-7. **CRITICAL_FILES.md ↔ filesystem** — ไฟล์ที่ระบุว่า P0/P1 ยังมีอยู่จริง
+- **Pre-deploy gates / ก่อน deploy**
+  - Build เขียวบน CI (`npm run build`)
+  - `npm run smoke:quick` = 16/16 pass
+  - `npm run audit:consistency` exit 0 (route ↔ registry ↔ portal-actions ↔ DB เข้ากันหมด)
+  - `git diff` ไม่แตะรายชื่อ "do-not-touch" (line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token, Bangkok timezone helpers, payroll math, point ledger, Employee Documents)
+  - ไฟล์ที่ติด `// ⚠️ VERIFIED — DO NOT REFACTOR` 5 ไฟล์ ไม่มี diff ในส่วน data fetch / role gating / layout grid (อนุญาตเฉพาะ additive UI)
+  - `supabase/config.toml` ไม่มีการเปลี่ยน project-level settings
+  - ไม่มี migration ใหม่ที่แตะ schema `auth/storage/realtime/supabase_functions/vault`
+  - ไม่มีการเพิ่ม CHECK constraint ที่ใช้ `now()` (ต้องใช้ trigger แทน)
+  - ENV/Secrets ครบ (CRON_SECRET, LINE_CHANNEL_SECRET, ฯลฯ) — ตรวจด้วยรายชื่อ ไม่ echo ค่า
+  - Performance dashboard `/attendance/portal-performance` เปิดได้ และมี events ไหลเข้า (baseline ก่อน deploy)
 
-Script จะ print `PASS/FAIL/WARN` แต่ละหัวข้อ พร้อมรายการ drift — ไม่แก้อะไรอัตโนมัติ
+- **Deploy window / ช่วง deploy**
+  - แจ้งผู้ทดสอบล่วงหน้า, จดเวลา (Asia/Bangkok), จด commit hash
+  - กดเฝ้า edge function logs: `line-webhook`, `attendance-submit`, `attendance-validate-token`
+  - Tail `portal_performance_events` ดู spike ของ `token_validate_failed` / `checkin_submit_failed`
 
-เพิ่ม npm script: `"audit:consistency": "node scripts/consistency-audit.mjs"`
+- **Post-deploy smoke (≤10 นาทีแรก)**
+  - เช็คอิน 1 ครั้งจริง (1 admin, 1 employee) — รอบสมบูรณ์ check-in + check-out
+  - เปิด `/attendance/ops-center` ด้วย role: owner/admin/hr/manager → เข้าได้ทั้งหมด
+  - ลอง role: employee/field/user → เข้าไม่ได้ทั้ง nav และ direct URL (role gating ไม่รั่ว)
+  - p95 `portal_ready` หลัง deploy ≤ baseline + 20%
+  - ไม่มี duplicate row ใน `attendance_logs` ช่วง 10 นาที
+  - LIFF init สำเร็จในเครื่องจริง iOS และ Android อย่างละ 1 เครื่อง
+  - Cron jobs (`task-scheduler`, `attendance-snapshot-update`) ยัง 200 OK ด้วย CRON_SECRET ที่ถูกต้อง
 
-### Task 2 — แก้ drift ที่พบจริง (เฉพาะที่ปลอดภัย)
+- **Rollback triggers / เมื่อไหร่ต้อง rollback**
+  - S1 blocker ใด ๆ จาก `PHASE_1C_PILOT_QA.md`
+  - `checkin_submit_failed` rate > 3% ใน 30 นาที
+  - `token_validate_failed` (ไม่นับ expired/not_found) > 1%
+  - duplicate attendance row เกิดขึ้นแม้ครั้งเดียว
+  - role leak (employee เห็นหน้า admin)
+  - LIFF blank/white screen ที่ reproduce ได้
 
-D3 (สำคัญสุด): `src/components/portal/PortalLayout.tsx` line 30 → ลบ `'supervisor'` ออก (เหลือ `['manager','admin','owner']`) — แก้ 1 บรรทัด, additive ที่จริงคือ "ลด" ที่ไม่มีผล เพราะ DB ไม่มี role 'supervisor' แล้ว
+- **Rollback procedure (ขั้นตอนกลับ)**
+  - ใช้ Lovable History → กดย้อนกลับ version ก่อน deploy (ไม่ต้อง revert ด้วย code)
+  - แสดง `<lov-open-history>View History</lov-open-history>` action เพื่อให้คุณกดได้ทันที
+  - ตรวจซ้ำว่า edge functions revert พร้อมกัน (Lovable Cloud จะ deploy auto)
+  - บันทึกเหตุผลใน `PHASE_1C_PILOT_RESULTS.md` ส่วน Blocker List
 
-D2/D6 (cosmetic): เพิ่ม comment `// TODO: replace with real contact via api_configurations` แทนการแก้เนื้อหา — ให้ user ใส่เบอร์จริงเอง ไม่ทำเป็น dynamic เพราะเสี่ยง over-engineering
+- **Sign-off block** (Pilot lead + Reviewer initials + verdict)
 
-D1 (drift FAQ): **ไม่แก้** — static fallback ออกแบบมาเป็น safety net เฉพาะตอน DB error เท่านั้น (ดู comment ⚠️ VERIFIED 2026-02-03) → แค่บันทึกใน sync doc
+### 2) `docs/PHASE_1C_DEVICE_QA_FORM.md` (ใหม่)
 
-### Task 3 — เพิ่ม "AI Guard Header" pattern ที่ไฟล์เสี่ยง
+แบบฟอร์มจับผลต่อ "1 อุปกรณ์ = 1 form block" ให้คุณ copy-paste ได้เรื่อย ๆ คู่กับ `PHASE_1C_PILOT_RESULTS.md` (ซึ่งเป็น aggregate). โครงสร้าง:
 
-เพิ่ม comment block สั้นๆ ที่ส่วนบนของไฟล์ที่ AI ชอบเข้ามาแก้ผิดบ่อย (เลือก 5 ไฟล์ที่เสี่ยงสุด):
-- `src/pages/portal/PortalHome.tsx`
-- `src/pages/portal/CheckInOut.tsx`
-- `src/pages/attendance/OpsCenter.tsx`
-- `src/pages/attendance/PortalPerformance.tsx`
-- `src/components/portal/PortalLayout.tsx`
+- **Header per device:** ผู้ทดสอบ (initials), role, รุ่นเครื่อง, OS+version, LINE version, network (Wi-Fi/4G/5G), DPR, สาขา, วัน-เวลา (Asia/Bangkok), commit hash
+- **Section A — LIFF / Portal cold start (7 ข้อจาก A1–A7):** ช่อง PASS / FAIL / BLOCKED + load time (ms) + severity S1–S4 + notes
+- **Section B — Outside-LINE fallback (B1–B3)**
+- **Section C — Check-in token flow (C1–C10):** รวมช่อง "เครือข่ายขณะทดสอบ" และ "เวลา submit (ms)"
+- **Section D — Manager/Admin Ops Center (D1–D7)**
+- **Performance capture (per device):** ช่องจด p50/p95 ของ `portal_ready`, `liff_init_done`, `token_validate_success`, `checkin_submit_success` พร้อม window (24h/7d) — ดึงจาก `/attendance/portal-performance`
+- **Log attachments table:** ชื่อไฟล์ตามรูปแบบ `phase1c_<deviceId>_<area><id>_<YYYYMMDD>.png|txt`, perf event id (uuid only), แหล่งเก็บ (Drive/Notion link)
+- **PII rule banner ด้านบน:** ห้ามแนบ token, line_user_id, raw GPS, photo URL, ชื่อจริงเต็ม
+- **Per-device verdict:** READY / NOT READY + sign-off initials
+- **Aggregate roll-up note:** ลิงก์กลับไปกรอกสรุปใน `PHASE_1C_PILOT_RESULTS.md` ส่วน 8 (PASS/PARTIAL/FAIL counts) และส่วน 11 (Performance Snapshot)
 
-Pattern (ตามที่ใช้อยู่แล้ว):
-```ts
-/**
- * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
- * Touchpoints: <list of cross-surface dependencies>
- * Allowed changes: additive UI only (new card, new button)
- * Forbidden: changing data fetch, role gating, navigation, layout grid
- * If a fix is required: open issue, document scope, get user OK first.
- */
-```
-
-### Task 4 — อัปเดตเอกสาร "ความสัมพันธ์ข้ามฟีเจอร์"
-
-สร้าง/อัปเดต `SYSTEM_SYNC_CHECKLIST.md` ให้มี section ใหม่:
-- **Cross-surface dependency map** — ตารางว่า "ถ้าเปลี่ยน X ต้องอัปเดต Y, Z ด้วย"
-  - เปลี่ยน bot command → อัปเดต `bot_commands` table + `command-parser.ts` + `Help.tsx`
-  - เพิ่ม admin route → อัปเดต `App.tsx` + `webapp_page_config` + `DashboardLayout.tsx` + `registry-snapshot.json`
-  - เพิ่ม portal action → อัปเดต `portal-actions.ts` + `App.tsx` + `Help.tsx` quick actions
-  - เปลี่ยน FAQ category → อัปเดต `portal_faqs` table + `Help.tsx` tabs
-- ลิงก์ไปที่ `consistency-audit.mjs` ใหม่
-
----
-
-## ไฟล์ที่จะเปลี่ยน (สรุป)
-
-| ไฟล์ | Action | ขนาดประมาณ |
-|---|---|---|
-| `scripts/consistency-audit.mjs` | สร้างใหม่ | ~250 บรรทัด |
-| `package.json` | เพิ่ม 1 script | +1 บรรทัด |
-| `src/components/portal/PortalLayout.tsx` | แก้ 1 บรรทัด (ลบ `'supervisor'`) | -1 บรรทัด |
-| `src/pages/portal/PortalHome.tsx` | เพิ่ม guard comment | +8 บรรทัด |
-| `src/pages/portal/CheckInOut.tsx` | เพิ่ม guard comment | +8 บรรทัด |
-| `src/pages/attendance/OpsCenter.tsx` | เพิ่ม guard comment | +8 บรรทัด |
-| `src/pages/attendance/PortalPerformance.tsx` | เพิ่ม guard comment | +8 บรรทัด |
-| `SYSTEM_SYNC_CHECKLIST.md` | เพิ่ม cross-surface dep map section | ~80 บรรทัด |
-| `.lovable/CRITICAL_FILES.md` | เพิ่มอ้างอิงถึง audit script | +5 บรรทัด |
-
-**ห้ามแตะ:**
-- ทุกไฟล์ใน `.lovable/CRITICAL_FILES.md` P0
-- Edge functions ทุกตัว
-- DB schema (ไม่มี migration ใหม่)
-- ปุ่ม/UI behavior ที่มีอยู่
-- `Help.tsx` content (แค่อ่าน, ไม่แก้)
-- Bot commands, FAQ data
+ทั้งสองไฟล์เป็น Bilingual TH/EN ตามมาตรฐานโปรเจกต์ และอ้างอิงไฟล์ที่มีอยู่แล้ว (`PHASE_1C_PILOT_QA.md`, `PHASE_1C_PERF_QUERIES.md`, `PHASE_1C_PILOT_RESULTS.md`) เพื่อไม่ให้ข้อมูลซ้ำซ้อน
 
 ---
 
-## เกณฑ์ตรวจสอบ (acceptance)
+## Files NOT touched / ไฟล์ที่จะไม่แตะ
 
-1. `npm run audit:consistency` รันได้ผ่าน รายงาน drift ครบทุกหัวข้อ
-2. `npm run smoke:quick` ยังผ่าน 16/16
-3. ทุก ⚠️ VERIFIED comment เดิมยังอยู่ครบ
-4. ไม่มี behavioral change ที่ผู้ใช้สังเกตได้ (UI, ปุ่ม, route, ข้อความ — เหมือนเดิมหมด)
-5. มี mechanism ใหม่ให้ AI รอบถัดไปเช็คก่อนแก้ (`audit:consistency` + AI Guard Headers)
+- ไม่มีการแก้ `src/**`, `supabase/functions/**`, migrations, `supabase/config.toml`
+- ไม่แตะไฟล์ที่ติด `// ⚠️ VERIFIED` (PortalHome, CheckInOut, OpsCenter, PortalPerformance, PortalLayout)
+- ไม่แก้ `package.json`, `scripts/consistency-audit.mjs`, `scripts/smoke-test.mjs`
+- ไม่แก้ `.lovable/registry-snapshot.json`
 
----
+## Verification after creation
 
-## รายงานสุดท้ายจะมี
-1. รายการ drift ที่พบ (จาก audit script รันครั้งแรก)
-2. ไฟล์ที่แก้จริง + diff สรุป
-3. ไฟล์ที่ "พบ drift แต่ไม่แก้" + เหตุผล
-4. ผล build + smoke + audit
-5. คำแนะนำให้ user รัน `npm run audit:consistency` ก่อน sign-off Phase ใหม่ทุกครั้ง
-6. Verdict: SYSTEM CONSISTENT / DRIFT FOUND (with list)
+- เปิดทั้ง 2 ไฟล์เพื่อยืนยันว่า render ถูกใน Markdown
+- รัน `npm run smoke:quick` (คาดหวัง 16/16 pass — เพราะไม่ได้แตะโค้ด)
+- รัน `npm run audit:consistency` (คาดหวัง exit 0)
+
+## Deliverable / สิ่งที่คุณจะได้
+
+1. `docs/PHASE_1C_ROLLBACK_SAFE_CHECKLIST.md` — checklist ก่อน/หลัง deploy + rollback triggers + procedure
+2. `docs/PHASE_1C_DEVICE_QA_FORM.md` — ฟอร์มต่ออุปกรณ์จริง พร้อมช่อง p50/p95, network, log attachments
+3. ผลรัน smoke + consistency audit ยืนยันว่าไม่มี regression
