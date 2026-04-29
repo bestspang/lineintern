@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { getBangkokDateString } from '../_shared/timezone.ts';
+import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +21,15 @@ serve(async (req) => {
   }
 
   try {
+    // Phase 0A: only admin/owner may rollback the points ledger.
+    try {
+      await requireRole(req, ['admin', 'owner'], { functionName: 'admin-response-points-rollback' });
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
