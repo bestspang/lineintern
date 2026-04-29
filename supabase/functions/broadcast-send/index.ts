@@ -395,6 +395,22 @@ Deno.serve(async (req) => {
 
     console.log(`[broadcast-send] Completed. Sent: ${totalSent}, Failed: ${totalFailed}`);
 
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'broadcast-send',
+      actionType: 'send',
+      resourceType: 'broadcast',
+      resourceId: broadcast_id,
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        sent_count: totalSent,
+        failed_count: totalFailed,
+        status: finalStatus,
+        dry_run,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
