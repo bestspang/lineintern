@@ -6097,6 +6097,7 @@ export type Database = {
           token_type: string
         }[]
       }
+      cleanup_audit_logs: { Args: { retention_days?: number }; Returns: number }
       detect_burnout_signals: {
         Args: {
           p_avg_sentiment: number
