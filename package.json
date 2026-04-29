@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "smoke": "node scripts/smoke-test.mjs",
-    "smoke:quick": "node scripts/smoke-test.mjs --skip-build"
+    "smoke:quick": "node scripts/smoke-test.mjs --skip-build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
