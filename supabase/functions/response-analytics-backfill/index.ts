@@ -412,6 +412,24 @@ serve(async (req) => {
 
     console.log(`[response-analytics-backfill] Complete:`, result);
 
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'response-analytics-backfill',
+      actionType: 'backfill',
+      resourceType: 'response_analytics',
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        start_date: start,
+        end_date: end,
+        group_id: groupId ?? null,
+        user_id: userId ?? null,
+        dry_run: dryRun,
+        updates_count: updates.length,
+        has_more: hasMore,
+      },
+    });
+
     return new Response(
       JSON.stringify(result),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
