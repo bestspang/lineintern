@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog, maskLineUserId } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,14 +13,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: only management roles can send LINE DMs from the admin UI.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner', 'hr', 'manager', 'moderator'],
         { functionName: 'dm-send' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -123,6 +129,22 @@ Deno.serve(async (req) => {
     }
 
     console.log('Message saved to database:', insertedMessage?.id);
+
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'dm-send',
+      actionType: 'send',
+      resourceType: 'dm',
+      resourceId: group_id,
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        line_user_id_masked: maskLineUserId(line_user_id),
+        group_id,
+        char_count: typeof message === 'string' ? message.length : 0,
+        message_id: insertedMessage?.id ?? null,
+      },
+    });
 
     return new Response(
       JSON.stringify({ 

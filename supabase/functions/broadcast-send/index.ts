@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -220,14 +221,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: high-impact mass LINE send — admin/owner/hr only.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner', 'hr'],
         { functionName: 'broadcast-send' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -388,6 +394,22 @@ Deno.serve(async (req) => {
       .eq("id", broadcast_id);
 
     console.log(`[broadcast-send] Completed. Sent: ${totalSent}, Failed: ${totalFailed}`);
+
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'broadcast-send',
+      actionType: 'send',
+      resourceType: 'broadcast',
+      resourceId: broadcast_id,
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        sent_count: totalSent,
+        failed_count: totalFailed,
+        status: finalStatus,
+        dry_run,
+      },
+    });
 
     return new Response(
       JSON.stringify({

@@ -8,35 +8,82 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokDateString } from '../_shared/timezone.ts';
 import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
+import { writeAuditLog } from '../_shared/audit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-source',
 };
 
+/**
+ * Constant-time string comparison to avoid leaking the service-role key
+ * length/content via timing differences when validating internal calls.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Caller context filled in by either the internal-marker check or requireRole.
+  let callerSource: 'internal' | 'user' = 'user';
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
-    // Phase 0A guard: allow internal calls from portal-data (service-role bearer
-    // + explicit x-internal-source header). Otherwise require manager-level role.
-    const internalSource = req.headers.get('x-internal-source');
+    // Phase 0A.1 — strict internal-call validation.
+    // If the caller asserts an internal source, BOTH the source token AND the
+    // service-role bearer must match exactly. A half-set marker is rejected
+    // with a distinct error code so misconfigurations are obvious in logs.
+    const internalSourceRaw = req.headers.get('x-internal-source');
     const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '';
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const isInternal =
-      internalSource === 'portal-data' &&
-      serviceKey.length > 0 &&
-      authHeader === `Bearer ${serviceKey}`;
 
-    if (!isInternal) {
+    if (internalSourceRaw !== null) {
+      const sourceOk = internalSourceRaw === 'portal-data';
+      const expectedBearer = serviceKey ? `Bearer ${serviceKey}` : '';
+      const bearerOk =
+        serviceKey.length > 0 &&
+        authHeader.length === expectedBearer.length &&
+        timingSafeEqual(authHeader, expectedBearer);
+
+      if (!sourceOk || !bearerOk) {
+        console.warn(
+          `[authz] remote-checkout-approval source=internal decision=deny:internal_marker_mismatch ` +
+            `source_ok=${sourceOk} bearer_ok=${bearerOk}`,
+        );
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: 'internal_marker_mismatch',
+            error:
+              'x-internal-source supplied but service-role auth missing or invalid. ' +
+              'Internal callers must set x-internal-source=portal-data and Authorization=Bearer <service-role-key>.',
+          }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      callerSource = 'internal';
+      callerRoleLabel = 'internal:portal-data';
+      console.log(`[authz] remote-checkout-approval source=internal decision=allow`);
+    } else {
       try {
-        await requireRole(
+        const result = await requireRole(
           req,
           ['admin', 'owner', 'hr', 'manager', 'executive'],
           { functionName: 'remote-checkout-approval' },
         );
+        callerUserId = result.userId;
+        callerRoleLabel = result.role;
       } catch (e) {
         const r = authzErrorResponse(e, corsHeaders);
         if (r) return r;
@@ -48,6 +95,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
 
     const { 
       request_id, 
@@ -292,7 +340,24 @@ serve(async (req) => {
       const successMessage = wasAlreadyCheckedOut
         ? `✅ Archive คำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ (มี checkout อยู่แล้ว)`
         : `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`;
-      
+
+      // Phase 0A.1 — structured audit log (best-effort).
+      await writeAuditLog(supabase, {
+        functionName: 'remote-checkout-approval',
+        actionType: wasAlreadyCheckedOut ? 'archive' : 'approve',
+        resourceType: 'remote_checkout_request',
+        resourceId: request_id,
+        performedByUserId: callerUserId,
+        performedByEmployeeId: approver_employee_id,
+        callerRole: callerRoleLabel,
+        metadata: {
+          source: callerSource,
+          employee_id: employee.id,
+          checkout_log_id: checkoutLogId,
+          was_already_checked_out: wasAlreadyCheckedOut,
+        },
+      });
+
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -302,6 +367,7 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+
 
     } else {
       // === REJECTION FLOW ===
@@ -407,6 +473,22 @@ serve(async (req) => {
       } catch (notifErr) {
         console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
       }
+
+      // Phase 0A.1 — structured audit log (best-effort).
+      await writeAuditLog(supabase, {
+        functionName: 'remote-checkout-approval',
+        actionType: 'reject',
+        resourceType: 'remote_checkout_request',
+        resourceId: request_id,
+        performedByUserId: callerUserId,
+        performedByEmployeeId: approver_employee_id,
+        callerRole: callerRoleLabel,
+        reason: rejection_reason ?? null,
+        metadata: {
+          source: callerSource,
+          employee_id: employee.id,
+        },
+      });
 
       return new Response(
         JSON.stringify({ 

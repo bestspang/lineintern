@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -178,14 +179,19 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let callerUserId: string | null = null;
+  let callerRoleLabel: string | null = null;
+
   try {
     // Phase 0A guard: branch-report ingest — restricted to management roles.
     try {
-      await requireRole(
+      const result = await requireRole(
         req,
         ['admin', 'owner', 'hr', 'manager', 'executive'],
         { functionName: 'import-line-chat' },
       );
+      callerUserId = result.userId;
+      callerRoleLabel = result.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -365,6 +371,25 @@ serve(async (req) => {
     }
 
     console.log(`[import-line-chat] Successfully upserted ${upsertedData?.length || 0} reports`);
+
+    // Phase 0A.1 — structured audit log (best-effort).
+    await writeAuditLog(supabase, {
+      functionName: 'import-line-chat',
+      actionType: 'import',
+      resourceType: 'branch_report',
+      performedByUserId: callerUserId,
+      callerRole: callerRoleLabel,
+      metadata: {
+        content_chars: typeof content === 'string' ? content.length : 0,
+        total_chunks: chunks.length,
+        parsed_count: allReports.length,
+        valid_count: validReports.length,
+        unique_count: uniqueReports.length,
+        inserted_count: upsertedData?.length || 0,
+        error_count: errors.length,
+        dry_run: dryRun,
+      },
+    });
 
     return new Response(
       JSON.stringify({
