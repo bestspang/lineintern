@@ -108,8 +108,8 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
     mock.queueSelect([{ ...baseDocRow, upload_status: "failed" }]);
     renderTab();
 
-    expect(await screen.findByText("Contract")).toBeInTheDocument();
-    expect(screen.getByText("อัปโหลดล้มเหลว")).toBeInTheDocument();
+    const row = (await screen.findByText("Contract")).closest("tr")!;
+    expect(within(row).getByText("อัปโหลดล้มเหลว")).toBeInTheDocument();
   });
 
   it("opens the signed URL when downloading a confirmed (uploaded) document", async () => {
@@ -182,7 +182,10 @@ describe("Employee Documents — upload → confirm → signed URL → badge", (
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
 
-    // After the refetch the failed badge should appear.
-    await waitFor(() => expect(screen.getByText("อัปโหลดล้มเหลว")).toBeInTheDocument());
+    // After the refetch the failed badge should appear inside the row.
+    await waitFor(() => {
+      const r = screen.getByText("Contract").closest("tr")!;
+      expect(within(r).getByText("อัปโหลดล้มเหลว")).toBeInTheDocument();
+    });
   });
 });
