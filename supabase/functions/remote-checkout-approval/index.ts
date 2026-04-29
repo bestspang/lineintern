@@ -455,6 +455,13 @@ serve(async (req) => {
           employee_id: employee.id,
           checkout_log_id: checkoutLogId,
           was_already_checked_out: wasAlreadyCheckedOut,
+          target_employee_id: employee.id,
+          target_role: targetRoleKey,
+          target_priority: targetPriority,
+          approver_employee_id,
+          approver_role: approverRoleKey,
+          approver_priority: approverPriority,
+          priority_check_result: priorityCheckResult,
         },
       });
 
@@ -587,6 +594,14 @@ serve(async (req) => {
         metadata: {
           source: callerSource,
           employee_id: employee.id,
+          target_employee_id: employee.id,
+          target_role: targetRoleKey,
+          target_priority: targetPriority,
+          approver_employee_id,
+          approver_role: approverRoleKey,
+          approver_priority: approverPriority,
+          priority_check_result: priorityCheckResult,
+          decision: 'reject',
         },
       });
 
