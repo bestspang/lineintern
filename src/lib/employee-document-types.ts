@@ -15,6 +15,7 @@ export type EmployeeDocumentType =
 
 export type EmployeeDocumentStatus = "active" | "expired" | "archived" | "replaced";
 export type EmployeeDocumentVisibility = "hr_only" | "employee_visible";
+export type EmployeeDocumentUploadStatus = "pending" | "uploaded" | "failed";
 
 export const DOCUMENT_TYPE_LABEL_TH: Record<EmployeeDocumentType, string> = {
   employment_contract: "สัญญาจ้าง",
@@ -62,6 +63,25 @@ export const VISIBILITY_LABEL_TH: Record<EmployeeDocumentVisibility, string> = {
   employee_visible: "พนักงานเห็นได้",
 };
 
+export const UPLOAD_STATUS_LABEL_TH: Record<EmployeeDocumentUploadStatus, string> = {
+  pending: "กำลังอัปโหลด",
+  uploaded: "อัปโหลดสำเร็จ",
+  failed: "อัปโหลดล้มเหลว",
+};
+
+/** Map structured signed-url / confirm error codes to Thai user-facing messages. */
+export const SIGNED_URL_ERROR_CODE_TH: Record<string, string> = {
+  not_found: "ไม่พบเอกสาร",
+  forbidden_visibility: "คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้",
+  forbidden_scope: "คุณไม่มีสิทธิ์เข้าถึงเอกสารของพนักงานคนนี้",
+  not_yet_uploaded: "เอกสารยังอัปโหลดไม่เสร็จ — รอสักครู่หรืออัปโหลดใหม่",
+  upload_failed: "เอกสารนี้อัปโหลดล้มเหลว — กรุณาอัปโหลดใหม่",
+  file_missing: "ไฟล์หายไปจากที่จัดเก็บ — กรุณาอัปโหลดใหม่",
+  storage_error: "เกิดข้อผิดพลาดที่ระบบจัดเก็บไฟล์",
+  document_id_required: "ระบบต้องการรหัสเอกสาร",
+  invalid_json: "คำขอไม่ถูกต้อง",
+};
+
 export const ALLOWED_MIME_TYPES = [
   "application/pdf", "image/png", "image/jpeg", "image/jpg",
   "image/webp", "image/heic", "image/heif",
@@ -82,6 +102,7 @@ export interface EmployeeDocument {
   expiry_date: string | null;
   status: EmployeeDocumentStatus;
   visibility: EmployeeDocumentVisibility;
+  upload_status: EmployeeDocumentUploadStatus;
   uploaded_by_user_id: string | null;
   uploaded_by_employee_id: string | null;
   replaced_by_document_id: string | null;

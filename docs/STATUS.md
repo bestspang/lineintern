@@ -334,3 +334,64 @@ If the browser dies between metadata insert and signed-URL upload, an `employee_
 
 ### Verdict
 **READY FOR PHASE 1B PERFORMANCE.**
+
+## Phase 1A.1 — Upload Confirm + Clearer Errors (2026-04-29)
+
+**Status: COMPLETE**
+
+### Schema
+- Added `employee_documents.upload_status text NOT NULL DEFAULT 'pending'` with check constraint `('pending','uploaded','failed')` and supporting index.
+- Backfilled all pre-existing rows to `'uploaded'`.
+- Updated employee + manager SELECT policies to require `upload_status='uploaded'` so non-HR users never see orphan rows. HR/Admin/Owner keep full visibility for cleanup.
+- Rebuilt `employee_documents_expiring` view with the same filter.
+
+### New edge function
+- `employee-document-confirm-upload` (HR/Admin/Owner): given `{document_id}`, lists the parent folder in the `employee-documents` bucket, verifies the filename exists, and flips `upload_status` to `uploaded`. Body `{document_id, failed:true, failure_reason}` marks the row `failed` for HR cleanup. Audits `upload_confirmed` / `upload_failed`.
+
+### Updated edge function — `employee-document-signed-url`
+Structured error codes (HTTP):
+- `not_found` (404) — missing doc row
+- `forbidden_visibility` (403) — non-HR tried to fetch hr_only
+- `forbidden_scope` (403) — caller not owner/in-scope
+- `not_yet_uploaded` (409) — `upload_status='pending'`
+- `upload_failed` (410) — `upload_status='failed'`
+- `file_missing` (410) — Storage object gone (auto-flips row to `failed`)
+- `storage_error` (502) — signing call failed
+
+Audit logs now include `error_code` on failure paths.
+
+### UI
+- `UploadDocumentDialog` calls the confirm endpoint after successful Storage upload. On any failure (upload OR confirm), invokes confirm with `failed:true, failure_reason` so HR sees the failed row immediately.
+- `EmployeeDocumentsTab`:
+  - New `upload_status` badge column (only visible when not `uploaded`).
+  - Status filter gains `pending_or_failed` for HR cleanup.
+  - Pending/failed rows show "ยังอัปโหลดไม่เสร็จ" / "อัปโหลดล้มเหลว" instead of a download icon; the existing Archive button doubles as "ลบรายการที่ค้าง".
+  - Download errors map structured codes → Thai toasts via `SIGNED_URL_ERROR_CODE_TH`.
+- `EmployeeDocuments` admin page: default query restricts to `upload_status='uploaded'`; status select gains `pending_or_failed` for cross-employee cleanup.
+
+### Untouched
+- `claim_attendance_token`, attendance-submit, attendance-validate-token, line-webhook, payroll, points, leave/OT, portal check-in.
+- `employee-document-archive`, `employee-document-replace`.
+- HR/Admin RLS (`admin_hr_manage_all`).
+
+### Files changed
+- Migration `<ts>_employee_documents_upload_status` (column + RLS + view rebuild)
+- `supabase/functions/employee-document-confirm-upload/index.ts` (new)
+- `supabase/functions/employee-document-signed-url/index.ts` (structured codes + storage existence check)
+- `src/lib/employee-document-types.ts` (new types + label maps)
+- `src/components/employee-documents/UploadDocumentDialog.tsx`
+- `src/components/employee-documents/EmployeeDocumentsTab.tsx`
+- `src/pages/attendance/EmployeeDocuments.tsx`
+- `docs/STATUS.md`
+
+### Manual verification checklist
+1. Upload → row `pending` → flips `uploaded` after confirm; audit `upload_confirmed`.
+2. Cancel upload mid-flight → row `failed`; HR sees red badge; `upload_failed` audit.
+3. HR clicks Archive on failed row → archived; hidden from default list.
+4. Download `pending` row (HR) → 409 `not_yet_uploaded` → toast: "เอกสารยังอัปโหลดไม่เสร็จ — รอสักครู่หรืออัปโหลดใหม่".
+5. Manually delete a Storage object → download → 410 `file_missing` → row auto-flipped to `failed` → toast: "ไฟล์หายไปจากที่จัดเก็บ".
+6. Employee downloads own `uploaded` `employee_visible` doc → still works (regression).
+7. Employee never sees `pending`/`failed` rows in their own list (RLS filter).
+
+### Verdict
+**READY FOR PHASE 1B PERFORMANCE.** Phase 1A.1 closed.

@@ -20,12 +20,13 @@ import {
 } from "@/lib/employee-document-types";
 
 type ExpiryWindow = "all" | "expired" | "30d" | "60d" | "90d";
+type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
 
 export default function EmployeeDocuments() {
   const [search, setSearch] = useState("");
   const [branchId, setBranchId] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<EmployeeDocumentStatus | "active_only">("active_only");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active_only");
   const [expiryWindow, setExpiryWindow] = useState<ExpiryWindow>("all");
 
   const { data: branches = [] } = useQuery({
@@ -45,8 +46,13 @@ export default function EmployeeDocuments() {
         .order("expiry_date", { ascending: true, nullsFirst: false });
 
       if (typeFilter !== "all") q = q.eq("document_type", typeFilter);
-      if (statusFilter === "active_only") q = q.neq("status", "archived");
-      else q = q.eq("status", statusFilter);
+      if (statusFilter === "active_only") {
+        q = q.neq("status", "archived").eq("upload_status", "uploaded");
+      } else if (statusFilter === "pending_or_failed") {
+        q = q.in("upload_status", ["pending", "failed"]);
+      } else {
+        q = q.eq("status", statusFilter);
+      }
       if (branchId !== "all") q = q.eq("employees.branch_id", branchId);
       if (search.trim()) q = q.ilike("title", `%${search.trim()}%`);
 
@@ -110,6 +116,7 @@ export default function EmployeeDocuments() {
             <SelectItem value="archived">เก็บถาวร</SelectItem>
             <SelectItem value="replaced">ถูกแทนที่</SelectItem>
             <SelectItem value="expired">หมดอายุ</SelectItem>
+            <SelectItem value="pending_or_failed">อัปโหลดค้าง / ล้มเหลว</SelectItem>
           </SelectContent>
         </Select>
         <Select value={expiryWindow} onValueChange={(v) => setExpiryWindow(v as ExpiryWindow)}>

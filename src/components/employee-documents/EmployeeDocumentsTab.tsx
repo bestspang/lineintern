@@ -21,8 +21,12 @@ import { format, differenceInCalendarDays } from "date-fns";
 import { UploadDocumentDialog } from "./UploadDocumentDialog";
 import {
   DOCUMENT_TYPE_LABEL_TH, STATUS_LABEL_TH, VISIBILITY_LABEL_TH,
+  UPLOAD_STATUS_LABEL_TH, SIGNED_URL_ERROR_CODE_TH,
   type EmployeeDocument, type EmployeeDocumentType, type EmployeeDocumentStatus,
+  type EmployeeDocumentUploadStatus,
 } from "@/lib/employee-document-types";
+
+type StatusFilter = EmployeeDocumentStatus | "active_only" | "pending_or_failed";
 
 interface Props { employeeId: string; }
 
@@ -32,7 +36,7 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
   const [replaceOldId, setReplaceOldId] = useState<string | undefined>();
   const [archiveTarget, setArchiveTarget] = useState<EmployeeDocument | null>(null);
   const [typeFilter, setTypeFilter] = useState<EmployeeDocumentType | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<EmployeeDocumentStatus | "active_only">("active_only");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active_only");
   const [search, setSearch] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
@@ -47,8 +51,13 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
         .order("created_at", { ascending: false });
 
       if (typeFilter !== "all") q = q.eq("document_type", typeFilter);
-      if (statusFilter === "active_only") q = q.neq("status", "archived");
-      else q = q.eq("status", statusFilter);
+      if (statusFilter === "active_only") {
+        q = q.neq("status", "archived").eq("upload_status", "uploaded");
+      } else if (statusFilter === "pending_or_failed") {
+        q = q.in("upload_status", ["pending", "failed"]);
+      } else {
+        q = q.eq("status", statusFilter);
+      }
       if (search.trim()) q = q.ilike("title", `%${search.trim()}%`);
 
       const { data, error } = await q;
@@ -69,13 +78,25 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
       const { data, error } = await supabase.functions.invoke("employee-document-signed-url", {
         body: { document_id: doc.id },
       });
-      if (error || !data?.success) throw new Error(data?.error || error?.message || "ไม่สามารถสร้างลิงก์");
+      if (error || !data?.success) {
+        const code = data?.error || error?.message || "";
+        const msg = SIGNED_URL_ERROR_CODE_TH[code] || code || "ไม่สามารถสร้างลิงก์";
+        // For file_missing/upload_failed the row state changed — refresh the list.
+        if (code === "file_missing" || code === "upload_failed") refetch();
+        throw new Error(msg);
+      }
       window.open(data.signed_url, "_blank", "noopener,noreferrer");
     } catch (e: any) {
       toast.error(e.message || "ดาวน์โหลดล้มเหลว");
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const uploadStatusBadge = (s: EmployeeDocumentUploadStatus) => {
+    if (s === "uploaded") return null;
+    const variant = s === "failed" ? "destructive" : "outline";
+    return <Badge variant={variant as any}>{UPLOAD_STATUS_LABEL_TH[s]}</Badge>;
   };
 
   const archiveDoc = async () => {
@@ -143,6 +164,7 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
             <SelectItem value="archived">เก็บถาวร</SelectItem>
             <SelectItem value="replaced">ถูกแทนที่</SelectItem>
             <SelectItem value="expired">หมดอายุ</SelectItem>
+            <SelectItem value="pending_or_failed">อัปโหลดค้าง / ล้มเหลว</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -184,22 +206,35 @@ export function EmployeeDocumentsTab({ employeeId }: Props) {
                     {VISIBILITY_LABEL_TH[d.visibility]}
                   </Badge>
                 </TableCell>
-                <TableCell>{statusBadge(d.status)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1 items-start">
+                    {statusBadge(d.status)}
+                    {uploadStatusBadge(d.upload_status)}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => downloadDoc(d)} disabled={downloadingId === d.id}>
-                    {downloadingId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  </Button>
+                  {d.upload_status === "uploaded" ? (
+                    <Button size="sm" variant="ghost" onClick={() => downloadDoc(d)} disabled={downloadingId === d.id} title="ดาวน์โหลด">
+                      {downloadingId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground mr-2">
+                      {d.upload_status === "pending" ? "ยังอัปโหลดไม่เสร็จ" : "อัปโหลดล้มเหลว"}
+                    </span>
+                  )}
                   {d.status !== "archived" && d.status !== "replaced" && (
                     <>
-                      <Button
-                        size="sm" variant="ghost"
-                        onClick={() => { setReplaceOldId(d.id); setUploadOpen(true); }}
-                        title="แทนที่ด้วยเอกสารใหม่"
-                      ><Replace className="h-4 w-4" /></Button>
+                      {d.upload_status === "uploaded" && (
+                        <Button
+                          size="sm" variant="ghost"
+                          onClick={() => { setReplaceOldId(d.id); setUploadOpen(true); }}
+                          title="แทนที่ด้วยเอกสารใหม่"
+                        ><Replace className="h-4 w-4" /></Button>
+                      )}
                       <Button
                         size="sm" variant="ghost"
                         onClick={() => setArchiveTarget(d)}
-                        title="เก็บถาวร"
+                        title={d.upload_status === "uploaded" ? "เก็บถาวร" : "ลบรายการที่ค้าง"}
                       ><Archive className="h-4 w-4" /></Button>
                     </>
                   )}

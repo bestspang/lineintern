@@ -54,18 +54,18 @@ Deno.serve(async (req) => {
 
   const { data: doc, error: dErr } = await supabase
     .from("employee_documents")
-    .select("id, employee_id, file_path, file_name, file_mime_type, visibility, status, document_type")
+    .select("id, employee_id, file_path, file_name, file_mime_type, visibility, status, document_type, upload_status")
     .eq("id", documentId)
     .maybeSingle();
 
-  if (dErr || !doc) return jsonResponse({ error: "not found" }, 404);
+  if (dErr || !doc) return jsonResponse({ error: "not_found" }, 404);
 
   const role = auth.role;
   const isHr = role === "owner" || role === "admin" || role === "hr";
 
   if (!isHr) {
     // Must be employee_visible for non-HR (blocks hr_only docs)
-    if (doc.visibility !== "employee_visible") return jsonResponse({ error: "forbidden" }, 403);
+    if (doc.visibility !== "employee_visible") return jsonResponse({ error: "forbidden_visibility" }, 403);
 
     // Step 1: resolve caller's LINE id (best-effort) so employees linked only via LINE still work.
     // PostgREST .or() does NOT evaluate SQL subqueries — must do this in two steps.
@@ -108,7 +108,47 @@ Deno.serve(async (req) => {
       allowed = !!scopeOk;
     }
 
-    if (!allowed) return jsonResponse({ error: "forbidden" }, 403);
+    if (!allowed) return jsonResponse({ error: "forbidden_scope" }, 403);
+  }
+
+  // Phase 1A.1 — surface upload state with structured codes (after auth, before signing)
+  if (doc.upload_status === "pending") {
+    return jsonResponse({ error: "not_yet_uploaded", document_id: doc.id }, 409);
+  }
+  if (doc.upload_status === "failed") {
+    return jsonResponse({ error: "upload_failed", document_id: doc.id }, 410);
+  }
+
+  // Verify the Storage object exists before signing — gives a precise code if the
+  // file was deleted or never finished. Auto-flip the row to 'failed' for cleanup.
+  const lastSlash = doc.file_path.lastIndexOf("/");
+  const folder = lastSlash > 0 ? doc.file_path.slice(0, lastSlash) : "";
+  const filename = doc.file_path.slice(lastSlash + 1);
+  const { data: listing } = await supabase
+    .storage.from("employee-documents")
+    .list(folder, { limit: 100, search: filename });
+  const objectExists = (listing ?? []).some((o) => o.name === filename);
+  if (!objectExists) {
+    await supabase
+      .from("employee_documents")
+      .update({ upload_status: "failed" })
+      .eq("id", doc.id)
+      .eq("upload_status", "uploaded"); // only flip if it was previously claimed uploaded
+    await writeAuditLog(supabase, {
+      functionName: "employee-document-signed-url",
+      actionType: "view",
+      resourceType: "employee_document",
+      resourceId: doc.id,
+      performedByUserId: auth.userId,
+      callerRole: role ?? undefined,
+      metadata: {
+        employee_id: doc.employee_id,
+        document_type: doc.document_type,
+        visibility: doc.visibility,
+        error_code: "file_missing",
+      },
+    });
+    return jsonResponse({ error: "file_missing", document_id: doc.id }, 410);
   }
 
   const { data: signed, error: sErr } = await supabase
@@ -117,7 +157,23 @@ Deno.serve(async (req) => {
       download: doc.file_name,
     });
 
-  if (sErr || !signed) return jsonResponse({ error: "could not sign url", detail: sErr?.message }, 500);
+  if (sErr || !signed) {
+    await writeAuditLog(supabase, {
+      functionName: "employee-document-signed-url",
+      actionType: "view",
+      resourceType: "employee_document",
+      resourceId: doc.id,
+      performedByUserId: auth.userId,
+      callerRole: role ?? undefined,
+      metadata: {
+        employee_id: doc.employee_id,
+        document_type: doc.document_type,
+        error_code: "storage_error",
+        detail: sErr?.message,
+      },
+    });
+    return jsonResponse({ error: "storage_error", detail: sErr?.message }, 502);
+  }
 
   await writeAuditLog(supabase, {
     functionName: "employee-document-signed-url",

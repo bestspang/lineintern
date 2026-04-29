@@ -1,105 +1,152 @@
 
-# Phase 1A QA Patch — Employee Documents
+# Phase 1A.1 — Upload Confirm + Clearer Signed-URL Errors
 
-Read-only review complete. One real bug found, one documented risk. Scope strictly limited to Phase 1A files. No protected systems touched.
+Adds an upload-confirmation step so failed Storage uploads no longer leave orphan metadata rows, and surfaces structured error codes so the UI can show clear Thai messages when a file is missing, expired, or forbidden. Strictly additive. No protected systems touched.
 
-## Findings
+## Why
+Today: `employee-document-upload` inserts the row first, then returns a signed upload URL. If the browser dies mid-upload, an `employee_documents` row exists pointing at a Storage object that was never written. HR sees a phantom doc; non-HR currently can't see it (visibility is hr_only by default), so it's not a security bug — just data hygiene + bad UX when downloads fail with cryptic errors.
 
-### 1. Build / JSX / Imports — OK (no fix needed)
-- `EmployeeDetail.tsx` line 31 imports `EmployeeDocumentsTab` correctly.
-- Line 688 uses **valid** JSX comment: `{/* Phase 1A — Employee Documents */}`. The malformed `{/ ... /}` form does **not** exist in the file.
-- All four edge functions, the dialog, the tab, the page, and `lib/employee-document-types.ts` are present.
-- Will run `npm run build` + `npm run smoke:quick` in build mode to confirm; no code change expected from this task.
+## Changes (8 files, 1 new edge function, 1 migration)
 
-### 2. signed-url ownership query — REAL BUG (must fix)
-File: `supabase/functions/employee-document-signed-url/index.ts` line 74
+### 1. Migration — add `upload_status` column
+File: `supabase/migrations/<ts>_employee_documents_upload_status.sql`
 
-```ts
-.or(`auth_user_id.eq.${auth.userId},line_user_id.in.(select line_user_id from users where id = '${auth.userId}')`)
+```sql
+ALTER TABLE public.employee_documents
+  ADD COLUMN IF NOT EXISTS upload_status text NOT NULL DEFAULT 'pending';
+
+-- Backfill existing Phase 1A rows so they remain visible
+UPDATE public.employee_documents
+SET upload_status = 'uploaded'
+WHERE upload_status = 'pending' AND created_at < now();
+
+ALTER TABLE public.employee_documents
+  ADD CONSTRAINT employee_documents_upload_status_chk
+  CHECK (upload_status IN ('pending','uploaded','failed'));
+
+CREATE INDEX IF NOT EXISTS idx_employee_documents_upload_status
+  ON public.employee_documents(upload_status);
+
+-- Tighten employee/manager visibility — must not see orphan rows.
+-- HR/Admin keep full visibility via existing admin_hr_manage_all so they
+-- can still see and clean up pending/failed uploads.
+DROP POLICY IF EXISTS "employee_view_own_visible" ON public.employee_documents;
+CREATE POLICY "employee_view_own_visible"
+ON public.employee_documents FOR SELECT TO authenticated
+USING (
+  visibility = 'employee_visible'
+  AND status <> 'archived'
+  AND upload_status = 'uploaded'
+  AND employee_id IN (
+    SELECT e.id FROM public.employees e
+    WHERE e.auth_user_id = auth.uid()
+       OR e.line_user_id IN (SELECT u.line_user_id FROM public.users u WHERE u.id = auth.uid())
+  )
+);
+
+DROP POLICY IF EXISTS "manager_view_scoped_visible" ON public.employee_documents;
+CREATE POLICY "manager_view_scoped_visible"
+ON public.employee_documents FOR SELECT TO authenticated
+USING (
+  visibility = 'employee_visible'
+  AND status <> 'archived'
+  AND upload_status = 'uploaded'
+  AND public.can_view_employee_by_priority(auth.uid(), employee_id)
+);
+
+CREATE OR REPLACE VIEW public.employee_documents_expiring AS
+SELECT ed.*, (ed.expiry_date - CURRENT_DATE) AS days_until_expiry
+FROM public.employee_documents ed
+WHERE ed.status = 'active' AND ed.upload_status = 'uploaded'
+  AND ed.expiry_date IS NOT NULL
+ORDER BY ed.expiry_date ASC;
 ```
 
-PostgREST does **not** evaluate SQL subqueries inside `.or()`. The `select ...` text is parsed as a literal value list, so the `line_user_id.in.(...)` branch silently never matches. Worse, this couples a user-controlled-shape filter with raw interpolation. Result today: employees linked **only via LINE** (no `auth_user_id`) cannot fetch their own visible documents — falls through to 403.
+Backfill is non-destructive — sets every existing Phase 1A row to `uploaded`. New rows default to `pending`.
 
-**Fix (two-step, no behavior weakening):**
+### 2. New edge function — `employee-document-confirm-upload`
+File: `supabase/functions/employee-document-confirm-upload/index.ts`
+
+- HR/Admin/Owner only (`requireRole(["owner","admin","hr"])`).
+- Body: `{ document_id: string, failed?: boolean, failure_reason?: string }`.
+- If `failed: true` → set `upload_status='failed'`, audit `upload_failed`, return 200.
+- Else: list the parent folder in `employee-documents` bucket, check the filename exists.
+  - Object missing → return `{ error: "file_missing" }` HTTP 410, leave row `pending` so a retry can still complete.
+  - Object exists → set `upload_status='uploaded'`, audit `upload_confirmed`, return 200.
+- Uses `supabase.storage.from(...).list(folder, { search: filename })` — does not download bytes.
+
+### 3. `employee-document-upload` — no behavioral change
+Row is inserted with the new column defaulting to `pending`. No code change needed — the column default does the work. (We deliberately do not flip to `uploaded` here, so the confirm step is the single source of truth.)
+
+### 4. `employee-document-signed-url` — structured error codes
+Replace ad-hoc strings with stable codes so the UI can map them:
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `not_found` | 404 | Document row does not exist |
+| `forbidden_visibility` | 403 | Non-HR tried to fetch hr_only |
+| `forbidden_scope` | 403 | Caller is neither owner nor in scope |
+| `not_yet_uploaded` | 409 | `upload_status = 'pending'` (HR-only path) |
+| `upload_failed` | 410 | `upload_status = 'failed'` |
+| `file_missing` | 410 | Storage object gone |
+| `storage_error` | 502 | Signing call failed |
+
+Implementation notes:
+- For non-HR callers, RLS + the `upload_status='uploaded'` filter mean they will never see pending/failed rows in the table — but the edge function uses service role, so add an explicit early check after the visibility/ownership gate:
+  - If `upload_status === 'pending'` → 409 `not_yet_uploaded` (HR sees this).
+  - If `upload_status === 'failed'` → 410 `upload_failed`.
+- Before signing, do the same `list()` existence check used by confirm. If missing → 410 `file_missing` (also auto-flip the row to `failed` so it's visible in the cleanup view).
+- Audit metadata gains `error_code` on failure paths so `audit_logs` records why a download failed.
+
+### 5. `UploadDocumentDialog.tsx` — call confirm after upload
+After a successful `uploadToSignedUrl`:
 
 ```ts
-// Resolve LINE id from auth user (best-effort)
-const { data: linkedUser } = await supabase
-  .from("users")
-  .select("line_user_id")
-  .eq("id", auth.userId)
-  .maybeSingle();
-const lineUserId = linkedUser?.line_user_id ?? null;
-
-// Find an employee row matching this caller AND owning this document
-let ownEmp: { id: string } | null = null;
-{
-  const q = supabase
-    .from("employees")
-    .select("id")
-    .eq("id", doc.employee_id);
-  const { data } = lineUserId
-    ? await q.or(`auth_user_id.eq.${auth.userId},line_user_id.eq.${lineUserId}`).maybeSingle()
-    : await q.eq("auth_user_id", auth.userId).maybeSingle();
-  ownEmp = data ?? null;
-}
-
-let allowed = !!ownEmp;
-if (!allowed && (role === "manager" || role === "executive" || role === "moderator")) {
-  const { data: scopeOk } = await supabase.rpc("can_view_employee_by_priority", {
-    viewer_user_id: auth.userId,
-    target_employee_id: doc.employee_id,
-  });
-  allowed = !!scopeOk;
-}
-if (!allowed) return jsonResponse({ error: "forbidden" }, 403);
+await supabase.functions.invoke("employee-document-confirm-upload", {
+  body: { document_id: meta.document_id },
+});
 ```
 
-Preserved invariants:
-- Non-HR still blocked from `hr_only` (early `visibility !== 'employee_visible'` check kept).
-- Employee A still cannot fetch employee B's docs (filter `id = doc.employee_id`).
-- Manager priority gate unchanged (`can_view_employee_by_priority`).
-- HR/Admin/Owner short-circuit unchanged.
-- `auth.userId` is a UUID from JWT validation in `requireRole`, but we still use `.or()` with parameter syntax — no raw SQL, no subquery, no injection surface.
+If `uploadToSignedUrl` throws OR the confirm call returns an error: invoke confirm with `{ document_id, failed: true, failure_reason: errMsg }` so HR can see the failed row and decide whether to retry or delete. Toast shows: "อัปโหลดล้มเหลว — เอกสารถูกทำเครื่องหมายว่าล้มเหลว".
 
-### 3. Upload-failure orphan rows — DOCUMENT AS RISK (defer)
-Current flow: insert metadata row → return signed upload URL → client uploads to Storage. If the browser dies between step 2 and step 3, a metadata row exists with no Storage object.
+### 6. `EmployeeDocumentsTab.tsx` — clearer download errors + status surfacing
+- Map signed-url error codes to Thai toasts:
+  - `file_missing` / `upload_failed` → "ไฟล์หาย หรือยังอัปโหลดไม่สำเร็จ — กรุณาอัปโหลดใหม่"
+  - `not_yet_uploaded` → "เอกสารยังอัปโหลดไม่เสร็จ — รอสักครู่หรืออัปโหลดใหม่"
+  - `forbidden_visibility` / `forbidden_scope` → "คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้"
+  - `not_found` → "ไม่พบเอกสาร"
+  - default → existing message
+- Add an `upload_status` badge column (visible to HR only — non-HR rows are filtered by RLS so they never see non-`uploaded`):
+  - `pending` → outline badge "กำลังอัปโหลด"
+  - `failed` → destructive badge "อัปโหลดล้มเหลว"
+- Add a status filter option `pending_or_failed` for HR cleanup.
+- For `failed`/`pending` rows, replace the Download button with a "ลบรายการที่ค้าง" button that calls `employee-document-archive` (already exists, soft-deletes) so HR can clean up without a new endpoint.
 
-**Decision: Option B (defer to Phase 1A.1).**
-Rationale:
-- Adding `upload_status` + a confirm function touches the schema, the upload edge fn, the dialog, the tab list filter, the admin page filter, and the signed-url fn. That is no longer a "QA patch" — it is a feature change with regression risk on a freshly shipped module.
-- Existing rollback already covers the most common failure (signed-URL creation itself failing — we delete the row).
-- Orphan rows are HR-visible (`hr_only` default) and cause a clean "file not found" on signed-URL fetch, not a security issue.
+### 7. `EmployeeDocuments.tsx` (admin cross-employee page)
+- Default query adds `.eq("upload_status", "uploaded")` so HR sees only real docs by default.
+- Add an "อัปโหลดล้างค้าง" filter chip (HR-only) that flips it to show pending/failed rows for cleanup.
 
-Will document in `docs/STATUS.md` as **Phase 1A.1 Risk** with proposed remediation:
-- Add `upload_status text NOT NULL DEFAULT 'pending'` (`pending|uploaded|failed`).
-- Add `employee-document-confirm-upload` function (HR/admin/owner) that verifies the Storage object exists then sets `uploaded`.
-- List/expiring queries filter `upload_status = 'uploaded'`.
-- Nightly cleanup cron deletes `pending` rows older than 24 h.
+### 8. `src/lib/employee-document-types.ts`
+- Add `upload_status: "pending" | "uploaded" | "failed"` to `EmployeeDocument`.
+- Add `UPLOAD_STATUS_LABEL_TH` map.
+- Add `SIGNED_URL_ERROR_CODE_TH` map for the 7 error codes above.
 
-### 4. Manual security checklist — to verify after deploy
-Cannot execute in plan mode. Will add the 10-item checklist to `docs/STATUS.md` and walk through it during the patch:
-1. HR uploads `hr_only` contract → row + object created, audit `upload`.
-2. HR fetches signed URL → 200, audit `view`.
-3. Employee A (own) fetches `hr_only` → 403 (visibility gate).
-4. Employee A fetches own `employee_visible` → 200 (after fix).
-5. Employee B fetches A's `employee_visible` → 403 (`id = doc.employee_id` mismatch).
-6. Manager in scope fetches `employee_visible` → 200 via priority RPC.
-7. Manager fetches `hr_only` → 403 (visibility gate).
-8. Archive: `status='archived'` excluded from default tab list & employee/manager RLS.
-9. Replace: old row `status='replaced'`, `replaced_by_document_id` set.
-10. `audit_logs` rows present for `upload`, `view`, `archive`, `replace`.
+## What stays untouched
+- `claim_attendance_token`, attendance-submit, attendance-validate-token.
+- `line-webhook`, Bangkok timezone helpers.
+- Payroll math, point ledger, leave/OT approval.
+- Portal check-in/check-out flow.
+- `employee-document-archive`, `employee-document-replace` — unchanged behavior.
+- Existing RLS policies for HR/Admin (`admin_hr_manage_all`) — kept as-is so HR can still see and act on pending/failed rows.
 
-## Files to change
-1. `supabase/functions/employee-document-signed-url/index.ts` — replace lines 71–89 with safe two-step ownership query.
-2. `docs/STATUS.md` — append Phase 1A QA Patch section with build/smoke results, fix summary, manual checklist, and Phase 1A.1 risk note.
-
-## Will NOT change
-- Any line-webhook, attendance, payroll, points, leave/OT, portal check-in, or Bangkok timezone code.
-- Schema (`employee_documents` table untouched).
-- Storage policies.
-- RLS on `employee_documents` (the SQL `IN (SELECT …)` in the RLS policy is real SQL inside a Postgres policy — it works correctly; only the PostgREST `.or()` string was broken).
-- `employee-document-upload`, `-archive`, `-replace`, the React tab, dialog, or admin page.
+## Manual verification checklist (post-deploy)
+1. Upload a file → row created `pending` → upload succeeds → confirm called → row flips `uploaded` → audit `upload_confirmed`.
+2. Cancel upload mid-flight → confirm called with `failed:true` → row `failed` → HR sees red badge.
+3. HR clicks "ลบรายการที่ค้าง" on a failed row → archived, hidden from default list.
+4. HR tries to download a `pending` row → 409 `not_yet_uploaded` → clear toast.
+5. Manually delete a Storage object then download → 410 `file_missing` → row auto-flipped to `failed` → clear toast.
+6. Employee tries to download own `employee_visible` `uploaded` doc → still works (regression check).
+7. Employee tries to download own `pending` doc → row not visible via RLS, signed-url returns 409 → clear toast.
 
 ## Verdict path
-After applying the one-file fix and confirming `npm run build` + `npm run smoke:quick` pass: **READY FOR PHASE 1B PERFORMANCE**, with Phase 1A.1 (upload confirm) tracked as a non-blocking follow-up.
+After approval and apply: Phase 1A.1 closed, Phase 1B Performance unblocked.
