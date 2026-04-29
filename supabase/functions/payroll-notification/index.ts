@@ -112,8 +112,12 @@ serve(async (req) => {
   try {
     // Phase 0A: HTTP-invoked path requires admin/owner/hr.
     // Cron path (if any is added later) should set CRON_SECRET and short-circuit before this.
+    let callerUserId: string | null = null;
+    let callerRole: string | null = null;
     try {
-      await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payroll-notification' });
+      const r = await requireRole(req, ['admin', 'owner', 'hr'], { functionName: 'payroll-notification' });
+      callerUserId = r.userId;
+      callerRole = r.role;
     } catch (e) {
       const r = authzErrorResponse(e, corsHeaders);
       if (r) return r;
@@ -236,6 +240,25 @@ serve(async (req) => {
     }
 
     console.log(`[payroll-notification] Results: sent=${results.sent}, failed=${results.failed}, skipped=${results.skipped}`);
+
+    // Phase 0B — best-effort audit (counts only, no per-employee amounts).
+    await writeAuditLog(supabase, {
+      functionName: 'payroll-notification',
+      actionType: 'send',
+      resourceType: 'payroll_notification',
+      resourceId: period_id,
+      performedByUserId: callerUserId,
+      callerRole,
+      metadata: {
+        period_id,
+        total: results.total,
+        sent: results.sent,
+        failed: results.failed,
+        skipped: results.skipped,
+        targeted_employee_count: employee_ids?.length ?? null,
+        source: 'admin_ui',
+      },
+    });
 
     return new Response(
       JSON.stringify({ success: true, results }),
