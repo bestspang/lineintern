@@ -46,6 +46,66 @@ function readSafe(p) {
 }
 
 // ───────────────────────────────────────────────────────────
+// Helper: extract all real routes from App.tsx, resolving nested
+// <Routes> blocks under parent paths like "/portal/*".
+// ───────────────────────────────────────────────────────────
+function extractAllRoutes(app) {
+  // Match all <Route path="..."> occurrences in declaration order.
+  const tokens = [...app.matchAll(/<Route\s+path=["']([^"']+)["']/g)].map(m => ({
+    path: m[1],
+    idx: m.index,
+  }));
+
+  // Identify "parent wrappers" — paths that end with "/*" — and find their
+  // child <Route>s by checking which subsequent paths fall before the parent's
+  // closing element. We approximate by tracking parent until we see the next
+  // top-level parent (also ending in /*) at column ≤ parent column.
+  // Simpler heuristic: any route after a "/parent/*" entry whose path starts
+  // with "/" relative AND is indented deeper is a child of that parent.
+
+  const resolved = new Set();
+  let currentParent = "";
+  let currentParentIndent = -1;
+
+  const lines = app.split("\n");
+  // Build index of each route's line number
+  const lineOf = (idx) => app.slice(0, idx).split("\n").length - 1;
+
+  for (const { path, idx } of tokens) {
+    const lineNum = lineOf(idx);
+    const indent = lines[lineNum].match(/^\s*/)[0].length;
+
+    // Did we leave the current parent? (indent ≤ parent indent and path != child of parent)
+    if (currentParent && indent <= currentParentIndent) {
+      currentParent = "";
+      currentParentIndent = -1;
+    }
+
+    if (path.endsWith("/*")) {
+      // Register as parent. Also resolve the wildcard itself for "raw" listing.
+      currentParent = path.replace(/\/\*$/, "");
+      currentParentIndent = indent;
+      resolved.add(path);
+      continue;
+    }
+
+    // If we're inside a parent wrapper, prepend it.
+    if (currentParent && path.startsWith("/")) {
+      // Avoid double-prefixing if the path already includes parent
+      if (!path.startsWith(currentParent + "/") && path !== currentParent) {
+        // Strip leading "/" then join
+        const child = path === "/" ? "" : path;
+        resolved.add(currentParent + child);
+        continue;
+      }
+    }
+    resolved.add(path);
+  }
+
+  return resolved;
+}
+
+// ───────────────────────────────────────────────────────────
 // Check 1: App.tsx routes ↔ registry-snapshot.json
 // ───────────────────────────────────────────────────────────
 function check1_routesVsSnapshot() {
@@ -57,37 +117,39 @@ function check1_routesVsSnapshot() {
   }
   const snap = JSON.parse(snapRaw);
 
-  // Extract <Route path="..."> from App.tsx
-  const routeRegex = /<Route\s+path=["']([^"']+)["']/g;
-  const found = new Set();
-  let m;
-  while ((m = routeRegex.exec(app)) !== null) {
-    found.add(m[1]);
-  }
+  const found = extractAllRoutes(app);
 
   // Strip dynamic params for comparison
-  const norm = (p) => p.replace(/\/:\w+/g, "/:id");
+  const norm = (p) => p.replace(/\/:\w+/g, "/:id").replace(/\/\*$/, "");
   const declared = new Set([...snap.admin_routes, ...snap.portal_routes].map(norm));
+  // Snapshot lists "/portal/" with trailing slash — also accept without
+  declared.forEach(p => declared.add(p.replace(/\/$/, "")));
 
-  // Routes in App.tsx but not in snapshot (excluding error/auth/wildcard/index)
-  const ignoredPrefixes = ["/auth", "/reset-password", "*", "/employee-menu", "/network-error", "/server-error", "/session-expired", "/portal", "/p/"];
-  const driftMissingFromSnapshot = [...found]
+  // Ignored: auth + error + wildcard + non-app paths
+  const ignoredExact = new Set(["*", "/", "/auth", "/reset-password",
+    "/error/network", "/error/server", "/error/session-expired",
+    "/employee-menu/:token", "/employee-menu", "/p/:token", "/checkin/:token"]);
+  const ignoredPrefixes = ["/error/", "/employee-menu", "/p/", "/checkin/"];
+
+  const drift = [...found]
     .map(norm)
-    .filter(r => !declared.has(r))
-    .filter(r => !ignoredPrefixes.some(p => r === p || r.startsWith(p + "/")))
-    .filter(r => r !== "" && r !== "/");
+    .filter(r => r && r !== "")
+    .filter(r => !declared.has(r) && !declared.has(r.replace(/\/$/, "")))
+    .filter(r => !ignoredExact.has(r))
+    .filter(r => !ignoredPrefixes.some(p => r.startsWith(p)));
 
-  if (driftMissingFromSnapshot.length === 0) {
-    record("C1", "App.tsx routes ↔ registry-snapshot.json", "PASS", `${found.size} routes scanned`);
+  if (drift.length === 0) {
+    record("C1", "App.tsx routes ↔ registry-snapshot.json", "PASS",
+      `${found.size} route(s) scanned, ${declared.size} declared`);
   } else {
     record("C1", "App.tsx routes ↔ registry-snapshot.json", "WARN",
-      `${driftMissingFromSnapshot.length} route(s) in App.tsx not in snapshot`,
-      driftMissingFromSnapshot);
+      `${drift.length} route(s) in App.tsx not in snapshot — add via update_protocol`,
+      drift);
   }
 }
 
 // ───────────────────────────────────────────────────────────
-// Check 2: portal-actions.ts paths ↔ App.tsx routes
+// Check 2: portal-actions.ts paths ↔ App.tsx routes (resolved)
 // ───────────────────────────────────────────────────────────
 function check2_portalActionsVsRoutes() {
   const app = readSafe("src/App.tsx");
@@ -102,13 +164,14 @@ function check2_portalActionsVsRoutes() {
   let m;
   while ((m = pathRegex.exec(actions)) !== null) declaredPaths.add(m[1]);
 
-  // Routes in App.tsx that start with /portal
-  const routeRegex = /<Route\s+path=["'](\/portal[^"']*)["']/g;
-  const realRoutes = new Set();
-  while ((m = routeRegex.exec(app)) !== null) realRoutes.add(m[1]);
+  const realRoutes = extractAllRoutes(app);
+  // normalize trailing slash
+  const realNorm = new Set([...realRoutes].map(r => r.replace(/\/$/, "")));
 
-  // Strip /portal prefix sometimes; check if exact match exists
-  const drift = [...declaredPaths].filter(p => !realRoutes.has(p));
+  const drift = [...declaredPaths].filter(p => {
+    const norm = p.replace(/\/$/, "");
+    return !realNorm.has(norm);
+  });
 
   if (drift.length === 0) {
     record("C2", "portal-actions.ts paths ↔ App.tsx routes", "PASS",
