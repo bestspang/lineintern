@@ -24,7 +24,10 @@ import {
 import {
   Loader2, FileText, Plus, RefreshCw, Download as DownloadIcon,
   LayoutGrid, List, SlidersHorizontal, AlertCircle, RotateCcw, Columns3,
+  WifiOff, ChevronDown, ChevronUp, ShieldAlert, ServerCrash, Clock,
 } from "lucide-react";
+import { toast } from "sonner";
+import { describeDocError, type FriendlyError } from "@/lib/employee-document-errors";
 import { format, differenceInCalendarDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
