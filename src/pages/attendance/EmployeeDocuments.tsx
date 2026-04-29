@@ -214,7 +214,7 @@ export default function EmployeeDocuments() {
   const {
     data: pageData,
     isLoading, isFetching, error, refetch, dataUpdatedAt,
-    fetchNextPage, hasNextPage, isFetchingNextPage,
+    fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError,
   } = useInfiniteQuery({
     queryKey: [
       "all-employee-documents-v2",
