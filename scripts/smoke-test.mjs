@@ -343,19 +343,50 @@ function testRegistrySync() {
     return;
   }
   const appSrc = readFileSync(appPath, "utf8");
-  // Capture path="..." that does NOT start with /portal, /liff, /auth, /error, /employee-menu, /attendance (root mobile redirect), /reset-password, /p/, * (wildcard)
-  const routeMatches = [...appSrc.matchAll(/<Route\s+path="(\/[^"*][^"]*)"/g)].map(m => m[1]);
+  // Detect the line range of the /portal/* nested block — routes inside it are
+  // portal pages even if their path attribute doesn't start with /portal.
+  const lines = appSrc.split("\n");
+  let portalBlockStart = -1, portalBlockEnd = -1, depth = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (portalBlockStart === -1 && /<Route\s+path="\/portal\/\*"/.test(lines[i])) {
+      portalBlockStart = i;
+      depth = 0;
+      continue;
+    }
+    if (portalBlockStart !== -1 && portalBlockEnd === -1) {
+      // Track open/close of <Route> tags to find the matching </Route> for portal/*
+      const opens = (lines[i].match(/<Route(\s|>)/g) || []).length;
+      const closes = (lines[i].match(/<\/Route>/g) || []).length;
+      depth += opens - closes;
+      if (depth < 0) { portalBlockEnd = i; break; }
+    }
+  }
+
+  // Capture path="..." with line numbers
+  const routesWithLine = [];
+  const routeRegex = /<Route\s+path="(\/[^"*][^"]*)"/g;
+  for (let i = 0; i < lines.length; i++) {
+    let m; const lineRe = new RegExp(routeRegex.source, "g");
+    while ((m = lineRe.exec(lines[i])) !== null) routesWithLine.push({ path: m[1], line: i });
+  }
+
+  const isInPortalBlock = (lineNo) =>
+    portalBlockStart !== -1 && portalBlockEnd !== -1 &&
+    lineNo > portalBlockStart && lineNo < portalBlockEnd;
+
   const adminRoutes = new Set(
-    routeMatches
-      .filter(p => !p.startsWith("/portal"))
-      .filter(p => !p.startsWith("/liff"))
-      .filter(p => !p.startsWith("/p/"))
-      .filter(p => p !== "/auth")
-      .filter(p => !p.startsWith("/error"))
-      .filter(p => p !== "/employee-menu")
-      .filter(p => p !== "/reset-password")
-      .filter(p => p !== "/attendance" && p !== "/attendance/flexible-day-off") // mobile-only legacy redirects
-      .filter(p => !p.includes(":")) // skip dynamic detail pages — covered by parent
+    routesWithLine
+      .filter(r => !r.path.startsWith("/portal"))
+      .filter(r => !r.path.startsWith("/liff"))
+      .filter(r => !r.path.startsWith("/p/"))
+      .filter(r => r.path !== "/auth")
+      .filter(r => !r.path.startsWith("/error"))
+      .filter(r => r.path !== "/employee-menu")
+      .filter(r => r.path !== "/reset-password")
+      .filter(r => r.path !== "/attendance" && r.path !== "/attendance/flexible-day-off") // mobile-only legacy redirects
+      .filter(r => !r.path.includes(":")) // dynamic detail pages — covered by parent
+      .filter(r => !isInPortalBlock(r.line)) // exclude routes nested inside <Route path="/portal/*">
+      .map(r => r.path)
   );
 
   const snapshotAdmin = new Set(snapshot.admin_routes || []);
