@@ -636,16 +636,13 @@ export default function EmployeeDocuments() {
           </div>
         </Card>
 
-        {/* Error banner */}
+        {/* Error banner (friendly) */}
         {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>โหลดข้อมูลไม่สำเร็จ</AlertTitle>
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span className="truncate">{(error as any)?.message || "เกิดข้อผิดพลาด"}</span>
-              <Button size="sm" variant="outline" onClick={() => refetch()}>ลองใหม่</Button>
-            </AlertDescription>
-          </Alert>
+          <FriendlyErrorAlert
+            friendly={describeDocError(error)}
+            isRetrying={isFetching}
+            onRetry={() => refetch()}
+          />
         )}
 
         {/* Content */}
