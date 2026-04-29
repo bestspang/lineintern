@@ -1,165 +1,153 @@
+# Phase 0A finishing — 4 tasks
 
-# Phase 0A Verification & Finishing Plan
-
-Scope is strictly: verify, fix the smallest regression introduced by Phase 0A, lock down over-permissive menus/pages, document the `point-redemption` P1, finish docs, and run build + smoke. No new HR features. No webhook/attendance/timezone refactors.
-
----
-
-## 1. Findings (read-only audit complete)
-
-### 1A. Import paths — all correct
-All 17 functions import `../_shared/authz.ts` (and `../_shared/audit.ts` where audit was added) with the correct relative path. No duplicate imports, no broken `Record` usage, no malformed spread, no unused imports detected.
-
-### 1B. `_shared/authz.ts` — verified
-- Compiles under Deno edge runtime (uses `https://esm.sh/@supabase/supabase-js@2`).
-- Tries `auth.getClaims` first (signing-keys), falls back to `auth.getUser` — works with current SDK.
-- `AuthzError` carries `status` + `code`; `authzErrorResponse` returns proper JSON with cors headers.
-- Logs only `actor=<uuid>` and `role=<role>` — no PII, no secrets.
-- Handles all four failure modes (no bearer, empty bearer, invalid JWT, no role, wrong role).
-
-### 1C. `_shared/audit.ts` — verified
-- Best-effort, never throws. UUID-validates ids before insert. Clips strings to 200 chars. Masks LINE user ids.
-
-### 1D. Guarded function caller matrix
-
-| Function | Caller(s) | Caller sends user JWT? | Guard correct? | Risk |
-|---|---|---|---|---|
-| admin-response-points-rollback | `PointRules.tsx` via `invoke` | yes | admin/owner ✓ | none |
-| payslip-generator | `Payroll.tsx` via `invoke` | yes | admin/owner/hr ✓ | none |
-| payroll-notification | `Payroll.tsx` via `invoke` | yes | admin/owner/hr ✓ | none |
-| report-generator | `Summaries.tsx` via `invoke` (user) **AND** `line-webhook` (no JWT, type=`auto_summary`) | mixed | guard skipped when `type==='auto_summary'` ✓ | none |
-| backfill-primary-groups | `Users.tsx` via `invoke` | yes | admin/owner ✓ | none |
-| backfill-work-sessions | no UI caller found (operator-only) | n/a | admin/owner ✓ | none |
-| backfill-work-sessions-time-based | no UI caller found | n/a | admin/owner ✓ | none |
-| branch-report-backfill | no UI caller found | n/a | admin/owner ✓ | none |
-| fix-user-names | `Users.tsx`, `ProfileSyncHealth.tsx` via `invoke` | yes | admin/owner ✓ | none |
-| remote-checkout-approval | `portal-data` (internal, x-internal-source + service-role) | n/a | strict internal-marker check + management roles ✓ | none |
-| streak-backfill | no UI caller found | n/a | admin/owner ✓ | none |
-| response-analytics-backfill | `HistoricalAnalysis.tsx` via `invoke` | yes | admin/owner ✓ | none |
-| memory-backfill | `Memory.tsx` via `invoke` | yes | admin/owner ✓ | none |
-| dm-send | `ChatPanel.tsx` via `invoke` | yes | admin/owner/hr/manager/moderator ✓ | none |
-| broadcast-send | `Broadcast.tsx` via `invoke` | yes | admin/owner/hr ✓ | none |
-| **import-line-chat** | `BranchReportImport.tsx` via **raw fetch with `VITE_SUPABASE_PUBLISHABLE_KEY`** (NOT user JWT) | **NO** | guard requires user JWT → **WILL 401** | **regression** |
-| portal-data | unchanged auth path; only adds `x-internal-source` header on its own outbound call to remote-checkout-approval | — | unchanged | none |
-
-### 1E. The one regression to fix
-`src/pages/branch-reports/components/BranchReportImport.tsx` calls `import-line-chat` with the publishable/anon key as the bearer. After Phase 0A this returns 401 from `requireRole`. Minimal fix: switch the caller to `supabase.functions.invoke('import-line-chat', { body: { content } })` so the user's JWT is auto-attached. No edge-function change required.
-
-### 1F. Permission audit (current state, Live DB)
-- `webapp_page_config`: `user`, `manager`, `executive`, `hr`, `moderator` all have `can_access=true` for high-risk pages: `/bot-logs`, `/broadcast`, `/cron-jobs`, `/test-bot`, `/health-monitoring`, `/config-validator`, `/integrations`, `/safety-rules`, `/training`, `/memory`, `/memory-analytics`, `/personality`, `/analytics`, `/direct-messages`, `/attendance/payroll`, `/attendance/payroll-ytd`, `/attendance/happy-points`, `/attendance/point-transactions`, `/attendance/redemption-approvals`, `/settings`, `/settings/reports`.
-- `field`: only 7 pages allowed — already field-appropriate, leave alone.
-- `employee`: 0 pages — leave alone.
-- `owner` and `admin`: full access — preserve.
-
-### 1G. `point-redemption` — confirmed P1 (document only, do NOT fix in this phase)
-`supabase/functions/point-redemption/index.ts` accepts `employee_id` from the request body and performs deduction with the service role with no JWT verification, no caller↔employee linkage check, and no audit row. Anyone with the public anon key can redeem on behalf of any employee.
+Scope is strictly additive. No changes to LINE webhook, attendance tokens, Bangkok timezone helpers, or payroll calculation math.
 
 ---
 
-## 2. Changes to make (small + reversible)
+## Task 1 — Lock down `point-redemption` (P1 from STATUS.md)
 
-### 2.1 Fix `BranchReportImport.tsx` regression
-Replace the raw `fetch(...)` with `supabase.functions.invoke('import-line-chat', { body: { content } })`. Map `error` and `data` to the existing `setResult` / toast shape. No other behavior change.
+**Problem.** `supabase/functions/point-redemption/index.ts` (441 lines) reads `employee_id` from the request body with zero auth, then uses the service-role client. Anyone with the public anon key can redeem / gacha / use bag items on any employee, or approve/reject other people's redemptions.
 
-### 2.2 Permission lockdown migration (additive UPDATE only — no DELETE)
-File: `supabase/migrations/<ts>_phase_0a_permission_lockdown.sql`
+**Frontend callers (already use `supabase.functions.invoke`, JWT auto-attached):**
+- `src/pages/portal/RewardShop.tsx` — `redeem`, `redeem_to_bag`
+- `src/pages/portal/MyBag.tsx` — `use_bag_item`
+- `src/pages/portal/GachaBox.tsx` — `gacha_pull`
+- `src/pages/attendance/RedemptionApprovals.tsx` — `approve`, `reject`, `use`
 
-Pre-migration: `SELECT` snapshot of risky permissions (printed in the SQL via comment + a `RAISE NOTICE`).
+So no frontend wiring change is needed; only server-side validation.
 
-For `webapp_menu_config` and `webapp_page_config`, set `can_access = false` for the role/page combinations below. Owner and admin are never touched.
+**Server fix (additive, no business-logic change):**
 
-Page lockdown table (set `can_access=false`):
+1. Add imports for `requireRole`, `authzErrorResponse`, `writeAuditLog`.
+2. At the top of `serve(...)`, after CORS:
+   - Call `requireRole(req, ['admin','owner','hr','manager','executive','moderator','field','user','employee'], { strict: false, functionName: 'point-redemption' })` to capture `userId` + `role` without rejecting.
+   - If `userId` is null → return 401.
+3. Resolve caller's `employees.id` via `employees.auth_user_id = userId` (use service-role client).
+4. **Per-action authorization** (switch in `serve`):
+   - `redeem`, `redeem_to_bag`, `use_bag_item`, `gacha_pull`:
+     enforce `body.employee_id === caller.employee_id`. If mismatch → 403 `forbidden_employee_mismatch`. If caller has no employee record → 403.
+   - `approve`, `reject`, `use`: require `role ∈ {admin, owner, hr, manager}`. Else 403.
+5. After each successful action, call `writeAuditLog` with:
+   - `functionName: 'point-redemption'`
+   - `actionType: action` (`redeem|redeem_to_bag|approve|reject|use|use_bag_item|gacha_pull`)
+   - `resourceType: 'point_redemption'`
+   - `resourceId`: redemption id / reward id / bag item id depending on action
+   - `performedByUserId: userId`
+   - `performedByEmployeeId: caller.employee_id`
+   - `callerRole: role`
+   - `metadata: { target_employee_id, reward_id?, bag_item_id?, points?, balance_after? }`
+6. Pass the `userId` / `caller.employee_id` / `role` into the helper functions (`processRedemption`, `approveRedemption`, `rejectRedemption`, `markAsUsed`, `useBagItem`, `gachaPull`) only as needed for the audit row. Do **not** rewrite their internal logic.
+7. `gacha.ts` only needs an extra optional callback param or simply have the audit write happen in `index.ts` after `gachaPull` returns — keeps `gacha.ts` untouched (preferred).
 
-| Page path / pattern | Roles to deny |
-|---|---|
-| `/bot-logs`, `/test-bot`, `/cron-jobs`, `/health-monitoring`, `/config-validator`, `/integrations`, `/safety-rules`, `/training` | hr, manager, executive, moderator, user |
-| `/memory`, `/memory-analytics`, `/personality`, `/analytics` | hr, manager, executive, user (keep moderator only if currently used — set false everywhere except admin/owner) |
-| `/broadcast`, `/direct-messages` | executive, manager, moderator, user (keep hr — broadcast/dm allowed for hr) |
-| `/attendance/payroll`, `/attendance/payroll-ytd` | manager, executive, moderator, user (keep hr) |
-| `/attendance/happy-points`, `/attendance/point-transactions`, `/attendance/redemption-approvals` | executive, moderator, user (keep hr, manager) |
-| `/settings`, `/settings/reports` | hr, manager, executive, moderator, user |
-
-Menu group lockdown for `webapp_menu_config` (mirror the page denials so empty groups don't render):
-- `Monitoring & Tools`: false for hr, manager, executive, moderator, user
-- `AI Features`: false for hr, manager, executive, user, moderator
-- `Configuration`: false for hr, manager, executive, moderator, user (already false for most)
-- `Content & Knowledge`: false for hr, manager, executive, user (keep moderator only if other pages remain; otherwise false)
-- `Receipts`, `Deposits`: leave as-is (dead-menu hide is documented as TODO, not changed yet — these are referenced by portal too)
-
-Rules respected:
-- No `DELETE` rows.
-- Only flips `can_access` from `true` → `false`.
-- Uses explicit `WHERE role IN (...) AND page_path IN (...)` so owner/admin are never matched.
-- Wrapped in a single transaction with row-count `RAISE NOTICE`.
-- After-migration: `SELECT` summary printed via `RAISE NOTICE` for the new role/page matrix.
-
-### 2.3 `docs/STATUS.md` — extend (do not delete existing content)
-Append sections:
-- Product positioning (LINE-first HR Ops for Thai SMEs).
-- Confirmed strong / partial / missing modules (concise lists; no invention).
-- Phase 0A change log including the `BranchReportImport` regression fix and the permission lockdown migration.
-- Edge-function guard summary table (move from current short table; keep the existing one and mark as canonical).
-- Menu/page permission status (post-lockdown summary).
-- Known risks (point-redemption P1, dead Receipts/Deposits menus, payroll calc untouched, webhook untouched).
-- Protected areas not to touch (line-webhook core, attendance tokens, claim_attendance_token, Bangkok timezone helpers, payroll calculation).
-- Phase 0B candidates (point-redemption hardening, role priority enforcement on remote-checkout-approval body, audit-log retention, replace remaining raw fetch + publishable key callers, real RLS pass on `point_transactions`/`employee_bag_items`).
-- Phase 1 candidates (HRIS gaps: org chart, document store, contracts, leave policy engine, performance review, payslip PDF templates).
-- Last updated: 2026-04-29.
-
-### 2.4 `docs/STATUS.md` — point-redemption P1 entry
-A dedicated subsection containing:
-- Problem: `employee_id` is taken from request body and trusted.
-- Risk: any authenticated portal user (or anyone with the public anon key) can redeem points on behalf of any employee, drain balances, trigger gacha pulls, mark items as used.
-- Current behavior: function uses service-role client; no JWT validation; no caller↔employee linkage; no audit row.
-- Recommended Phase 0B fix (minimal):
-  1. `requireRole(req, [...all roles...], { strict: false })` to capture the caller user id.
-  2. Resolve caller's `employees.id` via `auth_user_id`.
-  3. If `action ∈ {redeem, redeem_to_bag, use_bag_item, gacha_pull}`: enforce `body.employee_id === caller.employee_id`.
-  4. If `action ∈ {approve, reject, use}`: enforce caller has `admin|owner|hr|manager` (using existing `has_management_access` SQL).
-  5. Write `writeAuditLog` row per action (action, reward_id, points, balance_after).
-
-### 2.5 Docs index
-Leave `docs/PHASE_0A_VERIFICATION.md` as-is (still accurate). Do NOT delete prior docs.
+No DB schema change. No change to `point_redemptions`, `point_rewards`, `happy_points`, or `employee_bag_items` tables.
 
 ---
 
-## 3. Verification & smoke
+## Task 2 — Fix risky raw-fetch + publishable-key callers in the frontend
 
-Run in this order, report each result:
+Inventory found 3 files with raw `fetch` + `VITE_SUPABASE_ANON_KEY` / `VITE_SUPABASE_PUBLISHABLE_KEY`:
 
-1. `npm run build` — confirm TypeScript / Vite build passes after the `BranchReportImport` change.
-2. `npm run smoke:quick` — fast smoke without rebuild.
-3. `npm run smoke` — full smoke if `:quick` passes and is safe.
-4. Targeted Deno import sanity check via `rg` confirming no broken imports remain (we already passed this read-only).
-5. Spot SQL: re-run the high-risk page query and confirm only `owner`/`admin` (and intended residual roles for payroll/dm/broadcast) remain.
+| File | Calls | Risk | Action |
+|---|---|---|---|
+| `src/pages/Attendance.tsx` (lines 86, 134, 238, 330, 486, 543, 607) | `holidays` REST + 5 edge functions (`attendance-validate-token`, `attendance-submit`, `overtime-request`, `early-checkout-request`, `remote-checkout-request`) | **Low — public/token-gated.** This is the unauthenticated check-in page reached via one-time token. Users here are NOT logged into Supabase Auth, so `supabase.functions.invoke` would attach no JWT and the anon key fallback is exactly the intended behavior. | **Do NOT change.** Document as accepted-risk in STATUS.md (token is the auth boundary). |
+| `src/lib/offline-queue.ts` (lines 128, 200) | `attendance-submit` (queued) + `health` | Same as above — runs from the token-gated check-in page. | **Do NOT change.** Same accepted-risk justification. |
+| `src/components/settings/LiffSettingsCard.tsx` (lines 48, 70) | `liff-settings` (`get` + `update-endpoint`) | **High — admin settings page.** Uses raw fetch with publishable key as `apikey` only (no Bearer JWT), so any non-admin who hits the function URL with the public key can read/update LIFF endpoint config. Rendered inside the admin Dashboard. | **FIX:** Replace both `fetch` calls with `supabase.functions.invoke('liff-settings', { method: 'GET'/'POST', body, ... })`. Then add `requireRole(req, ['admin','owner'])` + `writeAuditLog` to `supabase/functions/liff-settings/index.ts` (currently unguarded — confirm during implementation). |
 
-I will NOT auto-deploy or run destructive SQL outside the migration.
+The fix to `LiffSettingsCard.tsx` is the only frontend code change.
 
----
-
-## 4. Out of scope (not touched in this task)
-
-- LINE webhook core logic (`supabase/functions/line-webhook/**`).
-- `claim_attendance_token`, attendance-submit, Bangkok timezone helpers (`_shared/timezone.ts`).
-- Payroll calculation logic (`Payroll.tsx`, payslip-generator math, payroll-notification body math).
-- Any large-file refactor.
-- Adding new HR features.
-- Fixing `point-redemption` (P1 documented only — Phase 0B).
-- Receipts / Deposits dead menus (documented; not flipped because portal still references them).
+(`src/integrations/supabase/client.ts` is the canonical Supabase client init — left untouched per project rule.)
 
 ---
 
-## 5. Final report I will produce after execution
+## Task 3 — Configure `audit_logs` retention + document policy
 
-1. Executive summary
-2. Files changed (one frontend file + one migration + `docs/STATUS.md`)
-3. Import-path verification result
-4. Authz helper verification result
-5. Guarded-functions matrix (the table in 1D)
-6. Internal-call bypass verification (remote-checkout-approval F/G/H/I cases against deployed code, by inspection)
-7. Permission lockdown migration summary (before/after counts per role)
-8. Role/page/menu matrix after lockdown
-9. `docs/STATUS.md` summary
-10. Build + smoke results
-11. Remaining risks (point-redemption P1, dead menus, etc.)
-12. Verdict: **ready for Phase 0B** if 1+2+3 succeed and migration applies cleanly; **blockers** listed otherwise.
+**Current state:** 85 rows, oldest 2025-11-26. Indexed on `created_at DESC`. No retention.
+
+**Implementation (migration):**
+
+1. Create SQL function `public.cleanup_audit_logs(retention_days int default 180)` (`SECURITY DEFINER`, `search_path=public`):
+   - `DELETE FROM public.audit_logs WHERE created_at < now() - (retention_days || ' days')::interval RETURNING id;`
+   - Returns count of deleted rows.
+2. Schedule a `pg_cron` job (via `insert tool`, NOT migration, because it embeds the project URL + anon key for `net.http_post`). Simpler: schedule `SELECT public.cleanup_audit_logs(180);` directly in cron — no edge function needed. Run nightly at `15 17 * * *` UTC = 00:15 Bangkok.
+3. Job name: `audit-logs-cleanup-daily`.
+
+**Retention policy:** 180 days. Rationale:
+- Covers 2 quarterly review cycles + 1 monthly audit.
+- All current audit categories (approvals, backfills, sends, redemptions) are operational, not legal/financial — no statutory retention requirement.
+- Matches Lovable Cloud's default Postgres backup window comfortably.
+
+Document in `docs/STATUS.md` under a new "Audit logging" section with: retention window, cron job name + schedule, function name, manual override command, and a note that any rows requiring longer retention should be exported to a separate archive table before the cron runs.
+
+---
+
+## Task 4 — Add `writeAuditLog` to remaining guarded functions
+
+Per current state of each file, these functions have `requireRole` but no `writeAuditLog`:
+
+| Function | Action type | Resource type | Metadata to capture |
+|---|---|---|---|
+| `admin-response-points-rollback` | `rollback` | `points` | `date`, `reason`, `processed_count`, `affected_employees`, `total_reversed` |
+| `payslip-generator` | `generate` | `payslip` | `employee_id`, `period_start`, `period_end`, `net_pay` (no PII beyond what's already in audit) |
+| `payroll-notification` | `notify` | `payroll` | `period`, `recipient_count`, `sent`, `failed` |
+| `fix-user-names` | `maintenance` | `users` | `updated_count`, `mode` |
+| `backfill-primary-groups` | `backfill` | `users` | `updated_count` |
+| `backfill-work-sessions` | `backfill` | `work_sessions` | `inserted`, `updated`, `skipped`, `range` |
+| `backfill-work-sessions-time-based` | `backfill` | `work_sessions` | same shape as above |
+| `branch-report-backfill` | `backfill` | `branch_reports` | `processed`, `range` |
+| `report-generator` (manual path only — skip the `auto_summary` cron path) | `generate` | `report` | `report_type`, `range`, `recipient_group_id?` |
+
+Pattern: write a single audit row on the success-path, after the work completes, before returning the response. Use the `userId` + `role` already returned by `requireRole`. **Never** add audit writes to the cron-secret bypass path of `report-generator`.
+
+`liff-settings` (added in Task 2) gets the same treatment: `actionType: 'get' | 'update_endpoint'`, `resourceType: 'liff_settings'`.
+
+---
+
+## Verification checklist
+
+1. `npm run build` passes.
+2. `npm run smoke:quick` passes.
+3. Manual:
+   - Portal user A tries `point-redemption` with `employee_id` of user B → 403.
+   - Portal user A redeems for self → 200 + audit row written.
+   - Non-admin tries `liff-settings` `get` → 403.
+   - Admin opens `LiffSettingsCard` → loads + can update endpoint.
+4. SQL: `SELECT cron.schedule WHERE jobname='audit-logs-cleanup-daily';` returns 1 row.
+5. SQL: `SELECT public.cleanup_audit_logs(99999);` returns 0 (sanity, no rows that old).
+6. SQL: `SELECT count(*) FROM audit_logs WHERE metadata->>'function' IN ('point-redemption','admin-response-points-rollback','payslip-generator','payroll-notification','fix-user-names','backfill-primary-groups','backfill-work-sessions','backfill-work-sessions-time-based','branch-report-backfill','report-generator','liff-settings');` returns >0 after a sample call to each.
+
+---
+
+## Files that will change
+
+**Edge functions (audit + guard additions only):**
+- `supabase/functions/point-redemption/index.ts` (auth + ownership + audit)
+- `supabase/functions/admin-response-points-rollback/index.ts`
+- `supabase/functions/payslip-generator/index.ts`
+- `supabase/functions/payroll-notification/index.ts`
+- `supabase/functions/fix-user-names/index.ts`
+- `supabase/functions/backfill-primary-groups/index.ts`
+- `supabase/functions/backfill-work-sessions/index.ts`
+- `supabase/functions/backfill-work-sessions-time-based/index.ts`
+- `supabase/functions/branch-report-backfill/index.ts`
+- `supabase/functions/report-generator/index.ts` (manual path only)
+- `supabase/functions/liff-settings/index.ts` (add `requireRole` + audit)
+
+**Frontend:**
+- `src/components/settings/LiffSettingsCard.tsx` (switch to `supabase.functions.invoke`)
+
+**Docs / DB:**
+- New migration: `cleanup_audit_logs(int)` function.
+- DB insert (via insert tool, not migration): `cron.schedule` for nightly cleanup.
+- `docs/STATUS.md`: new "Audit logging & retention" section, mark Phase 0B items 1, 2, 3, 4 done, update P1 to resolved.
+
+**Untouched (per protected list):**
+- `line-webhook/**`, `_shared/timezone.ts`, `claim_attendance_token` SQL, `attendance-submit/**`, `attendance-validate-token/**`, payroll math in `Payroll.tsx` / `payslip-generator` math (we only add an audit row, no calculation change), `src/pages/Attendance.tsx`, `src/lib/offline-queue.ts`, `src/integrations/supabase/client.ts`.
+
+---
+
+## Out of scope (intentionally deferred)
+
+- Refactoring `Attendance.tsx` raw-fetch calls → it's a token-gated unauthenticated page, the anon-key bearer is correct.
+- Adding audit to `dm-send` / `broadcast-send` / etc. — already have audit (Phase 0A.1).
+- Receipts/Deposits permission cleanup — deferred per STATUS.md.
+- Any HR feature work — Phase 1.
