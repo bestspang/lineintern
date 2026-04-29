@@ -45,37 +45,28 @@ export default function LiffSettingsCard() {
   const { data: liffInfo, isLoading: isLoadingLiff, refetch: refetchLiff, isRefetching } = useQuery({
     queryKey: ['liff-settings'],
     queryFn: async (): Promise<LiffInfo> => {
-      // Phase 0A: use supabase.functions.invoke so the user's JWT is
-      // attached. The backend now enforces admin/owner via requireRole.
-      const { data, error } = await supabase.functions.invoke('liff-settings', {
-        method: 'GET' as any,
-        // @ts-ignore — supabase-js v2 supports body+query for invoke; we use the action via URL param fallback
-        // The edge function reads `action` from the query string. We pass it via headers as well for safety.
-      });
-      // supabase.functions.invoke does not support query strings directly,
-      // so we fall through to a direct authed fetch using the session token
-      // when needed.
-      if (error || !data) {
-        // Fallback: direct fetch with the user's bearer token.
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token;
-        if (!token) {
-          throw new Error('Not authenticated');
-        }
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/liff-settings?action=get`,
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-          }
-        );
-        return await response.json();
+      // Phase 0A: pass the signed-in user's JWT so the backend role guard
+      // (admin/owner) can authorize. The publishable key alone is no
+      // longer sufficient — non-admins now get 403.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        throw new Error('Not authenticated');
       }
-      return data as LiffInfo;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/liff-settings?action=get`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+        }
+      );
+
+      const result = await response.json();
+      return result;
     },
     enabled: !!liffIdConfig,
     staleTime: 1000 * 60 * 5, // 5 minutes
