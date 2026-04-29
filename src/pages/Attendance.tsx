@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { formatBangkokISODate } from '@/lib/timezone';
 import { useSearchParams } from 'react-router-dom';
 import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield, WifiOff } from 'lucide-react';
@@ -11,7 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import LivenessCamera, { LivenessData } from '@/components/attendance/LivenessCamera';
+// Lazy-load LivenessCamera (pulls in @mediapipe/tasks-vision ~1MB) only when user opens camera
+const LivenessCamera = lazy(() => import('@/components/attendance/LivenessCamera'));
+import type { LivenessData } from '@/components/attendance/LivenessCamera';
+import { perfMark, perfMeasure, logPortalEvent } from '@/lib/portal-perf';
 import { queueAttendanceSubmission, processPendingSubmissions, isOnline } from '@/lib/offline-queue';
 
 export default function Attendance() {
