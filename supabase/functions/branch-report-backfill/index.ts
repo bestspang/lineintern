@@ -309,6 +309,26 @@ serve(async (req) => {
 
     console.log('Backfill complete:', results);
 
+    // Phase 0B — best-effort audit (counts only; no raw message text).
+    await writeAuditLog(supabase, {
+      functionName: 'branch-report-backfill',
+      actionType: 'backfill',
+      resourceType: 'branch_report',
+      resourceId: group.id,
+      performedByUserId: callerUserId,
+      callerRole,
+      metadata: {
+        group_id: group.id,
+        total: results.total,
+        parsed: results.parsed,
+        saved: results.saved,
+        skipped: results.skipped,
+        errors: results.errors,
+        dry_run: dryRun,
+        source: 'backfill',
+      },
+    });
+
     return new Response(
       JSON.stringify({ 
         success: true,
