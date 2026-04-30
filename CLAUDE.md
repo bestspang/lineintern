@@ -4,9 +4,12 @@
 
 LINE Intern is an AI-powered LINE bot with a full-stack admin dashboard and employee self-service portal. It serves as a workplace management tool for Thai businesses, handling attendance tracking, work assignments, receipt scanning, conversation intelligence, and employee engagement features -- all through LINE messaging and a web interface.
 
-**Live Supabase project**: `bjzzqfzgnslefqhnsmla`
+**Live Supabase project (PRODUCTION — LINE webhook URL must point here)**: `bjzzqfzgnslefqhnsmla`
+**Test/Preview Supabase project (Lovable env, do NOT change LINE webhook to this)**: `phhxdgaiwgaiuecvfjgj`
 **AI model**: Google Gemini 2.5 Flash via Lovable AI Gateway
 **Primary language**: Thai (with English support)
+
+> ⚠️ **Critical**: `.env` and `supabase/config.toml` reference the Test/Preview ref (`phhxdgaiwgaiuecvfjgj`) because Lovable preview runs against the test instance. The LINE Developers Console webhook URL **must remain pointed at the LIVE ref** (`bjzzqfzgnslefqhnsmla`). Do not "sync" them. See `.lovable/CRITICAL_FILES.md` rule #7.
 
 ## Architecture Overview
 
