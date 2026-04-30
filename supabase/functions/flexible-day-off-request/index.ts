@@ -142,48 +142,6 @@ serve(async (req) => {
 
     console.log('[flexible-day-off-request] Created request:', request.id, 'status:', status);
 
-    // Notify managers/admins via portal notification (only for pending, not auto-approve)
-    if (!isAutoApprove) {
-      try {
-        const { data: managerEmployees } = await supabase
-          .from('employees')
-          .select('id, role_id, employee_roles!inner(role_key)')
-          .in('employee_roles.role_key', ['admin', 'manager', 'hr', 'owner'])
-          .eq('is_active', true);
-
-        if (managerEmployees && managerEmployees.length > 0) {
-          // Check notification preferences
-          const { data: prefs } = await supabase
-            .from('notification_preferences')
-            .select('employee_id, notify_day_off')
-            .in('employee_id', managerEmployees.map(m => m.id));
-          const prefMap = new Map(prefs?.map(p => [p.employee_id, p]) || []);
-
-          const notifications = managerEmployees
-            .filter(m => m.id !== body.employee_id)
-            .filter(m => {
-              const pref = prefMap.get(m.id);
-              return !pref || pref.notify_day_off !== false;
-            })
-            .map(m => ({
-              employee_id: m.id,
-              title: '📅 คำขอวันหยุดยืดหยุ่น',
-              body: `${employee.full_name} ขอหยุดวันที่ ${body.day_off_date}`,
-              type: 'approval',
-              priority: 'high',
-              action_url: '/portal/approve-leave',
-              metadata: { request_type: 'flexible_day_off', request_id: request.id }
-            }));
-          
-          if (notifications.length > 0) {
-            await supabase.from('notifications').insert(notifications);
-          }
-        }
-      } catch (e) {
-        console.warn('[flexible-day-off-request] Failed to create manager notifications', e);
-      }
-    }
-
     // Format date in Thai
     const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
     const d = new Date(body.day_off_date);

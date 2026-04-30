@@ -1,107 +1,83 @@
-# Force Fresh Publish Artifact for /attendance/ops-center and /attendance/portal-performance
 
-## Diagnosis (already verified, read-only)
 
-Source code is correct:
-- `src/App.tsx` line 102–103: lazy imports for `OpsCenter` and `PortalPerformance` are present
-- `src/App.tsx` line 308–309: routes `/attendance/ops-center` and `/attendance/portal-performance` are registered inside the protected `DashboardLayout` block
-- `src/pages/attendance/OpsCenter.tsx` line 36: `export default function OpsCenter()` exists
-- `src/pages/attendance/PortalPerformance.tsx` line 67: `export default function PortalPerformance()` exists
-- `.lovable/registry-snapshot.json`: both routes listed
-- `webapp_page_config`: rows verified in earlier session for owner/admin/hr/manager allow, employee/user/field deny
+## แก้ 3 จุด: Promise.allSettled, ลบ secrets_configured, เพิ่ม message length limit
 
-The previous publish-stamp comment on App.tsx line 1 was added but apparently the publish that followed did not deploy successfully (still serving `index-BOuFb-tr.js` with zero matches for the new route strings). A bare comment change can be optimised away or coincide with another failed publish, leaving the live bundle untouched.
+### 1. เปลี่ยน Promise.all → Promise.allSettled (line 11163-11170)
 
-This plan does the smallest possible thing that guarantees a different bundle hash AND gives visible runtime proof the new build is live.
+**ปัญหา**: ถ้า event เดียวพัง ทั้ง batch พัง → LINE retry ซ้ำทุก event
+**แก้ที่**: `supabase/functions/line-webhook/index.ts` line 11163-11170
 
-## What This Plan Does NOT Touch
+```text
+// ก่อน:
+const promises = webhookBody.events.map(...);
+await Promise.all(promises);
 
-- line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token
-- Bangkok timezone helpers, payroll math, point ledger
-- Employee Documents, RLS, security findings, pg_net, auth/storage/vault
-- Any business logic, any DB migration
-- Any existing route, page, or component behaviour
-- Registry snapshot or webapp_page_config (already correct)
-
-## Steps
-
-### 1. Create a referenced build-stamp constant
-
-New file `src/lib/app-version.ts`:
-```ts
-export const APP_BUILD_STAMP = "phase-1b-routes-2026-04-29-v2";
+// หลัง:
+const results = await Promise.allSettled(
+  webhookBody.events.map((event, index) => {
+    console.log(`[webhook] Starting processing of event ${index + 1}...`);
+    return handleEvent(event);
+  })
+);
+const failed = results.filter(r => r.status === 'rejected');
+if (failed.length > 0) {
+  console.error(`[webhook] ${failed.length}/${results.length} events failed`);
+  failed.forEach((f, i) => console.error(`[webhook] Event failure ${i+1}:`, f.reason));
+}
 ```
-Because this constant is **imported and rendered**, tree-shaking cannot remove it, guaranteeing the new bundle hash differs from the stale one.
 
-### 2. Render the stamp in OpsCenter footer (additive, single line)
+**ผลลัพธ์**: event ที่พังจะไม่กระทบ event อื่น, log error แยกแต่ละตัว, ยังคง return 200 ให้ LINE ไม่ retry
 
-In `src/pages/attendance/OpsCenter.tsx`, add an `import { APP_BUILD_STAMP } from "@/lib/app-version"` and a tiny muted footer line at the very bottom of the existing returned JSX, e.g.:
-```tsx
-<p className="text-[10px] text-muted-foreground text-center pt-2">build {APP_BUILD_STAMP}</p>
+---
+
+### 2. ลบ secrets_configured จาก health check (line 11060-11073)
+
+**ปัญหา**: เปิดเผยว่า secret ไหนมี/ไม่มี → attacker รู้จุดอ่อน
+**แก้ที่**: `supabase/functions/line-webhook/index.ts` line 11060-11073
+
+```text
+// ก่อน:
+{ status, timestamp, service, version, secrets_configured: { ... } }
+
+// หลัง:
+{ status: "healthy", timestamp, service: "line-webhook", version: "2.0.0" }
 ```
-- No card removed, no card text changed
-- Pilot QA checklist text untouched
-- "Open Portal Performance" navigate target unchanged
-- Complies with the file's `⚠️ VERIFIED` allowed-changes clause ("additive cards, new metric tiles, new shortcut buttons" — a footer stamp is additive and non-functional)
 
-### 3. Render the same stamp in PortalPerformance footer
+---
 
-Same one-line additive footer in `src/pages/attendance/PortalPerformance.tsx` so we have visible proof on either page.
+### 3. เพิ่ม message length limit (line 9944-9948)
 
-### 4. Remove the now-redundant publish-stamp comment on App.tsx line 1
+**ปัญหา**: ไม่จำกัดความยาวข้อความก่อนส่ง AI → อาจ DoS ผ่าน token overflow
+**แก้ที่**: `supabase/functions/line-webhook/index.ts` หลัง line 9947 (หลังเช็ค empty text)
 
-Delete only the top-of-file `// publish-stamp: ...` comment. The real stamp now lives in `app-version.ts` and is referenced from rendered components, which is a stronger guarantee.
-
-### 5. Local validation
-
-```bash
-npm run build
-grep -R "ops-center"          dist/assets | head
-grep -R "portal-performance"  dist/assets | head
-grep -R "OpsCenter"           dist/assets | head
-grep -R "PortalPerformance"   dist/assets | head
-grep -R "phase-1b-routes-2026-04-29-v2" dist/assets | head
-npm run smoke:quick
-bunx vitest run
+```text
+// เพิ่มหลัง check empty text:
+const MAX_MESSAGE_LENGTH = 2000;
+if (event.message.text.length > MAX_MESSAGE_LENGTH) {
+  console.log(`[handleMessageEvent] Message too long (${event.message.text.length} chars), truncating to ${MAX_MESSAGE_LENGTH}`);
+  event.message.text = event.message.text.substring(0, MAX_MESSAGE_LENGTH);
+}
 ```
-All four route strings and the build stamp must appear in the local dist output. Smoke (16) and vitest (7) must pass.
 
-### 6. Publish
+**หมายเหตุ**: ไม่ reject ข้อความ (อาจเป็นข้อมูลจริง เช่น รายงานยอดขาย) แต่ truncate เพื่อป้องกัน token overflow
 
-User clicks **Update** in the publish dialog.
+---
 
-### 7. Live verification
+### ไฟล์ที่แก้
 
-```bash
-curl -s https://intern.gem.me/ | grep -oE '/assets/index-[^"]+\.js'
-# bundle hash must differ from index-BOuFb-tr.js
+| ไฟล์ | จุดที่แก้ | รายละเอียด |
+|------|----------|-----------|
+| `supabase/functions/line-webhook/index.ts` | line 11163-11170 | Promise.all → Promise.allSettled + error logging |
+| `supabase/functions/line-webhook/index.ts` | line 11060-11073 | ลบ secrets_configured จาก health check response |
+| `supabase/functions/line-webhook/index.ts` | line ~9948 | เพิ่ม message length limit 2000 chars |
 
-NEW_HASH=$(curl -s https://intern.gem.me/ | grep -oE '/assets/index-[^"]+\.js' | head -1)
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "ops-center"
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "portal-performance"
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "phase-1b-routes-2026-04-29-v2"
-```
-Then hit each URL in a browser:
-- `https://lineintern.lovable.app/attendance/ops-center`
-- `https://lineintern.lovable.app/attendance/portal-performance`
-- `https://intern.gem.me/attendance/ops-center`
-- `https://intern.gem.me/attendance/portal-performance`
+### สิ่งที่ไม่แตะ
+- ไม่แก้ command routing / prompts / DB / RLS / frontend
+- ไม่แก้ handleEvent logic (แค่เปลี่ยนวิธี await)
+- ไม่แก้ health-check edge function แยก (แก้เฉพาะ health endpoint ใน line-webhook)
 
-Acceptable: page renders (with build stamp visible in footer) OR redirects to `/auth` if not signed in.
-Not acceptable: in-app NotFound page, or HTTP 404 from server.
+### ความเสี่ยง: ต่ำมาก
+- Promise.allSettled: เปลี่ยนเฉพาะ error isolation, ไม่กระทบ logic
+- ลบ secrets_configured: ข้อมูลนี้ไม่ได้ถูกใช้โดย frontend
+- Message truncate: ข้อความ LINE ปกติไม่เกิน 5,000 chars, limit 2,000 เพียงพอสำหรับ AI processing
 
-## Files Changed
-
-| File | Change |
-|---|---|
-| `src/lib/app-version.ts` | NEW — single exported constant |
-| `src/pages/attendance/OpsCenter.tsx` | +1 import, +1 footer line at end of JSX |
-| `src/pages/attendance/PortalPerformance.tsx` | +1 import, +1 footer line at end of JSX |
-| `src/App.tsx` | -1 comment line at top |
-
-No other file is touched. No DB migration. No edge function change.
-
-## Verdict Criteria
-
-- **404 FIXED** if new bundle hash differs, contains `ops-center` / `portal-performance` / `phase-1b-routes-2026-04-29-v2`, and the two URLs render the page (or redirect to /auth) on both `intern.gem.me` and `lineintern.lovable.app`.
-- **STILL 404, blocker = publish pipeline** if local dist contains all four strings and the stamp but the live bundle hash never changes after Update is clicked. In that case the project repo cannot fix it; capture exact red-toast text from the publish dialog and escalate.

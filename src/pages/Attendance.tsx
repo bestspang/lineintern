@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { formatBangkokISODate } from '@/lib/timezone';
 import { useSearchParams } from 'react-router-dom';
 import { Camera, MapPin, Clock, User, Building, CheckCircle, XCircle, Loader2, Shield, WifiOff } from 'lucide-react';
@@ -11,10 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-// Lazy-load LivenessCamera (pulls in @mediapipe/tasks-vision ~1MB) only when user opens camera
-const LivenessCamera = lazy(() => import('@/components/attendance/LivenessCamera'));
-import type { LivenessData } from '@/components/attendance/LivenessCamera';
-import { perfMark, perfMeasure, logPortalEvent } from '@/lib/portal-perf';
+import LivenessCamera, { LivenessData } from '@/components/attendance/LivenessCamera';
 import { queueAttendanceSubmission, processPendingSubmissions, isOnline } from '@/lib/offline-queue';
 
 export default function Attendance() {
@@ -133,7 +130,6 @@ export default function Attendance() {
   }, [searchParams, toast]);
 
   const validateToken = async (token: string) => {
-    perfMark('checkin_token_validate_start');
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/attendance-validate-token?t=${token}`,
@@ -145,38 +141,25 @@ export default function Attendance() {
       );
 
       const data = await response.json();
-      perfMark('checkin_token_validate_end');
-
+      
       if (!response.ok || !data.valid) {
         setError(data.error || 'Invalid token');
         setLoading(false);
-        logPortalEvent({
-          event_name: 'token_validate_failed',
-          duration_ms: perfMeasure('checkin_token_validate_start'),
-          error_code: data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`,
-        });
         return;
       }
 
       setTokenData(data);
-      logPortalEvent({
-        event_name: 'token_validate_success',
-        duration_ms: perfMeasure('checkin_token_validate_start'),
-        employee_id: data?.employee?.id ?? null,
-        branch_id: data?.employee?.branch_id ?? null,
-      });
-
+      
       // Auto-request location if required
       if (data.settings?.require_location) {
         requestLocation();
       }
-
+      
       setLoading(false);
     } catch (err) {
       console.error('Validation error:', err);
       setError('Failed to validate token');
       setLoading(false);
-      logPortalEvent({ event_name: 'token_validate_failed', error_code: 'network_error' });
     }
   };
 
@@ -1053,24 +1036,15 @@ export default function Attendance() {
         </p>
       </div>
 
-      {/* Liveness Camera Modal (lazy-loaded — MediaPipe only fetched when opened) */}
+      {/* Liveness Camera Modal */}
       {showLivenessCamera && (
-        <Suspense fallback={
-          <div className="fixed inset-0 z-50 bg-background/95 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">กำลังเปิดกล้อง...</p>
-            </div>
-          </div>
-        }>
-          <LivenessCamera
-            onCapture={handleLivenessCapture}
-            onCancel={handleLivenessCancel}
-            eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
-            employeeBirthDate={tokenData?.employee?.birth_date?.slice(5)}
-            todayHolidayIds={todayHolidayIds}
-          />
-        </Suspense>
+        <LivenessCamera
+          onCapture={handleLivenessCapture}
+          onCancel={handleLivenessCancel}
+          eventType={tokenData?.token?.type as 'check_in' | 'check_out'}
+          employeeBirthDate={tokenData?.employee?.birth_date?.slice(5)} // 'MM-DD' format
+          todayHolidayIds={todayHolidayIds}
+        />
       )}
 
       {/* Early Leave Request Dialog */}

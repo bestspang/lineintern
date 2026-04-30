@@ -8,27 +8,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Gift, Check, X, ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePortal } from '@/contexts/PortalContext';
-import { portalApi } from '@/lib/portal-api';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 
 interface Redemption {
   id: string;
-  point_cost: number;
+  points_used: number;
   status: string;
   created_at: string;
   notes: string | null;
   employee: {
     id: string;
     full_name: string;
-    code: string | null;
+    nickname: string | null;
   };
   reward: {
     id: string;
     name: string;
-    name_th: string | null;
-    icon: string | null;
+    points_required: number;
   };
 }
 
@@ -43,23 +42,24 @@ export default function ApproveRedemptions() {
   const [processing, setProcessing] = useState(false);
 
   const fetchRedemptions = useCallback(async () => {
-    if (!employee?.id) {
-      setLoading(false);
-      return;
-    }
-    const { data, error } = await portalApi<Redemption[]>({
-      endpoint: 'pending-redemptions',
-      employee_id: employee.id,
-    });
+    const { data, error } = await supabase
+      .from('point_redemptions')
+      .select(`
+        id, points_used, status, created_at, notes,
+        employee:employees!inner(id, full_name, nickname),
+        reward:rewards!inner(id, name, points_required)
+      `)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
 
     if (error) {
       console.error('Error fetching redemptions:', error);
       toast.error(locale === 'th' ? 'โหลดข้อมูลไม่สำเร็จ' : 'Failed to load data');
     } else {
-      setRedemptions(data || []);
+      setRedemptions((data as unknown as Redemption[]) || []);
     }
     setLoading(false);
-  }, [employee?.id, locale]);
+  }, [locale]);
 
   useEffect(() => {
     fetchRedemptions();
@@ -70,18 +70,19 @@ export default function ApproveRedemptions() {
 
     setProcessing(true);
     try {
-      const { data, error } = await portalApi<any>({
-        endpoint: actionType === 'approve' ? 'approve-redemption' : 'reject-redemption',
-        employee_id: employee.id,
-        params: {
-          redemptionId: selectedRedemption.id,
-          notes: actionType === 'approve' ? adminNotes || undefined : undefined,
-          rejectionReason: actionType === 'reject' ? adminNotes || undefined : undefined,
-        },
-      });
+      const newStatus = actionType === 'approve' ? 'approved' : 'rejected';
+
+      const { error } = await supabase
+        .from('point_redemptions')
+        .update({
+          status: newStatus,
+          approved_by: employee.id,
+          approved_at: new Date().toISOString(),
+          admin_notes: adminNotes || null,
+        })
+        .eq('id', selectedRedemption.id);
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Action failed');
 
       toast.success(
         actionType === 'approve'
@@ -145,12 +146,10 @@ export default function ApproveRedemptions() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
-                    <p className="font-semibold">{r.employee.full_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {locale === 'th' ? r.reward.name_th || r.reward.name : r.reward.name}
-                    </p>
+                    <p className="font-semibold">{r.employee.nickname || r.employee.full_name}</p>
+                    <p className="text-sm text-muted-foreground">{r.reward.name}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="secondary">{r.point_cost} pts</Badge>
+                      <Badge variant="secondary">{r.points_used} pts</Badge>
                       <span className="text-xs text-muted-foreground">
                         {format(new Date(r.created_at), 'd MMM HH:mm', { locale: locale === 'th' ? th : undefined })}
                       </span>
@@ -207,12 +206,8 @@ export default function ApproveRedemptions() {
             <div className="space-y-4">
               <div className="bg-muted/50 rounded-lg p-3">
                 <p className="font-medium">{selectedRedemption.employee.full_name}</p>
-                <p className="text-sm text-muted-foreground">
-                  {locale === 'th'
-                    ? selectedRedemption.reward.name_th || selectedRedemption.reward.name
-                    : selectedRedemption.reward.name}
-                </p>
-                <Badge variant="secondary" className="mt-2">{selectedRedemption.point_cost} pts</Badge>
+                <p className="text-sm text-muted-foreground">{selectedRedemption.reward.name}</p>
+                <Badge variant="secondary" className="mt-2">{selectedRedemption.points_used} pts</Badge>
               </div>
               <Textarea
                 placeholder={locale === 'th' ? 'หมายเหตุ (ถ้ามี)' : 'Notes (optional)'}

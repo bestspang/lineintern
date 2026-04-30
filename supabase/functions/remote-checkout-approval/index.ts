@@ -7,115 +7,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokDateString } from '../_shared/timezone.ts';
-import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
-import { writeAuditLog } from '../_shared/audit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-source',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-/**
- * Constant-time string comparison to avoid leaking the service-role key
- * length/content via timing differences when validating internal calls.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
-/**
- * Phase 0B — local role→priority ladder (mirrors public.get_user_role_priority +
- * the can_view_employee_by_priority numeric scale used in employee_roles.priority).
- * Higher number = more authority.
- */
-function roleToPriority(role: string | null | undefined): number {
-  switch ((role ?? '').toLowerCase()) {
-    case 'owner': return 10;
-    case 'hr': return 9;
-    case 'admin': return 8;
-    case 'executive': return 5;
-    case 'manager': return 5;
-    case 'moderator': return 1;
-    case 'field': return 1;
-    case 'user': return 0;
-    case 'employee': return 0;
-    default: return 0;
-  }
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Caller context filled in by either the internal-marker check or requireRole.
-  let callerSource: 'internal' | 'user' = 'user';
-  let callerUserId: string | null = null;
-  let callerRoleLabel: string | null = null;
-
   try {
-    // Phase 0A.1 — strict internal-call validation.
-    // If the caller asserts an internal source, BOTH the source token AND the
-    // service-role bearer must match exactly. A half-set marker is rejected
-    // with a distinct error code so misconfigurations are obvious in logs.
-    const internalSourceRaw = req.headers.get('x-internal-source');
-    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '';
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-
-    if (internalSourceRaw !== null) {
-      const sourceOk = internalSourceRaw === 'portal-data';
-      const expectedBearer = serviceKey ? `Bearer ${serviceKey}` : '';
-      const bearerOk =
-        serviceKey.length > 0 &&
-        authHeader.length === expectedBearer.length &&
-        timingSafeEqual(authHeader, expectedBearer);
-
-      if (!sourceOk || !bearerOk) {
-        console.warn(
-          `[authz] remote-checkout-approval source=internal decision=deny:internal_marker_mismatch ` +
-            `source_ok=${sourceOk} bearer_ok=${bearerOk}`,
-        );
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: 'internal_marker_mismatch',
-            error:
-              'x-internal-source supplied but service-role auth missing or invalid. ' +
-              'Internal callers must set x-internal-source=portal-data and Authorization=Bearer <service-role-key>.',
-          }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-
-      callerSource = 'internal';
-      callerRoleLabel = 'internal:portal-data';
-      console.log(`[authz] remote-checkout-approval source=internal decision=allow`);
-    } else {
-      try {
-        const result = await requireRole(
-          req,
-          ['admin', 'owner', 'hr', 'manager', 'executive'],
-          { functionName: 'remote-checkout-approval' },
-        );
-        callerUserId = result.userId;
-        callerRoleLabel = result.role;
-      } catch (e) {
-        const r = authzErrorResponse(e, corsHeaders);
-        if (r) return r;
-        throw e;
-      }
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
 
     const { 
       request_id, 
@@ -165,88 +72,8 @@ serve(async (req) => {
       );
     }
 
-    const employee = request.employee as { id: string; full_name: string; line_user_id?: string; branch_id?: string; };
+    const employee = request.employee as { id: string; full_name: string; line_user_id?: string; branch_id?: string };
     const now = new Date().toISOString();
-
-    // Phase 0B — role-priority enforcement.
-    // Rule: admin/owner always allowed. Otherwise approver_priority must be >= target_priority.
-    // Both call paths (user JWT + internal portal-data) are checked; on the internal path
-    // the human approver is resolved from approver_employee_id since there is no JWT role.
-    let targetRoleKey: string | null = null;
-    let targetPriority = 0;
-    {
-      const { data: targetRow } = await supabase
-        .from('employees')
-        .select('role_id, employee_roles:role_id ( role_key, priority )')
-        .eq('id', employee.id)
-        .maybeSingle();
-      // deno-lint-ignore no-explicit-any
-      const er = (targetRow as any)?.employee_roles ?? null;
-      targetRoleKey = er?.role_key ?? null;
-      targetPriority = typeof er?.priority === 'number' ? er.priority : 0;
-    }
-
-    let approverRoleKey: string | null = null;
-    let approverPriority = 0;
-    if (callerSource === 'user') {
-      approverRoleKey = callerRoleLabel;
-      approverPriority = roleToPriority(callerRoleLabel);
-    } else {
-      // Internal path: derive approver authority from approver_employee_id.
-      const { data: approverRow } = await supabase
-        .from('employees')
-        .select('role_id, employee_roles:role_id ( role_key, priority )')
-        .eq('id', approver_employee_id)
-        .maybeSingle();
-      // deno-lint-ignore no-explicit-any
-      const er = (approverRow as any)?.employee_roles ?? null;
-      approverRoleKey = er?.role_key ?? null;
-      approverPriority = typeof er?.priority === 'number' ? er.priority : 0;
-    }
-
-    const isAdminBypass =
-      approverRoleKey === 'admin' || approverRoleKey === 'owner' ||
-      callerRoleLabel === 'admin' || callerRoleLabel === 'owner';
-    const priorityOk = isAdminBypass || approverPriority >= targetPriority;
-    const priorityCheckResult = isAdminBypass
-      ? 'bypass_admin'
-      : (priorityOk ? 'pass' : 'blocked');
-
-    if (!priorityOk) {
-      console.warn(
-        `[authz] remote-checkout-approval priority-block approver_role=${approverRoleKey} ` +
-          `approver_pri=${approverPriority} target_role=${targetRoleKey} target_pri=${targetPriority}`,
-      );
-      // Best-effort denial audit.
-      await writeAuditLog(supabase, {
-        functionName: 'remote-checkout-approval',
-        actionType: 'denied',
-        resourceType: 'remote_checkout_request',
-        resourceId: request_id,
-        performedByUserId: callerUserId,
-        performedByEmployeeId: approver_employee_id,
-        callerRole: callerRoleLabel,
-        reason: 'role_priority_block',
-        metadata: {
-          source: callerSource,
-          target_employee_id: employee.id,
-          target_role: targetRoleKey,
-          target_priority: targetPriority,
-          approver_employee_id,
-          approver_role: approverRoleKey,
-          approver_priority: approverPriority,
-          priority_check_result: priorityCheckResult,
-        },
-      });
-      return new Response(
-        JSON.stringify({
-          success: false,
-          code: 'forbidden_role_priority',
-          error: 'ไม่สามารถอนุมัติคำขอของผู้ที่มีระดับสิทธิ์สูงกว่าได้',
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     if (approved) {
       // === APPROVAL FLOW ===
@@ -422,49 +249,10 @@ serve(async (req) => {
         }
       }
 
-      // Insert portal notification (non-blocking)
-      try {
-        await supabase.from('notifications').insert({
-          employee_id: employee.id,
-          title: '✅ Checkout นอกสถานที่: อนุมัติ',
-          body: `คำขอ Checkout นอกสถานที่ได้รับอนุมัติแล้ว`,
-          type: 'approval',
-          priority: 'normal',
-          action_url: '/portal/my-history',
-          metadata: { request_type: 'remote_checkout', request_id, action: 'approve' }
-        });
-      } catch (notifErr) {
-        console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
-      }
-
       const successMessage = wasAlreadyCheckedOut
         ? `✅ Archive คำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ (มี checkout อยู่แล้ว)`
         : `✅ อนุมัติคำขอ Checkout นอกสถานที่ของ ${employee.full_name} สำเร็จ`;
-
-      // Phase 0A.1 — structured audit log (best-effort).
-      await writeAuditLog(supabase, {
-        functionName: 'remote-checkout-approval',
-        actionType: wasAlreadyCheckedOut ? 'archive' : 'approve',
-        resourceType: 'remote_checkout_request',
-        resourceId: request_id,
-        performedByUserId: callerUserId,
-        performedByEmployeeId: approver_employee_id,
-        callerRole: callerRoleLabel,
-        metadata: {
-          source: callerSource,
-          employee_id: employee.id,
-          checkout_log_id: checkoutLogId,
-          was_already_checked_out: wasAlreadyCheckedOut,
-          target_employee_id: employee.id,
-          target_role: targetRoleKey,
-          target_priority: targetPriority,
-          approver_employee_id,
-          approver_role: approverRoleKey,
-          approver_priority: approverPriority,
-          priority_check_result: priorityCheckResult,
-        },
-      });
-
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -474,7 +262,6 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-
 
     } else {
       // === REJECTION FLOW ===
@@ -565,45 +352,6 @@ serve(async (req) => {
           console.warn('[remote-checkout-approval] Failed to notify admin group on rejection:', adminNotifyError);
         }
       }
-
-      // Insert portal notification (non-blocking)
-      try {
-        await supabase.from('notifications').insert({
-          employee_id: employee.id,
-          title: '❌ Checkout นอกสถานที่: ไม่อนุมัติ',
-          body: `เหตุผล: ${rejection_reason || 'ไม่ระบุ'}`,
-          type: 'approval',
-          priority: 'normal',
-          action_url: '/portal/my-history',
-          metadata: { request_type: 'remote_checkout', request_id, action: 'reject' }
-        });
-      } catch (notifErr) {
-        console.warn('[remote-checkout-approval] Failed to create notification:', notifErr);
-      }
-
-      // Phase 0A.1 — structured audit log (best-effort).
-      await writeAuditLog(supabase, {
-        functionName: 'remote-checkout-approval',
-        actionType: 'reject',
-        resourceType: 'remote_checkout_request',
-        resourceId: request_id,
-        performedByUserId: callerUserId,
-        performedByEmployeeId: approver_employee_id,
-        callerRole: callerRoleLabel,
-        reason: rejection_reason ?? null,
-        metadata: {
-          source: callerSource,
-          employee_id: employee.id,
-          target_employee_id: employee.id,
-          target_role: targetRoleKey,
-          target_priority: targetPriority,
-          approver_employee_id,
-          approver_role: approverRoleKey,
-          approver_priority: approverPriority,
-          priority_check_result: priorityCheckResult,
-          decision: 'reject',
-        },
-      });
 
       return new Response(
         JSON.stringify({ 

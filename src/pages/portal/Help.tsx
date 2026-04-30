@@ -8,12 +8,12 @@ import { usePortal } from '@/contexts/PortalContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  HelpCircle,
-  MessageCircle, Phone, Mail, CheckCircle,
-  Search,
+import { 
+  HelpCircle, Clock, Calendar, FileText, Gift, 
+  MessageCircle, Phone, Mail, CheckCircle, Receipt, Star, User,
+  CalendarDays, Wallet, Trophy, Banknote, History, CheckSquare, CalendarMinus,
+  Activity, Package, Camera, MapPin, XCircle, Search, Backpack
 } from 'lucide-react';
-import { getVisibleActions } from '@/lib/portal-actions';
 
 // Static fallback FAQs (used when database is empty or has errors)
 // ⚠️ SYNC NOTE: Keep in sync with portal_faqs table content
@@ -70,22 +70,20 @@ const STATIC_FAQS_EN = [
 // Quick Actions: 20 items, FAQs: 33+, All paths valid
 // DO NOT modify paths unless adding new features
 
-// FAQ Category labels (Thai/English). Categories not present in DB are auto-hidden.
-const CATEGORY_LABELS: Record<string, { th: string; en: string }> = {
-  all: { th: 'ทั้งหมด', en: 'All' },
-  attendance: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' },
-  'leave-ot': { th: 'ลา/OT', en: 'Leave/OT' },
-  points: { th: 'แต้ม', en: 'Points' },
-  general: { th: 'ทั่วไป', en: 'General' },
-};
+// FAQ Categories for filter
+const FAQ_CATEGORIES = [
+  { value: 'all', label: { th: 'ทั้งหมด', en: 'All' } },
+  { value: 'attendance', label: { th: 'เช็คอิน/เอาท์', en: 'Check In/Out' } },
+  { value: 'leave-ot', label: { th: 'ลา/OT', en: 'Leave/OT' } },
+  { value: 'points', label: { th: 'แต้ม', en: 'Points' } },
+  { value: 'receipts', label: { th: 'ใบเสร็จ', en: 'Receipts' } },
+  { value: 'general', label: { th: 'ทั่วไป', en: 'General' } },
+];
 
 export default function Help() {
-  const { locale, employee } = usePortal();
+  const { locale } = usePortal();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-
-  // Role key for action filtering — handled centrally by getVisibleActions().
-  const roleKey = employee?.role?.role_key?.toLowerCase() || '';
 
   // Fetch FAQs from database
   const { data: dbFaqs, isLoading: isLoadingFaqs } = useQuery({
@@ -120,38 +118,134 @@ export default function Help() {
     return matchesSearch && matchesCategory;
   });
 
-  // Build category list dynamically — only show tabs that have at least 1 FAQ.
-  // Auto-rescues UI when a category (e.g. 'receipts') is removed from DB.
-  const availableCategories = (() => {
-    const counts = new Map<string, number>();
-    allFaqs.forEach(f => counts.set(f.category, (counts.get(f.category) || 0) + 1));
-    const cats = [
-      { value: 'all', count: allFaqs.length },
-      ...Array.from(counts.entries())
-        .filter(([_, n]) => n > 0)
-        .map(([value, count]) => ({ value, count })),
-    ];
-    return cats;
-  })();
-
-  // Safety: if user-selected category disappears (e.g. after DB cleanup), reset to 'all'
-  if (selectedCategory !== 'all' && !availableCategories.some(c => c.value === selectedCategory)) {
-    setSelectedCategory('all');
-  }
-
-  const getCategoryLabel = (value: string) =>
-    CATEGORY_LABELS[value]?.[locale === 'th' ? 'th' : 'en'] ?? value;
-
-  // Build the role-aware quick action list from the shared registry.
-  // Behavior preserved: every action shown to the user maps to a real route
-  // they have permission to use; admin/manager actions are hidden otherwise.
-  const visibleActions = getVisibleActions(roleKey).map((a) => ({
-    icon: a.icon,
-    title: locale === 'th' ? a.label : a.labelEn,
-    description: locale === 'th' ? a.description : a.descriptionEn,
-    path: a.path,
-    id: a.id,
-  }));
+  const quickActions = [
+    {
+      icon: Clock,
+      title: locale === 'th' ? 'เช็คอิน/เอาท์' : 'Check In/Out',
+      description: locale === 'th' ? 'บันทึกเวลาเข้า-ออกงาน' : 'Record attendance',
+      path: '/portal/checkin'
+    },
+    {
+      icon: Calendar,
+      title: locale === 'th' ? 'ขอลางาน' : 'Request Leave',
+      description: locale === 'th' ? 'ส่งคำขอลาหยุด' : 'Submit leave request',
+      path: '/portal/request-leave'
+    },
+    {
+      icon: CalendarMinus,
+      title: locale === 'th' ? 'วันลาคงเหลือ' : 'Leave Balance',
+      description: locale === 'th' ? 'ตรวจสอบวันลาที่เหลือ' : 'Check remaining leave days',
+      path: '/portal/my-leave'
+    },
+    {
+      icon: FileText,
+      title: locale === 'th' ? 'ขอ OT' : 'Request OT',
+      description: locale === 'th' ? 'ส่งคำขอทำงานล่วงเวลา' : 'Submit overtime request',
+      path: '/portal/request-ot'
+    },
+    {
+      icon: Gift,
+      title: locale === 'th' ? 'แลกของรางวัล' : 'Redeem Rewards',
+      description: locale === 'th' ? 'ใช้คะแนนแลกของรางวัล' : 'Use points for rewards',
+      path: '/portal/rewards'
+    },
+    {
+      icon: Star,
+      title: locale === 'th' ? 'คะแนนของฉัน' : 'My Points',
+      description: locale === 'th' ? 'ดู Happy Points และประวัติ' : 'View points and history',
+      path: '/portal/my-points'
+    },
+    {
+      icon: Receipt,
+      title: locale === 'th' ? 'ใบเสร็จ' : 'Receipts',
+      description: locale === 'th' ? 'จัดการใบเสร็จและค่าใช้จ่าย' : 'Manage receipts & expenses',
+      path: '/portal/my-receipts'
+    },
+    {
+      icon: CalendarDays,
+      title: locale === 'th' ? 'ตารางกะ' : 'My Schedule',
+      description: locale === 'th' ? 'ดูตารางการทำงาน' : 'View work schedule',
+      path: '/portal/my-schedule'
+    },
+    {
+      icon: Wallet,
+      title: locale === 'th' ? 'Payroll ของฉัน' : 'My Payroll',
+      description: locale === 'th' ? 'ดูรายได้และเงินเดือน' : 'View earnings & salary',
+      path: '/portal/my-payroll'
+    },
+    {
+      icon: Trophy,
+      title: locale === 'th' ? 'Leaderboard' : 'Leaderboard',
+      description: locale === 'th' ? 'อันดับแต้มในทีม' : 'Team point rankings',
+      path: '/portal/leaderboard'
+    },
+    {
+      icon: User,
+      title: locale === 'th' ? 'โปรไฟล์' : 'My Profile',
+      description: locale === 'th' ? 'ดูข้อมูลส่วนตัว' : 'View your profile',
+      path: '/portal/my-profile'
+    },
+    {
+      icon: Banknote,
+      title: locale === 'th' ? 'ฝากเงิน' : 'Deposit',
+      description: locale === 'th' ? 'ส่งใบฝากเงินประจำวัน' : 'Submit daily deposit slip',
+      path: '/portal/deposit-upload'
+    },
+    {
+      icon: History,
+      title: locale === 'th' ? 'ประวัติการเข้างาน' : 'Work History',
+      description: locale === 'th' ? 'ดูบันทึกการเข้างานย้อนหลัง' : 'View attendance history',
+      path: '/portal/my-history'
+    },
+    {
+      icon: CheckSquare,
+      title: locale === 'th' ? 'อนุมัติ' : 'Approvals',
+      description: locale === 'th' ? 'อนุมัติคำขอของทีม' : 'Approve team requests',
+      path: '/portal/approvals'
+    },
+    {
+      icon: Activity,
+      title: locale === 'th' ? 'สถานะวันนี้' : 'Today Status',
+      description: locale === 'th' ? 'ดูสถานะการทำงานวันนี้' : 'View today\'s work status',
+      path: '/portal/status'
+    },
+    {
+      icon: Package,
+      title: locale === 'th' ? 'ประวัติการแลก' : 'My Redemptions',
+      description: locale === 'th' ? 'ดูประวัติการแลกของรางวัล' : 'View redemption history',
+      path: '/portal/my-redemptions'
+    },
+    {
+      icon: Camera,
+      title: locale === 'th' ? 'ภาพถ่ายวันนี้' : 'Today Photos',
+      description: locale === 'th' ? 'ดูภาพถ่ายพนักงานวันนี้' : 'View today employee photos',
+      path: '/portal/photos'
+    },
+    {
+      icon: MapPin,
+      title: locale === 'th' ? 'อนุมัติ Checkout นอกสถานที่' : 'Approve Remote Checkout',
+      description: locale === 'th' ? 'อนุมัติคำขอ checkout นอกพื้นที่' : 'Approve remote checkout requests',
+      path: '/portal/approvals/remote-checkout'
+    },
+    {
+      icon: FileText,
+      title: locale === 'th' ? 'สรุปประจำวัน' : 'Daily Summary',
+      description: locale === 'th' ? 'ดูสรุปการทำงานประจำวัน' : 'View daily work summary',
+      path: '/portal/daily-summary'
+    },
+    {
+      icon: XCircle,
+      title: locale === 'th' ? 'ยกเลิกคำขอ' : 'Cancel Requests',
+      description: locale === 'th' ? 'ยกเลิก OT/วันหยุด/ลางาน ที่รอ' : 'Cancel pending OT/leave requests',
+      path: '/portal/my-history'
+    },
+    {
+      icon: Backpack,
+      title: locale === 'th' ? 'กระเป๋าของฉัน' : 'My Bag',
+      description: locale === 'th' ? 'ดูไอเทมที่เก็บไว้' : 'View stored items',
+      path: '/portal/my-bag'
+    }
+  ];
 
   return (
     <div className="space-y-6">
@@ -175,9 +269,9 @@ export default function Help() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
-            {visibleActions.map((action) => (
+            {quickActions.map((action, idx) => (
               <Link
-                key={action.id}
+                key={idx}
                 to={action.path}
                 className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted/50 transition-colors text-center"
               >
@@ -212,12 +306,12 @@ export default function Help() {
             />
           </div>
 
-          {/* Category Tabs (dynamic — only categories with FAQs) */}
+          {/* Category Tabs */}
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="w-full">
             <TabsList className="w-full h-auto flex-wrap justify-start gap-1">
-              {availableCategories.map(cat => (
+              {FAQ_CATEGORIES.map(cat => (
                 <TabsTrigger key={cat.value} value={cat.value} className="text-xs px-2 py-1">
-                  {getCategoryLabel(cat.value)} ({cat.count})
+                  {locale === 'th' ? cat.label.th : cat.label.en}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -229,29 +323,12 @@ export default function Help() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : allFaqs.length === 0 ? (
+          ) : faqs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <HelpCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">
-                {locale === 'th' ? 'ยังไม่มีคำถามในระบบ กรุณาติดต่อ HR' : 'No FAQs available yet. Please contact HR.'}
+                {locale === 'th' ? 'ไม่พบคำถามที่ตรงกับการค้นหา' : 'No questions match your search'}
               </p>
-            </div>
-          ) : faqs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground space-y-3">
-              <HelpCircle className="h-8 w-8 mx-auto opacity-50" />
-              <p className="text-sm">
-                {locale === 'th'
-                  ? (searchQuery ? `ไม่พบคำถามที่ตรงกับ "${searchQuery}"` : 'ไม่มีคำถามในหมวดนี้')
-                  : (searchQuery ? `No questions match "${searchQuery}"` : 'No questions in this category')}
-              </p>
-              {(searchQuery || selectedCategory !== 'all') && (
-                <button
-                  onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
-                  className="text-xs text-primary hover:underline"
-                >
-                  {locale === 'th' ? 'ล้างการค้นหา' : 'Clear filters'}
-                </button>
-              )}
             </div>
           ) : (
             <Accordion type="single" collapsible className="w-full">
@@ -269,7 +346,7 @@ export default function Help() {
           )}
           
           {/* Results count */}
-          {!isLoadingFaqs && searchQuery && faqs.length > 0 && (
+          {!isLoadingFaqs && searchQuery && (
             <p className="text-xs text-muted-foreground text-center">
               {locale === 'th' 
                 ? `พบ ${faqs.length} คำถาม` 

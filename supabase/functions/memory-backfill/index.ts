@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,25 +37,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let callerUserId: string | null = null;
-  let callerRoleLabel: string | null = null;
-
   try {
-    // Phase 0A guard: admin/owner only — backfill writes memory items.
-    try {
-      const result = await requireRole(
-        req,
-        ['admin', 'owner'],
-        { functionName: 'memory-backfill' },
-      );
-      callerUserId = result.userId;
-      callerRoleLabel = result.role;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const body = await req.json().catch(() => ({}));
     const { days_back = 7, limit = 200, group_id } = body;
 
@@ -202,24 +182,6 @@ serve(async (req) => {
         const consolidateResult = await consolidateResponse.json();
         console.log(`[Memory Backfill] Consolidation result:`, consolidateResult);
         
-        // Phase 0A.1 — structured audit log (best-effort).
-        await writeAuditLog(supabase, {
-          functionName: 'memory-backfill',
-          actionType: 'backfill',
-          resourceType: 'memory',
-          resourceId: targetGroupId ?? null,
-          performedByUserId: callerUserId,
-          callerRole: callerRoleLabel,
-          metadata: {
-            days_back,
-            limit,
-            messages_processed: messages.length,
-            memories_extracted: memoriesExtracted,
-            working_memories_created: workingMemoriesCreated,
-            consolidated: true,
-          },
-        });
-
         return new Response(
           JSON.stringify({
             success: true,
@@ -236,24 +198,6 @@ serve(async (req) => {
         console.error('[Memory Backfill] Consolidation error:', consolidateError);
       }
     }
-
-    // Phase 0A.1 — structured audit log (best-effort).
-    await writeAuditLog(supabase, {
-      functionName: 'memory-backfill',
-      actionType: 'backfill',
-      resourceType: 'memory',
-      resourceId: targetGroupId ?? null,
-      performedByUserId: callerUserId,
-      callerRole: callerRoleLabel,
-      metadata: {
-        days_back,
-        limit,
-        messages_processed: messages.length,
-        memories_extracted: memoriesExtracted,
-        working_memories_created: workingMemoriesCreated,
-        consolidated: false,
-      },
-    });
 
     return new Response(
       JSON.stringify({

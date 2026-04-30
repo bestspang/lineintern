@@ -18,7 +18,6 @@ import {
   setCachedLiffId,
   type LiffProfile as GlobalLiffProfile 
 } from '@/lib/liff-state';
-import { perfMark, perfMeasure, logPortalEvent } from '@/lib/portal-perf';
 
 interface LiffProfile {
   userId: string;
@@ -85,7 +84,7 @@ export function LiffProvider({ children }: LiffProviderProps) {
   const [retryCount, setRetryCount] = useState(0);
   const [initProgress, setInitProgress] = useState<string>('');
   const isInitializing = useRef(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadyRef = useRef(false); // Track isReady in ref to avoid stale closure
 
   const MAX_RETRIES = 2;
@@ -198,7 +197,6 @@ export function LiffProvider({ children }: LiffProviderProps) {
     console.log('[LIFF] Proceeding with init:', shouldInitCheck.reason);
     isInitializing.current = true;
     setInitProgress('กำลังเริ่มต้น...');
-    perfMark('liff_init_start');
     
     // Set timeout for initialization - use ref to avoid stale closure
     timeoutRef.current = setTimeout(() => {
@@ -362,12 +360,6 @@ export function LiffProvider({ children }: LiffProviderProps) {
         error: null,
       });
       console.log('[LIFF] Global state saved');
-      perfMark('liff_init_end');
-      logPortalEvent({
-        event_name: 'liff_init_done',
-        duration_ms: perfMeasure('liff_init_start'),
-        metadata: { isInClient: liffInstance.isInClient(), loggedIn },
-      });
     } catch (err: any) {
       console.error('[LIFF] Initialization error:', err);
       console.error('[LIFF] Error details:', JSON.stringify(err, null, 2));

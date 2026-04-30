@@ -2,8 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { toZonedTime } from 'npm:date-fns-tz@3.2.0';
 import { getBangkokDateString, toBangkokTime } from '../_shared/timezone.ts';
-import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
-import { writeAuditLog } from '../_shared/audit.ts';
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1054,27 +1052,6 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { groupId: requestedGroupId, type, messageLimit } = body;
 
-    // Phase 0A: HTTP-invoked admin reports require role check.
-    // The 'auto_summary' type is invoked internally by line-webhook (service role),
-    // so we skip the human role guard for that path only.
-    let callerUserId: string | null = null;
-    let callerRole: string | null = null;
-    if (type !== 'auto_summary') {
-      try {
-        const r = await requireRole(
-          req,
-          ['admin', 'owner', 'hr', 'manager', 'executive'],
-          { functionName: 'report-generator' },
-        );
-        callerUserId = r.userId;
-        callerRole = r.role;
-      } catch (e) {
-        const r = authzErrorResponse(e, corsHeaders);
-        if (r) return r;
-        throw e;
-      }
-    }
-
     // === HANDLE AUTO-SUMMARY REQUEST ===
     if (type === 'auto_summary' && requestedGroupId) {
       console.log(`[report-generator] Auto-summary for group ${requestedGroupId}`);
@@ -1252,25 +1229,6 @@ serve(async (req) => {
     }
 
     console.log(`[report-generator] Generated ${results.length} reports`);
-
-    // Phase 0B — best-effort audit on the human-invoked manual path only.
-    // The cron/internal `auto_summary` path is intentionally NOT audited (returns earlier at line ~1169).
-    if (type !== 'auto_summary') {
-      await writeAuditLog(supabase, {
-        functionName: 'report-generator',
-        actionType: 'generate',
-        resourceType: 'group_report',
-        resourceId: requestedGroupId ?? null,
-        performedByUserId: callerUserId,
-        callerRole,
-        metadata: {
-          count: results.length,
-          mode: 'manual',
-          requested_group_id: requestedGroupId ?? null,
-          source: 'admin_ui',
-        },
-      });
-    }
 
     return new Response(
       JSON.stringify({ 

@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokNow, getBangkokDateString } from "../_shared/timezone.ts";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -313,25 +311,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let callerUserId: string | null = null;
-  let callerRoleLabel: string | null = null;
-
   try {
-    // Phase 0A guard: admin/owner only — destructive backfill of streak data.
-    try {
-      const result = await requireRole(
-        req,
-        ['admin', 'owner'],
-        { functionName: 'streak-backfill' },
-      );
-      callerUserId = result.userId;
-      callerRoleLabel = result.role;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -417,20 +397,6 @@ serve(async (req) => {
         });
       }
     }
-
-    // Phase 0A.1 — structured audit log (best-effort).
-    await writeAuditLog(supabase, {
-      functionName: 'streak-backfill',
-      actionType: 'backfill',
-      resourceType: 'streak',
-      performedByUserId: callerUserId,
-      callerRole: callerRoleLabel,
-      metadata: {
-        total: happyPoints?.length || 0,
-        updated,
-        unchanged,
-      },
-    });
 
     return new Response(
       JSON.stringify({

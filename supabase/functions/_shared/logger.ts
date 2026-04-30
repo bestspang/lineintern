@@ -15,10 +15,6 @@ const SENSITIVE_KEYS = [
   'authorization',
   'photo_hash',
   'device_info',
-  'email',
-  'phone',
-  'phone_number',
-  'bank_account',
 ];
 
 /**

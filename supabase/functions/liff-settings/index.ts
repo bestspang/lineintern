@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -130,19 +128,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Phase 0A: only admin/owner may read or modify LIFF endpoint settings.
-  let userId: string | null = null;
-  let role: string | null = null;
-  try {
-    const r = await requireRole(req, ['admin', 'owner'], { functionName: 'liff-settings' });
-    userId = r.userId;
-    role = r.role ?? null;
-  } catch (e) {
-    const r = authzErrorResponse(e, corsHeaders);
-    if (r) return r;
-    throw e;
-  }
-
   try {
     const url = new URL(req.url);
     const action = url.searchParams.get('action');
@@ -218,16 +203,6 @@ serve(async (req) => {
           );
         }
 
-        await writeAuditLog(supabase, {
-          functionName: 'liff-settings',
-          actionType: 'get',
-          resourceType: 'liff_settings',
-          resourceId: null,
-          performedByUserId: userId,
-          callerRole: role,
-          metadata: { liff_id: app.liffId, view_type: app.view.type },
-        });
-
         return new Response(
           JSON.stringify({
             success: true,
@@ -296,16 +271,6 @@ serve(async (req) => {
             },
             updated_at: new Date().toISOString(),
           }, { onConflict: 'setting_key' });
-
-        await writeAuditLog(supabase, {
-          functionName: 'liff-settings',
-          actionType: 'update_endpoint',
-          resourceType: 'liff_settings',
-          resourceId: null,
-          performedByUserId: userId,
-          callerRole: role,
-          metadata: { liff_id: liffId, endpoint_url: endpointUrl },
-        });
 
         return new Response(
           JSON.stringify({

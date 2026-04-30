@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -119,15 +120,16 @@ export default function GachaBox() {
 
   const pullMutation = useMutation({
     mutationFn: async () => {
-      if (!employee?.id || !gachaReward?.id) throw new Error('Gacha reward not found');
-      const { data, error } = await portalApi<any>({
-        endpoint: 'gacha-pull',
-        employee_id: employee.id,
-        params: { reward_id: gachaReward.id },
+      const response = await supabase.functions.invoke('point-redemption', {
+        body: {
+          action: 'gacha_pull',
+          employee_id: employee?.id,
+          reward_id: gachaReward?.id,
+        },
       });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Pull failed');
-      return data;
+      if (response.error) throw new Error(response.error.message);
+      if (!response.data?.success) throw new Error(response.data?.error || 'Pull failed');
+      return response.data;
     },
     onSuccess: (data) => {
       setWonPrize(data.prize);

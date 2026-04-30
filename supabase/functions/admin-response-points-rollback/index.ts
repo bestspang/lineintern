@@ -8,8 +8,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { getBangkokDateString } from '../_shared/timezone.ts';
-import { requireRole, authzErrorResponse } from '../_shared/authz.ts';
-import { writeAuditLog } from '../_shared/audit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,19 +20,6 @@ serve(async (req) => {
   }
 
   try {
-    // Phase 0A: only admin/owner may rollback the points ledger.
-    let actorUserId: string | null = null;
-    let actorRole: string | null = null;
-    try {
-      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'admin-response-points-rollback' });
-      actorUserId = r.userId;
-      actorRole = r.role ?? null;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -69,21 +54,6 @@ serve(async (req) => {
       processed_count: result.processed_count,
       affected_employees: result.affected_employees?.length || 0,
       total_reversed: result.total_reversed
-    });
-
-    await writeAuditLog(supabase, {
-      functionName: 'admin-response-points-rollback',
-      actionType: 'rollback',
-      resourceType: 'points',
-      performedByUserId: actorUserId,
-      callerRole: actorRole,
-      reason: rollbackReason,
-      metadata: {
-        date: targetDate,
-        processed_count: result.processed_count,
-        affected_employees: result.affected_employees?.length ?? 0,
-        total_reversed: result.total_reversed,
-      },
     });
 
     return new Response(

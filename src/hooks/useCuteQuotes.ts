@@ -17,7 +17,7 @@ export interface CuteQuote {
   emoji: string;
   is_active: boolean;
   display_order: number;
-  show_time: 'check_in' | 'check_out' | 'both';
+  show_time: 'check_in' | 'check_out' | 'both' | 'deposit';
   bg_color: string;
   special_day_type: 'birthday' | 'holiday' | 'custom' | null;
   special_day_date: string | null;
@@ -34,6 +34,7 @@ export interface QuoteContext {
 export interface CuteQuoteSettings {
   check_in_chance: number;
   check_out_chance: number;
+  deposit_chance: number;
 }
 
 /**
@@ -67,21 +68,29 @@ export function useCuteQuotes() {
     return {
       check_in_chance: s?.check_in_chance ?? 100,
       check_out_chance: s?.check_out_chance ?? 100,
+      deposit_chance: s?.deposit_chance ?? 100,
     };
   }, [flag?.settings]);
 
   /**
    * Check if quote should be shown based on event type and configured chance
    */
-  const shouldShowQuote = useCallback((eventType: 'check_in' | 'check_out' = 'check_in') => {
+  const shouldShowQuote = useCallback((eventType: 'check_in' | 'check_out' | 'deposit' = 'check_in') => {
     if (!isEnabled) return false;
-    const chance = eventType === 'check_out' ? settings.check_out_chance : settings.check_in_chance;
+    let chance: number;
+    if (eventType === 'deposit') {
+      chance = settings.deposit_chance;
+    } else if (eventType === 'check_out') {
+      chance = settings.check_out_chance;
+    } else {
+      chance = settings.check_in_chance;
+    }
     return Math.random() * 100 < chance;
   }, [isEnabled, settings]);
 
   // Get a random quote filtered by event type and special day context
   const getRandomQuote = useCallback((
-    eventType: 'check_in' | 'check_out' = 'check_in',
+    eventType: 'check_in' | 'check_out' | 'deposit' = 'check_in',
     context?: QuoteContext
   ) => {
     if (!isEnabled || !quotes || quotes.length === 0) return null;
@@ -102,10 +111,15 @@ export function useCuteQuotes() {
       });
     }
     
-    // Filter by show_time: match exact event or 'both'
-    const timeFiltered = quotes.filter(q => 
-      q.show_time === 'both' || q.show_time === eventType
-    );
+    // Filter by show_time first
+    // For deposit: match 'deposit' or 'both'
+    // For check_in/check_out: match exact or 'both'
+    const timeFiltered = quotes.filter(q => {
+      if (eventType === 'deposit') {
+        return q.show_time === 'deposit' || q.show_time === 'both';
+      }
+      return q.show_time === 'both' || q.show_time === eventType;
+    });
     
     // Priority 1: Birthday quotes (if employee has birthday today)
     if (context?.employeeBirthDate && context.employeeBirthDate === todayMMDD) {

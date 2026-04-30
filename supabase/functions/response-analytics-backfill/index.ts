@@ -10,8 +10,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getBangkokNow, getBangkokDateString } from "../_shared/timezone.ts";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,25 +110,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let callerUserId: string | null = null;
-  let callerRoleLabel: string | null = null;
-
   try {
-    // Phase 0A guard: admin/owner only — backfill writes analytics columns.
-    try {
-      const result = await requireRole(
-        req,
-        ['admin', 'owner'],
-        { functionName: 'response-analytics-backfill' },
-      );
-      callerUserId = result.userId;
-      callerRoleLabel = result.role;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -411,24 +391,6 @@ serve(async (req) => {
     };
 
     console.log(`[response-analytics-backfill] Complete:`, result);
-
-    // Phase 0A.1 — structured audit log (best-effort).
-    await writeAuditLog(supabase, {
-      functionName: 'response-analytics-backfill',
-      actionType: 'backfill',
-      resourceType: 'response_analytics',
-      performedByUserId: callerUserId,
-      callerRole: callerRoleLabel,
-      metadata: {
-        start_date: start,
-        end_date: end,
-        group_id: groupId ?? null,
-        user_id: userId ?? null,
-        dry_run: dryRun,
-        updates_count: updates.length,
-        has_more: hasMore,
-      },
-    });
 
     return new Response(
       JSON.stringify(result),

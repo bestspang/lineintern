@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Users, CheckSquare, AlertTriangle, Clock, Database, Wifi, Server, ClipboardList, ArrowRight } from 'lucide-react';
+import { MessageSquare, Users, CheckSquare, AlertTriangle, Receipt, Sparkles, Clock, Database, Wifi, Server } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -35,6 +35,36 @@ export default function Overview() {
       };
     },
     refetchInterval: 60000, // Auto-refresh every 60 seconds
+  });
+
+  // Fetch receipt stats
+  const { data: receiptStats, isLoading: receiptStatsLoading } = useQuery({
+    queryKey: ['receipt-overview-stats'],
+    queryFn: async (): Promise<{ totalReceipts: number; thisMonthReceipts: number; aiUsageThisMonth: number }> => {
+      const now = new Date();
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+      // Fetch counts separately
+      const totalResult = await supabase
+        .from('receipts')
+        .select('*', { count: 'exact', head: true });
+
+      const thisMonthResult = await supabase
+        .from('receipts')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', thisMonthStart);
+
+      // Count AI-extracted receipts - using filter instead of eq to avoid type depth issues
+      const aiQuery = supabase.from('receipts').select('*', { count: 'exact', head: true });
+      const aiExtractedResult = await aiQuery.filter('extraction_source', 'eq', 'ai').gte('created_at', thisMonthStart);
+
+      return {
+        totalReceipts: totalResult.count || 0,
+        thisMonthReceipts: thisMonthResult.count || 0,
+        aiUsageThisMonth: aiExtractedResult.count || 0,
+      };
+    },
+    refetchInterval: 60000,
   });
 
   // Fetch recent unresolved alerts
@@ -144,27 +174,6 @@ export default function Overview() {
     refetchInterval: 30000, // Check health every 30 seconds
   });
 
-  // Action Items Today
-  const { data: actionItems, isLoading: actionItemsLoading } = useQuery({
-    queryKey: ['action-items-today'],
-    queryFn: async () => {
-      const [otRes, earlyLeaveRes, remoteCheckoutRes, dayOffRes] = await Promise.all([
-        supabase.from('overtime_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('early_leave_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('remote_checkout_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('flexible_day_off_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      ]);
-      
-      const items: Array<{ label: string; count: number; href: string; emoji: string }> = [];
-      if ((otRes.count || 0) > 0) items.push({ label: 'OT Requests', count: otRes.count || 0, href: '/attendance/overtime-requests', emoji: '⏰' });
-      if ((earlyLeaveRes.count || 0) > 0) items.push({ label: 'Early Leave Requests', count: earlyLeaveRes.count || 0, href: '/attendance/early-leave-requests', emoji: '🚪' });
-      if ((remoteCheckoutRes.count || 0) > 0) items.push({ label: 'Remote Checkout', count: remoteCheckoutRes.count || 0, href: '/attendance/logs', emoji: '📍' });
-      if ((dayOffRes.count || 0) > 0) items.push({ label: 'Day Off Requests', count: dayOffRes.count || 0, href: '/attendance/flexible-day-off-requests', emoji: '📅' });
-      return items;
-    },
-    refetchInterval: 60000,
-  });
-
   const statCards = [
     {
       title: 'Active Groups',
@@ -226,38 +235,42 @@ export default function Overview() {
         ))}
       </div>
 
-      {/* Action Items Today */}
-      {!actionItemsLoading && actionItems && actionItems.length > 0 && (
-        <Card className="border-primary/20">
-          <CardHeader className="p-4 sm:p-6 pb-2">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-primary" />
-              Today's Action Items
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">{actionItems.length} pending items need your attention</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+      {/* Receipt Stats Widget */}
+      <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/receipts')}>
+        <CardHeader className="p-4 sm:p-6 pb-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-emerald-600" />
+            Receipt Statistics
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">AI receipt extraction usage</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          {receiptStatsLoading ? (
             <div className="space-y-2">
-              {actionItems.map((item) => (
-                <div
-                  key={item.href}
-                  className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => navigate(item.href)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span>{item.emoji}</span>
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">{item.count}</Badge>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  </div>
-                </div>
-              ))}
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-4 w-32" />
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-2xl font-bold">{receiptStats?.totalReceipts || 0}</div>
+                <p className="text-xs text-muted-foreground">Total Receipts</p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{receiptStats?.thisMonthReceipts || 0}</div>
+                <p className="text-xs text-muted-foreground">This Month</p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold flex items-center gap-1">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  {receiptStats?.aiUsageThisMonth || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">AI Extractions</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ✅ NEW: Attendance System Health Card */}
       <Card>

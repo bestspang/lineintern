@@ -80,18 +80,10 @@ export function isSourceQuery(question: string): boolean {
 
 // ── Get Policy ─────────────────────────────────────────
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function getCrossGroupPolicy(
   groupId: string,
   userId: string
 ): Promise<CrossGroupPolicy | null> {
-  // Validate UUID format to prevent filter injection
-  if (!UUID_RE.test(groupId) || !UUID_RE.test(userId)) {
-    console.warn("[crossGroupQuery] Invalid UUID format", { groupId: !!groupId, userId: !!userId });
-    return null;
-  }
-
   // Check user-specific policy first (higher priority), then group policy
   const { data, error } = await supabase
     .from("ai_query_policies")

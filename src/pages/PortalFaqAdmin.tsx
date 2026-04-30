@@ -33,6 +33,7 @@ const CATEGORIES = [
   { value: 'attendance', label: 'Attendance', labelTh: 'การลงเวลา' },
   { value: 'leave-ot', label: 'Leave & OT', labelTh: 'ลา & OT' },
   { value: 'points', label: 'Points & Rewards', labelTh: 'แต้มและรางวัล' },
+  { value: 'receipts', label: 'Receipts & Deposits', labelTh: 'ใบเสร็จและฝากเงิน' },
   { value: 'general', label: 'General', labelTh: 'ทั่วไป' },
 ];
 

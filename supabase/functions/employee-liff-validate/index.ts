@@ -124,14 +124,14 @@ Deno.serve(async (req) => {
         .from('attendance_logs')
         .select('event_type, server_time')
         .eq('employee_id', employee.id)
-        .gte('server_time', `${today}T00:00:00+07:00`)
-        .lt('server_time', `${today}T23:59:59+07:00`)
+        .gte('server_time', `${today}T00:00:00`)
+        .lt('server_time', `${today}T23:59:59`)
         .order('server_time', { ascending: true })
     ]);
 
     const todayLogs = todayLogsResult.data || [];
-    const checkInLog = todayLogs.find(l => l.event_type === 'check_in' || l.event_type === 'check-in');
-    const checkOutLog = todayLogs.find(l => l.event_type === 'check_out' || l.event_type === 'check-out');
+    const checkInLog = todayLogs.find(l => l.event_type === 'check-in');
+    const checkOutLog = todayLogs.find(l => l.event_type === 'check-out');
 
     // Calculate minutes worked
     let minutesWorked: number | null = null;
@@ -156,7 +156,6 @@ Deno.serve(async (req) => {
           line_user_id: employee.line_user_id,
           role: employee.employee_roles || null,
           branch: employee.branches || null,
-          branch_id: employee.branch_id || null,
           birth_date: employee.birth_date || null,
           skip_attendance_tracking: employee.skip_attendance_tracking || false,
           exclude_from_points: employee.exclude_from_points || false

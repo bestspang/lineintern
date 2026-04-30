@@ -177,21 +177,6 @@ serve(async (req) => {
       notes: sanitizedNotes
     });
 
-    // Insert portal notification (non-blocking)
-    try {
-      await supabase.from('notifications').insert({
-        employee_id: employee.id,
-        title: body.action === 'approve' ? '✅ OT อนุมัติแล้ว' : '❌ OT ไม่อนุมัติ',
-        body: `คำขอ OT วันที่ ${otRequest.request_date} (${otRequest.estimated_hours} ชม.)`,
-        type: 'approval',
-        priority: 'normal',
-        action_url: '/portal/my-history',
-        metadata: { request_type: 'overtime', request_id: body.request_id, action: body.action }
-      });
-    } catch (notifErr) {
-      console.warn('[overtime-approval] Failed to create notification:', notifErr);
-    }
-
     logger.info('OT request processed', { 
       request_id: body.request_id, 
       action: body.action,

@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useCuteQuotesAdmin, CuteQuote } from '@/hooks/useCuteQuotes';
 import { useFeatureFlag, useFeatureFlagsAdmin } from '@/hooks/useFeatureFlags';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut, Sunrise, Sunset, Sun, Cake, Calendar, CalendarDays } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smile, Eye, EyeOff, LogIn, LogOut, Sunrise, Sunset, Sun, Cake, Calendar, CalendarDays, Banknote } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -30,6 +30,7 @@ const SHOW_TIME_OPTIONS = [
   { value: 'both', label: 'ทั้งเช้าและเย็น', icon: Sun },
   { value: 'check_in', label: 'เช้า (Check-in)', icon: Sunrise },
   { value: 'check_out', label: 'เย็น (Check-out)', icon: Sunset },
+  { value: 'deposit', label: 'ฝากเงิน (Deposit)', icon: Banknote },
 ];
 
 const BG_COLOR_OPTIONS = [
@@ -72,14 +73,16 @@ export default function CuteQuotesSettings() {
   // % Chance settings
   const [checkInChance, setCheckInChance] = useState(100);
   const [checkOutChance, setCheckOutChance] = useState(100);
+  const [depositChance, setDepositChance] = useState(100);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   
   // Load settings from flag
   useEffect(() => {
     if (flag?.settings) {
-      const s = flag.settings as { check_in_chance?: number; check_out_chance?: number };
+      const s = flag.settings as { check_in_chance?: number; check_out_chance?: number; deposit_chance?: number };
       setCheckInChance(s.check_in_chance ?? 100);
       setCheckOutChance(s.check_out_chance ?? 100);
+      setDepositChance(s.deposit_chance ?? 100);
     }
   }, [flag?.settings]);
   
@@ -229,6 +232,7 @@ export default function CuteQuotesSettings() {
   const getShowTimeLabel = (showTime: string) => {
     if (showTime === 'check_in') return '🌅';
     if (showTime === 'check_out') return '🌆';
+    if (showTime === 'deposit') return '💵';
     return '🌗';
   };
 
@@ -366,7 +370,24 @@ export default function CuteQuotesSettings() {
             />
           </div>
 
-          {/* Deposit chance UI removed in Phase 4 cleanup */}
+          {/* Deposit Chance */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Banknote className="h-4 w-4 text-blue-600" />
+                <Label>ฝากเงิน (Deposit)</Label>
+              </div>
+              <span className="text-lg font-bold text-blue-600">{depositChance}%</span>
+            </div>
+            <Slider
+              value={[depositChance]}
+              onValueChange={(value) => setDepositChance(value[0])}
+              max={100}
+              min={0}
+              step={5}
+              className="w-full"
+            />
+          </div>
 
           <Button
             onClick={async () => {
@@ -378,6 +399,7 @@ export default function CuteQuotesSettings() {
                     settings: {
                       check_in_chance: checkInChance,
                       check_out_chance: checkOutChance,
+                      deposit_chance: depositChance,
                     },
                     updated_at: new Date().toISOString(),
                   })

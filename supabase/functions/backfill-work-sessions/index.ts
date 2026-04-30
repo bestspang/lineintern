@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,19 +12,6 @@ serve(async (req) => {
   }
 
   try {
-    // Phase 0A: backfill jobs are admin/owner only.
-    let callerUserId: string | null = null;
-    let callerRole: string | null = null;
-    try {
-      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-work-sessions' });
-      callerUserId = r.userId;
-      callerRole = r.role;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -146,22 +131,6 @@ serve(async (req) => {
     }
 
     console.log(`[backfill-work-sessions] Completed: ${totalCreated} created, ${totalSkipped} skipped, ${totalErrors} errors`);
-
-    // Phase 0B — best-effort audit (counts only).
-    await writeAuditLog(supabase, {
-      functionName: 'backfill-work-sessions',
-      actionType: 'backfill',
-      resourceType: 'work_sessions',
-      performedByUserId: callerUserId,
-      callerRole,
-      metadata: {
-        employees_processed: employees.length,
-        sessions_created: totalCreated,
-        sessions_skipped: totalSkipped,
-        errors: totalErrors,
-        source: 'backfill',
-      },
-    });
 
     return new Response(
       JSON.stringify({ 

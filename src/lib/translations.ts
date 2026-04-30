@@ -185,7 +185,7 @@ export const translations = {
   profile: { th: 'โปรไฟล์', en: 'Profile' },
   history: { th: 'ประวัติ', en: 'History' },
   schedule: { th: 'ตารางงาน', en: 'Schedule' },
-  // 'deposit' translation key removed in Phase 4 cleanup.
+  deposit: { th: 'ฝากเงิน', en: 'Deposit' },
   approve: { th: 'อนุมัติ', en: 'Approve' },
   reject: { th: 'ไม่อนุมัติ', en: 'Reject' },
   all: { th: 'ทั้งหมด', en: 'All' },

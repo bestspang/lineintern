@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star, Shield, Backpack, Target, CheckCircle2, Circle } from 'lucide-react';
+import { Trophy, Flame, Coins, TrendingUp, Heart, Gift, ArrowUpCircle, ArrowDownCircle, Clock, MessageSquare, Star, Shield, Backpack } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -104,35 +104,6 @@ export default function MyPoints() {
     enabled: !!employee?.id,
   });
 
-  const { data: achievementBadges } = useQuery({
-    queryKey: ['achievement-badges', employee?.id],
-    queryFn: async () => {
-      if (!employee?.id) return null;
-      const { data, error } = await portalApi({
-        endpoint: 'achievement-badges',
-        employee_id: employee.id
-      });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!employee?.id,
-  });
-
-  const { data: dailyMissions } = useQuery({
-    queryKey: ['daily-missions', employee?.id],
-    queryFn: async () => {
-      if (!employee?.id) return null;
-      const { data, error } = await portalApi({
-        endpoint: 'daily-missions',
-        employee_id: employee.id
-      });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!employee?.id,
-    refetchInterval: 5 * 60 * 1000, // refresh every 5 min
-  });
-
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -223,82 +194,6 @@ export default function MyPoints() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Daily Progress Card */}
-      {dailyMissions && (
-        <Card className="border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
-              {locale === 'th' ? 'ภารกิจวันนี้' : "Today's Missions"}
-            </CardTitle>
-            <CardDescription>
-              {locale === 'th' 
-                ? `สำเร็จ ${dailyMissions.completed_count}/${dailyMissions.total_count} ภารกิจ`
-                : `${dailyMissions.completed_count}/${dailyMissions.total_count} completed`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Progress 
-              value={(dailyMissions.completed_count / dailyMissions.total_count) * 100} 
-              className="h-2 mb-3" 
-            />
-            <div className="space-y-2">
-              {dailyMissions.missions?.map((m: any) => (
-                <div key={m.id} className="flex items-center gap-2 text-sm">
-                  {m.completed 
-                    ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                    : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
-                  }
-                  <span className={m.completed ? 'line-through text-muted-foreground' : ''}>
-                    {m.icon} {locale === 'th' ? m.label_th : m.label_en}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Achievement Badges Card */}
-      {achievementBadges && (
-        <Card className="border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-yellow-500" />
-              {locale === 'th' ? 'เหรียญตรา' : 'Achievement Badges'}
-            </CardTitle>
-            <CardDescription>
-              {locale === 'th' 
-                ? `ปลดล็อค ${achievementBadges.unlocked_count}/${achievementBadges.total_count}`
-                : `${achievementBadges.unlocked_count}/${achievementBadges.total_count} unlocked`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-3">
-              {achievementBadges.badges?.map((badge: any) => (
-                <div
-                  key={badge.id}
-                  className={`flex flex-col items-center text-center p-2 rounded-lg border transition-all ${
-                    badge.unlocked 
-                      ? badge.tier === 'gold' 
-                        ? 'bg-yellow-50 border-yellow-300 dark:bg-yellow-950/30 dark:border-yellow-700' 
-                        : badge.tier === 'silver'
-                        ? 'bg-slate-50 border-slate-300 dark:bg-slate-950/30 dark:border-slate-600'
-                        : 'bg-orange-50 border-orange-300 dark:bg-orange-950/30 dark:border-orange-700'
-                      : 'bg-muted/30 border-muted opacity-40'
-                  }`}
-                >
-                  <span className="text-2xl mb-1">{badge.icon}</span>
-                  <span className="text-[10px] font-medium leading-tight">
-                    {locale === 'th' ? badge.label_th : badge.label_en}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Streak Shield Card */}
       {(happyPoints?.streak_shields || 0) > 0 && (

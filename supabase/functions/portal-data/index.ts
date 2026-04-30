@@ -11,7 +11,7 @@ import { getBangkokDateString, getBangkokStartOfDay, getBangkokEndOfDay, getBang
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-token, x-portal-line-user-id',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
@@ -21,31 +21,10 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    const denyAccess = (reason: string, status = 403, details: Record<string, unknown> = {}) => {
-      console.warn('[portal-data] access_denied', {
-        reason,
-        status,
-        ...details,
-      });
-      return new Response(
-        JSON.stringify({ error: 'Access denied' }),
-        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    };
 
-    const { endpoint, employee_id, params: rawParams } = await req.json().catch(() => ({}));
-    const params = { ...(rawParams || {}) };
-
-    if (!endpoint || typeof endpoint !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'endpoint is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const { endpoint, employee_id, params } = await req.json();
 
     if (!employee_id) {
       return new Response(
@@ -53,214 +32,6 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const employeeSelect = 'id, auth_user_id, branch_id, line_user_id, role:employee_roles(role_key)';
-    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
-    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : '';
-    const portalToken = req.headers.get('x-portal-token')?.trim() || '';
-    const portalLineUserId = req.headers.get('x-portal-line-user-id')?.trim() || '';
-
-    let authUserId: string | null = null;
-    let requesterEmployee: any = null;
-    let requesterError: any = null;
-    let authFailureReason: string | null = null;
-
-    if (bearerToken) {
-      const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: {
-          headers: {
-            Authorization: `Bearer ${bearerToken}`,
-          },
-        },
-      });
-
-      const { data: authData, error: authError } = await authClient.auth.getUser(bearerToken);
-      if (authError || !authData?.user) {
-        authFailureReason = authError?.message || 'invalid_or_expired_token';
-      } else {
-        authUserId = authData.user.id;
-        const result = await supabase
-          .from('employees')
-          .select(employeeSelect)
-          .eq('auth_user_id', authData.user.id)
-          .maybeSingle();
-        requesterEmployee = result.data;
-        requesterError = result.error;
-      }
-    }
-
-    if (!requesterEmployee && portalToken) {
-      const { data: tokenData, error: tokenError } = await supabase
-        .from('employee_menu_tokens')
-        .select('id, employee_id, expires_at, used_at')
-        .eq('token', portalToken)
-        .maybeSingle();
-
-      if (tokenError || !tokenData) {
-        authFailureReason = tokenError?.message || 'invalid_portal_token';
-      } else {
-        const usedAt = tokenData.used_at ? new Date(tokenData.used_at) : null;
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const expiresAt = new Date(tokenData.expires_at);
-
-        if (usedAt && usedAt < oneHourAgo) {
-          authFailureReason = 'portal_token_session_expired';
-        } else if (new Date() > expiresAt) {
-          authFailureReason = 'portal_token_expired';
-        } else {
-          await supabase
-            .from('employee_menu_tokens')
-            .update({ used_at: new Date().toISOString() })
-            .eq('id', tokenData.id);
-
-          const result = await supabase
-            .from('employees')
-            .select(employeeSelect)
-            .eq('id', tokenData.employee_id)
-            .maybeSingle();
-          requesterEmployee = result.data;
-          requesterError = result.error;
-        }
-      }
-    }
-
-    if (!requesterEmployee && portalLineUserId) {
-      const result = await supabase
-        .from('employees')
-        .select(employeeSelect)
-        .eq('line_user_id', portalLineUserId)
-        .maybeSingle();
-      requesterEmployee = result.data;
-      requesterError = result.error;
-      if (result.error || !result.data) {
-        authFailureReason = result.error?.message || 'line_user_mapping_not_found';
-      }
-    }
-
-    if (requesterError || !requesterEmployee) {
-      return denyAccess('employee_mapping_not_found', 403, {
-        authUserId,
-        authFailureReason,
-        requesterError: requesterError?.message,
-      });
-    }
-
-    const { data: requestedEmployee, error: requestedEmployeeError } = await supabase
-      .from('employees')
-      .select('id, branch_id')
-      .eq('id', employee_id)
-      .maybeSingle();
-
-    if (requestedEmployeeError || !requestedEmployee) {
-      return denyAccess('requested_employee_not_found', 403, {
-        authUserId,
-        requestedEmployeeId: employee_id,
-      });
-    }
-
-    const roleKey = String((requesterEmployee.role as any)?.role_key || '').toLowerCase();
-    const isAdminRole = roleKey === 'admin' || roleKey === 'owner';
-    const isManagerRole = roleKey.includes('manager');
-    const isPrivilegedRole = isAdminRole || isManagerRole;
-    const ownsRequestedEmployee = requesterEmployee.id === employee_id;
-
-    if (!ownsRequestedEmployee) {
-      if (!isPrivilegedRole) {
-        return denyAccess('cross_employee_access_denied', 403, {
-          authUserId,
-          requesterEmployeeId: requesterEmployee.id,
-          requestedEmployeeId: employee_id,
-          roleKey,
-        });
-      }
-
-      if (isManagerRole && requesterEmployee.branch_id !== requestedEmployee.branch_id) {
-        return denyAccess('manager_cross_branch_access_denied', 403, {
-          authUserId,
-          requesterEmployeeId: requesterEmployee.id,
-          requestedEmployeeId: employee_id,
-          managerBranchId: requesterEmployee.branch_id,
-          targetBranchId: requestedEmployee.branch_id,
-        });
-      }
-    }
-
-    const managerAdminEndpoints = new Set([
-      'approval-counts',
-      'pending-ot-requests',
-      'approve-ot',
-      'pending-leave-requests',
-      'approve-leave',
-      'pending-early-leave-requests',
-      'approve-early-leave',
-      'pending-remote-checkout-requests',
-      'approve-remote-checkout',
-      'pending-redemptions',
-      'approve-redemption',
-      'reject-redemption',
-      'today-photos',
-      'team-summary',
-    ]);
-
-    if (managerAdminEndpoints.has(endpoint)) {
-      if (!isPrivilegedRole) {
-        return denyAccess('manager_admin_endpoint_role_denied', 403, {
-          authUserId,
-          requesterEmployeeId: requesterEmployee.id,
-          endpoint,
-          roleKey,
-        });
-      }
-
-      if (isAdminRole) {
-        params.isAdmin = true;
-      } else {
-        params.isAdmin = false;
-        params.branchId = requesterEmployee.branch_id;
-      }
-    }
-
-    if (endpoint === 'approve-ot' || endpoint === 'approve-leave' || endpoint === 'approve-early-leave' || endpoint === 'approve-remote-checkout' || endpoint === 'approve-redemption' || endpoint === 'reject-redemption') {
-      params.approverEmployeeId = requesterEmployee.id;
-    }
-
-    const selfMutationEndpoints = new Set([
-      'redeem-reward',
-      'use-bag-item',
-      'gacha-pull',
-    ]);
-
-    if (selfMutationEndpoints.has(endpoint) && !ownsRequestedEmployee) {
-      return denyAccess('self_mutation_cross_employee_denied', 403, {
-        authUserId,
-        requesterEmployeeId: requesterEmployee.id,
-        requestedEmployeeId: employee_id,
-        endpoint,
-      });
-    }
-
-    const invokePointRedemption = async (body: Record<string, unknown>) => {
-      const response = await fetch(`${supabaseUrl}/functions/v1/point-redemption`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'apikey': supabaseServiceKey,
-          'content-type': 'application/json',
-          'x-internal-source': 'portal-data',
-        },
-        body: JSON.stringify(body),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.success === false) {
-        return {
-          data: null,
-          error: { message: payload?.error || 'Failed to process point redemption' },
-        };
-      }
-
-      return { data: payload, error: null };
-    };
 
     console.log(`[portal-data] Endpoint: ${endpoint}, Employee: ${employee_id}`);
 
@@ -565,70 +336,8 @@ serve(async (req) => {
       }
 
       case 'home-summary': {
-        /**
-         * Response contract:
-         * - points: personal points summary
-         * - todayAttendance: caller attendance events for today
-         * - pendingApprovals: scoped pending-request counts + scope metadata
-         *   - scope = 'self' | 'team' | 'global'
-         *   - self: caller's own pending requests
-         *   - team: pending requests from caller's branch/team
-         *   - global: all pending requests across branches (policy-gated)
-         */
-        // ⚠️ VERIFIED 2026-04-26: home-summary scope logic + Supabase query patterns.
-        // - Embed `employee_roles` is normalized to single object (TS may infer array)
-        // - pendingOT/Leave queries: select string built UPFRONT (chaining .select() after .eq() breaks TS)
-        // See .lovable/CRITICAL_FILES.md for the rules. DO NOT REFACTOR without re-running build.
         // ⚠️ TIMEZONE: Use Bangkok date
         const today = getBangkokDateString();
-
-        // Determine caller role + branch scope from authenticated employee profile
-        const profileResult = await supabase
-          .from('employees')
-          .select('branch_id, employee_roles(role_key)')
-          .eq('id', employee_id)
-          .maybeSingle();
-
-        if (profileResult.error) {
-          error = profileResult.error;
-          break;
-        }
-
-        if (!profileResult.data) {
-          error = { message: 'Employee profile not found' };
-          break;
-        }
-
-        // Supabase generated types may infer the embed as array; normalize to single object.
-        const profileRow = profileResult.data as {
-          branch_id: string | null;
-          employee_roles: { role_key: string } | { role_key: string }[] | null;
-        };
-        const roleObj = Array.isArray(profileRow.employee_roles)
-          ? profileRow.employee_roles[0]
-          : profileRow.employee_roles;
-        const roleKey = String(roleObj?.role_key || '').toLowerCase();
-        const branchId = profileRow.branch_id;
-        const isManagerRole = roleKey === 'manager';
-        const isAdminOrHrRole = roleKey === 'admin' || roleKey === 'hr' || roleKey === 'owner';
-
-        // Policy gate: admin/hr/owner can only see global counts when explicitly enabled.
-        const approvalScopeSetting = await supabase
-          .from('system_settings')
-          .select('setting_value')
-          .eq('setting_key', 'portal_home_approval_scope')
-          .maybeSingle();
-
-        const allowGlobalForAdminHr = Boolean(
-          (approvalScopeSetting.data?.setting_value as any)?.allow_global_for_admin_hr
-        );
-
-        let approvalScope: 'self' | 'team' | 'global' = 'self';
-        if (isManagerRole) {
-          approvalScope = 'team';
-        } else if (isAdminOrHrRole && allowGlobalForAdminHr) {
-          approvalScope = 'global';
-        }
         
         // Get points
         const pointsResult = await supabase
@@ -646,35 +355,16 @@ serve(async (req) => {
           .lte('server_time', `${today}T23:59:59+07:00`)
           .order('server_time', { ascending: true });
 
-        // Build select string upfront — chaining .select() after .eq() breaks TS types
-        // (FilterBuilder.select() doesn't accept count/head options).
-        const isTeamScope = approvalScope === 'team' && Boolean(branchId);
-        const otSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
-        const leaveSelect = isTeamScope ? 'id, employee:employees!inner(branch_id)' : 'id';
-
-        let pendingOTQuery = supabase
+        // Get pending approvals count (for managers)
+        const pendingOTResult = await supabase
           .from('overtime_requests')
-          .select(otSelect, { count: 'exact', head: true })
+          .select('id', { count: 'exact' })
           .eq('status', 'pending');
 
-        let pendingLeaveQuery = supabase
+        const pendingLeaveResult = await supabase
           .from('leave_requests')
-          .select(leaveSelect, { count: 'exact', head: true })
+          .select('id', { count: 'exact' })
           .eq('status', 'pending');
-
-        if (approvalScope === 'self') {
-          pendingOTQuery = pendingOTQuery.eq('employee_id', employee_id);
-          pendingLeaveQuery = pendingLeaveQuery.eq('employee_id', employee_id);
-        } else if (isTeamScope) {
-          pendingOTQuery = pendingOTQuery.eq('employee.branch_id', branchId);
-          pendingLeaveQuery = pendingLeaveQuery.eq('employee.branch_id', branchId);
-        }
-        // approvalScope === 'global' → no extra filter (count all pending)
-
-        const [pendingOTResult, pendingLeaveResult] = await Promise.all([
-          pendingOTQuery,
-          pendingLeaveQuery
-        ]);
 
         data = {
           points: pointsResult.data ? {
@@ -685,16 +375,10 @@ serve(async (req) => {
           todayAttendance: attendanceResult.data || [],
           pendingApprovals: {
             overtime: pendingOTResult.count || 0,
-            leave: pendingLeaveResult.count || 0,
-            scope: approvalScope
+            leave: pendingLeaveResult.count || 0
           }
         };
-        error =
-          pointsResult.error ||
-          attendanceResult.error ||
-          pendingOTResult.error ||
-          pendingLeaveResult.error ||
-          approvalScopeSetting.error;
+        error = pointsResult.error || attendanceResult.error;
         break;
       }
 
@@ -953,6 +637,11 @@ serve(async (req) => {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending');
 
+        let depositsQuery = supabase
+          .from('daily_deposits')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+
         let remoteCheckoutQuery = supabase
           .from('remote_checkout_requests')
           .select('id', { count: 'exact', head: true })
@@ -960,20 +649,22 @@ serve(async (req) => {
 
         // Manager filter by branch (need to filter after fetch for requests without direct branch_id)
         if (!isAdmin && branchId) {
+          depositsQuery = depositsQuery.eq('branch_id', branchId);
           remoteCheckoutQuery = remoteCheckoutQuery.eq('branch_id', branchId);
         }
 
-        const [otRes, leaveRes, earlyRes, redemptionRes, remoteRes] = await Promise.all([
+        const [otRes, leaveRes, earlyRes, redemptionRes, depositRes, remoteRes] = await Promise.all([
           otQuery,
           leaveQuery,
           earlyLeaveQuery,
           redemptionsQuery,
+          depositsQuery,
           remoteCheckoutQuery
         ]);
 
         // For manager, we need to filter OT/Leave/EarlyLeave by fetching with branch
         if (!isAdmin && branchId) {
-          const [otBranchRes, leaveBranchRes, earlyBranchRes, redemptionBranchRes] = await Promise.all([
+          const [otBranchRes, leaveBranchRes, earlyBranchRes] = await Promise.all([
             supabase
               .from('overtime_requests')
               .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
@@ -989,11 +680,6 @@ serve(async (req) => {
               .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
               .eq('status', 'pending')
               .eq('employee.branch_id', branchId),
-            supabase
-              .from('point_redemptions')
-              .select('id, employee:employees!inner(branch_id)', { count: 'exact', head: true })
-              .eq('status', 'pending')
-              .eq('employee.branch_id', branchId),
           ]);
 
           data = {
@@ -1001,7 +687,8 @@ serve(async (req) => {
             leave: leaveBranchRes.count || 0,
             earlyLeave: earlyBranchRes.count || 0,
             remoteCheckout: remoteRes.count || 0,
-            redemptions: redemptionBranchRes.count || 0,
+            redemptions: 0, // Manager doesn't see redemptions
+            deposits: depositRes.count || 0
           };
         } else {
           data = {
@@ -1010,69 +697,9 @@ serve(async (req) => {
             earlyLeave: earlyRes.count || 0,
             remoteCheckout: remoteRes.count || 0,
             redemptions: redemptionRes.count || 0,
+            deposits: depositRes.count || 0
           };
         }
-        break;
-      }
-
-      // Pending reward redemptions for ApproveRedemptions.tsx
-      case 'pending-redemptions': {
-        const branchId = params?.branchId;
-        const isAdmin = params?.isAdmin === true;
-
-        let query = supabase
-          .from('point_redemptions')
-          .select(`
-            id, point_cost, status, created_at, notes,
-            employee:employees!inner(id, full_name, code, branch_id),
-            reward:point_rewards!inner(id, name, name_th, icon)
-          `)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: true });
-
-        if (!isAdmin && branchId) {
-          query = query.eq('employee.branch_id', branchId);
-        }
-
-        const result = await query;
-        data = result.data || [];
-        error = result.error;
-        break;
-      }
-
-      case 'approve-redemption': {
-        const { redemptionId, approverEmployeeId, notes } = params;
-        if (!redemptionId) {
-          error = { message: 'redemptionId is required' };
-          break;
-        }
-
-        const result = await invokePointRedemption({
-          action: 'approve',
-          redemption_id: redemptionId,
-          admin_id: approverEmployeeId,
-          notes,
-        });
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
-      case 'reject-redemption': {
-        const { redemptionId, approverEmployeeId, rejectionReason } = params;
-        if (!redemptionId) {
-          error = { message: 'redemptionId is required' };
-          break;
-        }
-
-        const result = await invokePointRedemption({
-          action: 'reject',
-          redemption_id: redemptionId,
-          admin_id: approverEmployeeId,
-          rejection_reason: rejectionReason,
-        });
-        data = result.data;
-        error = result.error;
         break;
       }
 
@@ -1272,8 +899,7 @@ serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'x-internal-source': 'portal-data'
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
           },
           body: JSON.stringify({
             request_id: requestId,
@@ -1371,8 +997,99 @@ serve(async (req) => {
         break;
       }
 
-      // ========== REDEMPTION ENDPOINTS ==========
-      // (Receipt endpoints removed in Phase 2 cleanup.)
+      // ========== RECEIPT & REDEMPTION ENDPOINTS ==========
+
+      // My businesses for ReceiptNew.tsx, ReceiptDetail.tsx, ReceiptBusinesses.tsx
+      case 'my-businesses': {
+        // Get employee's line_user_id first
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = [];
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+
+        const result = await supabase
+          .from('receipt_businesses')
+          .select('id, name, is_default, tax_id, created_at')
+          .eq('line_user_id', lineUserId)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true });
+
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // My receipts list for MyReceipts.tsx
+      case 'my-receipts-list': {
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = [];
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+        const businessId = params?.businessId;
+        const limit = params?.limit || 50;
+
+        let query = supabase
+          .from('receipts')
+          .select('id, vendor, total, receipt_date, category, created_at, status, business_id')
+          .eq('line_user_id', lineUserId)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (businessId && businessId !== 'all') {
+          query = query.eq('business_id', businessId);
+        }
+
+        const result = await query;
+        data = result.data;
+        error = result.error;
+        break;
+      }
+
+      // Receipt detail for ReceiptDetail.tsx
+      case 'receipt-detail': {
+        const receiptId = params?.receiptId;
+        if (!receiptId) {
+          error = { message: 'receiptId is required' };
+          break;
+        }
+
+        // Get receipt with files
+        const receiptResult = await supabase
+          .from('receipts')
+          .select('*, receipt_files(*)')
+          .eq('id', receiptId)
+          .single();
+
+        // Get receipt items
+        const itemsResult = await supabase
+          .from('receipt_items')
+          .select('*')
+          .eq('receipt_id', receiptId)
+          .order('sort_order', { ascending: true });
+
+        data = {
+          receipt: receiptResult.data,
+          items: itemsResult.data || []
+        };
+        error = receiptResult.error;
+        break;
+      }
 
       // My redemptions for MyRedemptions.tsx
       case 'my-redemptions-list': {
@@ -1390,25 +1107,98 @@ serve(async (req) => {
         break;
       }
 
-      case 'redeem-reward': {
-        const rewardId = params?.reward_id;
-        if (!rewardId) {
-          error = { message: 'reward_id is required' };
+      // Check today deposit for DepositUpload.tsx
+      case 'check-today-deposit': {
+        // Get employee's branch
+        const empResult = await supabase
+          .from('employees')
+          .select('branch_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.branch_id) {
+          data = null;
           break;
         }
 
-        const result = await invokePointRedemption({
-          action: params?.to_bag ? 'redeem_to_bag' : 'redeem',
-          employee_id,
-          reward_id: rewardId,
-          notes: params?.notes,
-        });
+        // ⚠️ TIMEZONE: Use Bangkok date
+        const today = getBangkokDateString();
+
+        const result = await supabase
+          .from('daily_deposits')
+          .select('*, employees(full_name)')
+          .eq('branch_id', empResult.data.branch_id)
+          .eq('deposit_date', today)
+          .maybeSingle();
+
         data = result.data;
         error = result.error;
         break;
       }
 
-      // (check-today-deposit and my-receipt-quota endpoints removed in Phase 4 cleanup.)
+      // AI quota for ReceiptBusinesses.tsx
+      case 'my-receipt-quota': {
+        const empResult = await supabase
+          .from('employees')
+          .select('line_user_id')
+          .eq('id', employee_id)
+          .maybeSingle();
+
+        if (!empResult.data?.line_user_id) {
+          data = { used: 0, limit: 5, planName: 'Free' };
+          break;
+        }
+
+        const lineUserId = empResult.data.line_user_id;
+        const now = new Date();
+        const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const today = getBangkokDateString();
+
+        // Get usage
+        const { data: usage } = await supabase
+          .from('receipt_usage')
+          .select('ai_receipts_used')
+          .eq('line_user_id', lineUserId)
+          .eq('period_yyyymm', period)
+          .maybeSingle();
+
+        // Get active subscription
+        const { data: subscription } = await supabase
+          .from('receipt_subscriptions')
+          .select('plan_id')
+          .eq('line_user_id', lineUserId)
+          .lte('current_period_start', today)
+          .gte('current_period_end', today)
+          .maybeSingle();
+
+        // Get plan details
+        let plan = null;
+        if (subscription?.plan_id) {
+          const { data: planData } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', subscription.plan_id)
+            .single();
+          plan = planData;
+        }
+
+        // Default to free plan
+        if (!plan) {
+          const { data: freePlan } = await supabase
+            .from('receipt_plans')
+            .select('id, name, ai_receipts_limit')
+            .eq('id', 'free')
+            .maybeSingle();
+          plan = freePlan || { id: 'free', name: 'Free', ai_receipts_limit: 5 };
+        }
+
+        data = {
+          used: usage?.ai_receipts_used || 0,
+          limit: plan?.ai_receipts_limit || 5,
+          planName: plan?.name || 'Free',
+        };
+        break;
+      }
 
       // ========================================
       // MY POINTS PAGE ENDPOINTS (bypass RLS)
@@ -1751,35 +1541,6 @@ serve(async (req) => {
         break;
       }
 
-      case 'my-bag-count': {
-        const result = await supabase
-          .from('employee_bag_items')
-          .select('id', { count: 'exact', head: true })
-          .eq('employee_id', employee_id)
-          .eq('status', 'active');
-
-        data = result.count || 0;
-        error = result.error;
-        break;
-      }
-
-      case 'use-bag-item': {
-        const bagItemId = params?.bag_item_id;
-        if (!bagItemId) {
-          error = { message: 'bag_item_id is required' };
-          break;
-        }
-
-        const result = await invokePointRedemption({
-          action: 'use_bag_item',
-          employee_id,
-          bag_item_id: bagItemId,
-        });
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
       case 'employee-bag-items': {
         const targetEmployeeId = params?.target_employee_id;
         if (!targetEmployeeId) {
@@ -1842,196 +1603,6 @@ serve(async (req) => {
           .limit(limit);
         data = result.data;
         error = result.error;
-        break;
-      }
-
-      case 'gacha-pull': {
-        const rewardId = params?.reward_id;
-        if (!rewardId) {
-          error = { message: 'reward_id is required' };
-          break;
-        }
-
-        const result = await invokePointRedemption({
-          action: 'gacha_pull',
-          employee_id,
-          reward_id: rewardId,
-        });
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
-      case 'notification-preferences': {
-        // GET: return preferences for employee
-        const result = await supabase
-          .from('notification_preferences')
-          .select('*')
-          .eq('employee_id', employee_id)
-          .maybeSingle();
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
-      case 'notification-preferences-update': {
-        // POST: upsert preferences
-        const result = await supabase
-          .from('notification_preferences')
-          .upsert({
-            employee_id,
-            notify_overtime: params?.notify_overtime ?? true,
-            notify_early_leave: params?.notify_early_leave ?? true,
-            notify_day_off: params?.notify_day_off ?? true,
-            notify_remote_checkout: params?.notify_remote_checkout ?? true,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'employee_id' })
-          .select()
-          .single();
-        data = result.data;
-        error = result.error;
-        break;
-      }
-
-      case 'daily-missions': {
-        const today = getBangkokDateString();
-        const todayStart = `${today}T00:00:00+07:00`;
-        const todayEnd = `${today}T23:59:59+07:00`;
-
-        // Mission 1: On-time check-in today
-        const { data: todayCheckin } = await supabase
-          .from('attendance_logs')
-          .select('id, server_time')
-          .eq('employee_id', employee_id)
-          .eq('event_type', 'check_in')
-          .gte('server_time', todayStart)
-          .lte('server_time', todayEnd)
-          .limit(1);
-
-        // Check if check-in was on time via work_sessions
-        const { data: todaySession } = await supabase
-          .from('work_sessions')
-          .select('is_late')
-          .eq('employee_id', employee_id)
-          .eq('work_date', today)
-          .maybeSingle();
-
-        const checkedIn = (todayCheckin?.length || 0) > 0;
-        const onTime = checkedIn && todaySession?.is_late === false;
-
-        // Mission 2: Current streak
-        const { data: hp } = await supabase
-          .from('happy_points')
-          .select('current_punctuality_streak, daily_response_score')
-          .eq('employee_id', employee_id)
-          .maybeSingle();
-
-        const streak = hp?.current_punctuality_streak || 0;
-
-        // Mission 3: Points earned today
-        const { data: todayPoints } = await supabase
-          .from('point_transactions')
-          .select('amount')
-          .eq('employee_id', employee_id)
-          .eq('transaction_type', 'earn')
-          .gte('created_at', todayStart)
-          .lte('created_at', todayEnd);
-
-        const todayTotalPoints = (todayPoints || []).reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-
-        // Mission 4: Check-out completed
-        const { data: todayCheckout } = await supabase
-          .from('attendance_logs')
-          .select('id')
-          .eq('employee_id', employee_id)
-          .eq('event_type', 'check_out')
-          .gte('server_time', todayStart)
-          .lte('server_time', todayEnd)
-          .limit(1);
-
-        const checkedOut = (todayCheckout?.length || 0) > 0;
-
-        const missions = [
-          { id: 'checkin', label_th: 'เช็คอินวันนี้', label_en: 'Check in today', icon: '🕐', completed: checkedIn },
-          { id: 'ontime', label_th: 'มาตรงเวลา', label_en: 'On time', icon: '✅', completed: onTime },
-          { id: 'streak3', label_th: 'Streak 3 วันขึ้นไป', label_en: '3+ day streak', icon: '🔥', completed: streak >= 3 },
-          { id: 'earn_points', label_th: 'ได้รับแต้มวันนี้', label_en: 'Earn points today', icon: '⭐', completed: todayTotalPoints > 0 },
-          { id: 'checkout', label_th: 'เช็คเอาท์วันนี้', label_en: 'Check out today', icon: '🏠', completed: checkedOut },
-        ];
-
-        const completedCount = missions.filter(m => m.completed).length;
-
-        data = {
-          missions,
-          completed_count: completedCount,
-          total_count: missions.length,
-          today_points: todayTotalPoints,
-          current_streak: streak,
-        };
-        break;
-      }
-
-      case 'achievement-badges': {
-        // Query happy_points
-        const { data: hp } = await supabase
-          .from('happy_points')
-          .select('current_punctuality_streak, longest_punctuality_streak, total_earned, point_balance, streak_shields, daily_response_score, daily_score_date')
-          .eq('employee_id', employee_id)
-          .maybeSingle();
-
-        // Check perfect month: all working days this month have on-time check-ins
-        const now = getBangkokNow();
-        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        const todayStr = getBangkokDateString();
-
-        const { data: monthCheckins } = await supabase
-          .from('attendance_logs')
-          .select('id, server_time')
-          .eq('employee_id', employee_id)
-          .eq('event_type', 'check_in')
-          .gte('server_time', `${monthStart}T00:00:00+07:00`)
-          .lte('server_time', `${todayStr}T23:59:59+07:00`);
-
-        const { data: schedules } = await supabase
-          .from('work_schedules')
-          .select('day_of_week, is_working_day')
-          .eq('employee_id', employee_id);
-
-        // Count working days so far this month
-        const workingDaysSet = new Set((schedules || []).filter(s => s.is_working_day).map(s => s.day_of_week));
-        let workingDaysThisMonth = 0;
-        const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        for (let d = new Date(monthStartDate); d <= now; d.setDate(d.getDate() + 1)) {
-          if (workingDaysSet.has(d.getDay())) workingDaysThisMonth++;
-        }
-        const checkinDays = monthCheckins?.length || 0;
-        const isPerfectMonth = workingDaysThisMonth > 0 && checkinDays >= workingDaysThisMonth && now.getDate() >= 20;
-
-        const streak = hp?.current_punctuality_streak || 0;
-        const longestStreak = hp?.longest_punctuality_streak || 0;
-        const totalEarned = hp?.total_earned || 0;
-        const shields = hp?.streak_shields || 0;
-        const responseScore = hp?.daily_response_score || 0;
-        const scoreDate = hp?.daily_score_date;
-        const isScoreToday = scoreDate === todayStr;
-
-        const badges = [
-          { id: 'streak5', label_th: 'Streak 5 วัน', label_en: '5-Day Streak', icon: '🔥', unlocked: streak >= 5 || longestStreak >= 5, tier: 'bronze' },
-          { id: 'streak10', label_th: 'Streak 10 วัน', label_en: '10-Day Streak', icon: '🔥', unlocked: streak >= 10 || longestStreak >= 10, tier: 'silver' },
-          { id: 'streak20', label_th: 'Streak 20 วัน', label_en: '20-Day Streak', icon: '🔥', unlocked: streak >= 20 || longestStreak >= 20, tier: 'gold' },
-          { id: 'perfect_month', label_th: 'เดือนสมบูรณ์แบบ', label_en: 'Perfect Month', icon: '🏆', unlocked: isPerfectMonth, tier: 'gold' },
-          { id: 'top_earner', label_th: 'นักสะสมแต้ม', label_en: 'Top Earner', icon: '⭐', unlocked: totalEarned >= 500, tier: 'silver' },
-          { id: 'diamond_earner', label_th: 'นักสะสมเพชร', label_en: 'Diamond Earner', icon: '💎', unlocked: totalEarned >= 2000, tier: 'gold' },
-          { id: 'fast_responder', label_th: 'ตอบไว', label_en: 'Fast Responder', icon: '💬', unlocked: isScoreToday && responseScore >= 5, tier: 'bronze' },
-          { id: 'shield_master', label_th: 'ราชาโล่', label_en: 'Shield Master', icon: '🛡️', unlocked: shields >= 3, tier: 'silver' },
-          { id: 'longest_streak', label_th: 'Streak ระดับตำนาน', label_en: 'Legendary Streak', icon: '👑', unlocked: longestStreak >= 30, tier: 'gold' },
-        ];
-
-        data = {
-          badges,
-          unlocked_count: badges.filter(b => b.unlocked).length,
-          total_count: badges.length,
-        };
         break;
       }
 

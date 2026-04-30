@@ -45,21 +45,12 @@ export default function LiffSettingsCard() {
   const { data: liffInfo, isLoading: isLoadingLiff, refetch: refetchLiff, isRefetching } = useQuery({
     queryKey: ['liff-settings'],
     queryFn: async (): Promise<LiffInfo> => {
-      // Phase 0A: pass the signed-in user's JWT so the backend role guard
-      // (admin/owner) can authorize. The publishable key alone is no
-      // longer sufficient — non-admins now get 403.
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/liff-settings?action=get`,
         {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
         }
@@ -76,19 +67,12 @@ export default function LiffSettingsCard() {
   // Update endpoint URL mutation
   const updateEndpointMutation = useMutation({
     mutationFn: async (newEndpointUrl: string) => {
-      // Phase 0A: send user JWT so backend role guard can authorize.
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/liff-settings?action=update-endpoint`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({ endpointUrl: newEndpointUrl }),

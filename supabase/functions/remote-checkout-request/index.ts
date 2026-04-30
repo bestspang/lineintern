@@ -123,45 +123,6 @@ serve(async (req) => {
 
     console.log(`[remote-checkout-request] Created request ${request.id} for employee ${employee.full_name}`);
 
-    // Notify managers/admins via portal notification (non-blocking)
-    try {
-      const { data: managerEmployees } = await supabase
-        .from('employees')
-        .select('id, role_id, employee_roles!inner(role_key)')
-        .in('employee_roles.role_key', ['admin', 'manager', 'hr', 'owner'])
-        .eq('is_active', true);
-
-      if (managerEmployees && managerEmployees.length > 0) {
-        // Check notification preferences
-        const { data: prefs } = await supabase
-          .from('notification_preferences')
-          .select('employee_id, notify_remote_checkout')
-          .in('employee_id', managerEmployees.map(m => m.id));
-        const prefMap = new Map(prefs?.map(p => [p.employee_id, p]) || []);
-
-        const notifications = managerEmployees
-          .filter(m => m.id !== employee_id)
-          .filter(m => {
-            const pref = prefMap.get(m.id);
-            return !pref || pref.notify_remote_checkout !== false;
-          })
-          .map(m => ({
-            employee_id: m.id,
-            title: '📍 คำขอ Checkout นอกสถานที่',
-            body: `${employee.full_name} ขอ checkout นอกสถานที่ — ${reason}`,
-            type: 'approval',
-            priority: 'high',
-            action_url: '/portal/approve-remote-checkout',
-            metadata: { request_type: 'remote_checkout', request_id: request.id }
-          }));
-        if (notifications.length > 0) {
-          await supabase.from('notifications').insert(notifications);
-        }
-      }
-    } catch (e) {
-      console.warn('[remote-checkout-request] Failed to create manager notifications', e);
-    }
-
     // Send LINE notification to Management team (not branch group)
     // This ensures only managers see approval requests, not all branch employees
     try {

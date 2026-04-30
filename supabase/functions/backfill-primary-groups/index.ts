@@ -1,6 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
-import { writeAuditLog } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,19 +11,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Phase 0A: backfill jobs are admin/owner only.
-    let actorUserId: string | null = null;
-    let actorRole: string | null = null;
-    try {
-      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'backfill-primary-groups' });
-      actorUserId = r.userId;
-      actorRole = r.role ?? null;
-    } catch (e) {
-      const r = authzErrorResponse(e, corsHeaders);
-      if (r) return r;
-      throw e;
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -115,15 +100,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[backfill-primary-groups] Complete: ${results.assigned} assigned, ${results.skipped} skipped`);
-
-    await writeAuditLog(supabase, {
-      functionName: 'backfill-primary-groups',
-      actionType: 'backfill',
-      resourceType: 'users',
-      performedByUserId: actorUserId,
-      callerRole: actorRole,
-      metadata: { total: results.total, assigned: results.assigned, skipped: results.skipped },
-    });
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
