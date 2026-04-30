@@ -35,6 +35,12 @@
 4. **Receipt/Deposit removed (Phase 2-4)**: ห้ามเพิ่มกลับโดยไม่ถาม user
 5. **Bot commands**: deprecation messages สำหรับ /receipt, /deposit ต้องคงอยู่จนกว่า user สั่งลบ
 6. **HR-focused scope**: ตัด feature ที่ไม่เกี่ยว HR ออก (Phase 1 decision)
+7. **🚨 LINE Webhook URL — NEVER auto-suggest changing it**:
+   - **Live/Production project ref**: `bjzzqfzgnslefqhnsmla` ← LINE Console webhook URL ต้องชี้ที่นี่เท่านั้น
+   - **Test/Preview project ref**: `phhxdgaiwgaiuecvfjgj` ← นี่คือ Lovable preview env (อยู่ใน `.env`, `supabase/config.toml`)
+   - ❌ ห้าม AI แนะนำให้เปลี่ยน webhook URL ใน LINE Developers Console เพื่อ "match" กับ `.env` หรือ `config.toml` — จะทำให้ pproduction LINE bot ตาย, พนักงาน check-in/checkout ไม่ได้
+   - ✅ ถ้า `verify-line-webhook` รายงาน mismatch — แค่บอก user ว่าเป็น expected mismatch ระหว่าง preview vs production เพราะ Lovable ใช้ project ref คนละตัวสำหรับ test
+   - **Incident**: 2026-04-30 — AI แนะนำให้ user เปลี่ยน webhook ไป `phhxdgaiwgaiuecvfjgj` ตาม `.env` ทำให้ checkout ใช้งานไม่ได้ทั้งวัน
 
 ## 🛡️ Supabase Query Patterns (กฎที่เคยพัง)
 
