@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -349,7 +349,6 @@ export type Database = {
           description: string | null
           description_th: string | null
           id: string
-          is_public: boolean
           is_required: boolean | null
           key_name: string
           key_value: string | null
@@ -362,7 +361,6 @@ export type Database = {
           description?: string | null
           description_th?: string | null
           id?: string
-          is_public?: boolean
           is_required?: boolean | null
           key_name: string
           key_value?: string | null
@@ -375,7 +373,6 @@ export type Database = {
           description?: string | null
           description_th?: string | null
           id?: string
-          is_public?: boolean
           is_required?: boolean | null
           key_name?: string
           key_value?: string | null
@@ -1770,6 +1767,137 @@ export type Database = {
           },
         ]
       }
+      daily_deposits: {
+        Row: {
+          account_number: string | null
+          admin_notes: string | null
+          amount: number | null
+          bank_branch: string | null
+          bank_name: string | null
+          branch_id: string | null
+          classification_confidence: number | null
+          classification_result: Json | null
+          created_at: string
+          deposit_date: string
+          deposit_date_on_slip: string | null
+          document_type: string | null
+          duplicate_of_id: string | null
+          employee_id: string
+          extraction_confidence: number | null
+          face_photo_url: string | null
+          face_verified_at: string | null
+          id: string
+          is_duplicate: boolean | null
+          line_message_id: string | null
+          liveness_data: Json | null
+          notified_at: string | null
+          photo_hash: string | null
+          raw_ocr_result: Json | null
+          reference_number: string | null
+          rejection_reason: string | null
+          slip_photo_url: string | null
+          status: string
+          updated_at: string
+          verified_at: string | null
+          verified_by_admin_id: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          admin_notes?: string | null
+          amount?: number | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          branch_id?: string | null
+          classification_confidence?: number | null
+          classification_result?: Json | null
+          created_at?: string
+          deposit_date: string
+          deposit_date_on_slip?: string | null
+          document_type?: string | null
+          duplicate_of_id?: string | null
+          employee_id: string
+          extraction_confidence?: number | null
+          face_photo_url?: string | null
+          face_verified_at?: string | null
+          id?: string
+          is_duplicate?: boolean | null
+          line_message_id?: string | null
+          liveness_data?: Json | null
+          notified_at?: string | null
+          photo_hash?: string | null
+          raw_ocr_result?: Json | null
+          reference_number?: string | null
+          rejection_reason?: string | null
+          slip_photo_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_admin_id?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          admin_notes?: string | null
+          amount?: number | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          branch_id?: string | null
+          classification_confidence?: number | null
+          classification_result?: Json | null
+          created_at?: string
+          deposit_date?: string
+          deposit_date_on_slip?: string | null
+          document_type?: string | null
+          duplicate_of_id?: string | null
+          employee_id?: string
+          extraction_confidence?: number | null
+          face_photo_url?: string | null
+          face_verified_at?: string | null
+          id?: string
+          is_duplicate?: boolean | null
+          line_message_id?: string | null
+          liveness_data?: Json | null
+          notified_at?: string | null
+          photo_hash?: string | null
+          raw_ocr_result?: Json | null
+          reference_number?: string | null
+          rejection_reason?: string | null
+          slip_photo_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_admin_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_deposits_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "daily_deposits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deposits_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deploy_checklist_runs: {
         Row: {
           checks: Json
@@ -1808,6 +1936,186 @@ export type Database = {
           skipped_count?: number | null
         }
         Relationships: []
+      }
+      deposit_approval_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          decision_method: string | null
+          deposit_id: string
+          id: string
+          new_values: Json | null
+          old_values: Json | null
+          performed_by_admin_id: string | null
+          performed_by_name: string | null
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          decision_method?: string | null
+          deposit_id: string
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_admin_id?: string | null
+          performed_by_name?: string | null
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          decision_method?: string | null
+          deposit_id?: string
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          performed_by_admin_id?: string | null
+          performed_by_name?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_approval_logs_deposit_id_fkey"
+            columns: ["deposit_id"]
+            isOneToOne: false
+            referencedRelation: "daily_deposits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_approval_logs_performed_by_admin_id_fkey"
+            columns: ["performed_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deposit_reminders: {
+        Row: {
+          branch_id: string | null
+          branches_notified: Json | null
+          created_at: string
+          error_message: string | null
+          id: string
+          line_message_id: string | null
+          reminder_date: string
+          reminder_type: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          branches_notified?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          reminder_date: string
+          reminder_type: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          branches_notified?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          line_message_id?: string | null
+          reminder_date?: string
+          reminder_type?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deposit_settings: {
+        Row: {
+          branch_id: string | null
+          company_accounts: Json | null
+          created_at: string
+          deposit_deadline: string
+          enable_deposit_detection: boolean | null
+          enable_face_verification: boolean
+          enable_reimbursement_detection: boolean | null
+          enable_reminder: boolean
+          enabled_deposit_groups: string[] | null
+          id: string
+          notify_additional_groups: string[] | null
+          notify_admin_ids: string[] | null
+          notify_line_group_id: string | null
+          reminder_time: string
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          company_accounts?: Json | null
+          created_at?: string
+          deposit_deadline?: string
+          enable_deposit_detection?: boolean | null
+          enable_face_verification?: boolean
+          enable_reimbursement_detection?: boolean | null
+          enable_reminder?: boolean
+          enabled_deposit_groups?: string[] | null
+          id?: string
+          notify_additional_groups?: string[] | null
+          notify_admin_ids?: string[] | null
+          notify_line_group_id?: string | null
+          reminder_time?: string
+          scope?: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          company_accounts?: Json | null
+          created_at?: string
+          deposit_deadline?: string
+          enable_deposit_detection?: boolean | null
+          enable_face_verification?: boolean
+          enable_reimbursement_detection?: boolean | null
+          enable_reminder?: boolean
+          enabled_deposit_groups?: string[] | null
+          id?: string
+          notify_additional_groups?: string[] | null
+          notify_admin_ids?: string[] | null
+          notify_line_group_id?: string | null
+          reminder_time?: string
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       document_uploads: {
         Row: {
@@ -2054,103 +2362,6 @@ export type Database = {
             columns: ["reward_id"]
             isOneToOne: false
             referencedRelation: "point_rewards"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      employee_documents: {
-        Row: {
-          archived_at: string | null
-          archived_by_user_id: string | null
-          created_at: string
-          description: string | null
-          document_type: string
-          employee_id: string
-          expiry_date: string | null
-          file_mime_type: string | null
-          file_name: string
-          file_path: string
-          file_size_bytes: number | null
-          id: string
-          issue_date: string | null
-          metadata: Json
-          replaced_by_document_id: string | null
-          status: string
-          title: string
-          updated_at: string
-          upload_status: string
-          uploaded_by_employee_id: string | null
-          uploaded_by_user_id: string | null
-          visibility: string
-        }
-        Insert: {
-          archived_at?: string | null
-          archived_by_user_id?: string | null
-          created_at?: string
-          description?: string | null
-          document_type: string
-          employee_id: string
-          expiry_date?: string | null
-          file_mime_type?: string | null
-          file_name: string
-          file_path: string
-          file_size_bytes?: number | null
-          id?: string
-          issue_date?: string | null
-          metadata?: Json
-          replaced_by_document_id?: string | null
-          status?: string
-          title: string
-          updated_at?: string
-          upload_status?: string
-          uploaded_by_employee_id?: string | null
-          uploaded_by_user_id?: string | null
-          visibility?: string
-        }
-        Update: {
-          archived_at?: string | null
-          archived_by_user_id?: string | null
-          created_at?: string
-          description?: string | null
-          document_type?: string
-          employee_id?: string
-          expiry_date?: string | null
-          file_mime_type?: string | null
-          file_name?: string
-          file_path?: string
-          file_size_bytes?: number | null
-          id?: string
-          issue_date?: string | null
-          metadata?: Json
-          replaced_by_document_id?: string | null
-          status?: string
-          title?: string
-          updated_at?: string
-          upload_status?: string
-          uploaded_by_employee_id?: string | null
-          uploaded_by_user_id?: string | null
-          visibility?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_documents_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
-            columns: ["replaced_by_document_id"]
-            isOneToOne: false
-            referencedRelation: "employee_documents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
-            columns: ["replaced_by_document_id"]
-            isOneToOne: false
-            referencedRelation: "employee_documents_expiring"
             referencedColumns: ["id"]
           },
         ]
@@ -3506,94 +3717,6 @@ export type Database = {
           },
         ]
       }
-      notification_preferences: {
-        Row: {
-          employee_id: string
-          id: string
-          notify_day_off: boolean
-          notify_early_leave: boolean
-          notify_overtime: boolean
-          notify_remote_checkout: boolean
-          updated_at: string
-        }
-        Insert: {
-          employee_id: string
-          id?: string
-          notify_day_off?: boolean
-          notify_early_leave?: boolean
-          notify_overtime?: boolean
-          notify_remote_checkout?: boolean
-          updated_at?: string
-        }
-        Update: {
-          employee_id?: string
-          id?: string
-          notify_day_off?: boolean
-          notify_early_leave?: boolean
-          notify_overtime?: boolean
-          notify_remote_checkout?: boolean
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notification_preferences_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: true
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notifications: {
-        Row: {
-          action_url: string | null
-          body: string | null
-          created_at: string
-          employee_id: string
-          id: string
-          is_read: boolean
-          metadata: Json | null
-          priority: string
-          read_at: string | null
-          title: string
-          type: string
-        }
-        Insert: {
-          action_url?: string | null
-          body?: string | null
-          created_at?: string
-          employee_id: string
-          id?: string
-          is_read?: boolean
-          metadata?: Json | null
-          priority?: string
-          read_at?: string | null
-          title: string
-          type?: string
-        }
-        Update: {
-          action_url?: string | null
-          body?: string | null
-          created_at?: string
-          employee_id?: string
-          id?: string
-          is_read?: boolean
-          metadata?: Json | null
-          priority?: string
-          read_at?: string | null
-          title?: string
-          type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       overtime_requests: {
         Row: {
           approved_at: string | null
@@ -4169,64 +4292,6 @@ export type Database = {
           },
         ]
       }
-      portal_performance_events: {
-        Row: {
-          branch_id: string | null
-          created_at: string
-          duration_ms: number | null
-          employee_id: string | null
-          error_code: string | null
-          event_name: string
-          id: string
-          metadata: Json | null
-          route: string | null
-        }
-        Insert: {
-          branch_id?: string | null
-          created_at?: string
-          duration_ms?: number | null
-          employee_id?: string | null
-          error_code?: string | null
-          event_name: string
-          id?: string
-          metadata?: Json | null
-          route?: string | null
-        }
-        Update: {
-          branch_id?: string | null
-          created_at?: string
-          duration_ms?: number | null
-          employee_id?: string | null
-          error_code?: string | null
-          event_name?: string
-          id?: string
-          metadata?: Json | null
-          route?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "portal_performance_events_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "active_branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "portal_performance_events_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "portal_performance_events_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -4253,6 +4318,656 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      receipt_approval_logs: {
+        Row: {
+          action: string
+          actioned_by_line_user_id: string
+          actioned_by_name: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          receipt_id: string
+        }
+        Insert: {
+          action: string
+          actioned_by_line_user_id: string
+          actioned_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          receipt_id: string
+        }
+        Update: {
+          action?: string
+          actioned_by_line_user_id?: string
+          actioned_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          receipt_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_approval_logs_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_approvers: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          display_name: string | null
+          group_id: string | null
+          id: string
+          is_active: boolean | null
+          line_user_id: string | null
+          priority: number | null
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          priority?: number | null
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          line_user_id?: string | null
+          priority?: number | null
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_approvers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_approvers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_approvers_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_businesses: {
+        Row: {
+          created_at: string | null
+          currency: string | null
+          id: string
+          is_default: boolean | null
+          line_user_id: string | null
+          name: string
+          tax_id: string | null
+          timezone: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          is_default?: boolean | null
+          line_user_id?: string | null
+          name: string
+          tax_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          is_default?: boolean | null
+          line_user_id?: string | null
+          name?: string
+          tax_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      receipt_categories: {
+        Row: {
+          business_id: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_preset: boolean | null
+          name: string
+          name_th: string | null
+        }
+        Insert: {
+          business_id?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_preset?: boolean | null
+          name: string
+          name_th?: string | null
+        }
+        Update: {
+          business_id?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_preset?: boolean | null
+          name?: string
+          name_th?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_categories_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_files: {
+        Row: {
+          created_at: string | null
+          file_hash: string | null
+          id: string
+          mime_type: string | null
+          original_filename: string | null
+          receipt_id: string | null
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_hash?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          receipt_id?: string | null
+          storage_path: string
+        }
+        Update: {
+          created_at?: string | null
+          file_hash?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          receipt_id?: string | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_files_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_group_mappings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          group_id: string
+          id: string
+          is_enabled: boolean
+          notes: string | null
+          priority: number | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          group_id: string
+          id?: string
+          is_enabled?: boolean
+          notes?: string | null
+          priority?: number | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          group_id?: string
+          id?: string
+          is_enabled?: boolean
+          notes?: string | null
+          priority?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_group_mappings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_group_mappings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_group_mappings_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_items: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          item_name: string
+          quantity: number | null
+          receipt_id: string
+          sort_order: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          item_name: string
+          quantity?: number | null
+          receipt_id: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          item_name?: string
+          quantity?: number | null
+          receipt_id?: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_items_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_ocr_corrections: {
+        Row: {
+          corrected_at: string | null
+          corrected_by_employee_id: string | null
+          corrected_value: string | null
+          created_at: string | null
+          field_name: string
+          id: string
+          original_confidence: number | null
+          original_value: string | null
+          receipt_id: string | null
+        }
+        Insert: {
+          corrected_at?: string | null
+          corrected_by_employee_id?: string | null
+          corrected_value?: string | null
+          created_at?: string | null
+          field_name: string
+          id?: string
+          original_confidence?: number | null
+          original_value?: string | null
+          receipt_id?: string | null
+        }
+        Update: {
+          corrected_at?: string | null
+          corrected_by_employee_id?: string | null
+          corrected_value?: string | null
+          created_at?: string | null
+          field_name?: string
+          id?: string
+          original_confidence?: number | null
+          original_value?: string | null
+          receipt_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_ocr_corrections_corrected_by_employee_id_fkey"
+            columns: ["corrected_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_ocr_corrections_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_plans: {
+        Row: {
+          ai_receipts_limit: number
+          businesses_limit: number
+          created_at: string | null
+          id: string
+          name: string
+          price_thb: number | null
+        }
+        Insert: {
+          ai_receipts_limit?: number
+          businesses_limit?: number
+          created_at?: string | null
+          id: string
+          name: string
+          price_thb?: number | null
+        }
+        Update: {
+          ai_receipts_limit?: number
+          businesses_limit?: number
+          created_at?: string | null
+          id?: string
+          name?: string
+          price_thb?: number | null
+        }
+        Relationships: []
+      }
+      receipt_settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      receipt_subscriptions: {
+        Row: {
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          line_user_id: string
+          plan_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          line_user_id: string
+          plan_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          line_user_id?: string
+          plan_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_usage: {
+        Row: {
+          ai_receipts_used: number | null
+          created_at: string | null
+          id: string
+          line_user_id: string
+          period_yyyymm: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_receipts_used?: number | null
+          created_at?: string | null
+          id?: string
+          line_user_id: string
+          period_yyyymm: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_receipts_used?: number | null
+          created_at?: string | null
+          id?: string
+          line_user_id?: string
+          period_yyyymm?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      receipts: {
+        Row: {
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
+          branch_id: string | null
+          branch_source: string | null
+          business_id: string | null
+          card_number_masked: string | null
+          card_type: string | null
+          category: string | null
+          confidence: Json | null
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          duplicate_match_score: number | null
+          duplicate_of_receipt_id: string | null
+          extraction_source: string | null
+          google_file_id: string | null
+          google_sheet_row: number | null
+          id: string
+          is_potential_duplicate: boolean | null
+          line_user_id: string
+          notes: string | null
+          notification_sent_to: Json | null
+          payer_name: string | null
+          payment_method: string | null
+          receipt_date: string | null
+          receipt_number: string | null
+          rejection_reason: string | null
+          sale_time: string | null
+          source: string
+          status: string | null
+          submitter_notified_at: string | null
+          subtotal: number | null
+          tags: string[] | null
+          tax_id: string | null
+          total: number | null
+          transaction_time: string | null
+          updated_at: string | null
+          vat: number | null
+          vendor: string | null
+          vendor_address: string | null
+          vendor_branch: string | null
+          warnings: string[] | null
+        }
+        Insert: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_id?: string | null
+          branch_source?: string | null
+          business_id?: string | null
+          card_number_masked?: string | null
+          card_type?: string | null
+          category?: string | null
+          confidence?: Json | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          duplicate_match_score?: number | null
+          duplicate_of_receipt_id?: string | null
+          extraction_source?: string | null
+          google_file_id?: string | null
+          google_sheet_row?: number | null
+          id?: string
+          is_potential_duplicate?: boolean | null
+          line_user_id: string
+          notes?: string | null
+          notification_sent_to?: Json | null
+          payer_name?: string | null
+          payment_method?: string | null
+          receipt_date?: string | null
+          receipt_number?: string | null
+          rejection_reason?: string | null
+          sale_time?: string | null
+          source?: string
+          status?: string | null
+          submitter_notified_at?: string | null
+          subtotal?: number | null
+          tags?: string[] | null
+          tax_id?: string | null
+          total?: number | null
+          transaction_time?: string | null
+          updated_at?: string | null
+          vat?: number | null
+          vendor?: string | null
+          vendor_address?: string | null
+          vendor_branch?: string | null
+          warnings?: string[] | null
+        }
+        Update: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_id?: string | null
+          branch_source?: string | null
+          business_id?: string | null
+          card_number_masked?: string | null
+          card_type?: string | null
+          category?: string | null
+          confidence?: Json | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          duplicate_match_score?: number | null
+          duplicate_of_receipt_id?: string | null
+          extraction_source?: string | null
+          google_file_id?: string | null
+          google_sheet_row?: number | null
+          id?: string
+          is_potential_duplicate?: boolean | null
+          line_user_id?: string
+          notes?: string | null
+          notification_sent_to?: Json | null
+          payer_name?: string | null
+          payment_method?: string | null
+          receipt_date?: string | null
+          receipt_number?: string | null
+          rejection_reason?: string | null
+          sale_time?: string | null
+          source?: string
+          status?: string | null
+          submitter_notified_at?: string | null
+          subtotal?: number | null
+          tags?: string[] | null
+          tax_id?: string | null
+          total?: number | null
+          transaction_time?: string | null
+          updated_at?: string | null
+          vat?: number | null
+          vendor?: string | null
+          vendor_address?: string | null
+          vendor_branch?: string | null
+          warnings?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "active_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_duplicate_of_receipt_id_fkey"
+            columns: ["duplicate_of_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       recipient_group_members: {
         Row: {
@@ -5723,51 +6438,6 @@ export type Database = {
         }
         Relationships: []
       }
-      webhook_verification_logs: {
-        Row: {
-          checked_at: string
-          created_at: string
-          current_url: string | null
-          error_message: string | null
-          expected_url: string
-          id: string
-          is_match: boolean
-          raw_response: Json | null
-          test_reason: string | null
-          test_status_code: number | null
-          test_success: boolean | null
-          triggered_by: string
-        }
-        Insert: {
-          checked_at?: string
-          created_at?: string
-          current_url?: string | null
-          error_message?: string | null
-          expected_url: string
-          id?: string
-          is_match?: boolean
-          raw_response?: Json | null
-          test_reason?: string | null
-          test_status_code?: number | null
-          test_success?: boolean | null
-          triggered_by?: string
-        }
-        Update: {
-          checked_at?: string
-          created_at?: string
-          current_url?: string | null
-          error_message?: string | null
-          expected_url?: string
-          id?: string
-          is_match?: boolean
-          raw_response?: Json | null
-          test_reason?: string | null
-          test_status_code?: number | null
-          test_success?: boolean | null
-          triggered_by?: string
-        }
-        Relationships: []
-      }
       weekly_schedules: {
         Row: {
           branch_id: string
@@ -6218,106 +6888,6 @@ export type Database = {
         }
         Relationships: []
       }
-      employee_documents_expiring: {
-        Row: {
-          archived_at: string | null
-          archived_by_user_id: string | null
-          created_at: string | null
-          days_until_expiry: number | null
-          description: string | null
-          document_type: string | null
-          employee_id: string | null
-          expiry_date: string | null
-          file_mime_type: string | null
-          file_name: string | null
-          file_path: string | null
-          file_size_bytes: number | null
-          id: string | null
-          issue_date: string | null
-          metadata: Json | null
-          replaced_by_document_id: string | null
-          status: string | null
-          title: string | null
-          updated_at: string | null
-          upload_status: string | null
-          uploaded_by_employee_id: string | null
-          uploaded_by_user_id: string | null
-          visibility: string | null
-        }
-        Insert: {
-          archived_at?: string | null
-          archived_by_user_id?: string | null
-          created_at?: string | null
-          days_until_expiry?: never
-          description?: string | null
-          document_type?: string | null
-          employee_id?: string | null
-          expiry_date?: string | null
-          file_mime_type?: string | null
-          file_name?: string | null
-          file_path?: string | null
-          file_size_bytes?: number | null
-          id?: string | null
-          issue_date?: string | null
-          metadata?: Json | null
-          replaced_by_document_id?: string | null
-          status?: string | null
-          title?: string | null
-          updated_at?: string | null
-          upload_status?: string | null
-          uploaded_by_employee_id?: string | null
-          uploaded_by_user_id?: string | null
-          visibility?: string | null
-        }
-        Update: {
-          archived_at?: string | null
-          archived_by_user_id?: string | null
-          created_at?: string | null
-          days_until_expiry?: never
-          description?: string | null
-          document_type?: string | null
-          employee_id?: string | null
-          expiry_date?: string | null
-          file_mime_type?: string | null
-          file_name?: string | null
-          file_path?: string | null
-          file_size_bytes?: number | null
-          id?: string | null
-          issue_date?: string | null
-          metadata?: Json | null
-          replaced_by_document_id?: string | null
-          status?: string | null
-          title?: string | null
-          updated_at?: string | null
-          upload_status?: string | null
-          uploaded_by_employee_id?: string | null
-          uploaded_by_user_id?: string | null
-          visibility?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_documents_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
-            columns: ["replaced_by_document_id"]
-            isOneToOne: false
-            referencedRelation: "employee_documents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_documents_replaced_by_document_id_fkey"
-            columns: ["replaced_by_document_id"]
-            isOneToOne: false
-            referencedRelation: "employee_documents_expiring"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Functions: {
       calculate_distance_meters: {
@@ -6355,7 +6925,6 @@ export type Database = {
           token_type: string
         }[]
       }
-      cleanup_audit_logs: { Args: { retention_days?: number }; Returns: number }
       detect_burnout_signals: {
         Args: {
           p_avg_sentiment: number

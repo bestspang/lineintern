@@ -97,7 +97,7 @@ export default function HappyPoints() {
           <Trophy className="h-6 w-6 text-yellow-500" />
           Happy Points Dashboard
         </h1>
-        <p className="text-muted-foreground">แต้มพนักงาน</p>
+        <p className="text-muted-foreground">ภาพรวมแต้มความสุขของพนักงานทั้งหมด</p>
       </div>
 
       {/* Stats Cards */}
