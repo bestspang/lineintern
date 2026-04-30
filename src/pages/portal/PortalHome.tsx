@@ -1,3 +1,13 @@
+/**
+ * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
+ * Touchpoints: PORTAL_ACTIONS (src/lib/portal-actions.ts), PortalLayout bottom-nav,
+ *              Help.tsx quick actions, useFavorites hook.
+ * Allowed changes: additive UI (new card via PORTAL_ACTIONS, new badge).
+ * Forbidden: changing data fetch (portalApi), HOME_QUICK_ACTION_IDS shape,
+ *            role gating logic, layout grid, hero card structure.
+ * Pattern: if a card needs a new path, add it to portal-actions.ts FIRST,
+ *          then reference its `id` here — never hardcode `path` strings.
+ */
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -6,251 +16,48 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Clock, Calendar, History, Users, Camera,
-  CalendarPlus, ClipboardList, TrendingUp, LogIn, LogOut,
-  Receipt, Gift, Banknote, FileText, Coins, CalendarDays,
-  Wallet, Trophy, Building2, BarChart3, ReceiptText, Activity, Backpack
-} from 'lucide-react';
+import { LogIn, LogOut, Coins } from 'lucide-react';
 import { usePortal } from '@/contexts/PortalContext';
 import { cn } from '@/lib/utils';
 import { portalApi } from '@/lib/portal-api';
+import { perfMark, logPortalEvent } from '@/lib/portal-perf';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useFavorites } from '@/hooks/useFavorites';
 import { FavoriteButton } from '@/components/portal/FavoriteButton';
+import {
+  PORTAL_ACTIONS,
+  isVisibleToRole,
+  type PortalAction,
+} from '@/lib/portal-actions';
 
-interface QuickAction {
-  icon: typeof Clock;
-  label: string;
-  labelEn: string;
-  description: string;
-  descriptionEn: string;
-  path: string;
-  color: string;
-  roles?: string[];
-}
+// ⚠️ HOME GRID CONTRACT (preserved):
+// PortalHome shows a curated subset of `employee` actions in the main grid,
+// because /portal/checkin and /portal/my-points already have dedicated
+// hero cards above. The full list (including those) lives in `Help.tsx`.
+const HOME_QUICK_ACTION_IDS = [
+  'my-history',
+  'my-schedule',
+  'my-payroll',
+  'my-leave',
+  'request-leave',
+  'request-ot',
+  
+  'leaderboard',
+  'status',
+  'rewards',
+  'my-bag',
+] as const;
 
-const quickActions: QuickAction[] = [
-  {
-    icon: History,
-    label: 'ประวัติการทำงาน',
-    labelEn: 'Work History',
-    description: 'ดูประวัติเช็คอิน/เอาท์',
-    descriptionEn: 'View check-in/out history',
-    path: '/portal/my-history',
-    color: 'from-blue-500 to-blue-600',
-  },
-  {
-    icon: CalendarDays,
-    label: 'ตารางกะ',
-    labelEn: 'My Schedule',
-    description: 'ดูตารางกะประจำสัปดาห์',
-    descriptionEn: 'View weekly schedule',
-    path: '/portal/my-schedule',
-    color: 'from-sky-500 to-sky-600',
-  },
-  {
-    icon: Wallet,
-    label: 'Payroll ของฉัน',
-    labelEn: 'My Payroll',
-    description: 'ดูรายได้ประมาณการ',
-    descriptionEn: 'View estimated earnings',
-    path: '/portal/my-payroll',
-    color: 'from-emerald-500 to-emerald-600',
-  },
-  {
-    icon: Calendar,
-    label: 'วันลาคงเหลือ',
-    labelEn: 'Leave Balance',
-    description: 'ตรวจสอบวันลาที่เหลือ',
-    descriptionEn: 'Check remaining leave days',
-    path: '/portal/my-leave',
-    color: 'from-teal-500 to-teal-600',
-  },
-  {
-    icon: CalendarPlus,
-    label: 'ขอลางาน',
-    labelEn: 'Request Leave',
-    description: 'ส่งคำขอลางาน',
-    descriptionEn: 'Submit leave request',
-    path: '/portal/request-leave',
-    color: 'from-violet-500 to-violet-600',
-  },
-  {
-    icon: Clock,
-    label: 'ขอ OT',
-    labelEn: 'Request OT',
-    description: 'ส่งคำขอทำ OT',
-    descriptionEn: 'Submit OT request',
-    path: '/portal/request-ot',
-    color: 'from-orange-500 to-orange-600',
-  },
-  {
-    icon: Receipt,
-    label: 'ใบเสร็จของฉัน',
-    labelEn: 'My Receipts',
-    description: 'ดูและจัดการใบเสร็จ',
-    descriptionEn: 'View & manage receipts',
-    path: '/portal/my-receipts',
-    color: 'from-cyan-500 to-cyan-600',
-  },
-  {
-    icon: Trophy,
-    label: 'อันดับคะแนน',
-    labelEn: 'Leaderboard',
-    description: 'อันดับแต้มในทีม',
-    descriptionEn: 'Team point rankings',
-    path: '/portal/leaderboard',
-    color: 'from-amber-500 to-amber-600',
-  },
-  {
-    icon: Activity,
-    label: 'สถานะวันนี้',
-    labelEn: 'Today Status',
-    description: 'ดูสถานะการทำงานวันนี้',
-    descriptionEn: 'View today work status',
-    path: '/portal/status',
-    color: 'from-green-500 to-green-600',
-  },
-  {
-    icon: Gift,
-    label: 'แลกรางวัล',
-    labelEn: 'Rewards',
-    description: 'ใช้แต้มแลกของรางวัล',
-    descriptionEn: 'Redeem rewards',
-    path: '/portal/rewards',
-    color: 'from-pink-500 to-pink-600',
-  },
-  {
-    icon: Backpack,
-    label: 'กระเป๋าของฉัน',
-    labelEn: 'My Bag',
-    description: 'ดูไอเทมที่เก็บไว้',
-    descriptionEn: 'View stored items',
-    path: '/portal/my-bag',
-    color: 'from-purple-500 to-purple-600',
-  },
-];
+// All action lists are now derived from PORTAL_ACTIONS (single source of truth).
+// See src/lib/portal-actions.ts.
+const quickActionsAll: PortalAction[] = HOME_QUICK_ACTION_IDS
+  .map((id) => PORTAL_ACTIONS.find((a) => a.id === id))
+  .filter((a): a is PortalAction => Boolean(a));
 
-const managerActions: QuickAction[] = [
-  {
-    icon: ClipboardList,
-    label: 'อนุมัติคำขอ',
-    labelEn: 'Approve Requests',
-    description: 'OT และการลา',
-    descriptionEn: 'OT and leave requests',
-    path: '/portal/approvals',
-    color: 'from-amber-500 to-amber-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner'],
-  },
-  {
-    icon: Users,
-    label: 'สรุปทีม',
-    labelEn: 'Team Summary',
-    description: 'ดูสถานะทีมวันนี้',
-    descriptionEn: 'View team status today',
-    path: '/portal/team-summary',
-    color: 'from-cyan-500 to-cyan-600',
-    roles: ['manager', 'supervisor', 'admin', 'owner', 'hr'],
-  },
-  {
-    icon: Banknote,
-    label: 'ตรวจสอบใบฝาก',
-    labelEn: 'Review Deposits',
-    description: 'ตรวจสอบใบฝากเงินสาขา',
-    descriptionEn: 'Review branch deposits',
-    path: '/portal/deposit-review-list',
-    color: 'from-green-500 to-green-600',
-    roles: ['manager', 'admin', 'owner'],
-  },
-  {
-    icon: Building2,
-    label: 'รายงานสาขา',
-    labelEn: 'Branch Report',
-    description: 'ดูยอดขายและสถิติสาขา',
-    descriptionEn: 'View branch sales & stats',
-    path: '/portal/branch-report',
-    color: 'from-indigo-500 to-indigo-600',
-    roles: ['manager', 'admin', 'owner'],
-  },
-];
-
-const adminActions: QuickAction[] = [
-  {
-    icon: Camera,
-    label: 'รูปวันนี้',
-    labelEn: "Today's Photos",
-    description: 'ดูรูปเช็คอินวันนี้',
-    descriptionEn: "View today's check-in photos",
-    path: '/portal/photos',
-    color: 'from-rose-500 to-rose-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: TrendingUp,
-    label: 'สรุปประจำวัน',
-    labelEn: 'Daily Summary',
-    description: 'สถิติและรายงาน',
-    descriptionEn: 'Statistics and reports',
-    path: '/portal/daily-summary',
-    color: 'from-indigo-500 to-indigo-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: Users,
-    label: 'จัดการพนักงาน',
-    labelEn: 'Manage Employees',
-    description: 'ดูข้อมูลพนักงาน',
-    descriptionEn: 'View employee data',
-    path: '/portal/employees',
-    color: 'from-blue-500 to-blue-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: ReceiptText,
-    label: 'จัดการใบเสร็จ',
-    labelEn: 'Receipt Management',
-    description: 'ตรวจสอบและอนุมัติใบเสร็จ',
-    descriptionEn: 'Review and approve receipts',
-    path: '/portal/receipt-management',
-    color: 'from-teal-500 to-teal-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: BarChart3,
-    label: 'วิเคราะห์ใบเสร็จ',
-    labelEn: 'Receipt Analytics',
-    description: 'สถิติและรายงานใบเสร็จ',
-    descriptionEn: 'Receipt statistics and reports',
-    path: '/portal/receipt-analytics',
-    color: 'from-violet-500 to-violet-600',
-    roles: ['admin', 'owner'],
-  },
-  {
-    icon: Gift,
-    label: 'อนุมัติแลกรางวัล',
-    labelEn: 'Approve Redemptions',
-    description: 'อนุมัติการแลกรางวัล',
-    descriptionEn: 'Approve reward redemptions',
-    path: '/portal/approve-redemptions',
-    color: 'from-fuchsia-500 to-fuchsia-600',
-    roles: ['admin', 'owner'],
-  },
-];
-
-const hrActions: QuickAction[] = [
-  {
-    icon: FileText,
-    label: 'รายงาน Payroll',
-    labelEn: 'Payroll Report',
-    description: 'ดูสรุปการจ่ายเงินเดือน',
-    descriptionEn: 'View payroll summary',
-    path: '/portal/payroll-report',
-    color: 'from-slate-500 to-slate-600',
-    roles: ['hr', 'admin', 'owner'],
-  },
-];
+const managerActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'manager');
+const adminActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'admin');
+const hrActions: PortalAction[] = PORTAL_ACTIONS.filter((a) => a.group === 'hr');
 
 export default function PortalHome() {
   const navigate = useNavigate();
@@ -267,39 +74,22 @@ export default function PortalHome() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch pending requests count for badge
-  const { data: pendingCounts } = useQuery({
-    queryKey: ['pending-counts', employee?.id],
+  // Fetch pending day-off count (NOT covered by home-summary which only has OT+leave).
+  // Phase 1B: removed redundant my-pending-ot + my-leave-requests queries — derived from homeSummary instead.
+  const { data: pendingDayOffCount } = useQuery({
+    queryKey: ['pending-dayoff-count', employee?.id],
     queryFn: async () => {
-      if (!employee?.id) return { ot: 0, dayoff: 0, leave: 0 };
-      const [otResult, dayOffResult, leaveResult] = await Promise.all([
-        portalApi<any[]>({
-          endpoint: 'my-pending-ot-requests',
-          employee_id: employee.id
-        }),
-        portalApi<any[]>({
-          endpoint: 'my-pending-dayoff-requests',
-          employee_id: employee.id
-        }),
-        portalApi<any[]>({
-          endpoint: 'my-leave-requests',
-          employee_id: employee.id,
-          params: { limit: 50 }
-        })
-      ]);
-      // Filter leave for pending only
-      const pendingLeaves = (leaveResult.data || []).filter((l: any) => l.status === 'pending');
-      return {
-        ot: otResult.data?.length || 0,
-        dayoff: dayOffResult.data?.length || 0,
-        leave: pendingLeaves.length
-      };
+      if (!employee?.id) return 0;
+      const dayOffResult = await portalApi<any[]>({
+        endpoint: 'my-pending-dayoff-requests',
+        employee_id: employee.id,
+      });
+      return dayOffResult.data?.length || 0;
     },
     enabled: !!employee?.id,
     refetchInterval: 60000,
+    staleTime: 30_000,
   });
-
-  const totalPending = (pendingCounts?.ot || 0) + (pendingCounts?.dayoff || 0) + (pendingCounts?.leave || 0);
 
   // Fetch home summary data using useQuery
   const { data: homeSummary, isLoading: isLoadingSummary } = useQuery({
@@ -309,6 +99,11 @@ export default function PortalHome() {
       const { data, error } = await portalApi<{
         points: { current_balance: number } | null;
         todayAttendance: { event_type: string; server_time: string }[];
+        pendingApprovals?: {
+          overtime: number;
+          leave: number;
+          scope: 'self' | 'team' | 'global';
+        };
       }>({
         endpoint: 'home-summary',
         employee_id: employee.id
@@ -319,10 +114,47 @@ export default function PortalHome() {
     },
     enabled: !!employee?.id,
     refetchInterval: 60000, // Refresh every minute
+    staleTime: 60_000,
   });
+
+  // Mark portal_first_action_available once homeSummary first arrives.
+  useEffect(() => {
+    if (homeSummary && employee?.id) {
+      perfMark('portal_first_action_available');
+      logPortalEvent({
+        event_name: 'portal_first_action_available',
+        employee_id: employee.id,
+        branch_id: employee.branch_id,
+      });
+    }
+  }, [homeSummary, employee?.id, employee?.branch_id]);
+
+  // Pending counts shown on Work History badge (consolidated from homeSummary + dayoff query)
+  const pendingCounts = useMemo(() => ({
+    ot: homeSummary?.pendingApprovals?.overtime || 0,
+    leave: homeSummary?.pendingApprovals?.leave || 0,
+    dayoff: pendingDayOffCount || 0,
+  }), [homeSummary, pendingDayOffCount]);
+
+  const totalPending = pendingCounts.ot + pendingCounts.leave + pendingCounts.dayoff;
 
   // Derived state from homeSummary
   const pointBalance = homeSummary?.points?.current_balance || 0;
+  const approvalScope = homeSummary?.pendingApprovals?.scope || 'self';
+  const approvalScopeLabel =
+    locale === 'th'
+      ? approvalScope === 'team'
+        ? 'ทีมของคุณ'
+        : approvalScope === 'global'
+          ? 'ทั้งหมด'
+          : 'ของฉัน'
+      : approvalScope === 'team'
+        ? 'Your Team'
+        : approvalScope === 'global'
+          ? 'All'
+          : 'Mine';
+  const pendingApprovalTotal =
+    (homeSummary?.pendingApprovals?.overtime || 0) + (homeSummary?.pendingApprovals?.leave || 0);
   const checkIn = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-in');
   const checkOut = homeSummary?.todayAttendance?.find(a => a.event_type === 'check-out');
   const canCheckIn = !checkIn;
@@ -336,20 +168,14 @@ export default function PortalHome() {
     return null;
   }, [checkIn, checkOut, currentTime]); // Update when clock ticks
 
-  // Filter actions based on role
-  const visibleManagerActions = managerActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleAdminActions = adminActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
-  const visibleHrActions = hrActions.filter(
-    (action) => !action.roles || action.roles.includes(roleKey)
-  );
+  // Filter actions based on role (uses shared registry helper)
+  const visibleManagerActions = managerActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleAdminActions = adminActions.filter((a) => isVisibleToRole(a, roleKey));
+  const visibleHrActions = hrActions.filter((a) => isVisibleToRole(a, roleKey));
 
-  // Sort quickActions by favorites
+  // Sort quick actions by favorites
   const sortedQuickActions = useMemo(() => {
-    return [...quickActions].sort((a, b) => {
+    return [...quickActionsAll].sort((a, b) => {
       const aFav = isFavorite(a.path);
       const bFav = isFavorite(b.path);
       if (aFav && !bFav) return -1;
@@ -364,8 +190,10 @@ export default function PortalHome() {
     if (locale === 'th') {
       return `${hours} ชม. ${minutes} นาที`;
     }
-    return `${hours}h ${minutes}m`;
   };
+
+  // Mark first render of portal home (after initial mount + employee resolved)
+  if (employee?.id) perfMark('portal_home_first_render');
 
   return (
     <div className="space-y-6">
@@ -446,6 +274,11 @@ export default function PortalHome() {
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
           {locale === 'th' ? 'เลือกเมนูที่ต้องการ' : 'Choose what you need'}
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          {locale === 'th'
+            ? `คำขอรออนุมัติ (${approvalScopeLabel}): ${pendingApprovalTotal}`
+            : `Pending approvals (${approvalScopeLabel}): ${pendingApprovalTotal}`}
         </p>
       </div>
 

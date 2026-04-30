@@ -59,7 +59,7 @@ const CATEGORIES = [
   { value: 'portal', label: 'Portal', labelTh: 'พอร์ทัล', color: 'bg-blue-100 text-blue-800' },
   { value: 'dashboard', label: 'Dashboard', labelTh: 'แดชบอร์ด', color: 'bg-purple-100 text-purple-800' },
   { value: 'attendance', label: 'Attendance', labelTh: 'การลงเวลา', color: 'bg-green-100 text-green-800' },
-  { value: 'deposit', label: 'Deposit', labelTh: 'เงินมัดจำ', color: 'bg-yellow-100 text-yellow-800' },
+  // 'deposit' category removed in Phase 4 cleanup.
   { value: 'bot', label: 'Bot', labelTh: 'บอท', color: 'bg-pink-100 text-pink-800' },
   { value: 'general', label: 'General', labelTh: 'ทั่วไป', color: 'bg-gray-100 text-gray-800' },
 ];

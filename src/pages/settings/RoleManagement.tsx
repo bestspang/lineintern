@@ -120,8 +120,7 @@ const menuGroupLabels: Record<string, { label: string; description: string }> = 
   'Overtime': { label: 'Overtime', description: 'การทำงานล่วงเวลา OT' },
   'Payroll': { label: 'Payroll', description: 'เงินเดือน ประวัติการทำงาน' },
   'Points & Rewards': { label: 'Points & Rewards', description: 'แต้มสะสม รางวัล' },
-  'Deposits': { label: 'Deposits', description: 'เงินมัดจำพนักงาน' },
-  'Receipts': { label: 'Receipts', description: 'ใบเสร็จ การอนุมัติ' },
+  // 'Deposits' menu group removed in Phase 4 cleanup.
   'Management': { label: 'Management', description: 'จัดการงาน คำสั่ง การแจ้งเตือน' },
   'AI Features': { label: 'AI Features', description: 'ความจำ บุคลิกภาพ การวิเคราะห์' },
   'Content & Knowledge': { label: 'Content & Knowledge', description: 'FAQ Knowledge Base การฝึกอบรม' },

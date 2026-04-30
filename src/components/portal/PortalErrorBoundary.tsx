@@ -65,7 +65,7 @@ export class PortalErrorBoundary extends Component<Props, State> {
                 </p>
               </div>
 
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              {import.meta.env.DEV && this.state.error && (
                 <div className="bg-muted p-3 rounded-lg text-left">
                   <p className="text-xs font-mono text-destructive break-all">
                     {this.state.error.message}

@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+/**
+ * ⚠️ VERIFIED 2026-04-29 — STABLE, DO NOT REFACTOR
+ * Touchpoints: portalApi (check-in/out + GPS validation), attendance-submit edge fn,
+ *              LivenessCamera (lazy-loaded), MediaPipe face verification.
+ * Allowed changes: copy/styling tweaks, new optional badge.
+ * Forbidden: reordering check-in/out flow, removing double-submit guard,
+ *            changing GPS/camera permission retry logic, altering token validation.
+ * Phase 1B verified: skeleton first paint, double-submit guard, lazy MediaPipe.
+ */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +45,7 @@ export default function CheckInOut() {
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const submitLockRef = useRef(false); // Prevents double-tap before React state flush
   const [error, setError] = useState<string | null>(null);
 
   // Update current time every second
@@ -84,6 +94,8 @@ export default function CheckInOut() {
 
   const handleCheckInOut = async () => {
     if (!employee || !attendanceStatus) return;
+    if (submitLockRef.current) return; // Hard double-tap guard
+    submitLockRef.current = true;
     
     const action = attendanceStatus.canCheckIn ? 'check_in' : 'check_out';
     
@@ -101,6 +113,7 @@ export default function CheckInOut() {
         toast.error(locale === 'th' 
           ? 'ไม่สามารถสร้างลิงก์ได้ กรุณาลองใหม่' 
           : 'Failed to create link. Please try again.');
+        submitLockRef.current = false;
         return;
       }
       
@@ -112,6 +125,7 @@ export default function CheckInOut() {
       toast.error(locale === 'th' 
         ? 'เกิดข้อผิดพลาด กรุณาลองใหม่' 
         : 'An error occurred. Please try again.');
+      submitLockRef.current = false;
     } finally {
       setSubmitting(false);
     }

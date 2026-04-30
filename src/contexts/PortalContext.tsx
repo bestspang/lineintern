@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useLiffOptional } from './LiffContext';
+import { perfMark, perfMeasure, logPortalEvent } from '@/lib/portal-perf';
 
 interface EmployeeRole {
   display_name_th: string;
@@ -72,8 +73,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null);
   const [authMethod, setAuthMethod] = useState<'token' | 'liff' | null>(null);
   
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasShownWarning = useRef(false);
 
   // Get LIFF context safely - returns null if not in LiffProvider
@@ -84,7 +85,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const liffIsLoggedIn = liffContext?.isLoggedIn ?? false;
   const liffUserId = liffContext?.profile?.userId ?? null;
   
-  console.log('[Portal] LIFF state:', { liffIsReady, liffIsLoggedIn, liffUserId });
+  if (import.meta.env.DEV) console.log('[Portal] LIFF state:', { liffIsReady, liffIsLoggedIn, liffUserId });
 
   const validateToken = useCallback(async (tokenValue: string, isRefresh = false) => {
     try {
@@ -110,6 +111,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setMenuItems(data.menuItems || []);
       setToken(tokenValue);
       setAuthMethod('token');
+      sessionStorage.setItem('portal_token', tokenValue);
+      sessionStorage.removeItem('portal_line_user_id');
       
       // Set session expiry time
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -117,6 +120,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       hasShownWarning.current = false;
       
       setLoading(false);
+      perfMark('portal_provider_ready');
+      logPortalEvent({
+        event_name: 'portal_ready',
+        duration_ms: perfMeasure('portal_provider_start'),
+        employee_id: data.employee?.id ?? null,
+        branch_id: data.employee?.branch_id ?? null,
+        metadata: { auth: 'token' },
+      });
       return true;
     } catch (err) {
       console.error('Error validating token:', err);
@@ -156,6 +167,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setEmployee(data.employee);
       setMenuItems(data.menuItems || []);
       setAuthMethod('liff');
+      sessionStorage.removeItem('portal_token');
+      sessionStorage.setItem('portal_line_user_id', lineUserId);
       
       // LIFF sessions don't expire the same way, but set a long session
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -163,6 +176,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       hasShownWarning.current = false;
       
       setLoading(false);
+      perfMark('portal_provider_ready');
+      logPortalEvent({
+        event_name: 'portal_ready',
+        duration_ms: perfMeasure('portal_provider_start'),
+        employee_id: data.employee?.id ?? null,
+        branch_id: data.employee?.branch_id ?? null,
+        metadata: { auth: 'liff' },
+      });
       return true;
     } catch (err) {
       console.error('[Portal] Error validating LIFF user:', err);
@@ -228,6 +249,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   // Initial authentication
   useEffect(() => {
+    perfMark('portal_provider_start');
+    logPortalEvent({ event_name: 'portal_opened' });
     console.log('[Portal] Auth check:', { 
       tokenFromUrl: !!searchParams.get('token'), 
       storedToken: !!sessionStorage.getItem('portal_token'),

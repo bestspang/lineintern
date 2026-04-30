@@ -62,7 +62,7 @@ const MANUAL_CHECKS: ManualCheckItem[] = [
   { id: 'error_logs', label: 'Check Error Logs in Health Monitoring', labelTh: 'ตรวจสอบ Error Logs ใน Health Monitoring', checked: false, critical: false },
   { id: 'cron_jobs', label: 'Verify Cron Jobs are running', labelTh: 'ตรวจสอบ Cron Jobs ทำงานปกติ', checked: false, critical: false },
   { id: 'bot_response', label: 'Test bot responds to commands', labelTh: 'ทดสอบบอทตอบคำสั่ง', checked: false, critical: false },
-  { id: 'deposit_upload', label: 'Test deposit slip upload', labelTh: 'ทดสอบอัปโหลดสลิปเงิน', checked: false, critical: false },
+  // 'deposit_upload' checklist item removed in Phase 4 cleanup.
 ];
 
 const AUTOMATED_CHECKS = [

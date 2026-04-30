@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
 import LocationHeatmap from '@/components/attendance/LocationHeatmap';
+import { EmployeeDocumentsTab } from '@/components/employee-documents/EmployeeDocumentsTab';
 import { 
   LineChart, 
   Line, 
@@ -46,8 +47,10 @@ import {
 export default function EmployeeDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const { canManageEmployee } = useUserRole();
+  const autoOpenUpload = searchParams.get('action') === 'upload-document';
 
   // Query current user's employee ID for permission check
   const { data: currentUserEmployee } = useQuery({
@@ -683,6 +686,20 @@ export default function EmployeeDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* Phase 1A — Employee Documents */}
+      {id && canManageEmployee && (
+        <EmployeeDocumentsTab
+          employeeId={id}
+          autoOpenUpload={autoOpenUpload}
+          onAutoOpenConsumed={() => {
+            // Phase 1A.2 — clear the trigger so refresh doesn't re-open the dialog.
+            const next = new URLSearchParams(searchParams);
+            next.delete('action');
+            setSearchParams(next, { replace: true });
+          }}
+        />
+      )}
     </div>
   );
 }

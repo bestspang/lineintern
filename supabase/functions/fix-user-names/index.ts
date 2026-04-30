@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireRole, authzErrorResponse } from "../_shared/authz.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -20,6 +22,19 @@ serve(async (req) => {
   console.log("[fix-user-names] Starting user name fix...");
 
   try {
+    // Phase 0A: admin/owner only.
+    let actorUserId: string | null = null;
+    let actorRole: string | null = null;
+    try {
+      const r = await requireRole(req, ['admin', 'owner'], { functionName: 'fix-user-names' });
+      actorUserId = r.userId;
+      actorRole = r.role ?? null;
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
+    }
+
     // Find all users where display_name looks generic (LINE ID starting with U or "User " pattern) or missing avatar
     const { data: usersToFix, error: fetchError } = await supabase
       .from("users")
@@ -96,6 +111,15 @@ serve(async (req) => {
 
     const successCount = results.filter(r => r.status === "success").length;
     const errorCount = results.filter(r => r.status === "error").length;
+
+    await writeAuditLog(supabase, {
+      functionName: 'fix-user-names',
+      actionType: 'maintenance',
+      resourceType: 'users',
+      performedByUserId: actorUserId,
+      callerRole: actorRole,
+      metadata: { total: usersToFix.length, success: successCount, errors: errorCount },
+    });
 
     return new Response(
       JSON.stringify({

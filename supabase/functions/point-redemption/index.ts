@@ -13,11 +13,40 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logger } from '../_shared/logger.ts';
 import { gachaPull } from './gacha.ts';
+import { requireRole, authzErrorResponse, AuthzError, type AppRole } from '../_shared/authz.ts';
+import { writeAuditLog } from '../_shared/audit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-source',
 };
+
+const SELF_ACTIONS = new Set([
+  'redeem',
+  'redeem_to_bag',
+  'use_bag_item',
+  'gacha_pull',
+]);
+
+const ADMIN_ACTIONS = new Set([
+  'approve',
+  'reject',
+  'use',
+]);
+
+const ADMIN_ROLES: AppRole[] = ['admin', 'owner', 'hr', 'manager'];
+
+const ALL_ROLES: AppRole[] = [
+  'admin', 'owner', 'hr', 'executive', 'manager',
+  'moderator', 'field', 'user', 'employee',
+];
+
+function jsonError(message: string, status: number, code?: string) {
+  return new Response(
+    JSON.stringify({ success: false, error: message, ...(code ? { code } : {}) }),
+    { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -30,32 +59,169 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, employee_id, reward_id, redemption_id, notes, admin_id, rejection_reason, bag_item_id } = await req.json();
+    // Phase 0B: require a valid JWT for browser calls. portal-data may call
+    // this internally after it has already validated the portal session and
+    // employee ownership.
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+    const isPortalDataInternalCall =
+      req.headers.get('x-internal-source') === 'portal-data' &&
+      Boolean(serviceRoleKey) &&
+      authHeader === `Bearer ${serviceRoleKey}`;
 
-    // Handle different actions
-    switch (action) {
-      case 'redeem':
-        return await processRedemption(supabase, employee_id, reward_id, notes, false);
-      case 'redeem_to_bag':
-        return await processRedemption(supabase, employee_id, reward_id, notes, true);
-      case 'approve':
-        return await approveRedemption(supabase, redemption_id, admin_id, notes);
-      case 'reject':
-        return await rejectRedemption(supabase, redemption_id, admin_id, rejection_reason);
-      case 'use':
-        return await markAsUsed(supabase, redemption_id);
-      case 'use_bag_item':
-        return await useBagItem(supabase, bag_item_id, employee_id);
-      case 'gacha_pull':
-        return await gachaPull(supabase, employee_id, reward_id);
-      default:
-        return new Response(
-          JSON.stringify({ success: false, error: 'Invalid action' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    let userId: string | null = null;
+    let role: AppRole | null;
+    if (isPortalDataInternalCall) {
+      role = null;
+    } else {
+      try {
+        const r = await requireRole(req, ALL_ROLES, {
+          functionName: 'point-redemption',
+          strict: false,
+        });
+        if (!r.userId) {
+          return jsonError('Unauthorized', 401, 'unauthorized');
+        }
+        userId = r.userId;
+        role = r.role;
+      } catch (e) {
+        const r = authzErrorResponse(e, corsHeaders);
+        if (r) return r;
+        throw e;
+      }
     }
 
+    const body = await req.json().catch(() => ({}));
+    const {
+      action,
+      employee_id,
+      reward_id,
+      redemption_id,
+      notes,
+      admin_id,
+      rejection_reason,
+      bag_item_id,
+    } = body || {};
+
+    if (!action || typeof action !== 'string') {
+      return jsonError('Missing or invalid action', 400, 'invalid_action');
+    }
+
+    // Resolve caller's employee record (used for self-actions and audit).
+    let callerEmployeeId: string | null = null;
+    if (!isPortalDataInternalCall && userId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
+      callerEmployeeId = emp?.id ?? null;
+    }
+
+    // --- Per-action authorization ---
+    if (SELF_ACTIONS.has(action)) {
+      // Caller must own the target employee_id.
+      if (isPortalDataInternalCall) {
+        if (!employee_id || typeof employee_id !== 'string') {
+          return jsonError('employee_id is required', 400, 'missing_employee_id');
+        }
+        callerEmployeeId = employee_id;
+      } else if (!callerEmployeeId) {
+        console.warn(`[authz] point-redemption actor=${userId} role=${role ?? '-'} decision=deny:no-employee-link action=${action}`);
+        return jsonError('No employee record linked to this user', 403, 'no_employee_link');
+      }
+      if (!employee_id || typeof employee_id !== 'string') {
+        return jsonError('employee_id is required', 400, 'missing_employee_id');
+      }
+      if (employee_id !== callerEmployeeId) {
+        console.warn(`[authz] point-redemption actor=${userId} role=${role ?? '-'} decision=deny:employee-mismatch action=${action} target=${employee_id} caller_emp=${callerEmployeeId}`);
+        return jsonError('You can only act on your own employee record', 403, 'forbidden_employee_mismatch');
+      }
+    } else if (ADMIN_ACTIONS.has(action)) {
+      if (isPortalDataInternalCall) {
+        callerEmployeeId = typeof admin_id === 'string' ? admin_id : null;
+      } else if (!role || !ADMIN_ROLES.includes(role)) {
+        console.warn(`[authz] point-redemption actor=${userId} role=${role ?? '-'} decision=deny:not-admin action=${action}`);
+        return jsonError('Admin role required', 403, 'forbidden');
+      }
+    } else {
+      return jsonError('Invalid action', 400, 'invalid_action');
+    }
+
+    // --- Execute action ---
+    let response: Response;
+    switch (action) {
+      case 'redeem':
+        response = await processRedemption(supabase, employee_id, reward_id, notes, false);
+        break;
+      case 'redeem_to_bag':
+        response = await processRedemption(supabase, employee_id, reward_id, notes, true);
+        break;
+      case 'approve':
+        response = await approveRedemption(supabase, redemption_id, admin_id, notes);
+        break;
+      case 'reject':
+        response = await rejectRedemption(supabase, redemption_id, admin_id, rejection_reason);
+        break;
+      case 'use':
+        response = await markAsUsed(supabase, redemption_id);
+        break;
+      case 'use_bag_item':
+        response = await useBagItem(supabase, bag_item_id, employee_id);
+        break;
+      case 'gacha_pull':
+        response = await gachaPull(supabase, employee_id, reward_id);
+        break;
+      default:
+        return jsonError('Invalid action', 400, 'invalid_action');
+    }
+
+    // --- Audit (only on 2xx) ---
+    if (response.ok) {
+      // Clone so we don't consume the response body before returning it.
+      try {
+        const cloned = response.clone();
+        const payload = await cloned.json().catch(() => ({} as any));
+
+        const resourceId =
+          payload?.redemption_id ??
+          payload?.redemption?.id ??
+          redemption_id ??
+          payload?.bag_item_id ??
+          bag_item_id ??
+          reward_id ??
+          null;
+
+        await writeAuditLog(supabase, {
+          functionName: 'point-redemption',
+          actionType: action,
+          resourceType: 'point_redemption',
+          resourceId: typeof resourceId === 'string' ? resourceId : null,
+          performedByUserId: userId,
+          performedByEmployeeId: callerEmployeeId,
+          callerRole: isPortalDataInternalCall ? 'internal:portal-data' : role ?? null,
+          metadata: {
+            target_employee_id: employee_id ?? null,
+            reward_id: reward_id ?? null,
+            bag_item_id: bag_item_id ?? null,
+            points_spent: payload?.points_spent ?? null,
+            new_balance: payload?.new_balance ?? null,
+            redemption_status: payload?.status ?? null,
+            refunded: payload?.refunded ?? null,
+          },
+        });
+      } catch (e) {
+        // Audit write must never break the response.
+        console.warn('[point-redemption] audit write skipped:', (e as Error).message);
+      }
+    }
+
+    return response;
+
   } catch (error: any) {
+    if (error instanceof AuthzError) {
+      return jsonError(error.message, error.status, error.code);
+    }
     logger.error('Error in point-redemption', { error });
     return new Response(
       JSON.stringify({ success: false, error: error?.message || 'Unknown error' }),

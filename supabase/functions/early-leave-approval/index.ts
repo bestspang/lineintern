@@ -228,6 +228,21 @@ serve(async (req) => {
         notes: sanitizedNotes
       });
 
+    // Insert portal notification (non-blocking)
+    try {
+      await supabase.from('notifications').insert({
+        employee_id: leaveRequest.employee_id,
+        title: action === 'approve' ? '✅ ออกงานก่อนเวลา: อนุมัติ' : '❌ ออกงานก่อนเวลา: ไม่อนุมัติ',
+        body: `${leaveRequest.leave_type} — ${leaveRequest.leave_reason || 'ไม่ระบุเหตุผล'}`,
+        type: 'approval',
+        priority: 'normal',
+        action_url: '/portal/my-history',
+        metadata: { request_type: 'early_leave', request_id, action }
+      });
+    } catch (notifErr) {
+      console.warn('[early-leave-approval] Failed to create notification:', notifErr);
+    }
+
     console.log(`[early-leave-approval] Request ${newStatus}`);
 
     // If approved, perform checkout

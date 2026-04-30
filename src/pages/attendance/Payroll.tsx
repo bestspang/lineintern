@@ -83,6 +83,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, getDa
 import { th } from "date-fns/locale";
 import { PayrollMiniCalendar, PayrollCalendarLegend, type DayStatus } from "@/components/attendance/PayrollMiniCalendar";
 import { AttendanceEditDialog } from "@/components/attendance/AttendanceEditDialog";
+import PayrollExportDialog from "@/components/attendance/PayrollExportDialog";
 
 interface PayrollRecord {
   id: string;
@@ -158,6 +159,9 @@ export default function Payroll() {
   const [startDateDialogOpen, setStartDateDialogOpen] = useState(false);
   const [editingStartDateEmployee, setEditingStartDateEmployee] = useState<{ id: string; name: string; currentDate: string | null } | null>(null);
   const [newStartDate, setNewStartDate] = useState<string>('');
+  
+  // Export dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   
   // Bulk adjustment mode state
   const [bulkModeEmployee, setBulkModeEmployee] = useState<string | null>(null);
@@ -2222,10 +2226,18 @@ export default function Payroll() {
               <RefreshCw className={`h-4 w-4 mr-2 ${calculatePayrollMutation.isPending ? 'animate-spin' : ''}`} />
               คำนวณใหม่
             </Button>
-              <Button variant="outline" onClick={handleExport}>
+              <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
+              <PayrollExportDialog
+                open={exportDialogOpen}
+                onOpenChange={setExportDialogOpen}
+                payrollRecords={payrollRecords || []}
+                employees={employees || []}
+                branches={branches || []}
+                currentMonth={currentMonth}
+              />
               <div className="flex gap-1">
                 <Select value={selectedBankFormat} onValueChange={setSelectedBankFormat}>
                   <SelectTrigger className="w-[100px]">

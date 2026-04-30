@@ -1,0 +1,280 @@
+name: Phase 0B Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # npm cache keyed on the lockfile hash — auto-busts on any lockfile change.
+          # `npm ci` still verifies integrity hashes against cached tarballs, so
+          # reproducibility is preserved.
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Remove stray bun artifacts (defensive)
+        run: |
+          # GH runners are clean, but if any future caching layer ever restores
+          # a bun-managed tree, npm arborist crashes with
+          # "Cannot read properties of null (reading 'matches')" — we hit this
+          # exact failure once. Cheap insurance.
+          if [ -d node_modules/.bun ]; then
+            echo "::warning::Removing stale node_modules/.bun before npm ci"
+            rm -rf node_modules/.bun node_modules/.package-lock.json
+          fi
+          rm -rf node_modules/.cache
+
+      - name: Prepare smoke artifact dir
+        if: always()
+        run: |
+          mkdir -p smoke-artifacts
+          # Pre-create placeholder so later steps never fail on missing files,
+          # even if a prior step crashes before tests can write output.
+          : > smoke-artifacts/smoke-output.txt
+
+      - name: Install dependencies
+        id: install
+        # --legacy-peer-deps: react-day-picker@8 peer-requires date-fns v2/v3 but the
+        # project uses date-fns@4 (required by date-fns-tz@3 for Asia/Bangkok timezone
+        # helpers — Core memory rule). Local dev uses bun which is more lenient.
+        # The .npmrc at repo root sets the same flag for environments outside CI.
+        run: |
+          set -o pipefail
+          npm ci --legacy-peer-deps --no-audit --no-fund 2>&1 \
+            | tee smoke-artifacts/npm-install.log
+
+      - name: Diagnose install failure
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          {
+            echo "## npm ci failed — diagnostic dump"
+            echo ""
+            echo "### Missing / Invalid lockfile entries"
+            echo '```'
+            grep -E '^npm error (Missing|Invalid):' smoke-artifacts/npm-install.log \
+              | sed 's/^npm error //' | sort -u | head -200 \
+              || echo "(none parsed)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Copy the most recent npm debug log into artifacts for download.
+          LOG_DIR="$HOME/.npm/_logs"
+          if [ -d "$LOG_DIR" ]; then
+            LATEST=$(ls -1t "$LOG_DIR"/*-debug-0.log 2>/dev/null | head -1 || true)
+            if [ -n "$LATEST" ]; then
+              cp "$LATEST" smoke-artifacts/npm-debug.log
+              echo "Copied $LATEST → smoke-artifacts/npm-debug.log"
+              {
+                echo ""
+                echo "### Tail of npm debug log (last 80 lines)"
+                echo '```'
+                tail -80 "$LATEST"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Upload npm install logs (on failure)
+        if: failure() && steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-logs-${{ github.run_number }}
+          # Both files always exist by this point: npm-install.log is written
+          # by `tee` in the install step; npm-debug.log is copied by the
+          # `Diagnose install failure` step above. Dedicated artifact name
+          # makes them one-click discoverable on a broken run page.
+          path: |
+            smoke-artifacts/npm-install.log
+            smoke-artifacts/npm-debug.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Verify lockfile completeness (dry-run)
+        # Re-resolves the lockfile against package.json without touching the
+        # real node_modules. Fails fast if anything drifted.
+        run: |
+          set -o pipefail
+          VERIFY_CACHE="/tmp/npm-cache-$$"
+          npm ci --legacy-peer-deps --ignore-scripts --dry-run \
+            --cache "$VERIFY_CACHE" 2>&1 \
+            | tee smoke-artifacts/npm-verify.log | tail -20
+          rm -rf "$VERIFY_CACHE"
+
+      - name: Run smoke tests (quick)
+        id: smoke
+        env:
+          # Optional: smoke script may use these if set, but skips DB checks gracefully otherwise.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          npm run smoke:quick 2>&1 | tee smoke-artifacts/smoke-output.txt
+
+      - name: Build summary artifact
+        if: always()
+        run: |
+          mkdir -p smoke-artifacts
+          OUTPUT_FILE="smoke-artifacts/smoke-output.txt"
+          SUMMARY_FILE="smoke-artifacts/SUMMARY.md"
+
+          {
+            echo "# Phase 0B Smoke Test Results"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Ref: \`${GITHUB_REF}\`"
+            echo "- Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo '```'
+            if [ -s "$OUTPUT_FILE" ]; then
+              sed -r 's/\x1B\[[0-9;]*[mK]//g' "$OUTPUT_FILE"
+            else
+              echo "(no smoke output captured — earlier step likely failed before tests ran; see job logs)"
+            fi
+            echo '```'
+          } > "$SUMMARY_FILE"
+
+          # Guard: only append to job summary if SUMMARY.md actually exists & is non-empty.
+          if [ -s "$SUMMARY_FILE" ]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ SUMMARY.md missing or empty — skipping job-summary append." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-0b-smoke-${{ github.run_number }}
+          path: smoke-artifacts/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Full vitest suite — runs in parallel with `smoke` so a failure here
+  # surfaces as an independent PR check (doesn't mask or get masked by the
+  # smoke job). Reuses the same install hardening for consistent dep-error
+  # reporting across both jobs.
+  # ─────────────────────────────────────────────────────────────────────────
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Remove stray bun artifacts (defensive)
+        run: |
+          if [ -d node_modules/.bun ]; then
+            echo "::warning::Removing stale node_modules/.bun before npm ci"
+            rm -rf node_modules/.bun node_modules/.package-lock.json
+          fi
+          rm -rf node_modules/.cache
+
+      - name: Prepare vitest artifact dir
+        if: always()
+        run: |
+          mkdir -p vitest-artifacts
+          : > vitest-artifacts/vitest-output.txt
+
+      - name: Install dependencies
+        id: install
+        run: |
+          set -o pipefail
+          npm ci --legacy-peer-deps --no-audit --no-fund 2>&1 \
+            | tee vitest-artifacts/npm-install.log
+
+      - name: Diagnose install failure
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          {
+            echo "## npm ci failed (vitest job) — diagnostic dump"
+            echo ""
+            echo "### Missing / Invalid lockfile entries"
+            echo '```'
+            grep -E '^npm error (Missing|Invalid):' vitest-artifacts/npm-install.log \
+              | sed 's/^npm error //' | sort -u | head -200 \
+              || echo "(none parsed)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          LOG_DIR="$HOME/.npm/_logs"
+          if [ -d "$LOG_DIR" ]; then
+            LATEST=$(ls -1t "$LOG_DIR"/*-debug-0.log 2>/dev/null | head -1 || true)
+            if [ -n "$LATEST" ]; then
+              cp "$LATEST" vitest-artifacts/npm-debug.log
+              {
+                echo ""
+                echo "### Tail of npm debug log (last 80 lines)"
+                echo '```'
+                tail -80 "$LATEST"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Upload npm install logs (on failure)
+        if: failure() && steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-logs-vitest-${{ github.run_number }}
+          path: |
+            vitest-artifacts/npm-install.log
+            vitest-artifacts/npm-debug.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Run full vitest suite
+        id: vitest
+        run: |
+          set -o pipefail
+          # Reuses the existing `test` script (`vitest run`). The `--`
+          # forwards extra flags to vitest so we also emit a JUnit XML
+          # alongside human-readable console output (captured via tee).
+          # No new dependencies — both reporters ship with vitest 3.x.
+          npm test -- \
+            --reporter=default \
+            --reporter=junit \
+            --outputFile.junit=vitest-artifacts/junit.xml 2>&1 \
+            | tee vitest-artifacts/vitest-output.txt
+
+      - name: Build vitest summary
+        if: always()
+        run: |
+          OUTPUT_FILE="vitest-artifacts/vitest-output.txt"
+          {
+            echo "# Full Vitest Suite Results"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Ref: \`${GITHUB_REF}\`"
+            echo "- Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo '```'
+            if [ -s "$OUTPUT_FILE" ]; then
+              sed -r 's/\x1B\[[0-9;]*[mK]//g' "$OUTPUT_FILE" | tail -200
+            else
+              echo "(no vitest output captured — earlier step likely failed before tests ran; see job logs)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload vitest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-0b-vitest-${{ github.run_number }}
+          path: vitest-artifacts/
+          retention-days: 30
