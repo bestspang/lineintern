@@ -18,7 +18,6 @@ import {
   RefreshCw, Settings, ShieldAlert, Users, MapPin, Gauge, ClipboardCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { APP_BUILD_STAMP } from "@/lib/app-version";
 import { formatBangkokISODate } from "@/lib/timezone";
 import { format } from "date-fns";
 
@@ -219,8 +218,6 @@ export default function OpsCenter() {
           หน้านี้แสดงข้อมูลภาพรวมเท่านั้น — ใช้ปุ่ม Quick Links เพื่อแก้ไขรายการแต่ละประเภท
         </AlertDescription>
       </Alert>
-
-      <p className="text-[10px] text-muted-foreground text-center pt-2">build {APP_BUILD_STAMP}</p>
     </div>
   );
 }

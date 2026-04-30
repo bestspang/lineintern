@@ -8,19 +8,8 @@ interface PortalApiParams {
 
 export async function portalApi<T = any>({ endpoint, employee_id, params }: PortalApiParams): Promise<{ data: T | null; error: Error | null }> {
   try {
-    const headers: Record<string, string> = {};
-    const portalToken = sessionStorage.getItem('portal_token');
-    const portalLineUserId = sessionStorage.getItem('portal_line_user_id');
-
-    if (portalToken) {
-      headers['x-portal-token'] = portalToken;
-    } else if (portalLineUserId) {
-      headers['x-portal-line-user-id'] = portalLineUserId;
-    }
-
     const { data, error } = await supabase.functions.invoke('portal-data', {
-      body: { endpoint, employee_id, params },
-      headers,
+      body: { endpoint, employee_id, params }
     });
 
     if (error) {

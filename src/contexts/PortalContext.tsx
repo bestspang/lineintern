@@ -111,8 +111,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setMenuItems(data.menuItems || []);
       setToken(tokenValue);
       setAuthMethod('token');
-      sessionStorage.setItem('portal_token', tokenValue);
-      sessionStorage.removeItem('portal_line_user_id');
       
       // Set session expiry time
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -167,8 +165,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setEmployee(data.employee);
       setMenuItems(data.menuItems || []);
       setAuthMethod('liff');
-      sessionStorage.removeItem('portal_token');
-      sessionStorage.setItem('portal_line_user_id', lineUserId);
       
       // LIFF sessions don't expire the same way, but set a long session
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);

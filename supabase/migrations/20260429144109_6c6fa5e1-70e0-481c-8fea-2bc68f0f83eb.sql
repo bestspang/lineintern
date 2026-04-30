@@ -1,1 +1,0 @@
-ALTER FUNCTION public.update_feature_flags_updated_at() SET search_path = public;

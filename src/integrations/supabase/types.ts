@@ -349,7 +349,6 @@ export type Database = {
           description: string | null
           description_th: string | null
           id: string
-          is_public: boolean
           is_required: boolean | null
           key_name: string
           key_value: string | null
@@ -362,7 +361,6 @@ export type Database = {
           description?: string | null
           description_th?: string | null
           id?: string
-          is_public?: boolean
           is_required?: boolean | null
           key_name: string
           key_value?: string | null
@@ -375,7 +373,6 @@ export type Database = {
           description?: string | null
           description_th?: string | null
           id?: string
-          is_public?: boolean
           is_required?: boolean | null
           key_name?: string
           key_value?: string | null

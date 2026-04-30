@@ -1,107 +1,93 @@
-# Force Fresh Publish Artifact for /attendance/ops-center and /attendance/portal-performance
+## Goal / เป้าหมาย
 
-## Diagnosis (already verified, read-only)
+เพิ่มเอกสาร 2 ไฟล์ใน `docs/` เพื่อให้คุณ (1) เช็กความปลอดภัยก่อน/หลัง deploy ว่าไม่มีใครไปแตะ logic core และ (2) จับผลทดสอบ Pilot QA ต่ออุปกรณ์จริง iOS/Android ได้อย่างเป็นระบบ พร้อม PASS/FAIL, network type, p50/p95, และที่แนบ log/screenshot
 
-Source code is correct:
-- `src/App.tsx` line 102–103: lazy imports for `OpsCenter` and `PortalPerformance` are present
-- `src/App.tsx` line 308–309: routes `/attendance/ops-center` and `/attendance/portal-performance` are registered inside the protected `DashboardLayout` block
-- `src/pages/attendance/OpsCenter.tsx` line 36: `export default function OpsCenter()` exists
-- `src/pages/attendance/PortalPerformance.tsx` line 67: `export default function PortalPerformance()` exists
-- `.lovable/registry-snapshot.json`: both routes listed
-- `webapp_page_config`: rows verified in earlier session for owner/admin/hr/manager allow, employee/user/field deny
+**Scope (สำคัญ):** ไม่แก้โค้ด, ไม่แก้ DB, ไม่แตะ edge functions, ไม่แตะ `// ⚠️ VERIFIED` files. เพิ่มเฉพาะไฟล์ Markdown ใหม่ 2 ไฟล์เท่านั้น เพื่อรักษานโยบาย Phase 1C "no refactor / no new features".
 
-The previous publish-stamp comment on App.tsx line 1 was added but apparently the publish that followed did not deploy successfully (still serving `index-BOuFb-tr.js` with zero matches for the new route strings). A bare comment change can be optimised away or coincide with another failed publish, leaving the live bundle untouched.
+---
 
-This plan does the smallest possible thing that guarantees a different bundle hash AND gives visible runtime proof the new build is live.
+## Files to create / ไฟล์ที่จะสร้าง
 
-## What This Plan Does NOT Touch
+### 1) `docs/PHASE_1C_ROLLBACK_SAFE_CHECKLIST.md` (ใหม่)
 
-- line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token
-- Bangkok timezone helpers, payroll math, point ledger
-- Employee Documents, RLS, security findings, pg_net, auth/storage/vault
-- Any business logic, any DB migration
-- Any existing route, page, or component behaviour
-- Registry snapshot or webapp_page_config (already correct)
+Checklist ที่คุณเดินตามข้อต่อข้อ ก่อน deploy และหลัง deploy เพื่อยืนยันว่า "ไม่มีอะไรไปแตะ core" ครอบคลุม:
 
-## Steps
+- **Pre-deploy gates / ก่อน deploy**
+  - Build เขียวบน CI (`npm run build`)
+  - `npm run smoke:quick` = 16/16 pass
+  - `npm run audit:consistency` exit 0 (route ↔ registry ↔ portal-actions ↔ DB เข้ากันหมด)
+  - `git diff` ไม่แตะรายชื่อ "do-not-touch" (line-webhook, attendance-submit, attendance-validate-token, claim_attendance_token, Bangkok timezone helpers, payroll math, point ledger, Employee Documents)
+  - ไฟล์ที่ติด `// ⚠️ VERIFIED — DO NOT REFACTOR` 5 ไฟล์ ไม่มี diff ในส่วน data fetch / role gating / layout grid (อนุญาตเฉพาะ additive UI)
+  - `supabase/config.toml` ไม่มีการเปลี่ยน project-level settings
+  - ไม่มี migration ใหม่ที่แตะ schema `auth/storage/realtime/supabase_functions/vault`
+  - ไม่มีการเพิ่ม CHECK constraint ที่ใช้ `now()` (ต้องใช้ trigger แทน)
+  - ENV/Secrets ครบ (CRON_SECRET, LINE_CHANNEL_SECRET, ฯลฯ) — ตรวจด้วยรายชื่อ ไม่ echo ค่า
+  - Performance dashboard `/attendance/portal-performance` เปิดได้ และมี events ไหลเข้า (baseline ก่อน deploy)
 
-### 1. Create a referenced build-stamp constant
+- **Deploy window / ช่วง deploy**
+  - แจ้งผู้ทดสอบล่วงหน้า, จดเวลา (Asia/Bangkok), จด commit hash
+  - กดเฝ้า edge function logs: `line-webhook`, `attendance-submit`, `attendance-validate-token`
+  - Tail `portal_performance_events` ดู spike ของ `token_validate_failed` / `checkin_submit_failed`
 
-New file `src/lib/app-version.ts`:
-```ts
-export const APP_BUILD_STAMP = "phase-1b-routes-2026-04-29-v2";
-```
-Because this constant is **imported and rendered**, tree-shaking cannot remove it, guaranteeing the new bundle hash differs from the stale one.
+- **Post-deploy smoke (≤10 นาทีแรก)**
+  - เช็คอิน 1 ครั้งจริง (1 admin, 1 employee) — รอบสมบูรณ์ check-in + check-out
+  - เปิด `/attendance/ops-center` ด้วย role: owner/admin/hr/manager → เข้าได้ทั้งหมด
+  - ลอง role: employee/field/user → เข้าไม่ได้ทั้ง nav และ direct URL (role gating ไม่รั่ว)
+  - p95 `portal_ready` หลัง deploy ≤ baseline + 20%
+  - ไม่มี duplicate row ใน `attendance_logs` ช่วง 10 นาที
+  - LIFF init สำเร็จในเครื่องจริง iOS และ Android อย่างละ 1 เครื่อง
+  - Cron jobs (`task-scheduler`, `attendance-snapshot-update`) ยัง 200 OK ด้วย CRON_SECRET ที่ถูกต้อง
 
-### 2. Render the stamp in OpsCenter footer (additive, single line)
+- **Rollback triggers / เมื่อไหร่ต้อง rollback**
+  - S1 blocker ใด ๆ จาก `PHASE_1C_PILOT_QA.md`
+  - `checkin_submit_failed` rate > 3% ใน 30 นาที
+  - `token_validate_failed` (ไม่นับ expired/not_found) > 1%
+  - duplicate attendance row เกิดขึ้นแม้ครั้งเดียว
+  - role leak (employee เห็นหน้า admin)
+  - LIFF blank/white screen ที่ reproduce ได้
 
-In `src/pages/attendance/OpsCenter.tsx`, add an `import { APP_BUILD_STAMP } from "@/lib/app-version"` and a tiny muted footer line at the very bottom of the existing returned JSX, e.g.:
-```tsx
-<p className="text-[10px] text-muted-foreground text-center pt-2">build {APP_BUILD_STAMP}</p>
-```
-- No card removed, no card text changed
-- Pilot QA checklist text untouched
-- "Open Portal Performance" navigate target unchanged
-- Complies with the file's `⚠️ VERIFIED` allowed-changes clause ("additive cards, new metric tiles, new shortcut buttons" — a footer stamp is additive and non-functional)
+- **Rollback procedure (ขั้นตอนกลับ)**
+  - ใช้ Lovable History → กดย้อนกลับ version ก่อน deploy (ไม่ต้อง revert ด้วย code)
+  - แสดง `<lov-open-history>View History</lov-open-history>` action เพื่อให้คุณกดได้ทันที
+  - ตรวจซ้ำว่า edge functions revert พร้อมกัน (Lovable Cloud จะ deploy auto)
+  - บันทึกเหตุผลใน `PHASE_1C_PILOT_RESULTS.md` ส่วน Blocker List
 
-### 3. Render the same stamp in PortalPerformance footer
+- **Sign-off block** (Pilot lead + Reviewer initials + verdict)
 
-Same one-line additive footer in `src/pages/attendance/PortalPerformance.tsx` so we have visible proof on either page.
+### 2) `docs/PHASE_1C_DEVICE_QA_FORM.md` (ใหม่)
 
-### 4. Remove the now-redundant publish-stamp comment on App.tsx line 1
+แบบฟอร์มจับผลต่อ "1 อุปกรณ์ = 1 form block" ให้คุณ copy-paste ได้เรื่อย ๆ คู่กับ `PHASE_1C_PILOT_RESULTS.md` (ซึ่งเป็น aggregate). โครงสร้าง:
 
-Delete only the top-of-file `// publish-stamp: ...` comment. The real stamp now lives in `app-version.ts` and is referenced from rendered components, which is a stronger guarantee.
+- **Header per device:** ผู้ทดสอบ (initials), role, รุ่นเครื่อง, OS+version, LINE version, network (Wi-Fi/4G/5G), DPR, สาขา, วัน-เวลา (Asia/Bangkok), commit hash
+- **Section A — LIFF / Portal cold start (7 ข้อจาก A1–A7):** ช่อง PASS / FAIL / BLOCKED + load time (ms) + severity S1–S4 + notes
+- **Section B — Outside-LINE fallback (B1–B3)**
+- **Section C — Check-in token flow (C1–C10):** รวมช่อง "เครือข่ายขณะทดสอบ" และ "เวลา submit (ms)"
+- **Section D — Manager/Admin Ops Center (D1–D7)**
+- **Performance capture (per device):** ช่องจด p50/p95 ของ `portal_ready`, `liff_init_done`, `token_validate_success`, `checkin_submit_success` พร้อม window (24h/7d) — ดึงจาก `/attendance/portal-performance`
+- **Log attachments table:** ชื่อไฟล์ตามรูปแบบ `phase1c_<deviceId>_<area><id>_<YYYYMMDD>.png|txt`, perf event id (uuid only), แหล่งเก็บ (Drive/Notion link)
+- **PII rule banner ด้านบน:** ห้ามแนบ token, line_user_id, raw GPS, photo URL, ชื่อจริงเต็ม
+- **Per-device verdict:** READY / NOT READY + sign-off initials
+- **Aggregate roll-up note:** ลิงก์กลับไปกรอกสรุปใน `PHASE_1C_PILOT_RESULTS.md` ส่วน 8 (PASS/PARTIAL/FAIL counts) และส่วน 11 (Performance Snapshot)
 
-### 5. Local validation
+ทั้งสองไฟล์เป็น Bilingual TH/EN ตามมาตรฐานโปรเจกต์ และอ้างอิงไฟล์ที่มีอยู่แล้ว (`PHASE_1C_PILOT_QA.md`, `PHASE_1C_PERF_QUERIES.md`, `PHASE_1C_PILOT_RESULTS.md`) เพื่อไม่ให้ข้อมูลซ้ำซ้อน
 
-```bash
-npm run build
-grep -R "ops-center"          dist/assets | head
-grep -R "portal-performance"  dist/assets | head
-grep -R "OpsCenter"           dist/assets | head
-grep -R "PortalPerformance"   dist/assets | head
-grep -R "phase-1b-routes-2026-04-29-v2" dist/assets | head
-npm run smoke:quick
-bunx vitest run
-```
-All four route strings and the build stamp must appear in the local dist output. Smoke (16) and vitest (7) must pass.
+---
 
-### 6. Publish
+## Files NOT touched / ไฟล์ที่จะไม่แตะ
 
-User clicks **Update** in the publish dialog.
+- ไม่มีการแก้ `src/**`, `supabase/functions/**`, migrations, `supabase/config.toml`
+- ไม่แตะไฟล์ที่ติด `// ⚠️ VERIFIED` (PortalHome, CheckInOut, OpsCenter, PortalPerformance, PortalLayout)
+- ไม่แก้ `package.json`, `scripts/consistency-audit.mjs`, `scripts/smoke-test.mjs`
+- ไม่แก้ `.lovable/registry-snapshot.json`
 
-### 7. Live verification
+## Verification after creation
 
-```bash
-curl -s https://intern.gem.me/ | grep -oE '/assets/index-[^"]+\.js'
-# bundle hash must differ from index-BOuFb-tr.js
+- เปิดทั้ง 2 ไฟล์เพื่อยืนยันว่า render ถูกใน Markdown
+- รัน `npm run smoke:quick` (คาดหวัง 16/16 pass — เพราะไม่ได้แตะโค้ด)
+- รัน `npm run audit:consistency` (คาดหวัง exit 0)
 
-NEW_HASH=$(curl -s https://intern.gem.me/ | grep -oE '/assets/index-[^"]+\.js' | head -1)
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "ops-center"
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "portal-performance"
-curl -s "https://intern.gem.me${NEW_HASH}" | grep -c "phase-1b-routes-2026-04-29-v2"
-```
-Then hit each URL in a browser:
-- `https://lineintern.lovable.app/attendance/ops-center`
-- `https://lineintern.lovable.app/attendance/portal-performance`
-- `https://intern.gem.me/attendance/ops-center`
-- `https://intern.gem.me/attendance/portal-performance`
+## Deliverable / สิ่งที่คุณจะได้
 
-Acceptable: page renders (with build stamp visible in footer) OR redirects to `/auth` if not signed in.
-Not acceptable: in-app NotFound page, or HTTP 404 from server.
-
-## Files Changed
-
-| File | Change |
-|---|---|
-| `src/lib/app-version.ts` | NEW — single exported constant |
-| `src/pages/attendance/OpsCenter.tsx` | +1 import, +1 footer line at end of JSX |
-| `src/pages/attendance/PortalPerformance.tsx` | +1 import, +1 footer line at end of JSX |
-| `src/App.tsx` | -1 comment line at top |
-
-No other file is touched. No DB migration. No edge function change.
-
-## Verdict Criteria
-
-- **404 FIXED** if new bundle hash differs, contains `ops-center` / `portal-performance` / `phase-1b-routes-2026-04-29-v2`, and the two URLs render the page (or redirect to /auth) on both `intern.gem.me` and `lineintern.lovable.app`.
-- **STILL 404, blocker = publish pipeline** if local dist contains all four strings and the stamp but the live bundle hash never changes after Update is clicked. In that case the project repo cannot fix it; capture exact red-toast text from the publish dialog and escalate.
+1. `docs/PHASE_1C_ROLLBACK_SAFE_CHECKLIST.md` — checklist ก่อน/หลัง deploy + rollback triggers + procedure
+2. `docs/PHASE_1C_DEVICE_QA_FORM.md` — ฟอร์มต่ออุปกรณ์จริง พร้อมช่อง p50/p95, network, log attachments
+3. ผลรัน smoke + consistency audit ยืนยันว่าไม่มี regression

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { usePortal } from '@/contexts/PortalContext';
 import { portalApi } from '@/lib/portal-api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -63,12 +64,13 @@ export default function RewardShop() {
     queryKey: ['my-bag-count', employee?.id],
     queryFn: async () => {
       if (!employee?.id) return 0;
-      const { data, error } = await portalApi<number>({
-        endpoint: 'my-bag-count',
-        employee_id: employee.id,
-      });
+      const { count, error } = await supabase
+        .from('employee_bag_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee.id)
+        .eq('status', 'active');
       if (error) return 0;
-      return data || 0;
+      return count || 0;
     },
     enabled: !!employee?.id,
   });
@@ -89,20 +91,19 @@ export default function RewardShop() {
 
   const redeemMutation = useMutation({
     mutationFn: async ({ rewardId, toBag }: { rewardId: string; toBag: boolean }) => {
-      if (!employee?.id) throw new Error('Employee not found');
-      const { data, error } = await portalApi<any>({
-        endpoint: 'redeem-reward',
-        employee_id: employee.id,
-        params: {
+      const action = toBag ? 'redeem_to_bag' : 'redeem';
+      const response = await supabase.functions.invoke('point-redemption', {
+        body: {
+          action,
+          employee_id: employee?.id,
           reward_id: rewardId,
-          to_bag: toBag,
         },
       });
       
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Redemption failed');
+      if (response.error) throw new Error(response.error.message);
+      if (!response.data.success) throw new Error(response.data.error || 'Redemption failed');
       
-      return { ...data, toBag };
+      return { ...response.data, toBag };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['my-happy-points'] });

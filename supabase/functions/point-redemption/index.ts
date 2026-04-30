@@ -18,7 +18,7 @@ import { writeAuditLog } from '../_shared/audit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-source',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 const SELF_ACTIONS = new Set([
@@ -59,36 +59,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Phase 0B: require a valid JWT for browser calls. portal-data may call
-    // this internally after it has already validated the portal session and
-    // employee ownership.
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
-    const isPortalDataInternalCall =
-      req.headers.get('x-internal-source') === 'portal-data' &&
-      Boolean(serviceRoleKey) &&
-      authHeader === `Bearer ${serviceRoleKey}`;
-
-    let userId: string | null = null;
+    // Phase 0B: require a valid JWT for ALL actions. Capture role without
+    // role-based rejection here (per-action checks happen below).
+    let userId: string;
     let role: AppRole | null;
-    if (isPortalDataInternalCall) {
-      role = null;
-    } else {
-      try {
-        const r = await requireRole(req, ALL_ROLES, {
-          functionName: 'point-redemption',
-          strict: false,
-        });
-        if (!r.userId) {
-          return jsonError('Unauthorized', 401, 'unauthorized');
-        }
-        userId = r.userId;
-        role = r.role;
-      } catch (e) {
-        const r = authzErrorResponse(e, corsHeaders);
-        if (r) return r;
-        throw e;
+    try {
+      const r = await requireRole(req, ALL_ROLES, {
+        functionName: 'point-redemption',
+        strict: false,
+      });
+      if (!r.userId) {
+        return jsonError('Unauthorized', 401, 'unauthorized');
       }
+      userId = r.userId;
+      role = r.role;
+    } catch (e) {
+      const r = authzErrorResponse(e, corsHeaders);
+      if (r) return r;
+      throw e;
     }
 
     const body = await req.json().catch(() => ({}));
@@ -109,7 +97,7 @@ serve(async (req) => {
 
     // Resolve caller's employee record (used for self-actions and audit).
     let callerEmployeeId: string | null = null;
-    if (!isPortalDataInternalCall && userId) {
+    {
       const { data: emp } = await supabase
         .from('employees')
         .select('id')
@@ -121,12 +109,7 @@ serve(async (req) => {
     // --- Per-action authorization ---
     if (SELF_ACTIONS.has(action)) {
       // Caller must own the target employee_id.
-      if (isPortalDataInternalCall) {
-        if (!employee_id || typeof employee_id !== 'string') {
-          return jsonError('employee_id is required', 400, 'missing_employee_id');
-        }
-        callerEmployeeId = employee_id;
-      } else if (!callerEmployeeId) {
+      if (!callerEmployeeId) {
         console.warn(`[authz] point-redemption actor=${userId} role=${role ?? '-'} decision=deny:no-employee-link action=${action}`);
         return jsonError('No employee record linked to this user', 403, 'no_employee_link');
       }
@@ -138,9 +121,7 @@ serve(async (req) => {
         return jsonError('You can only act on your own employee record', 403, 'forbidden_employee_mismatch');
       }
     } else if (ADMIN_ACTIONS.has(action)) {
-      if (isPortalDataInternalCall) {
-        callerEmployeeId = typeof admin_id === 'string' ? admin_id : null;
-      } else if (!role || !ADMIN_ROLES.includes(role)) {
+      if (!role || !ADMIN_ROLES.includes(role)) {
         console.warn(`[authz] point-redemption actor=${userId} role=${role ?? '-'} decision=deny:not-admin action=${action}`);
         return jsonError('Admin role required', 403, 'forbidden');
       }
@@ -199,7 +180,7 @@ serve(async (req) => {
           resourceId: typeof resourceId === 'string' ? resourceId : null,
           performedByUserId: userId,
           performedByEmployeeId: callerEmployeeId,
-          callerRole: isPortalDataInternalCall ? 'internal:portal-data' : role ?? null,
+          callerRole: role ?? null,
           metadata: {
             target_employee_id: employee_id ?? null,
             reward_id: reward_id ?? null,

@@ -13,8 +13,7 @@
     "smoke:quick": "node scripts/smoke-test.mjs --skip-build",
     "audit:consistency": "node scripts/consistency-audit.mjs",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "clean:bun": "rm -rf node_modules/.bun node_modules/.package-lock.json node_modules/.cache"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -53,7 +52,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "embla-carousel-react": "^8.6.0",
     "html2canvas": "^1.4.1",
@@ -80,7 +79,6 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
-    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",

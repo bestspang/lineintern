@@ -15,21 +15,12 @@ import { getBangkokDateString } from '../_shared/timezone.ts';
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APP_ENV = Deno.env.get("APP_ENV") || "production";
-const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Constant-time string comparison to avoid timing attacks
-function safeEqual(a: string, b: string): boolean {
-  if (!a || !b || a.length !== b.length) return false;
-  let result = 0;
-  for (let i = 0; i < a.length; i++) result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return result === 0;
-}
 
 interface HealthCheck {
   name: string;
@@ -47,11 +38,6 @@ serve(async (req) => {
 
   const startTime = Date.now();
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  // Authorize full diagnostic disclosure: cron/admin uses x-cron-secret.
-  // Anonymous callers receive a minimal { status, timestamp } response.
-  const providedSecret = req.headers.get("x-cron-secret") || "";
-  const isAuthorized = CRON_SECRET.length > 0 && safeEqual(providedSecret, CRON_SECRET);
 
   const checks: HealthCheck[] = [];
   let overallStatus: "ok" | "degraded" | "down" = "ok";
@@ -242,9 +228,8 @@ serve(async (req) => {
       console.error("[health-check] Failed to log health check:", e);
     }
 
-    // Build response — full payload only for authorized callers (cron / monitoring).
-    // Anonymous callers receive a minimal status to avoid information disclosure.
-    const fullResponse = {
+    // Build response
+    const response = {
       status: overallStatus,
       environment: APP_ENV,
       timestamp: new Date().toISOString(),
@@ -257,38 +242,23 @@ serve(async (req) => {
       },
     };
 
-    const publicResponse = {
-      status: overallStatus,
-      timestamp: fullResponse.timestamp,
-    };
-
-    return new Response(
-      JSON.stringify(isAuthorized ? fullResponse : publicResponse, null, 2),
-      {
-        status: overallStatus === "down" ? 503 : 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify(response, null, 2), {
+      status: overallStatus === "down" ? 503 : 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (error) {
     console.error("[health-check] Critical error:", error);
-
-    const errorTimestamp = new Date().toISOString();
-    const fullError = {
-      status: "down" as const,
-      environment: APP_ENV,
-      timestamp: errorTimestamp,
-      totalResponseTime: Date.now() - startTime,
-      error: String(error),
-      checks,
-    };
-    const publicError = {
-      status: "down" as const,
-      timestamp: errorTimestamp,
-    };
-
+    
     return new Response(
-      JSON.stringify(isAuthorized ? fullError : publicError, null, 2),
+      JSON.stringify({
+        status: "down",
+        environment: APP_ENV,
+        timestamp: new Date().toISOString(),
+        totalResponseTime: Date.now() - startTime,
+        error: String(error),
+        checks,
+      }, null, 2),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

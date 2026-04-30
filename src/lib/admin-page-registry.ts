@@ -114,8 +114,7 @@ export function resolveAdminMenuGroup(rawPath: string): AdminMenuGroup | null {
     path === '/config-validator' ||
     path === '/pre-deploy-checklist' ||
     path === '/feature-flags' ||
-    path === '/branch-report' ||
-    path === '/audit-logs'
+    path === '/branch-report'
   ) {
     return 'Dashboard';
   }
