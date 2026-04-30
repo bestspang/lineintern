@@ -39,9 +39,10 @@ The following secrets are required and have been configured:
 
 The edge functions are automatically deployed when you push changes to your Supabase project.
 
-### Webhook URL
+### Webhook URL — PRODUCTION (LIVE)
 
-After deployment, your webhook URL will be:
+> ⚠️ **Critical**: ใช้ project ref `bjzzqfzgnslefqhnsmla` เท่านั้นใน LINE Developers Console
+> Lovable preview/test environment ใช้ project ref `phhxdgaiwgaiuecvfjgj` (ดูใน `.env`) — **ห้ามใช้** เป็น webhook URL ใน LINE Console เพราะไม่มี employee mapping ของพนักงานจริง
 
 ```
 https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/line-webhook
