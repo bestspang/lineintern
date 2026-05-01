@@ -1,1 +1,71 @@
-## Affected modules\n\n1. Publishing / deployment pipeline\n   - Status: BROKEN (publish still fails)\n2. LINE webhook configuration\n   - Status: WORKING/RECOVERED (user changed it back to Live URL)\n3. Attendance checkout/check-in code path\n   - Status: UNKNOWN until re-tested after webhook recovery, but must be treated as WORKING code unless logs prove otherwise\n4. Package/dependency files\n   - Status: PARTIAL/UNKNOWN (previous lockfile drift appears fixed in current files, but publish still fails so there may be a different build/deploy blocker)\n\n## What must be preserved\n\n- Do not change the LINE Console webhook URL again.\n- Do not change `.env` / `supabase/config.toml` to the Live ref; preview must stay on the Test backend.\n- Do not edit auto-generated backend client/type files.\n- Do not refactor attendance, token validation, webhook dispatch, routing, or timezone logic.\n- Preserve current app UX and published URL/custom domain behavior.\n\n## What is actually broken\n\n- Publish still fails after webhook rollback.\n- Current evidence says this is not caused by the LINE webhook. The published site is already public, so the issue is likely in the build/deploy step or deployment pipeline, not visibility.\n- I do not yet have the exact publish error text/log in this chat, so the next step is to prove the failing stage before changing code.\n\n## Minimal-diff plan\n\n1. Capture the exact publish failure\n   - Ask for / inspect the publish dialog error or build log if available.\n   - Classify it as one of:\n     - dependency install / `npm ci`\n     - build / TypeScript / Vite / Rollup\n     - backend function deployment\n     - Lovable Cloud publish pipeline issue\n\n2. Reproduce only the relevant stage\n   - If the error is dependency-related: check `package.json`, `package-lock.json`, `.npmrc`, and peer dependency resolution.\n   - If the error is build-related: run the harness-supported build/type checks and inspect the exact failing file/import.\n   - If the error is backend-function-related: inspect function logs/deploy status only; avoid touching working functions unless a specific failing function is identified.\n\n3. Apply the smallest fix\n   - Dependency issue: update only package metadata/lockfile needed for deterministic publish.\n   - Build issue: patch only the exact syntax/type/import problem.\n   - Backend deploy issue: patch only the failing function/config block, with no webhook URL changes.\n   - Platform/transient issue: do not change code; advise retry/status after confirming no project-level blocker.\n\n4. Verification\n   - Run typecheck/build/smoke as appropriate through the normal harness flow.\n   - Confirm the publish blocker is gone before touching unrelated modules.\n   - Separately verify checkout only by testing LINE after webhook recovery; do not conflate checkout with publish.\n\n## Code changes\n\nNone yet. I will not make code changes until the actual publish error is identified.\n\n## Regression checklist\n\n- LINE webhook remains: `https://bjzzqfzgnslefqhnsmla.supabase.co/functions/v1/line-webhook`\n- Preview backend remains on Test ref.\n- Attendance submit/token/webhook files are untouched unless logs prove they are the failing publish target.\n- `src/integrations/supabase/client.ts` and `types.ts` remain untouched.\n- Package changes, if any, are limited to fixing deterministic publish.\n\n## Doc updates\n\n- If a new publish root cause is found, update `.lovable/plan.md`
+# แผนตรวจหาสาเหตุ Publish ล้มเหลว (3 จุด)
+
+เนื่องจาก local build ผ่าน + webhook ถูกต้องแล้ว แต่ Publish ยัง fail → ต้อง isolate ทีละชั้น
+
+## จุดที่ 1: Frontend Build (npm ci / vite build)
+
+**วิธีเช็ค (เมื่อ approve plan แล้วผมจะรัน):**
+1. `npm ci` แบบสะอาด (ลบ `node_modules` ก่อน) — จำลอง pipeline จริง
+2. `npm run build` แบบ production — ดู warning/error ที่ local อาจซ่อน
+3. ตรวจ `package-lock.json` lockfileVersion + ว่ามี `node_modules` lock อยู่ใน git ไหม
+4. ตรวจไฟล์ที่ Lovable pipeline sensitive: `.npmrc`, `vite.config.ts`, `tsconfig.json`, `index.html`
+
+**สัญญาณที่จะเจอ:** peer-dep conflict, missing module, TS strict error, Rollup chunk error
+
+---
+
+## จุดที่ 2: Backend Edge Functions Deployment
+
+มี 80+ functions — ถ้าตัวใดตัวหนึ่ง deploy ไม่ผ่าน Publish จะ fail ทั้งระบบ
+
+**วิธีเช็ค:**
+1. ดูว่ามี `deno.lock` ที่ root ของ `supabase/functions/` ไหม (เป็น root cause ที่พบบ่อย — ถ้ามีให้ลบทิ้ง ตาม Lovable docs)
+2. ตรวจ `supabase/config.toml` ว่ามี function config block ที่ผิด syntax ไหม
+3. Scan import ของทุก function หา:
+   - `https://esm.sh/...` ที่ไม่ pin version → drift
+   - import path พิมพ์ผิด / ไฟล์ไม่มีจริง
+   - `npm:` specifier ที่ resolve ไม่ได้
+4. ลอง `supabase--deploy_edge_functions` ทีละกลุ่ม (เช่น line-webhook, attendance-*) เพื่อหาตัวที่ fail
+5. อ่าน `supabase--edge_function_logs` ของ function ที่แก้ล่าสุด หา boot error
+
+**สัญญาณที่จะเจอ:** "Failed to deploy function X", boot error, lockfile incompatible
+
+---
+
+## จุดที่ 3: Database Migrations / Schema Sync
+
+Publish จะ apply migrations จาก Test → Live ถ้ามี migration ที่ conflict กับ Live schema = fail
+
+**วิธีเช็ค:**
+1. List migrations 30 ตัวล่าสุด (เห็นแล้ว — ล่าสุด `20260429095719`)
+2. Query Live (`environment: production`) ดู migration ที่ apply ไปแล้วล่าสุดผ่าน `supabase_migrations.schema_migrations`
+3. หา migration ที่อยู่ใน repo แต่ยังไม่ apply บน Live → เปิดอ่านดู SQL
+4. มองหา destructive ops: `DROP COLUMN`, `DROP TABLE`, `ALTER COLUMN TYPE`, `RENAME`
+5. มองหา CHECK constraint ที่ใช้ `now()` (immutable violation), หรือ trigger บน schema reserved (`auth`, `storage`)
+6. รัน `supabase--linter` ดู warning
+
+**สัญญาณที่จะเจอ:** "Migration failed", "column already exists", "constraint violation", "function does not exist"
+
+---
+
+## ลำดับที่จะทำ
+
+1. **Backend ก่อน** (น่าสงสัยที่สุด — frontend build ผ่านแล้ว, edge function logs ปกติแต่ไม่ได้แปลว่า deploy ผ่าน): หา `deno.lock`, scan imports, ลอง deploy ทีละกลุ่ม
+2. **Migrations** ต่อ: เทียบ Test vs Live, อ่าน SQL ที่ค้าง
+3. **Build สุดท้าย**: clean `npm ci` + production build เพื่อยืนยัน
+
+## สิ่งที่จะ "ไม่" แตะ
+- ไม่แก้ logic ใดๆ ใน `// ⚠️ VERIFIED` files (attendance, timezone, routing)
+- ไม่เปลี่ยน LINE webhook URL (คงไว้ที่ live ref `bjzzqfzgnslefqhnsmla`)
+- ไม่ rename/drop ตารางหรือคอลัมน์โดยไม่ถามก่อน
+- ไม่ refactor edge functions ที่ deploy ผ่านอยู่แล้ว
+
+## Deliverable หลังตรวจเสร็จ
+
+รายงานสั้นๆ ระบุ:
+- จุดไหนคือ root cause (1 ใน 3)
+- ไฟล์/migration ตัวที่ fail
+- patch เล็กที่สุดที่จะ unblock โดยไม่กระทบของเดิม
+- ขอ approve ก่อนแก้จริง
+
+กด Approve เพื่อเริ่มสแกนได้เลยครับ
