@@ -1,71 +1,65 @@
-# แผนตรวจหาสาเหตุ Publish ล้มเหลว (3 จุด)
+## Goal
+Unblock `Publish` by fixing the one migration that errors on Live, without touching working migrations or data.
 
-เนื่องจาก local build ผ่าน + webhook ถูกต้องแล้ว แต่ Publish ยัง fail → ต้อง isolate ทีละชั้น
+## Root cause (confirmed)
+Migration `20260425100335_b3cf04de-...sql` runs:
+```sql
+SELECT cron.unschedule('deposit-reminder-hourly');
+```
+On **Live**, this cron job does not exist → Postgres raises an ERROR → entire pending chain (15 migrations) aborts → Publish fails.
 
-## จุดที่ 1: Frontend Build (npm ci / vite build)
+## Audit of remaining 14 pending migrations
+- All `DROP TABLE` use `IF EXISTS` ✅ idempotent
+- All `DROP POLICY/FUNCTION/TRIGGER` use `IF EXISTS` ✅ idempotent
+- Other `cron.unschedule` call (`20260429073632`) is already guarded with `WHERE EXISTS` ✅ safe
+- No other risky non-idempotent operations found
 
-**วิธีเช็ค (เมื่อ approve plan แล้วผมจะรัน):**
-1. `npm ci` แบบสะอาด (ลบ `node_modules` ก่อน) — จำลอง pipeline จริง
-2. `npm run build` แบบ production — ดู warning/error ที่ local อาจซ่อน
-3. ตรวจ `package-lock.json` lockfileVersion + ว่ามี `node_modules` lock อยู่ใน git ไหม
-4. ตรวจไฟล์ที่ Lovable pipeline sensitive: `.npmrc`, `vite.config.ts`, `tsconfig.json`, `index.html`
+**Only one file needs fixing.**
 
-**สัญญาณที่จะเจอ:** peer-dep conflict, missing module, TS strict error, Rollup chunk error
+## The fix (minimal, surgical)
+Replace contents of `supabase/migrations/20260425100335_b3cf04de-761a-4bab-8350-8b3c40e10a81.sql` with:
 
----
+```sql
+-- Unschedule the cron job (idempotent: only if it exists)
+-- Live environment may not have this job; guard against ERROR that blocks publish.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'deposit-reminder-hourly') THEN
+    PERFORM cron.unschedule('deposit-reminder-hourly');
+  END IF;
+END $$;
 
-## จุดที่ 2: Backend Edge Functions Deployment
+-- Drop deposit tables (CASCADE removes any dependent objects)
+DROP TABLE IF EXISTS public.deposit_approval_logs CASCADE;
+DROP TABLE IF EXISTS public.deposit_reminders CASCADE;
+DROP TABLE IF EXISTS public.daily_deposits CASCADE;
+DROP TABLE IF EXISTS public.deposit_settings CASCADE;
+```
 
-มี 80+ functions — ถ้าตัวใดตัวหนึ่ง deploy ไม่ผ่าน Publish จะ fail ทั้งระบบ
+Drop logic and CASCADE behavior unchanged — only the unschedule is wrapped in an existence guard.
 
-**วิธีเช็ค:**
-1. ดูว่ามี `deno.lock` ที่ root ของ `supabase/functions/` ไหม (เป็น root cause ที่พบบ่อย — ถ้ามีให้ลบทิ้ง ตาม Lovable docs)
-2. ตรวจ `supabase/config.toml` ว่ามี function config block ที่ผิด syntax ไหม
-3. Scan import ของทุก function หา:
-   - `https://esm.sh/...` ที่ไม่ pin version → drift
-   - import path พิมพ์ผิด / ไฟล์ไม่มีจริง
-   - `npm:` specifier ที่ resolve ไม่ได้
-4. ลอง `supabase--deploy_edge_functions` ทีละกลุ่ม (เช่น line-webhook, attendance-*) เพื่อหาตัวที่ fail
-5. อ่าน `supabase--edge_function_logs` ของ function ที่แก้ล่าสุด หา boot error
+## Important caveat about Test environment
+This migration has **already been applied to Test** (Test is ahead). Editing the file will:
+- ✅ Allow Live to apply it cleanly on next Publish
+- ⚠️ Not re-run on Test (already in `schema_migrations`)
+- This is fine — the end state on Test is identical to what the new SQL produces
 
-**สัญญาณที่จะเจอ:** "Failed to deploy function X", boot error, lockfile incompatible
+## Steps I will execute (in build mode)
+1. Overwrite the one migration file with the idempotent version above
+2. Ask you to click **Publish** — Lovable will apply all 15 pending migrations to Live in order
+3. Monitor: if any other migration fails, repeat the same idempotent-guard pattern on it (ask first before editing)
 
----
+## What I will NOT touch
+- Other 14 migration files (all verified safe)
+- Data on Live (tables will be dropped per your earlier approval — receipts/deposits)
+- Schema migrations table
+- Any application code
 
-## จุดที่ 3: Database Migrations / Schema Sync
+## Regression checklist
+- [ ] After Publish: confirm `deposit_*` and `receipt_*` tables are gone on Live
+- [ ] Confirm new tables (`employee_documents`, `webhook_verification_logs`) exist on Live
+- [ ] Confirm `audit-logs-cleanup-daily` cron job is scheduled
+- [ ] No edge function errors in logs after publish
 
-Publish จะ apply migrations จาก Test → Live ถ้ามี migration ที่ conflict กับ Live schema = fail
-
-**วิธีเช็ค:**
-1. List migrations 30 ตัวล่าสุด (เห็นแล้ว — ล่าสุด `20260429095719`)
-2. Query Live (`environment: production`) ดู migration ที่ apply ไปแล้วล่าสุดผ่าน `supabase_migrations.schema_migrations`
-3. หา migration ที่อยู่ใน repo แต่ยังไม่ apply บน Live → เปิดอ่านดู SQL
-4. มองหา destructive ops: `DROP COLUMN`, `DROP TABLE`, `ALTER COLUMN TYPE`, `RENAME`
-5. มองหา CHECK constraint ที่ใช้ `now()` (immutable violation), หรือ trigger บน schema reserved (`auth`, `storage`)
-6. รัน `supabase--linter` ดู warning
-
-**สัญญาณที่จะเจอ:** "Migration failed", "column already exists", "constraint violation", "function does not exist"
-
----
-
-## ลำดับที่จะทำ
-
-1. **Backend ก่อน** (น่าสงสัยที่สุด — frontend build ผ่านแล้ว, edge function logs ปกติแต่ไม่ได้แปลว่า deploy ผ่าน): หา `deno.lock`, scan imports, ลอง deploy ทีละกลุ่ม
-2. **Migrations** ต่อ: เทียบ Test vs Live, อ่าน SQL ที่ค้าง
-3. **Build สุดท้าย**: clean `npm ci` + production build เพื่อยืนยัน
-
-## สิ่งที่จะ "ไม่" แตะ
-- ไม่แก้ logic ใดๆ ใน `// ⚠️ VERIFIED` files (attendance, timezone, routing)
-- ไม่เปลี่ยน LINE webhook URL (คงไว้ที่ live ref `bjzzqfzgnslefqhnsmla`)
-- ไม่ rename/drop ตารางหรือคอลัมน์โดยไม่ถามก่อน
-- ไม่ refactor edge functions ที่ deploy ผ่านอยู่แล้ว
-
-## Deliverable หลังตรวจเสร็จ
-
-รายงานสั้นๆ ระบุ:
-- จุดไหนคือ root cause (1 ใน 3)
-- ไฟล์/migration ตัวที่ fail
-- patch เล็กที่สุดที่จะ unblock โดยไม่กระทบของเดิม
-- ขอ approve ก่อนแก้จริง
-
-กด Approve เพื่อเริ่มสแกนได้เลยครับ
+## Fallback
+If editing the migration triggers Lovable's "migration drift" detection (because checksum changes for an already-applied migration on Test), we fall back to **Way 1** (you run `unblock_publish.sql` on Live manually). I'll know within 1 minute of Publish attempt.
