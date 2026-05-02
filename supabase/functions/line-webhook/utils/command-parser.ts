@@ -1,4 +1,5 @@
 /**
+ * ⚠️ VERIFIED 2026-05-02 — bot command parser; touch only with explicit user request
  * ⚠️ CRITICAL COMMAND PARSING - DO NOT MODIFY WITHOUT REVIEW
  * 
  * This file defines how user commands are parsed and mapped to actions.
