@@ -1,3 +1,7 @@
+/**
+ * ⚠️ VERIFIED 2026-05-02 — page-level RBAC. Pairs with ProtectedRoute + role_access_levels DB.
+ * Changing access logic here can lock users out of legit pages. Test with all role tiers.
+ */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole, AppRole } from './useUserRole';
