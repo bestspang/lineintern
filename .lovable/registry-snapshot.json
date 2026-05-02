@@ -18,7 +18,7 @@
     "/knowledge", "/memory", "/memory-analytics", "/personality",
     "/portal-faq-admin", "/pre-deploy-checklist", "/profile-sync-health",
     "/summaries", "/tasks", "/test-bot", "/training", "/users",
-    "/analytics", "/settings",
+    "/analytics", "/settings", "/reports",
     "/attendance/analytics", "/attendance/bag-management", "/attendance/birthdays",
     "/attendance/branches", "/attendance/dashboard", "/attendance/early-leave-requests",
     "/attendance/employee-documents", "/attendance/employees",
