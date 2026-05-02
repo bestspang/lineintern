@@ -1,3 +1,7 @@
+/**
+ * ⚠️ VERIFIED 2026-05-02 — auth gate for admin routes. Coordinated with usePageAccess + RootRedirect.
+ * Do not change redirect targets without checking AuthContext + memory:auth/unauthorized-redirect.
+ */
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePageAccess } from '@/hooks/usePageAccess';
