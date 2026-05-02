@@ -2,6 +2,7 @@
 
 > **เป้าหมาย:** ป้องกัน AI ในรอบหน้าแก้ของที่ทำงานดีอยู่แล้วให้พัง
 > **อ่านก่อนแตะ:** ทุกครั้งที่จะแก้ไฟล์ในนี้ ต้อง justify ว่าแก้เพราะอะไร และไม่กระทบ behavior ที่ระบุ
+> **คู่มือเต็ม:** ดู [`AI_GUARDRAILS.md`](./AI_GUARDRAILS.md) — pre-edit checklist, regression traps, cross-surface map
 
 ---
 
