@@ -1,3 +1,7 @@
+/**
+ * ⚠️ VERIFIED 2026-05-02 — production check-in/out endpoint. Token validation has broken multiple times.
+ * Do not change validation order, token expiry, geofence math, or photo path without explicit user request.
+ */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rateLimiters } from '../_shared/rate-limiter.ts';
