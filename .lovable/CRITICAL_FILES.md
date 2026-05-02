@@ -76,4 +76,4 @@ const roleObj = Array.isArray(row.employee_roles) ? row.employee_roles[0] : row.
 5. **เพิ่ม feature → อัปเดต SYSTEM_SYNC_CHECKLIST.md**
 
 ---
-**Last updated:** 2026-04-26 (Phase 4.5 — hotfix portal-data TS errors)
+**Last updated:** 2026-05-02 (added VERIFIED markers + AI_GUARDRAILS.md cross-link)
