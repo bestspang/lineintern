@@ -1,3 +1,7 @@
+/**
+ * ⚠️ VERIFIED 2026-05-02 — auth/role hook; security-critical, do not refactor
+ * Roles must match user_roles + employee_roles tables. Never store roles in profiles.
+ */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 

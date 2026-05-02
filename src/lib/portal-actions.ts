@@ -1,4 +1,5 @@
 /**
+ * ⚠️ VERIFIED 2026-05-02 — canonical portal action registry, drives Home + Help quick-actions.
  * ⚠️ CANONICAL PORTAL ACTION REGISTRY — single source of truth
  *
  * Purpose:

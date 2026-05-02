@@ -1,4 +1,5 @@
 /**
+ * ⚠️ VERIFIED 2026-05-02 — DO NOT REFACTOR (production-critical timezone math)
  * ⚠️⚠️⚠️ CRITICAL TIMEZONE HANDLING - DO NOT MODIFY WITHOUT REVIEW ⚠️⚠️⚠️
  * 
  * Timezone Utility Module for Bangkok (Asia/Bangkok, UTC+7)

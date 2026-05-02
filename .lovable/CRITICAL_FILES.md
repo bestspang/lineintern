@@ -2,6 +2,7 @@
 
 > **เป้าหมาย:** ป้องกัน AI ในรอบหน้าแก้ของที่ทำงานดีอยู่แล้วให้พัง
 > **อ่านก่อนแตะ:** ทุกครั้งที่จะแก้ไฟล์ในนี้ ต้อง justify ว่าแก้เพราะอะไร และไม่กระทบ behavior ที่ระบุ
+> **คู่มือเต็ม:** ดู [`AI_GUARDRAILS.md`](./AI_GUARDRAILS.md) — pre-edit checklist, regression traps, cross-surface map
 
 ---
 
@@ -12,7 +13,13 @@
 | `supabase/functions/portal-data/index.ts` | 2026-04-26 | ห้าม chain `.select()` หลัง `.eq()` (TS pattern). ใช้ Fix #2 pattern จาก plan.md |
 | `supabase/functions/line-webhook/index.ts` | 2026-04-25 | ห้าม refactor `processTextMessage` dispatcher. ห้ามลบ deprecation handlers ของ /receipt commands |
 | `supabase/functions/line-webhook/utils/command-parser.ts` | 2026-04-25 | ทุกครั้งที่เพิ่ม commandType ต้อง add handler ใน index.ts ด้วย |
-| `supabase/functions/attendance-submit/index.ts` | 2026-03-15 | Token validation logic เคยพังหลายรอบ — แก้เฉพาะเมื่อจำเป็น |
+| `supabase/functions/attendance-submit/index.ts` | 2026-05-02 | Token validation logic เคยพังหลายรอบ — แก้เฉพาะเมื่อจำเป็น |
+| `supabase/functions/_shared/timezone.ts` | 2026-05-02 | ห้าม double-convert. ดู header doc ในไฟล์ |
+| `src/lib/timezone.ts` | 2026-05-02 | Frontend display only — ห้ามใช้แทน server-side timezone math |
+| `src/hooks/useUserRole.ts` | 2026-05-02 | Auth/role source — ห้ามเก็บ role ใน profiles |
+| `src/hooks/usePageAccess.ts` | 2026-05-02 | Page-level RBAC — coordinate กับ ProtectedRoute + role_access_levels DB |
+| `src/components/ProtectedRoute.tsx` | 2026-05-02 | Auth gate — coordinate กับ AuthContext + RootRedirect |
+| `src/lib/portal-actions.ts` | 2026-05-02 | Canonical action registry — drives Home + Help quick-actions |
 | `src/integrations/supabase/client.ts` | auto-gen | **NEVER EDIT** — auto-generated |
 | `src/integrations/supabase/types.ts` | auto-gen | **NEVER EDIT** — auto-generated |
 
@@ -69,4 +76,4 @@ const roleObj = Array.isArray(row.employee_roles) ? row.employee_roles[0] : row.
 5. **เพิ่ม feature → อัปเดต SYSTEM_SYNC_CHECKLIST.md**
 
 ---
-**Last updated:** 2026-04-26 (Phase 4.5 — hotfix portal-data TS errors)
+**Last updated:** 2026-05-02 (added VERIFIED markers + AI_GUARDRAILS.md cross-link)

@@ -1,4 +1,5 @@
 /**
+ * ⚠️ VERIFIED 2026-05-02 — frontend timezone display utility
  * ⚠️ TIMEZONE UTILITY - USE THIS FOR ALL DATE/TIME DISPLAY
  * 
  * This utility ensures consistent Bangkok timezone handling across the frontend.
