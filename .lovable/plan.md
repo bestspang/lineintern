@@ -1,65 +1,72 @@
-## Goal
-Unblock `Publish` by fixing the one migration that errors on Live, without touching working migrations or data.
+## สถานะ Live ตอนนี้ (ตรวจแล้ว ✅)
 
-## Root cause (confirmed)
-Migration `20260425100335_b3cf04de-...sql` runs:
+ข่าวดี: script ที่คุณรันไปก่อนหน้านี้ **ทำงานสำเร็จเกือบหมด!** ผมเช็คฐาน Live ตรงๆ แล้วพบว่า:
+
+| รายการ | สถานะ |
+|--------|-------|
+| ตาราง `daily_deposits`, `deposit_settings`, `deposit_reminders`, `deposit_approval_logs` | ✅ Drop หมดแล้ว |
+| ตาราง `receipt_subscriptions` | ✅ Drop แล้ว |
+| Cron job `deposit-reminder-hourly` (ตัวที่ทำให้ migration พัง) | ✅ ลบแล้ว |
+| Migration 14 ตัว (จาก 15) ถูก mark เข้า `schema_migrations` | ✅ สำเร็จ |
+
+**ขาดอย่างเดียว:** Migration `20260429073632` ยังไม่ถูก mark + cron job `audit-logs-cleanup-daily` ที่ migration นี้ควรสร้าง ยังไม่ถูกสร้าง
+
+## ทำไม Publish ยังติดอยู่
+
+Lovable เห็นว่า migration `20260429073632` ยังไม่ได้รันบน Live ก็จะพยายามรันใหม่ — ซึ่งโอเคนะครับเพราะตัว SQL idempotent อยู่แล้ว **แต่** น่าจะมี migration ตัวอื่นที่ต่อจากนี้ที่ทำให้ติด หรือ Lovable detect ว่าลำดับเริ่มเพี้ยน
+
+วิธีปลอดภัยที่สุดคือ: **ทำงานที่ migration นี้ควรทำให้เสร็จเอง + mark ว่าทำแล้ว** เพื่อให้ลำดับสะอาด 100%
+
+## แผน (Way 1 ต่อ — รัน SQL สั้นมาก)
+
+**ผมจะสร้างไฟล์ `unblock_publish_v2.sql`** ให้คุณรันใน Cloud → SQL editor (Live) — ทำ 2 อย่างเท่านั้น:
+
 ```sql
-SELECT cron.unschedule('deposit-reminder-hourly');
-```
-On **Live**, this cron job does not exist → Postgres raises an ERROR → entire pending chain (15 migrations) aborts → Publish fails.
+BEGIN;
 
-## Audit of remaining 14 pending migrations
-- All `DROP TABLE` use `IF EXISTS` ✅ idempotent
-- All `DROP POLICY/FUNCTION/TRIGGER` use `IF EXISTS` ✅ idempotent
-- Other `cron.unschedule` call (`20260429073632`) is already guarded with `WHERE EXISTS` ✅ safe
-- No other risky non-idempotent operations found
+-- 1) สร้าง cron job ที่ migration 20260429073632 ควรสร้าง (idempotent)
+SELECT cron.unschedule('audit-logs-cleanup-daily')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'audit-logs-cleanup-daily');
 
-**Only one file needs fixing.**
+SELECT cron.schedule(
+  'audit-logs-cleanup-daily',
+  '15 17 * * *',
+  $$SELECT public.cleanup_audit_logs(180);$$
+);
 
-## The fix (minimal, surgical)
-Replace contents of `supabase/migrations/20260425100335_b3cf04de-761a-4bab-8350-8b3c40e10a81.sql` with:
+-- 2) Mark migration ว่ารันสำเร็จแล้ว
+INSERT INTO supabase_migrations.schema_migrations(version)
+VALUES ('20260429073632')
+ON CONFLICT (version) DO NOTHING;
 
-```sql
--- Unschedule the cron job (idempotent: only if it exists)
--- Live environment may not have this job; guard against ERROR that blocks publish.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'deposit-reminder-hourly') THEN
-    PERFORM cron.unschedule('deposit-reminder-hourly');
-  END IF;
-END $$;
+-- 3) Verify
+SELECT 
+  (SELECT COUNT(*) FROM cron.job WHERE jobname = 'audit-logs-cleanup-daily') AS cron_created,
+  (SELECT COUNT(*) FROM supabase_migrations.schema_migrations WHERE version = '20260429073632') AS migration_marked;
 
--- Drop deposit tables (CASCADE removes any dependent objects)
-DROP TABLE IF EXISTS public.deposit_approval_logs CASCADE;
-DROP TABLE IF EXISTS public.deposit_reminders CASCADE;
-DROP TABLE IF EXISTS public.daily_deposits CASCADE;
-DROP TABLE IF EXISTS public.deposit_settings CASCADE;
+COMMIT;
 ```
 
-Drop logic and CASCADE behavior unchanged — only the unschedule is wrapped in an existence guard.
+ผลที่คาดหวัง: `cron_created = 1`, `migration_marked = 1`
 
-## Important caveat about Test environment
-This migration has **already been applied to Test** (Test is ahead). Editing the file will:
-- ✅ Allow Live to apply it cleanly on next Publish
-- ⚠️ Not re-run on Test (already in `schema_migrations`)
-- This is fine — the end state on Test is identical to what the new SQL produces
+## ขั้นตอนสำหรับคุณ
 
-## Steps I will execute (in build mode)
-1. Overwrite the one migration file with the idempotent version above
-2. Ask you to click **Publish** — Lovable will apply all 15 pending migrations to Live in order
-3. Monitor: if any other migration fails, repeat the same idempotent-guard pattern on it (ask first before editing)
+1. ให้ผมอนุมัติแผนนี้ → ผมจะเขียนไฟล์ `unblock_publish_v2.sql` ไว้ที่ `/mnt/documents/`
+2. เปิดไฟล์ → copy SQL ทั้งก้อน
+3. ใน **Cloud → SQL editor (Live)** → paste → กด **Run**
+4. บอกผมผลลัพธ์ของ verify (ควรได้ `1, 1`)
+5. ผมจะเช็ค Live อีกรอบ ถ้าทุกอย่างเรียบร้อย → กด **Publish** ได้เลย
 
-## What I will NOT touch
-- Other 14 migration files (all verified safe)
-- Data on Live (tables will be dropped per your earlier approval — receipts/deposits)
-- Schema migrations table
-- Any application code
+## ความเสี่ยง
 
-## Regression checklist
-- [ ] After Publish: confirm `deposit_*` and `receipt_*` tables are gone on Live
-- [ ] Confirm new tables (`employee_documents`, `webhook_verification_logs`) exist on Live
-- [ ] Confirm `audit-logs-cleanup-daily` cron job is scheduled
-- [ ] No edge function errors in logs after publish
+- ✅ **ไม่กระทบข้อมูลผู้ใช้** — แตะแค่ `cron.job` (เพิ่ม 1 job) และ `schema_migrations` (เพิ่ม 1 row)
+- ✅ **Idempotent** — รันซ้ำได้ปลอดภัย
+- ✅ **ไม่กระทบ Test** — ทำเฉพาะ Live
 
-## Fallback
-If editing the migration triggers Lovable's "migration drift" detection (because checksum changes for an already-applied migration on Test), we fall back to **Way 1** (you run `unblock_publish.sql` on Live manually). I'll know within 1 minute of Publish attempt.
+## ทำไมไม่แก้ไฟล์ migration เอง
+
+ไฟล์ migration เก่าถูกล็อก (Lovable ไม่ให้แก้) — เลยต้องสะสาง state ฝั่ง Live ตรงๆ แทน
+
+---
+
+**อนุมัติเพื่อให้ผมเขียนไฟล์ SQL ตัวสุดท้ายให้ครับ** หลังจากนั้นใช้เวลารันไม่ถึง 10 วินาที แล้ว Publish ได้เลย 🚀
