@@ -151,11 +151,12 @@ export default function Attendance() {
 
       if (!response.ok || !data.valid) {
         setError(data.error || 'Invalid token');
+        setErrorCode(data.errorCode || '');
         setLoading(false);
         logPortalEvent({
           event_name: 'token_validate_failed',
           duration_ms: perfMeasure('checkin_token_validate_start'),
-          error_code: data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`,
+          error_code: data?.errorCode || (data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`),
         });
         return;
       }
