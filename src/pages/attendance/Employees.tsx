@@ -30,6 +30,32 @@ export default function AttendanceEmployees() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedImportUsers, setSelectedImportUsers] = useState<string[]>([]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResendPortalLink = async (employeeId: string, hasLine: boolean) => {
+    if (!hasLine) {
+      toast({ title: 'ยังไม่ผูก LINE', description: 'พนักงานคนนี้ยังไม่มี LINE User ID', variant: 'destructive' });
+      return;
+    }
+    setResendingId(employeeId);
+    try {
+      const { data, error } = await supabase.functions.invoke('portal-link-resend', {
+        body: { employee_id: employeeId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || data?.error || 'ส่งลิงก์ไม่สำเร็จ');
+      const modeText = data.mode === 'liff' ? 'LIFF' : 'Token Link';
+      toast({ title: '✅ ส่งลิงก์ Portal สำเร็จ', description: `ส่งผ่าน LINE Push (${modeText})` });
+    } catch (e: any) {
+      toast({
+        title: 'ส่งลิงก์ไม่สำเร็จ',
+        description: e?.message || 'เกิดข้อผิดพลาด',
+        variant: 'destructive',
+      });
+    } finally {
+      setResendingId(null);
+    }
+  };
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
