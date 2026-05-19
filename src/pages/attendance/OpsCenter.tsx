@@ -108,15 +108,29 @@ export default function OpsCenter() {
 
   useEffect(() => { load(); }, []);
 
-  const StatCard = ({ icon: Icon, label, value, tone = "default", warn = false }: any) => (
-    <div className={`flex items-center justify-between p-3 rounded-lg border ${warn ? "border-destructive/40 bg-destructive/5" : "bg-muted/30"}`}>
-      <div className="flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${warn ? "text-destructive" : "text-muted-foreground"}`} />
-        <span className="text-sm">{label}</span>
+  const StatCard = ({ icon: Icon, label, value, tone = "default", warn = false, onClick }: any) => {
+    const interactive = typeof onClick === "function";
+    return (
+      <div
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={onClick}
+        onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
+        className={`flex items-center justify-between p-3 rounded-lg border ${warn ? "border-destructive/40 bg-destructive/5" : "bg-muted/30"} ${interactive ? "cursor-pointer hover:bg-muted/60 transition-colors" : ""}`}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className={`h-4 w-4 ${warn ? "text-destructive" : "text-muted-foreground"}`} />
+          <span className="text-sm">{label}</span>
+        </div>
+        <Badge variant={warn ? "destructive" : "secondary"}>{value}</Badge>
       </div>
-      <Badge variant={warn ? "destructive" : "secondary"}>{value}</Badge>
-    </div>
-  );
+    );
+  };
+
+  const perfWarn = (data?.perf.last24h ?? 0) === 0;
+  const perfLastText = data?.perf.lastEventAt
+    ? format(new Date(data.perf.lastEventAt), "yyyy-MM-dd HH:mm")
+    : "ยังไม่มีข้อมูล";
 
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
