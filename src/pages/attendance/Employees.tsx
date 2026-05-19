@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useLocale } from '@/contexts/LocaleContext';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
@@ -30,6 +30,32 @@ export default function AttendanceEmployees() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedImportUsers, setSelectedImportUsers] = useState<string[]>([]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResendPortalLink = async (employeeId: string, hasLine: boolean) => {
+    if (!hasLine) {
+      toast({ title: 'ยังไม่ผูก LINE', description: 'พนักงานคนนี้ยังไม่มี LINE User ID', variant: 'destructive' });
+      return;
+    }
+    setResendingId(employeeId);
+    try {
+      const { data, error } = await supabase.functions.invoke('portal-link-resend', {
+        body: { employee_id: employeeId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || data?.error || 'ส่งลิงก์ไม่สำเร็จ');
+      const modeText = data.mode === 'liff' ? 'LIFF' : 'Token Link';
+      toast({ title: '✅ ส่งลิงก์ Portal สำเร็จ', description: `ส่งผ่าน LINE Push (${modeText})` });
+    } catch (e: any) {
+      toast({
+        title: 'ส่งลิงก์ไม่สำเร็จ',
+        description: e?.message || 'เกิดข้อผิดพลาด',
+        variant: 'destructive',
+      });
+    } finally {
+      setResendingId(null);
+    }
+  };
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
@@ -768,6 +794,27 @@ export default function AttendanceEmployees() {
                   </TableCell>
                   <TableCell className="text-right py-2">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={!canEdit || !employee.line_user_id || resendingId === employee.id}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          (!canEdit || !employee.line_user_id) && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canEdit && handleResendPortalLink(employee.id, !!employee.line_user_id)}
+                        title={
+                          !employee.line_user_id
+                            ? "ยังไม่ผูก LINE"
+                            : canEdit
+                            ? "ส่งลิงก์ Member Portal ผ่าน LINE"
+                            : "ไม่มีสิทธิ์"
+                        }
+                      >
+                        {resendingId === employee.id
+                          ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                          : <Send className="h-3 w-3 sm:h-4 sm:w-4" />}
+                      </Button>
                       <Button 
                         variant="ghost" 
                         size="icon"

@@ -483,3 +483,7 @@ Test infrastructure added: `vitest.config.ts`, `src/test/setup.ts`, `npm run tes
 ## Phase 1D — Core Daily Ops Polish (2026-05-19)
 
 Thai token error UX (errorCode-driven), GPS retry states, OpsCenter clickable setup/pending items, Portal Performance Events card, `logPortalEvent` rIC+setTimeout safety-net. Presentation-only — no business logic touched. Smoke 16/0/5, tests 7/7. See `docs/PHASE_1D_CORE_DAILY_OPS_POLISH.md`.
+
+## Phase 1D.1 — Resend Portal Link + Connection Check (2026-05-19)
+
+New edge function `portal-link-resend` (admin/owner/hr only, JWT verified). Per-employee Send button in /attendance/employees. "ตรวจการเชื่อมต่อ" health-check button in OpsCenter Portal Performance card. No business logic touched. Tests 7/7, smoke 16/0/5, audit 7/0/0/2.
