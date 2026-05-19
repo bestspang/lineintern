@@ -385,6 +385,10 @@ function check9_portalFaqCategoriesSanity() {
   }
 }
 
+console.log(c("bold", c("cyan", "\n🔍 Cross-Surface Consistency Audit\n")));
+console.log(c("dim", "Read-only checks. No mutations.\n"));
+
+
 check1_routesVsSnapshot();
 check2_portalActionsVsRoutes();
 check3_commandParserConsistency();
