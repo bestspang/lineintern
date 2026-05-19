@@ -792,8 +792,28 @@ export default function AttendanceEmployees() {
                       {!employee.is_active ? 'Inactive' : employee.status === 'new' ? 'New' : 'Active'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right py-2">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={!canEdit || !employee.line_user_id || resendingId === employee.id}
+                        className={cn(
+                          "h-7 w-7 sm:h-8 sm:w-8",
+                          (!canEdit || !employee.line_user_id) && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => canEdit && handleResendPortalLink(employee.id, !!employee.line_user_id)}
+                        title={
+                          !employee.line_user_id
+                            ? "ยังไม่ผูก LINE"
+                            : canEdit
+                            ? "ส่งลิงก์ Member Portal ผ่าน LINE"
+                            : "ไม่มีสิทธิ์"
+                        }
+                      >
+                        {resendingId === employee.id
+                          ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                          : <Send className="h-3 w-3 sm:h-4 sm:w-4" />}
+                      </Button>
                       <Button 
                         variant="ghost" 
                         size="icon"
