@@ -709,19 +709,30 @@ export default function Attendance() {
     );
   }
 
-  // Improved error messages
-  const getErrorMessage = (error: string) => {
-    const errorMap: Record<string, { title: string; description: string; action: string }> = {
-      'token_expired': {
+  // Improved error messages — keyed by errorCode (from validate-token) first, then by message
+  const getErrorMessage = (error: string, code?: string) => {
+    const codeMap: Record<string, { title: string; description: string; action: string }> = {
+      TOKEN_EXPIRED: {
         title: 'ลิงก์หมดอายุแล้ว',
-        description: 'ลิงก์นี้ถูกใช้งานมากกว่า 10 นาทีแล้ว เพื่อความปลอดภัยจึงหมดอายุแล้วค่ะ',
-        action: 'กรุณาขอลิงก์ใหม่จาก LINE Bot โดยพิมพ์ "checkin" หรือ "checkout"'
+        description: 'ลิงก์เช็กอินนี้หมดอายุแล้ว',
+        action: 'กรุณาขอลิงก์ใหม่จาก LINE Bot หรือเมนูพนักงาน'
       },
-      'token_used': {
-        title: 'ลิงก์ถูกใช้แล้ว',
-        description: 'ลิงก์นี้ถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้',
-        action: 'หากต้องการบันทึกเวลาใหม่ กรุณาขอลิงก์ใหม่จาก LINE Bot'
+      TOKEN_ALREADY_USED: {
+        title: 'ลิงก์นี้ถูกใช้งานแล้ว',
+        description: 'ลิงก์เช็กอินนี้ถูกใช้ไปแล้ว',
+        action: 'หากต้องการเช็กเอาต์ กรุณาสร้างลิงก์ใหม่จาก Member Portal'
       },
+      TOKEN_NOT_FOUND: {
+        title: 'ลิงก์ไม่ถูกต้อง',
+        description: 'ไม่พบลิงก์นี้ในระบบ',
+        action: 'กรุณาเปิดจาก LINE Bot อีกครั้ง'
+      },
+    };
+    if (code && codeMap[code]) return codeMap[code];
+
+    const errorMap: Record<string, { title: string; description: string; action: string }> = {
+      'token_expired': codeMap.TOKEN_EXPIRED,
+      'token_used': codeMap.TOKEN_ALREADY_USED,
       'employee_inactive': {
         title: 'บัญชีไม่ Active',
         description: 'บัญชีพนักงานของคุณไม่ได้เปิดใช้งาน',
@@ -742,7 +753,7 @@ export default function Attendance() {
   };
 
   if (error) {
-    const errorInfo = getErrorMessage(error);
+    const errorInfo = getErrorMessage(error, errorCode);
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 to-destructive/10 p-4">
         <Card className="w-full max-w-md">
