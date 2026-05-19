@@ -792,6 +792,7 @@ export default function AttendanceEmployees() {
                       {!employee.is_active ? 'Inactive' : employee.status === 'new' ? 'New' : 'Active'}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-right py-2">
                     <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
