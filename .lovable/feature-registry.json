@@ -1,0 +1,156 @@
+{
+  "_purpose": "Feature → surfaces mapping. AI MUST read this before editing any listed feature so that DB rows, routes, FAQ, sidebar, and verified files stay in sync.",
+  "_how_to_use": [
+    "1. Before editing a feature, run: node scripts/feature-impact.mjs <feature-key>",
+    "2. Read every file in 'verified_files' and 'critical_files'. Do NOT remove ⚠️ VERIFIED markers.",
+    "3. If you add a new route/nav/command for the feature, update this file in the SAME edit.",
+    "4. C11 in consistency-audit.mjs enforces: every feature_key must match at least one FAQ keyword OR have a static fallback in src/pages/portal/Help.tsx."
+  ],
+  "_last_updated": "2026-05-19",
+  "_phase": "1E Phase C",
+  "features": {
+    "daily-missions": {
+      "label_th": "ภารกิจรายวัน",
+      "label_en": "Daily Missions",
+      "routes": ["/portal/my-points"],
+      "nav_entries": [],
+      "faq_keywords": ["ภารกิจรายวัน", "Daily Missions"],
+      "edge_fns": [],
+      "tables": ["happy_points", "point_transactions"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/MyPoints.tsx"]
+    },
+    "achievement-badges": {
+      "label_th": "เหรียญตรา",
+      "label_en": "Achievement Badges",
+      "routes": ["/portal/my-points"],
+      "nav_entries": [],
+      "faq_keywords": ["เหรียญตรา", "Achievement Badges", "Bronze", "Silver", "Gold"],
+      "edge_fns": [],
+      "tables": ["happy_points", "attendance_logs"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/MyPoints.tsx"]
+    },
+    "gacha-box": {
+      "label_th": "กาชา",
+      "label_en": "Gacha Box",
+      "routes": ["/portal/gacha", "/portal/gacha-history", "/portal/my-bag"],
+      "nav_entries": [],
+      "faq_keywords": ["กาชา", "Gacha"],
+      "edge_fns": ["gacha-draw"],
+      "tables": ["gacha_boxes", "gacha_prizes", "employee_bag_items"],
+      "verified_files": ["src/pages/portal/GachaHistory.tsx"],
+      "critical_files": ["src/pages/portal/Gacha.tsx"]
+    },
+    "notification-center": {
+      "label_th": "ศูนย์การแจ้งเตือน",
+      "label_en": "Notification Center",
+      "routes": ["/portal/"],
+      "nav_entries": [],
+      "faq_keywords": ["การแจ้งเตือน", "Notification Center"],
+      "edge_fns": [],
+      "tables": ["notifications"],
+      "verified_files": [],
+      "critical_files": ["src/components/portal/NotificationBell.tsx"]
+    },
+    "notification-preferences": {
+      "label_th": "ตั้งค่าการแจ้งเตือน",
+      "label_en": "Notification Preferences",
+      "routes": ["/portal/notification-preferences"],
+      "nav_entries": [],
+      "faq_keywords": ["ประเภทการแจ้งเตือน", "Notification Preferences"],
+      "edge_fns": [],
+      "tables": ["notification_preferences"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/NotificationPreferences.tsx"]
+    },
+    "manager-dashboard": {
+      "label_th": "แดชบอร์ดของหัวหน้า",
+      "label_en": "Manager Dashboard",
+      "routes": ["/portal/approvals", "/portal/team-summary", "/portal/photos"],
+      "nav_entries": [],
+      "faq_keywords": ["แดชบอร์ดของหัวหน้า", "Manager Dashboard"],
+      "edge_fns": [],
+      "tables": ["leave_requests", "ot_requests", "attendance_logs"],
+      "verified_files": ["src/components/portal/PortalLayout.tsx"],
+      "critical_files": ["src/pages/portal/Approvals.tsx"]
+    },
+    "remote-checkout": {
+      "label_th": "เช็คเอาท์นอกสถานที่",
+      "label_en": "Remote Checkout",
+      "routes": ["/portal/checkin", "/portal/approvals/remote-checkout"],
+      "nav_entries": [],
+      "faq_keywords": ["checkout นอกสถานที่", "remote checkout", "นอกพื้นที่"],
+      "edge_fns": ["attendance-submit"],
+      "tables": ["attendance_logs", "notifications", "audit_logs"],
+      "verified_files": ["src/pages/portal/CheckInOut.tsx", "supabase/functions/attendance-submit/index.ts"],
+      "critical_files": []
+    },
+    "direct-checkin-fallback": {
+      "label_th": "ลิงก์เช็คอินตรง",
+      "label_en": "Direct Check-in Fallback",
+      "routes": ["/attendance"],
+      "nav_entries": [],
+      "faq_keywords": ["ทำไมเช็คอินไม่ได้", "เช็คอินไม่ได้", "GPS", "token"],
+      "edge_fns": ["attendance-submit", "validate-token"],
+      "tables": ["attendance_tokens", "employee_menu_tokens"],
+      "verified_files": ["src/pages/portal/CheckInOut.tsx", "supabase/functions/attendance-submit/index.ts"],
+      "critical_files": ["src/pages/Attendance.tsx"]
+    },
+    "resend-portal-link": {
+      "label_th": "ส่งลิงก์ Portal ใหม่",
+      "label_en": "Resend Portal Link",
+      "routes": ["/attendance/employees"],
+      "nav_entries": [],
+      "faq_keywords": [],
+      "edge_fns": ["portal-link-resend"],
+      "tables": ["employee_menu_tokens", "audit_logs"],
+      "verified_files": [],
+      "critical_files": ["src/pages/attendance/Employees.tsx", "supabase/functions/portal-link-resend/index.ts"]
+    },
+    "ops-center-health-check": {
+      "label_th": "ตรวจการเชื่อมต่อ Ops Center",
+      "label_en": "Ops Center Health Check",
+      "routes": ["/attendance/ops-center"],
+      "nav_entries": [],
+      "faq_keywords": [],
+      "edge_fns": ["portal-data"],
+      "tables": ["portal_performance_events"],
+      "verified_files": ["src/pages/attendance/OpsCenter.tsx", "supabase/functions/portal-data/index.ts"],
+      "critical_files": []
+    },
+    "streak-shield": {
+      "label_th": "Streak Shield",
+      "label_en": "Streak Shield",
+      "routes": ["/portal/my-bag"],
+      "nav_entries": [],
+      "faq_keywords": ["Streak Shield", "โล่สตรีค"],
+      "edge_fns": ["streak-backfill"],
+      "tables": ["employee_bag_items", "happy_points"],
+      "verified_files": ["supabase/functions/streak-backfill/index.ts"],
+      "critical_files": []
+    },
+    "flexible-day-off": {
+      "label_th": "วันหยุดยืดหยุ่น",
+      "label_en": "Flexible Day-Off",
+      "routes": ["/attendance/flexible-day-off", "/attendance/flexible-day-off-requests"],
+      "nav_entries": ["Flexible Day-Off", "Flexible Day-Off Config"],
+      "faq_keywords": ["วันหยุดยืดหยุ่น", "Flexible Day-Off"],
+      "edge_fns": [],
+      "tables": ["flexible_day_off_requests"],
+      "verified_files": [],
+      "critical_files": ["src/components/DashboardLayout.tsx"]
+    },
+    "portal-faq-help": {
+      "label_th": "ศูนย์ช่วยเหลือ",
+      "label_en": "Portal FAQ / Help Center",
+      "routes": ["/portal/help"],
+      "nav_entries": [],
+      "faq_keywords": ["ช่วยเหลือ", "FAQ", "Help"],
+      "edge_fns": [],
+      "tables": ["portal_faqs"],
+      "verified_files": ["src/pages/portal/Help.tsx"],
+      "critical_files": []
+    }
+  }
+}
