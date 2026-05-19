@@ -173,20 +173,47 @@ export default function OpsCenter() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Pending Actions</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} />
+              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} onClick={() => navigate("/portal/approve-remote-checkout")} />
+              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} onClick={() => navigate("/portal/approve-early-leave")} />
+              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} onClick={() => navigate("/portal/approve-ot")} />
+              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} onClick={() => navigate("/portal/approve-leave")} />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Setup Issues</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <StatCard icon={Users} label="พนักงานยังไม่ผูก LINE" value={data?.setup.employeesNoLineId ?? 0} warn={(data?.setup.employeesNoLineId ?? 0) > 0} />
-              <StatCard icon={Users} label="พนักงานยังไม่มี auth" value={data?.setup.employeesNoAuth ?? 0} warn={(data?.setup.employeesNoAuth ?? 0) > 0} />
-              <StatCard icon={MapPin} label="สาขาไม่มี LINE group" value={data?.setup.branchesNoGroup ?? 0} warn={(data?.setup.branchesNoGroup ?? 0) > 0} />
-              <StatCard icon={MapPin} label="สาขาไม่มี geofence" value={data?.setup.branchesNoGeo ?? 0} warn={(data?.setup.branchesNoGeo ?? 0) > 0} />
+              <StatCard icon={Users} label="พนักงานยังไม่ผูก LINE" value={data?.setup.employeesNoLineId ?? 0} warn={(data?.setup.employeesNoLineId ?? 0) > 0} onClick={() => navigate("/attendance/employees")} />
+              <StatCard icon={Users} label="พนักงานยังไม่มี auth" value={data?.setup.employeesNoAuth ?? 0} warn={(data?.setup.employeesNoAuth ?? 0) > 0} onClick={() => navigate("/attendance/employees")} />
+              <StatCard icon={MapPin} label="สาขาไม่มี LINE group" value={data?.setup.branchesNoGroup ?? 0} warn={(data?.setup.branchesNoGroup ?? 0) > 0} onClick={() => navigate("/attendance/branches")} />
+              <StatCard icon={MapPin} label="สาขาไม่มี geofence" value={data?.setup.branchesNoGeo ?? 0} warn={(data?.setup.branchesNoGeo ?? 0) > 0} onClick={() => navigate("/attendance/branches")} />
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Gauge className="h-4 w-4" /> Portal Performance Events
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <StatCard
+                icon={Activity}
+                label="Events ใน 24 ชม."
+                value={data?.perf.last24h ?? 0}
+                warn={perfWarn}
+                onClick={() => navigate("/attendance/portal-performance")}
+              />
+              <StatCard icon={CheckCircle2} label="Event ล่าสุด" value={perfLastText} warn={perfWarn} />
+              {perfWarn && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    ยังไม่มีข้อมูล performance จาก portal จริง — เมื่อมีผู้ใช้เปิด Member Portal บน LINE
+                    event แรกจะปรากฏที่นี่ภายใน ~10 วินาที
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </div>
