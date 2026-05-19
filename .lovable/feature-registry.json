@@ -7,7 +7,7 @@
     "4. C11 in consistency-audit.mjs enforces: every feature_key must match at least one FAQ keyword OR have a static fallback in src/pages/portal/Help.tsx."
   ],
   "_last_updated": "2026-05-19",
-  "_phase": "1E Phase C",
+  "_phase": "1E Phase D",
   "features": {
     "daily-missions": {
       "label_th": "ภารกิจรายวัน",
