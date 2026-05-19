@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useLocale } from '@/contexts/LocaleContext';
-import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban } from 'lucide-react';
+import { Loader2, Users, Plus, Edit, Link as LinkIcon, Check, ChevronsUpDown, Eye, History, Settings, Download, Ban, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AttendanceEmployees() {
