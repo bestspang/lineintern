@@ -8,8 +8,8 @@
     "4. Run `node scripts/smoke-test.mjs --skip-build` to verify Sections F+G pass.",
     "5. Update _last_synced_at and _last_sync_migration."
   ],
-  "_last_synced_at": "2026-04-29",
-  "_last_sync_migration": "sync_page_registry_v1",
+  "_last_synced_at": "2026-05-19",
+  "_last_sync_migration": "sync_webapp_page_config_v2",
 
   "admin_routes": [
     "/", "/overview", "/audit-logs", "/branch-report", "/bot-logs", "/broadcast",
@@ -18,7 +18,7 @@
     "/knowledge", "/memory", "/memory-analytics", "/personality",
     "/portal-faq-admin", "/pre-deploy-checklist", "/profile-sync-health",
     "/summaries", "/tasks", "/test-bot", "/training", "/users",
-    "/analytics", "/settings",
+    "/analytics", "/settings", "/settings/reports",
     "/attendance/analytics", "/attendance/bag-management", "/attendance/birthdays",
     "/attendance/branches", "/attendance/dashboard", "/attendance/early-leave-requests",
     "/attendance/employee-documents", "/attendance/employees",
