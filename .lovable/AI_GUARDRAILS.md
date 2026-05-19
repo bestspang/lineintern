@@ -2,7 +2,9 @@
 
 > **Audience:** Any AI agent (Lovable, Claude, GPT, Gemini, etc.) about to modify this codebase.
 > **Why:** Past AI rounds have repeatedly broken working features by "improving" them. This document is the contract that prevents that.
-> **Last updated:** 2026-05-02
+> **Last updated:** 2026-05-19
+
+> 🔁 **Cross-surface sync rule (recheck-2026-05-19):** Any change to a user-facing feature/function MUST also be verified on all of: route in `App.tsx`, nav in `DashboardLayout.tsx`/`PortalLayout.tsx`, action in `portal-actions.ts`, `webapp_page_config` DB row, `bot_commands` DB row (if command-facing), and Portal FAQ (`portal_faqs` table + `Help.tsx`). Run `npm run audit:consistency` + `npm run smoke:quick` before sign-off — both must return exit 0.
 
 ---
 
