@@ -75,7 +75,13 @@ export function logPortalEvent(payload: PerfPayload): void {
   perfMark(payload.event_name);
 
   // Defer to idle to avoid blocking critical path.
+  // Some in-app browsers (LINE on iOS especially) never fire requestIdleCallback
+  // under load. Arm BOTH a rIC handler and a setTimeout fallback, gated by a
+  // `sent` flag so the insert only happens once.
+  let sent = false;
   const send = () => {
+    if (sent) return;
+    sent = true;
     try {
       // Use `any` cast because the table type is generated and may not be present
       // in older type bundles; runtime is what matters.
@@ -96,6 +102,8 @@ export function logPortalEvent(payload: PerfPayload): void {
   if (typeof window !== "undefined" && "requestIdleCallback" in window) {
     // @ts-ignore – non-standard but widely supported on portal target browsers
     window.requestIdleCallback(send, { timeout: 2000 });
+    // Safety net: if rIC never fires (LINE iOS in-app browser quirk), flush after 2.5s.
+    setTimeout(send, 2500);
   } else {
     setTimeout(send, 0);
   }

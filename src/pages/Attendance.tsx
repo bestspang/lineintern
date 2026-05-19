@@ -27,11 +27,13 @@ export default function Attendance() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [tokenData, setTokenData] = useState<any>(null);
   const [error, setError] = useState<string>('');
+  const [errorCode, setErrorCode] = useState<string>('');
   
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [location, setLocation] = useState<{lat: number; lon: number} | null>(null);
   const [locationError, setLocationError] = useState<string>('');
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'timeout' | 'unsupported' | 'error'>('idle');
   const [livenessData, setLivenessData] = useState<LivenessData | null>(null);
   
   const [submitted, setSubmitted] = useState(false);
@@ -149,11 +151,12 @@ export default function Attendance() {
 
       if (!response.ok || !data.valid) {
         setError(data.error || 'Invalid token');
+        setErrorCode(data.errorCode || '');
         setLoading(false);
         logPortalEvent({
           event_name: 'token_validate_failed',
           duration_ms: perfMeasure('checkin_token_validate_start'),
-          error_code: data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`,
+          error_code: data?.errorCode || (data?.error ? String(data.error).slice(0, 80) : `http_${response.status}`),
         });
         return;
       }
@@ -182,9 +185,13 @@ export default function Attendance() {
 
   const requestLocation = () => {
     if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser');
+      setLocationStatus('unsupported');
+      setLocationError('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
       return;
     }
+
+    setLocationStatus('requesting');
+    setLocationError('');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -193,13 +200,24 @@ export default function Attendance() {
           lon: position.coords.longitude
         });
         setLocationError('');
+        setLocationStatus('granted');
       },
-      (error) => {
-        setLocationError(`Location error: ${error.message}`);
+      (err) => {
+        // PositionError codes: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+        if (err.code === 1) {
+          setLocationStatus('denied');
+          setLocationError('ไม่สามารถเข้าถึงตำแหน่งได้ — กรุณาอนุญาตการใช้ตำแหน่งในการตั้งค่า LINE หรือเบราว์เซอร์');
+        } else if (err.code === 3) {
+          setLocationStatus('timeout');
+          setLocationError('ขอตำแหน่งใช้เวลานานเกินไป กรุณาลองอีกครั้งในที่ที่สัญญาณดี');
+        } else {
+          setLocationStatus('error');
+          setLocationError('ไม่สามารถระบุตำแหน่งได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
+        }
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 12000,
         maximumAge: 0
       }
     );
@@ -691,19 +709,30 @@ export default function Attendance() {
     );
   }
 
-  // Improved error messages
-  const getErrorMessage = (error: string) => {
-    const errorMap: Record<string, { title: string; description: string; action: string }> = {
-      'token_expired': {
+  // Improved error messages — keyed by errorCode (from validate-token) first, then by message
+  const getErrorMessage = (error: string, code?: string) => {
+    const codeMap: Record<string, { title: string; description: string; action: string }> = {
+      TOKEN_EXPIRED: {
         title: 'ลิงก์หมดอายุแล้ว',
-        description: 'ลิงก์นี้ถูกใช้งานมากกว่า 10 นาทีแล้ว เพื่อความปลอดภัยจึงหมดอายุแล้วค่ะ',
-        action: 'กรุณาขอลิงก์ใหม่จาก LINE Bot โดยพิมพ์ "checkin" หรือ "checkout"'
+        description: 'ลิงก์เช็กอินนี้หมดอายุแล้ว',
+        action: 'กรุณาขอลิงก์ใหม่จาก LINE Bot หรือเมนูพนักงาน'
       },
-      'token_used': {
-        title: 'ลิงก์ถูกใช้แล้ว',
-        description: 'ลิงก์นี้ถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้',
-        action: 'หากต้องการบันทึกเวลาใหม่ กรุณาขอลิงก์ใหม่จาก LINE Bot'
+      TOKEN_ALREADY_USED: {
+        title: 'ลิงก์นี้ถูกใช้งานแล้ว',
+        description: 'ลิงก์เช็กอินนี้ถูกใช้ไปแล้ว',
+        action: 'หากต้องการเช็กเอาต์ กรุณาสร้างลิงก์ใหม่จาก Member Portal'
       },
+      TOKEN_NOT_FOUND: {
+        title: 'ลิงก์ไม่ถูกต้อง',
+        description: 'ไม่พบลิงก์นี้ในระบบ',
+        action: 'กรุณาเปิดจาก LINE Bot อีกครั้ง'
+      },
+    };
+    if (code && codeMap[code]) return codeMap[code];
+
+    const errorMap: Record<string, { title: string; description: string; action: string }> = {
+      'token_expired': codeMap.TOKEN_EXPIRED,
+      'token_used': codeMap.TOKEN_ALREADY_USED,
       'employee_inactive': {
         title: 'บัญชีไม่ Active',
         description: 'บัญชีพนักงานของคุณไม่ได้เปิดใช้งาน',
@@ -724,7 +753,7 @@ export default function Attendance() {
   };
 
   if (error) {
-    const errorInfo = getErrorMessage(error);
+    const errorInfo = getErrorMessage(error, errorCode);
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 to-destructive/10 p-4">
         <Card className="w-full max-w-md">
@@ -743,6 +772,22 @@ export default function Attendance() {
                 💡 {errorInfo.action}
               </AlertDescription>
             </Alert>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { window.location.href = 'line://'; }}
+              >
+                กลับไปที่ LINE
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => { window.location.href = '/p'; }}
+              >
+                เปิด Member Portal
+              </Button>
+            </div>
             <div className="text-xs text-muted-foreground">
               <p className="font-medium mb-1">คำสั่งที่ใช้ได้:</p>
               <ul className="list-disc list-inside space-y-0.5 ml-2">
@@ -1000,25 +1045,46 @@ export default function Attendance() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
-              {!location && (
+              {!location && locationStatus !== 'requesting' && (
                 <Button onClick={requestLocation} variant="outline" className="w-full text-sm sm:text-base h-9 sm:h-10">
                   <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-                  Get Location
+                  {locationStatus === 'idle' ? 'ขอตำแหน่งปัจจุบัน' : 'ลองขอตำแหน่งอีกครั้ง'}
                 </Button>
+              )}
+
+              {locationStatus === 'requesting' && (
+                <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>กำลังขอตำแหน่ง...</span>
+                </div>
               )}
 
               {location && (
                 <Alert>
                   <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
                   <AlertDescription className="text-xs sm:text-sm">
-                    Location captured: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
+                    บันทึกตำแหน่งแล้ว: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
                   </AlertDescription>
                 </Alert>
               )}
 
-              {locationError && (
+              {locationError && !location && locationStatus !== 'requesting' && (
                 <Alert variant="destructive">
-                  <AlertDescription className="text-xs sm:text-sm">{locationError}</AlertDescription>
+                  <AlertDescription className="text-xs sm:text-sm space-y-1">
+                    <div className="font-medium">
+                      {locationStatus === 'denied' && 'ไม่สามารถเข้าถึงตำแหน่งได้'}
+                      {locationStatus === 'timeout' && 'หมดเวลาขอตำแหน่ง'}
+                      {locationStatus === 'unsupported' && 'เบราว์เซอร์ไม่รองรับ'}
+                      {locationStatus === 'error' && 'เกิดข้อผิดพลาด'}
+                    </div>
+                    <div>{locationError}</div>
+                    {locationStatus === 'denied' && (
+                      <div className="text-[11px] opacity-80 pt-1">
+                        iOS: ตั้งค่า → LINE → ตำแหน่ง → ขณะใช้แอป<br />
+                        Android: ตั้งค่า → แอป → LINE → สิทธิ์ → ตำแหน่ง
+                      </div>
+                    )}
+                  </AlertDescription>
                 </Alert>
               )}
             </CardContent>

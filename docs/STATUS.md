@@ -477,3 +477,9 @@ Test infrastructure added: `vitest.config.ts`, `src/test/setup.ts`, `npm run tes
 
 ### Verdict
 **READY FOR PHASE 1B PERFORMANCE.** Pure additive observability + UX hardening on top of Phase 1A.2 — no changes to attendance, Bangkok helpers, RLS policies, or DB schema.
+
+---
+
+## Phase 1D — Core Daily Ops Polish (2026-05-19)
+
+Thai token error UX (errorCode-driven), GPS retry states, OpsCenter clickable setup/pending items, Portal Performance Events card, `logPortalEvent` rIC+setTimeout safety-net. Presentation-only — no business logic touched. Smoke 16/0/5, tests 7/7. See `docs/PHASE_1D_CORE_DAILY_OPS_POLISH.md`.

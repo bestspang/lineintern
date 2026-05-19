@@ -31,6 +31,7 @@ interface OpsData {
     branchesNoGroup: number;
     branchesNoGeo: number;
   };
+  perf: { last24h: number; lastEventAt: string | null };
 }
 
 export default function OpsCenter() {
@@ -51,6 +52,7 @@ export default function OpsCenter() {
         ciToday, coToday, expiredTokens,
         rcoPending, elPending, otPending, leavePending,
         empNoLine, empNoAuth, branchesNoGroup, branchesNoGeo,
+        perfLast24h, perfLatest,
       ] = await Promise.all([
         supabase.from("api_configurations").select("key_value").eq("key_name", "LIFF_ID").maybeSingle(),
         supabase.from("bot_logs" as any).select("id", { count: "exact", head: true })
@@ -70,6 +72,10 @@ export default function OpsCenter() {
         supabase.from("employees").select("id", { count: "exact", head: true }).is("auth_user_id", null).eq("is_active", true),
         supabase.from("branches").select("id", { count: "exact", head: true }).is("line_group_id", null).eq("is_deleted", false),
         supabase.from("branches").select("id", { count: "exact", head: true }).is("latitude", null).eq("is_deleted", false),
+        (supabase.from as any)("portal_performance_events").select("id", { count: "exact", head: true })
+          .gte("created_at", new Date(Date.now() - 86400000).toISOString()),
+        (supabase.from as any)("portal_performance_events").select("created_at")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
 
       setData({
@@ -87,6 +93,10 @@ export default function OpsCenter() {
           branchesNoGroup: branchesNoGroup.count || 0,
           branchesNoGeo: branchesNoGeo.count || 0,
         },
+        perf: {
+          last24h: (perfLast24h as any).count || 0,
+          lastEventAt: (perfLatest as any).data?.created_at || null,
+        },
       });
       setLastUpdated(new Date());
     } catch (err) {
@@ -98,15 +108,29 @@ export default function OpsCenter() {
 
   useEffect(() => { load(); }, []);
 
-  const StatCard = ({ icon: Icon, label, value, tone = "default", warn = false }: any) => (
-    <div className={`flex items-center justify-between p-3 rounded-lg border ${warn ? "border-destructive/40 bg-destructive/5" : "bg-muted/30"}`}>
-      <div className="flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${warn ? "text-destructive" : "text-muted-foreground"}`} />
-        <span className="text-sm">{label}</span>
+  const StatCard = ({ icon: Icon, label, value, tone = "default", warn = false, onClick }: any) => {
+    const interactive = typeof onClick === "function";
+    return (
+      <div
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={onClick}
+        onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
+        className={`flex items-center justify-between p-3 rounded-lg border ${warn ? "border-destructive/40 bg-destructive/5" : "bg-muted/30"} ${interactive ? "cursor-pointer hover:bg-muted/60 transition-colors" : ""}`}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className={`h-4 w-4 ${warn ? "text-destructive" : "text-muted-foreground"}`} />
+          <span className="text-sm">{label}</span>
+        </div>
+        <Badge variant={warn ? "destructive" : "secondary"}>{value}</Badge>
       </div>
-      <Badge variant={warn ? "destructive" : "secondary"}>{value}</Badge>
-    </div>
-  );
+    );
+  };
+
+  const perfWarn = (data?.perf.last24h ?? 0) === 0;
+  const perfLastText = data?.perf.lastEventAt
+    ? format(new Date(data.perf.lastEventAt), "yyyy-MM-dd HH:mm")
+    : "ยังไม่มีข้อมูล";
 
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
@@ -149,20 +173,48 @@ export default function OpsCenter() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Pending Actions</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} />
-              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} />
+              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} onClick={() => navigate("/portal/approvals/remote-checkout")} />
+              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} onClick={() => navigate("/portal/approvals/early-leave")} />
+              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} onClick={() => navigate("/portal/approvals/ot")} />
+              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} onClick={() => navigate("/portal/approvals/leave")} />
+
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Setup Issues</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <StatCard icon={Users} label="พนักงานยังไม่ผูก LINE" value={data?.setup.employeesNoLineId ?? 0} warn={(data?.setup.employeesNoLineId ?? 0) > 0} />
-              <StatCard icon={Users} label="พนักงานยังไม่มี auth" value={data?.setup.employeesNoAuth ?? 0} warn={(data?.setup.employeesNoAuth ?? 0) > 0} />
-              <StatCard icon={MapPin} label="สาขาไม่มี LINE group" value={data?.setup.branchesNoGroup ?? 0} warn={(data?.setup.branchesNoGroup ?? 0) > 0} />
-              <StatCard icon={MapPin} label="สาขาไม่มี geofence" value={data?.setup.branchesNoGeo ?? 0} warn={(data?.setup.branchesNoGeo ?? 0) > 0} />
+              <StatCard icon={Users} label="พนักงานยังไม่ผูก LINE" value={data?.setup.employeesNoLineId ?? 0} warn={(data?.setup.employeesNoLineId ?? 0) > 0} onClick={() => navigate("/attendance/employees")} />
+              <StatCard icon={Users} label="พนักงานยังไม่มี auth" value={data?.setup.employeesNoAuth ?? 0} warn={(data?.setup.employeesNoAuth ?? 0) > 0} onClick={() => navigate("/attendance/employees")} />
+              <StatCard icon={MapPin} label="สาขาไม่มี LINE group" value={data?.setup.branchesNoGroup ?? 0} warn={(data?.setup.branchesNoGroup ?? 0) > 0} onClick={() => navigate("/attendance/branches")} />
+              <StatCard icon={MapPin} label="สาขาไม่มี geofence" value={data?.setup.branchesNoGeo ?? 0} warn={(data?.setup.branchesNoGeo ?? 0) > 0} onClick={() => navigate("/attendance/branches")} />
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Gauge className="h-4 w-4" /> Portal Performance Events
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <StatCard
+                icon={Activity}
+                label="Events ใน 24 ชม."
+                value={data?.perf.last24h ?? 0}
+                warn={perfWarn}
+                onClick={() => navigate("/attendance/portal-performance")}
+              />
+              <StatCard icon={CheckCircle2} label="Event ล่าสุด" value={perfLastText} warn={perfWarn} />
+              {perfWarn && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    ยังไม่มีข้อมูล performance จาก portal จริง — เมื่อมีผู้ใช้เปิด Member Portal บน LINE
+                    event แรกจะปรากฏที่นี่ภายใน ~10 วินาที
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </div>
