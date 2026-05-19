@@ -34,11 +34,64 @@ interface OpsData {
   perf: { last24h: number; lastEventAt: string | null };
 }
 
+type HealthResult = { label: string; ok: boolean; detail: string };
+
 export default function OpsCenter() {
   const navigate = useNavigate();
   const [data, setData] = useState<OpsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthResults, setHealthResults] = useState<HealthResult[] | null>(null);
+
+  const runHealthCheck = async () => {
+    setHealthChecking(true);
+    setHealthResults(null);
+    const results: HealthResult[] = [];
+
+    const t0 = performance.now();
+    try {
+      const { error } = await (supabase.from as any)("portal_performance_events")
+        .select("id", { count: "exact", head: true });
+      const ms = Math.round(performance.now() - t0);
+      results.push({
+        label: "Database (portal_performance_events)",
+        ok: !error,
+        detail: error ? error.message : `OK ${ms}ms`,
+      });
+    } catch (e: any) {
+      results.push({ label: "Database (portal_performance_events)", ok: false, detail: e?.message || "error" });
+    }
+
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      results.push({
+        label: "Auth session",
+        ok: !!session?.session,
+        detail: session?.session ? `OK (user ${session.session.user.email})` : "no active session",
+      });
+    } catch (e: any) {
+      results.push({ label: "Auth session", ok: false, detail: e?.message || "error" });
+    }
+
+    try {
+      const t1 = performance.now();
+      const { error } = await supabase.functions.invoke("portal-data", {
+        body: { health: true },
+      });
+      const ms = Math.round(performance.now() - t1);
+      results.push({
+        label: "Edge function (portal-data)",
+        ok: !error,
+        detail: error ? (error.message || "error") : `reachable ${ms}ms`,
+      });
+    } catch (e: any) {
+      results.push({ label: "Edge function (portal-data)", ok: false, detail: e?.message || "error" });
+    }
+
+    setHealthResults(results);
+    setHealthChecking(false);
+  };
 
   const load = async () => {
     setLoading(true);
