@@ -117,3 +117,31 @@ lands in `portal_performance_events`.
 
 Phase 1E: safe "resend Member Portal link" admin action + small-cohort
 production pilot rollout.
+
+---
+
+## Phase 1D.1 — Resend Portal Link + Connection Check (2026-05-19)
+
+**Added (additive, no business logic changed):**
+
+1. **Edge function `portal-link-resend`** (`verify_jwt = true` default).
+   - Validates caller JWT via `getClaims()`, checks `user_roles` for admin/owner/hr.
+   - Mirrors `/menu` handler logic: respects `system_settings.portal_access_mode` (`liff` / `token` / `both`) and `api_configurations.LIFF_ID`.
+   - Inserts `employee_menu_tokens` row (30-min expiry, same `emp_{id}_{ts}_{rand}` format) only in token mode.
+   - Sends LINE Push to `employees.line_user_id` with the resolved URL.
+   - Writes `audit_logs` row (`action_type='portal_link_resend'`).
+   - Returns `{ success, mode, sent_at }` or typed error (`NO_LINE_USER_ID`, `FORBIDDEN`, `LINE_PUSH_FAILED`, …).
+
+2. **`/attendance/employees`** — per-row `Send` icon button.
+   - Disabled when no `line_user_id` or no edit permission; spins while sending.
+   - Toast on success (shows mode) or failure (Thai message).
+   - Existing row buttons (edit / history / settings / view) unchanged.
+
+3. **`/attendance/ops-center`** — "ตรวจการเชื่อมต่อ" button inside Portal Performance card.
+   - Runs DB head-count, `auth.getSession()`, and `portal-data` invoke in sequence.
+   - Renders pass/fail badges with latency. No dummy events written.
+   - Existing card layout / Pilot QA text / "Open Portal Performance" target untouched.
+
+**Verification:** `bun run test` 7/7, `npm run smoke:quick` 16/0/5, `npm run audit:consistency` 7/0/0/2.
+
+**Untouched:** `/menu` handler in `line-webhook`, `employee_menu_tokens` schema, `portal_performance_events` schema/RLS, all `// ⚠️ VERIFIED` files.
