@@ -40,29 +40,29 @@
       "edge_fns": ["gacha-draw"],
       "tables": ["gacha_boxes", "gacha_prizes", "employee_bag_items"],
       "verified_files": ["src/pages/portal/GachaHistory.tsx"],
-      "critical_files": ["src/pages/portal/Gacha.tsx"]
+      "critical_files": ["src/pages/portal/GachaBox.tsx"]
     },
     "notification-center": {
       "label_th": "ศูนย์การแจ้งเตือน",
       "label_en": "Notification Center",
-      "routes": ["/portal/"],
+      "routes": ["/portal/notifications"],
       "nav_entries": [],
       "faq_keywords": ["การแจ้งเตือน", "Notification Center"],
-      "edge_fns": [],
+      "edge_fns": ["portal-data"],
       "tables": ["notifications"],
       "verified_files": [],
-      "critical_files": ["src/components/portal/NotificationBell.tsx"]
+      "critical_files": ["src/pages/portal/Notifications.tsx"]
     },
     "notification-preferences": {
       "label_th": "ตั้งค่าการแจ้งเตือน",
       "label_en": "Notification Preferences",
-      "routes": ["/portal/notification-preferences"],
+      "routes": ["/portal/notifications"],
       "nav_entries": [],
       "faq_keywords": ["ประเภทการแจ้งเตือน", "Notification Preferences"],
-      "edge_fns": [],
+      "edge_fns": ["portal-data"],
       "tables": ["notification_preferences"],
       "verified_files": [],
-      "critical_files": ["src/pages/portal/NotificationPreferences.tsx"]
+      "critical_files": ["src/pages/portal/Notifications.tsx"]
     },
     "manager-dashboard": {
       "label_th": "แดชบอร์ดของหัวหน้า",
