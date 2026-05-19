@@ -40,6 +40,7 @@ For **any** non-trivial change, walk through this in order. Skipping a step caus
 - [ ] Do any contain `// ⚠️ VERIFIED`? If yes, stop and confirm with the user. **Never remove a `⚠️ VERIFIED` marker — C12 in `audit:consistency` fails the build if the per-file count drops below `.lovable/verified-baseline.json`.**
 - [ ] **Run `node scripts/feature-impact.mjs --list` to see all tracked features, then `node scripts/feature-impact.mjs <feature-key>` for the one you're editing.** The output lists every route / nav entry / FAQ keyword / edge fn / table / verified file you must keep in sync. If your feature isn't listed and is user-facing, add it to `.lovable/feature-registry.json` in the same edit.
 - [ ] C10 enforces every enabled `bot_commands.command_key` has a parser handler; C11 surfaces feature-registry entries whose FAQ keywords aren't in `Help.tsx` (must exist in `portal_faqs` DB instead).
+- [ ] **Before committing any non-trivial change, run `npm run check` (= `audit:consistency` + `smoke:quick`).** Offline / no-DB envs: use `npm run audit:offline` (skips C8/C10 cleanly). If a check FAILs, fix the root cause — never disable the check or edit `verified-baseline.json` to "make it green".
 
 ### Step 2 — Cross-surface impact
 A "feature" usually lives in 4–6 places. Before changing one, check the others are still consistent.
