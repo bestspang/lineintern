@@ -31,6 +31,7 @@ interface OpsData {
     branchesNoGroup: number;
     branchesNoGeo: number;
   };
+  perf: { last24h: number; lastEventAt: string | null };
 }
 
 export default function OpsCenter() {
