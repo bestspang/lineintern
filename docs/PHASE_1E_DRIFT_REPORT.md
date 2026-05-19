@@ -120,3 +120,14 @@ Once Phase B items are merged, ship the following so the next AI loop cannot qui
 - **Behavioural drift:** 5 Phase 1D buttons not yet manually verified.
 
 **No code is changed by this report.** Awaiting user direction on which Phase B items to execute and whether to begin Phase C guardrail expansion in parallel.
+
+---
+
+## Phase B — Executed (2026-05-19)
+
+- **FAQs inserted (+6):** Daily Missions, Achievement Badges, Gacha Box (category `points`); Notification Center, Notification Preferences, Manager Dashboard (category `general`). All `is_active=true`, bilingual TH/EN.
+- **FAQs updated (2):** `46359bc7…` Remote Checkout — answer rewritten to describe portal Notification Center + LINE + Audit Log flow. `f46c6cb1…` "ทำไมเช็คอินไม่ได้" — added GPS retry, expired/used-link resend, camera/liveness, and direct token-link fallback guidance.
+- **Sidebar:** added `Flexible Day-Off Config` → `/attendance/flexible-day-off` under Attendance Admin (existing `/attendance/flexible-day-off-requests` unchanged).
+- **Counts after:** `portal_faqs` 41/41 active (was 35); categories attendance=6, general=15, leave-ot=8, points=12.
+- **Verify:** `audit:consistency` 7 pass / 0 fail / 0 warn. `smoke:quick` 16 pass / 0 fail / 5 skip (manual).
+- **Untouched:** schema, RLS, existing 35 FAQ rows, `bot_commands`, `webapp_page_config`, `// ⚠️ VERIFIED` files, `/menu` handler, `employee_menu_tokens`, `portal_performance_events`.

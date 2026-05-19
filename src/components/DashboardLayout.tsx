@@ -173,6 +173,7 @@ const navigationGroups = [
       { title: 'Leave Balance', titleTh: 'วันลาคงเหลือ', url: '/attendance/leave-balance', icon: CalendarDays },
       { title: 'Early Leave Requests', titleTh: 'คำขอกลับก่อน', url: '/attendance/early-leave-requests', icon: AlertTriangle },
       { title: 'Flexible Day-Off', titleTh: 'วันหยุดยืดหยุ่น', url: '/attendance/flexible-day-off-requests', icon: CalendarDays },
+      { title: 'Flexible Day-Off Config', titleTh: 'ตั้งค่าวันหยุดยืดหยุ่น', url: '/attendance/flexible-day-off', icon: CalendarDays },
     ],
   },
   {

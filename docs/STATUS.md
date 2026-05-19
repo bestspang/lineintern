@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-04-29 (Phase 0B complete — full audit coverage, role-priority enforcement, RLS pass)_
+_Last updated: 2026-05-19 (Phase 1E B done — +6 FAQ, 2 FAQ updated, sidebar Flexible Day-Off Config added)_
 
 ## Product positioning
 
