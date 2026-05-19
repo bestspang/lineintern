@@ -131,3 +131,15 @@ Once Phase B items are merged, ship the following so the next AI loop cannot qui
 - **Counts after:** `portal_faqs` 41/41 active (was 35); categories attendance=6, general=15, leave-ot=8, points=12.
 - **Verify:** `audit:consistency` 7 pass / 0 fail / 0 warn. `smoke:quick` 16 pass / 0 fail / 5 skip (manual).
 - **Untouched:** schema, RLS, existing 35 FAQ rows, `bot_commands`, `webapp_page_config`, `// ⚠️ VERIFIED` files, `/menu` handler, `employee_menu_tokens`, `portal_performance_events`.
+
+---
+
+## Phase C — Executed (2026-05-19)
+
+- **NEW** `.lovable/feature-registry.json` — 13 user-facing features mapped to routes / nav / FAQ keywords / edge fns / tables / VERIFIED files.
+- **NEW** `.lovable/verified-baseline.json` — snapshot of 17 `⚠️ VERIFIED` markers across 17 files (baseline for C12).
+- **NEW** `scripts/feature-impact.mjs` — `node scripts/feature-impact.mjs <feature-key>` (or `--list`). Prints all surfaces tied to a feature so AI must audit before editing.
+- **EDIT** `scripts/consistency-audit.mjs` — added C10 (enabled bot_commands have parser handler), C11 (feature-registry FAQ coverage info), C12 (VERIFIED markers ≥ baseline, hard FAIL on regression).
+- **EDIT** `.lovable/AI_GUARDRAILS.md` — Step 1 checklist now mandates `feature-impact.mjs` and forbids removing VERIFIED markers.
+- **Verify:** `audit:consistency` 9 pass / 0 fail / 0 warn / 3 info (was 7/0/0/2). `smoke:quick` 16/0 unchanged.
+- **Untouched:** all VERIFIED files, DB schema, RLS, FAQ rows, bot_commands, webapp_page_config.

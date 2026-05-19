@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-05-19 (Phase 1E B done — +6 FAQ, 2 FAQ updated, sidebar Flexible Day-Off Config added)_
+_Last updated: 2026-05-19 (Phase 1E C done — feature-registry + C10/C11/C12 guardrails to prevent AI drift)_
 
 ## Product positioning
 
