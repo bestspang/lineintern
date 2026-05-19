@@ -373,9 +373,17 @@ function check9_portalFaqCategoriesSanity() {
   }
   const snap = JSON.parse(snapRaw);
   const cats = new Set(snap.portal_faq_categories || []);
-  // Removed categories that must never come back
+  // Removed categories that must never come back as live code (string-literal usage),
+  // ignoring comments (// ... or /* ... */) which legitimately reference the history.
+  const helpNoComments = help
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
   const forbidden = ["receipts", "deposits"];
-  const leaked = forbidden.filter(c => cats.has(c) || help.includes(`'${c}'`) || help.includes(`"${c}"`));
+  const leaked = forbidden.filter(c =>
+    cats.has(c) ||
+    helpNoComments.includes(`'${c}'`) ||
+    helpNoComments.includes(`"${c}"`)
+  );
   if (leaked.length === 0) {
     record("C9", "portal_faq_categories sanity", "PASS",
       `${cats.size} categories — no removed categories present`);
