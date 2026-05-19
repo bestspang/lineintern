@@ -1,109 +1,105 @@
-## Goal
+## เป้าหมาย
 
-เพิ่ม 2 ความสามารถใหม่บนหน้า Admin โดยไม่แตะ business logic ที่ทำงานอยู่:
+ทำให้ทุก part / feature / UI / help / FAQ / bot command **sync กันจริง** หลังจาก Phase 1B–1D เพิ่ม feature ใหม่หลายตัว และวาง **กันชน** ที่บังคับให้ AI รอบหน้าไม่กลับมาแก้ของที่ดีอยู่แล้วให้พัง
 
-1. ปุ่ม "ส่ง / Resend ลิงก์ Member Portal" ให้พนักงาน (สำหรับคนที่ยังไม่เปิดใช้งาน)
-2. การแจ้งเตือนใน OpsCenter เมื่อ `portal_performance_events = 0` พร้อมปุ่ม "ตรวจการเชื่อมต่อ"
-
----
-
-## Affected modules / Status
-
-| Module | Status | Action |
-|---|---|---|
-| `supabase/functions/line-webhook` `/menu` handler | WORKING — ⚠️ VERIFIED | **ไม่แตะ** ใช้เป็นต้นแบบเท่านั้น |
-| `supabase/functions/portal-link-resend` (ใหม่) | NEW | สร้างใหม่ — mirror logic จาก /menu handler |
-| `src/pages/attendance/Employees.tsx` | WORKING | เพิ่มปุ่มต่อแถว (additive) |
-| `src/pages/attendance/OpsCenter.tsx` | WORKING — ⚠️ VERIFIED (additive only allowed) | เพิ่ม metric + ปุ่ม connection-test (additive) |
-| `portal_performance_events` table / RLS | WORKING | ไม่แตะ |
-| `employee_menu_tokens` schema | WORKING | ไม่แตะ — แค่ insert เพิ่ม |
+วิธีของผมจะ **ไม่ "rewrite ทั้งแอป"** — เพราะนั่นคือต้นตอที่ทำให้ AI พังของเดิม ตามที่ `.lovable/AI_GUARDRAILS.md` (rule "If The User Says Fix Everything") เตือนไว้
 
 ---
 
-## What must be preserved
+## สถานะปัจจุบัน (วัดจริงก่อนวางแผน)
 
-- `/menu` command flow ใน line-webhook (ทุกบรรทัด)
-- `portal_access_mode` 3 โหมด (`liff` / `token` / `both`) — edge function ใหม่ต้องเคารพการตั้งค่าเดิม
-- OpsCenter card layout เดิม, navigate target ของ "Open Portal Performance", Pilot QA card text
-- `employee_menu_tokens` lifetime 30 นาทีและ schema
-- ไม่เปลี่ยน RLS, ไม่เพิ่ม policy ที่ขัดของเดิม
+- `npm run audit:consistency` → 7 pass / 0 fail / 0 warn (route, command-parser, portal-actions, supervisor role, FAQ category ทั้งหมด sync)
+- `npm run smoke:quick` → 16 pass / 0 fail (DB ไม่มี receipt/deposit ค้าง, registry-snapshot ตรง, bot_commands 27 ตัวตรงกับ parser)
+- DB: `portal_faqs` 35 รายการ / 4 หมวด, `bot_commands` 27 ตัว, `webapp_page_config` ยังไม่ถูก audit เทียบกับ route 70 ตัวใน snapshot
 
----
-
-## What's actually new
-
-### 1. Edge Function `portal-link-resend` (admin push)
-
-Mirror logic ของ `/menu` handler ใน `line-webhook/index.ts` (line 9487-9549):
-
-- รับ `{ employee_id: string }` (และ optional `mode`)
-- ตรวจสิทธิ์ผู้เรียกผ่าน JWT (`verify_jwt = true` ใน config.toml) + ตรวจ role ใน `user_roles` (admin/owner/hr) ด้วย `has_role()`
-- โหลด employee → ตรวจ `line_user_id` exists
-- อ่าน `system_settings.portal_access_mode` + `api_configurations.LIFF_ID`
-- ถ้า `liff`/`both` + LIFF_ID → ส่ง URL `https://liff.line.me/{LIFF_ID}` ผ่าน LINE **Push API**
-- ถ้า `token` → INSERT `employee_menu_tokens` (expiry 30 นาที, format `emp_{id}_{ts}_{rand}` — ตรงกับ /menu) แล้ว push `{APP_URL}/portal?token=...`
-- log ลง `bot_logs` หรือ `audit_logs` (event_type = `portal_link_resend`) เพื่อตรวจสอบย้อนหลัง
-- คืน `{ success: true, mode, sent_at }` หรือ error code ที่ frontend map เป็นข้อความไทย
-
-ใช้ `npm:@supabase/supabase-js@2`, CORS headers ตามมาตรฐาน, validate ด้วย Zod, ใช้ service-role client เฉพาะหลังจากตรวจสิทธิ์แล้ว
-
-### 2. UI — `src/pages/attendance/Employees.tsx`
-
-เพิ่มปุ่ม "ส่งลิงก์ Portal" (icon `Send`) ใน action column ของแต่ละ employee row:
-- disabled เมื่อ `!line_user_id` พร้อม tooltip "ยังไม่ผูก LINE"
-- คลิก → `supabase.functions.invoke('portal-link-resend', { body: { employee_id } })`
-- toast (`sonner`) success/error เป็นภาษาไทย, แสดง mode ที่ส่ง (LIFF / Token Link)
-- กันกดซ้ำด้วย local `sendingId` state
-- ไม่ลบ/ย้าย/แก้ปุ่มอื่นในแถว
-
-### 3. UI — `src/pages/attendance/OpsCenter.tsx` (Portal Performance card, additive)
-
-ใน Card "Portal Performance Events" (line 194-219) เพิ่ม **ใต้** `Alert` ที่มีอยู่:
-
-- ปุ่ม `ตรวจการเชื่อมต่อ` (variant outline, size sm)
-- คลิก → ทำ 3 อย่าง parallel:
-  1. `supabase.from('portal_performance_events').select('id', { head: true, count: 'exact' })` วัด latency
-  2. `supabase.auth.getSession()` ตรวจ session
-  3. `supabase.functions.invoke('portal-data', { body: { health: true } })` (head-only) — fallback: ปิงโปรเจค status endpoint
-- แสดงผลด้วย mini-result list ใต้ปุ่ม: `DB read: OK 142ms` / `Auth session: OK` / `Edge function: OK`
-- ถ้า fail แสดง badge destructive + error text
-- ไม่ insert dummy row จริง (เพื่อไม่เกะกะ metric)
-
-ปรับ Alert text เดิม: เพิ่มประโยค "ถ้าทดสอบแล้วการเชื่อมต่อปกติแต่ยังไม่มี event แสดงว่ายังไม่มีผู้ใช้เปิด portal จริง"
-
-### 4. Permissions
-
-- เพิ่มแถวใน `webapp_page_config` ไม่ต้อง (เพราะหน้าเดิมมีอยู่แล้ว)
-- เพิ่ม `bot_commands` row สำหรับ `portal_link_resend` ไม่จำเป็น (ไม่ใช่ user-facing command)
-- ตรวจว่า `has_role(auth.uid(), 'admin')`, `'owner'`, หรือ `'hr'` เท่านั้นที่เรียก function ได้
+**แปลว่าโครงสร้างไม่ drift** — สิ่งที่ user เห็นว่า "ไม่ทันกัน" คือ **content drift** (FAQ/help text) และ **interaction drift** (ปุ่มใหม่ที่ยังไม่เคยมีคนกดจริง) ไม่ใช่ structural drift
 
 ---
 
-## Minimal-diff plan
+## ขอบเขตที่จะทำ (3 phase, อนุมัติทีละ phase)
 
-1. **CREATE** `supabase/functions/portal-link-resend/index.ts` (~150 lines)
-2. **CREATE** config block ใน `supabase/config.toml` สำหรับ function ใหม่ (default `verify_jwt = true`)
-3. **EDIT** `src/pages/attendance/Employees.tsx` — เพิ่ม button + handler (~40 บรรทัด, additive)
-4. **EDIT** `src/pages/attendance/OpsCenter.tsx` — เพิ่ม connection-test block ภายใน Portal Performance card (~50 บรรทัด, additive)
-5. **NO migration** — ไม่แตะ schema
-6. **UPDATE** `.lovable/registry-snapshot.json` เพิ่ม `portal-link-resend` เข้า edge function list
+### Phase A — Drift Discovery (read-only, ไม่แก้โค้ดเลย)
+
+ผมจะสร้าง **drift report** ที่ `docs/PHASE_1E_DRIFT_REPORT.md` โดยเทียบ:
+
+1. **Help / FAQ vs Features ใหม่**
+   - feature ใหม่ตั้งแต่ Phase 1B: Daily Missions, Achievement Badges, Notification Center, Notification Preferences, Manager Dashboard, Remote Checkout, Resend Portal Link, OpsCenter Connection Check, GPS retry UX, Gacha Box, Streak Shield bag
+   - หาว่าตัวไหน **ยังไม่มี** ใน `portal_faqs` หรือ `Help.tsx`
+   - หาว่า FAQ ที่มีอยู่อันไหน **ข้อความล้าสมัย** (อ้าง flow เก่า)
+
+2. **Bot commands `/help` flex message vs `bot_commands` DB**
+   - คำสั่งใน DB 27 ตัว → render ใน `/help` ครบไหม
+   - คำสั่งที่ disabled อยู่ใน DB ยังโผล่ใน UI ไหม
+
+3. **Admin sidebar vs route ใหม่**
+   - route ใน `App.tsx` 121 ตัว vs entry ใน `DashboardLayout.tsx`
+   - หาว่า page ไหนเข้าถึงได้แค่จาก URL ตรง (ไม่มีปุ่ม nav)
+
+4. **`webapp_page_config` coverage**
+   - query DB → list admin route ที่ **ไม่มี** row config → `usePageAccess` จะ default deny
+   - report เท่านั้น (ไม่เพิ่ม row จนกว่าจะอนุมัติ)
+
+5. **ปุ่มที่ยังไม่เคย verify ด้วยมือ** (จาก Phase 1D ล่าสุด)
+   - Resend Portal Link button → คลิกจริงในเบราว์เซอร์
+   - OpsCenter Connection Check → คลิกจริง
+   - OpsCenter StatCard navigation (Setup Issues, Pending Actions) → คลิกจริง
+   - GPS retry / error UX บน `/attendance` → trigger จริง
+   - ทุกข้อรายงานเป็น `[ ] ผ่าน` / `[x] พบปัญหา + root cause`
+
+**Deliverable Phase A**: 1 markdown file รายงานรวม + categorize "ต้องแก้" vs "OK" vs "informational"
 
 ---
 
-## Regression checklist
+### Phase B — Fix Confirmed Drift (additive only, อนุมัติรายการก่อนแก้)
 
-- `/menu` ใน LINE webhook ยังทำงานครบ 3 โหมด (manual test ใน DM)
-- `employee_menu_tokens` validate ผ่าน `employee-menu-validate` ได้ปกติ (token format เดิม)
-- หน้า Employees: ปุ่มเดิม (edit, delete, link LINE) ไม่ขยับตำแหน่ง
-- OpsCenter: ปุ่ม "Open Portal Performance" navigate ถูกที่เดิม
-- OpsCenter: Pilot QA card text ไม่เปลี่ยน
-- Non-admin caller โดน 403 จาก `portal-link-resend`
-- `npm run build`, `npm run smoke:quick`, `bun run test` ผ่านทั้งหมด
-- `npm run audit:consistency` ผ่าน
+หลัง Phase A user เห็นรายการแล้ว เลือกว่าจะแก้ตัวไหน ผมจะแก้แบบ:
+
+- **FAQ ขาด** → INSERT row ใหม่ใน `portal_faqs` ผ่าน migration (additive — ไม่ลบของเดิม)
+- **FAQ ล้าสมัย** → UPDATE row เฉพาะที่เห็นชอบ (มี diff ก่อนเสมอ)
+- **`/help` flex ไม่ครบ** → แก้ template ใน `line-webhook/index.ts` แบบเพิ่ม entry เท่านั้น
+- **Sidebar ขาด** → เพิ่ม nav item ใน `DashboardLayout.tsx` (ไม่ย้าย ไม่ลบของเดิม)
+- **ปุ่ม UI พังจริง** → fix แบบ minimal diff + ทดสอบในเบราว์เซอร์ก่อน commit
+
+**ทุกครั้ง**: run `npm run audit:consistency` + `npm run smoke:quick` ก่อน-หลัง, ต้อง 0 fail ทั้งสองรอบ
 
 ---
 
-## Doc updates
+### Phase C — Regression Prevention (กันชนสำหรับ AI รอบหน้า)
 
-- `docs/PHASE_1D_CORE_DAILY_OPS_POLISH.md` — append "Resend Portal Link (Phase 1D.1)" section
-- `docs/STATUS.md` — append row
+ปัญหาที่ user เจอซ้ำ ๆ คือ "AI ชอบแก้ของที่ดีอยู่แล้วให้พัง" ผมจะเพิ่ม **3 ชั้นกัน**:
+
+1. **ขยาย consistency-audit ให้ครอบคลุมขึ้น**
+   - เพิ่ม Check C10: `bot_commands.is_enabled=true` ทุกตัวต้องมี keyword ปรากฏใน `/help` template ของ `line-webhook/index.ts`
+   - เพิ่ม Check C11: feature ที่ขึ้นทะเบียนใน `.lovable/feature-registry.json` (ไฟล์ใหม่) ต้องมี row ใน `portal_faqs` หรือ `Help.tsx` อย่างน้อย 1 entry
+   - เพิ่ม Check C12: `// ⚠️ VERIFIED` marker count ห้ามลดลงเทียบกับ baseline ใน `.lovable/verified-baseline.json`
+   - ถ้า count ลด → exit 1 (ตรวจจับ AI ลบ marker เพื่อ "clean up")
+
+2. **ไฟล์ feature registry ใหม่** `.lovable/feature-registry.json`
+   - ลิสต์ feature user-facing ทุกตัว + ผูกกับ: route, nav entry, FAQ keys, command keys, edge function
+   - AI รอบหน้าเปิดอ่านไฟล์นี้ก่อนแก้ → รู้ว่า feature นี้กระทบกี่จุด
+   - ใช้เป็น input ของ audit script
+
+3. **Pre-edit checklist hook** ใน `.lovable/AI_GUARDRAILS.md`
+   - เพิ่ม section "Before editing any feature listed in feature-registry.json, run `node scripts/feature-impact.mjs <feature-key>` ที่จะ print ทุก file ที่ต้องเช็คพร้อมกัน"
+   - script ใหม่ `scripts/feature-impact.mjs` — read-only, แสดง dependency map ของ feature นั้น
+
+**ผลลัพธ์**: ครั้งต่อไป AI พิมพ์ "ฉันจะ refactor X" → script เตือนทันทีว่า X กระทบ 5 ไฟล์ + 3 FAQ + 1 command → AI จะลังเลก่อนแตะ
+
+---
+
+## สิ่งที่ **จะไม่ทำ** (เพื่อกันการพังของเดิม)
+
+- ❌ ไม่แตะ `// ⚠️ VERIFIED` files (line-webhook/index.ts, portal-data, attendance-submit, employee-documents, timezone modules)
+- ❌ ไม่ rewrite Help.tsx, ไม่ rewrite OpsCenter card
+- ❌ ไม่ migration ที่ลบ/rename column
+- ❌ ไม่แก้ schema (`employees`, `portal_faqs`, `bot_commands`)
+- ❌ ไม่ผูก `.env` กับ LIVE LINE webhook ref
+- ❌ ไม่ลบ FAQ เก่า (เพิ่ม/อัพเดทเท่านั้น)
+
+---
+
+## ขออนุมัติ
+
+ผมจะเริ่ม **Phase A เท่านั้น** ก่อน — produce drift report → user อ่าน → เลือก scope ของ Phase B → จบแล้วค่อยทำ Phase C
+
+ถ้า user ตกลง พิมพ์ "Approve Phase A" หรือบอกให้ปรับ scope ก่อน
