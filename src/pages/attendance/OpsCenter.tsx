@@ -52,6 +52,7 @@ export default function OpsCenter() {
         ciToday, coToday, expiredTokens,
         rcoPending, elPending, otPending, leavePending,
         empNoLine, empNoAuth, branchesNoGroup, branchesNoGeo,
+        perfLast24h, perfLatest,
       ] = await Promise.all([
         supabase.from("api_configurations").select("key_value").eq("key_name", "LIFF_ID").maybeSingle(),
         supabase.from("bot_logs" as any).select("id", { count: "exact", head: true })
@@ -71,6 +72,10 @@ export default function OpsCenter() {
         supabase.from("employees").select("id", { count: "exact", head: true }).is("auth_user_id", null).eq("is_active", true),
         supabase.from("branches").select("id", { count: "exact", head: true }).is("line_group_id", null).eq("is_deleted", false),
         supabase.from("branches").select("id", { count: "exact", head: true }).is("latitude", null).eq("is_deleted", false),
+        (supabase.from as any)("portal_performance_events").select("id", { count: "exact", head: true })
+          .gte("created_at", new Date(Date.now() - 86400000).toISOString()),
+        (supabase.from as any)("portal_performance_events").select("created_at")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
 
       setData({
@@ -87,6 +92,10 @@ export default function OpsCenter() {
           employeesNoAuth: empNoAuth.count || 0,
           branchesNoGroup: branchesNoGroup.count || 0,
           branchesNoGeo: branchesNoGeo.count || 0,
+        },
+        perf: {
+          last24h: (perfLast24h as any).count || 0,
+          lastEventAt: (perfLatest as any).data?.created_at || null,
         },
       });
       setLastUpdated(new Date());
