@@ -1045,25 +1045,46 @@ export default function Attendance() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
-              {!location && (
+              {!location && locationStatus !== 'requesting' && (
                 <Button onClick={requestLocation} variant="outline" className="w-full text-sm sm:text-base h-9 sm:h-10">
                   <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-                  Get Location
+                  {locationStatus === 'idle' ? 'ขอตำแหน่งปัจจุบัน' : 'ลองขอตำแหน่งอีกครั้ง'}
                 </Button>
+              )}
+
+              {locationStatus === 'requesting' && (
+                <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>กำลังขอตำแหน่ง...</span>
+                </div>
               )}
 
               {location && (
                 <Alert>
                   <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
                   <AlertDescription className="text-xs sm:text-sm">
-                    Location captured: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
+                    บันทึกตำแหน่งแล้ว: {location.lat.toFixed(6)}, {location.lon.toFixed(6)}
                   </AlertDescription>
                 </Alert>
               )}
 
-              {locationError && (
+              {locationError && !location && locationStatus !== 'requesting' && (
                 <Alert variant="destructive">
-                  <AlertDescription className="text-xs sm:text-sm">{locationError}</AlertDescription>
+                  <AlertDescription className="text-xs sm:text-sm space-y-1">
+                    <div className="font-medium">
+                      {locationStatus === 'denied' && 'ไม่สามารถเข้าถึงตำแหน่งได้'}
+                      {locationStatus === 'timeout' && 'หมดเวลาขอตำแหน่ง'}
+                      {locationStatus === 'unsupported' && 'เบราว์เซอร์ไม่รองรับ'}
+                      {locationStatus === 'error' && 'เกิดข้อผิดพลาด'}
+                    </div>
+                    <div>{locationError}</div>
+                    {locationStatus === 'denied' && (
+                      <div className="text-[11px] opacity-80 pt-1">
+                        iOS: ตั้งค่า → LINE → ตำแหน่ง → ขณะใช้แอป<br />
+                        Android: ตั้งค่า → แอป → LINE → สิทธิ์ → ตำแหน่ง
+                      </div>
+                    )}
+                  </AlertDescription>
                 </Alert>
               )}
             </CardContent>
