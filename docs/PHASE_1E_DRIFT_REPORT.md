@@ -193,3 +193,32 @@ Live browser QA blocked by admin-auth gate in sandbox preview; verified at sourc
 - **EDIT** `.lovable/AI_GUARDRAILS.md` — Step 1 mandate `npm run check`
 - **EDIT** `docs/PHASE_1E_DRIFT_REPORT.md` (this log)
 - **EDIT** `docs/STATUS.md` (date bump)
+
+---
+
+## Phase 1E — Controlled Pilot Rollout (in progress)
+
+### Readiness check (sandbox, no real-device interaction yet)
+- **Publish state:** public, live (`publish_settings.effective_publish_visibility = public`).
+- **Routes verified at source:** `/overview`, `/attendance/ops-center` (App.tsx:307), `/attendance/portal-performance` (App.tsx:308), `/portal/*` (App.tsx:180), `/attendance` token page (App.tsx:173).
+- **Role gating:** `ProtectedRoute` + `usePageAccess` → ops-center/portal-performance allow owner/admin/hr/manager only; lower roles redirected to first accessible page.
+- **portal_performance_events baseline:** 0 rows in last 7 days (table exists, awaiting first real tester). Not a regression — expected pre-pilot state.
+
+### Deliverables
+- **NEW** `docs/PHASE_1E_CONTROLLED_PILOT.md` — pilot runbook (metadata, tester roster, A/B/C/D test cases, severity rubric, perf snapshot section, exit criteria, sign-off).
+- **EDIT** `docs/STATUS.md` (date bump).
+- **EDIT** `docs/PHASE_1E_DRIFT_REPORT.md` (this section).
+
+### Verification (Phase 1E pre-pilot)
+- `npm run check`  → **9 audit pass / 0 fail / 0 warn / 0 skip / 3 info**, **16 smoke pass / 0 fail / 5 skip (manual)**.
+- `bun run test`   → **7 / 7 passed** (employee-documents upload flow).
+- `⚠️ VERIFIED` markers: 17 (baseline 17) — none lost.
+- No source files edited besides docs.
+
+### Blockers found / fixes applied
+- None this pass. Awaiting first real tester before §5 (reactive bugfix) can engage.
+
+### Remaining risks
+- LIFF / GPS / camera paths cannot be exercised from the sandbox browser — must be validated on real devices per runbook §5 A–C.
+- Role gating leak (D6) needs at least one non-management account in the pilot roster.
+- `portal_performance_events` insert path will be invisible until first real LINE-opened session.

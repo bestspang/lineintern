@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-05-19 (Phase 1E D done — guardrails validated, registry 18 keys, `npm run check`, Phase 1D QA closed)_
+_Last updated: 2026-05-19 (Phase 1E pilot runbook ready — `docs/PHASE_1E_CONTROLLED_PILOT.md`; site published, routes source-verified, awaiting first real tester. `npm run check` 9/0/0/3, smoke 16/0/5, vitest 7/7.)_
 
 ## Product positioning
 
