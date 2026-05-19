@@ -265,8 +265,32 @@ export default function OpsCenter() {
                   <AlertDescription className="text-xs">
                     ยังไม่มีข้อมูล performance จาก portal จริง — เมื่อมีผู้ใช้เปิด Member Portal บน LINE
                     event แรกจะปรากฏที่นี่ภายใน ~10 วินาที
+                    หากทดสอบการเชื่อมต่อแล้วทุกอย่างปกติแต่ยัง 0 แสดงว่ายังไม่มีผู้ใช้เปิด portal จริง
                   </AlertDescription>
                 </Alert>
+              )}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button size="sm" variant="outline" onClick={runHealthCheck} disabled={healthChecking}>
+                  <RefreshCw className={`h-3 w-3 mr-1 ${healthChecking ? "animate-spin" : ""}`} />
+                  ตรวจการเชื่อมต่อ
+                </Button>
+              </div>
+              {healthResults && (
+                <div className="space-y-1 pt-1">
+                  {healthResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs p-2 rounded border bg-muted/20">
+                      <span className="flex items-center gap-2">
+                        {r.ok
+                          ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          : <AlertCircle className="h-3 w-3 text-destructive" />}
+                        {r.label}
+                      </span>
+                      <Badge variant={r.ok ? "secondary" : "destructive"} className="text-[10px]">
+                        {r.detail}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
