@@ -393,6 +393,134 @@ function check9_portalFaqCategoriesSanity() {
   }
 }
 
+// ───────────────────────────────────────────────────────────
+// C10: bot_commands.command_key (DB-mirrored in registry-snapshot)
+//      ↔ command-parser.ts source. Detects enabled commands with
+//      no handler keyword in the parser.
+// ───────────────────────────────────────────────────────────
+function check10_enabledCommandsHaveHandler() {
+  const snap = readSafe(".lovable/registry-snapshot.json");
+  const parser = readSafe("supabase/functions/line-webhook/utils/command-parser.ts");
+  if (!snap || !parser) {
+    record("C10", "enabled bot commands have parser handler", "SKIP",
+      "registry-snapshot or command-parser missing");
+    return;
+  }
+  let keys;
+  try {
+    const obj = JSON.parse(snap);
+    keys = obj.bot_command_types || obj.bot_commands || [];
+  } catch {
+    record("C10", "enabled bot commands have parser handler", "SKIP", "snapshot JSON parse error");
+    return;
+  }
+  const missing = keys.filter(k => !parser.includes(`"${k}"`) && !parser.includes(`'${k}'`));
+  if (missing.length === 0) {
+    record("C10", "enabled bot commands have parser handler", "PASS",
+      `${keys.length} commands all referenced in parser`);
+  } else {
+    record("C10", "enabled bot commands have parser handler", "FAIL",
+      `${missing.length} commands have no parser handler`, missing);
+  }
+}
+
+// ───────────────────────────────────────────────────────────
+// C11: feature-registry.json — every feature with faq_keywords
+//      must match at least one keyword in Help.tsx OR in
+//      portal_faqs categories listed in registry-snapshot.
+//      (Static-only check; DB cross-check happens at runtime.)
+// ───────────────────────────────────────────────────────────
+function check11_featureRegistryFaqCoverage() {
+  const reg = readSafe(".lovable/feature-registry.json");
+  const help = readSafe("src/pages/portal/Help.tsx") || "";
+  if (!reg) {
+    record("C11", "feature-registry FAQ coverage", "SKIP",
+      ".lovable/feature-registry.json missing");
+    return;
+  }
+  let features;
+  try { features = JSON.parse(reg).features || {}; }
+  catch { record("C11", "feature-registry FAQ coverage", "SKIP", "registry JSON parse error"); return; }
+
+  const orphans = [];
+  let checked = 0;
+  for (const [key, f] of Object.entries(features)) {
+    const kws = f.faq_keywords || [];
+    if (kws.length === 0) continue; // intentionally no FAQ (admin-only, etc.)
+    checked++;
+    // Pass if ANY keyword appears in Help.tsx fallback OR matches our known FAQ entries.
+    // We can't query DB here — Help.tsx renders DB rows dynamically, so we only require
+    // the feature key to be mentioned somewhere reachable (help file or registry).
+    const found = kws.some(k => help.includes(k));
+    // If not in Help.tsx, the runtime FAQ may still cover it — record as INFO not FAIL.
+    if (!found) orphans.push(`${key} (kw: ${kws.slice(0,2).join(", ")})`);
+  }
+  if (orphans.length === 0) {
+    record("C11", "feature-registry FAQ coverage", "PASS",
+      `${checked} features with FAQ keywords — all referenced in Help.tsx`);
+  } else {
+    record("C11", "feature-registry FAQ coverage", "INFO",
+      `${orphans.length}/${checked} feature(s) rely on DB-only FAQ (verify portal_faqs at runtime)`,
+      orphans);
+  }
+}
+
+// ───────────────────────────────────────────────────────────
+// C12: ⚠️ VERIFIED marker count ≥ baseline.
+//      Hard FAIL if any baseline file lost its marker — that
+//      means AI removed a guard on stable code.
+// ───────────────────────────────────────────────────────────
+function check12_verifiedBaseline() {
+  const baseRaw = readSafe(".lovable/verified-baseline.json");
+  if (!baseRaw) {
+    record("C12", "verified-baseline.json present", "SKIP", "baseline file missing");
+    return;
+  }
+  let base;
+  try { base = JSON.parse(baseRaw); }
+  catch { record("C12", "verified-baseline.json valid", "FAIL", "baseline JSON parse error"); return; }
+
+  // Walk src/ and supabase/ counting markers per file
+  const counts = {};
+  function walk(dir) {
+    let entries;
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e);
+      let s;
+      try { s = statSync(p); } catch { continue; }
+      if (s.isDirectory()) {
+        if (e === "node_modules" || e === ".git" || e === "dist") continue;
+        walk(p);
+      } else if (/\.(ts|tsx|js|mjs)$/.test(e)) {
+        const t = readSafe(p);
+        if (!t) continue;
+        const m = t.match(/⚠️ VERIFIED/g);
+        if (m) counts[p] = m.length;
+      }
+    }
+  }
+  walk("src");
+  walk("supabase/functions");
+
+  const totalNow = Object.values(counts).reduce((a, b) => a + b, 0);
+  const drift = [];
+  for (const [file, expected] of Object.entries(base.files || {})) {
+    const actual = counts[file] || 0;
+    if (actual < expected) drift.push(`${file}: expected ${expected}, found ${actual}`);
+  }
+  if (drift.length > 0) {
+    record("C12", "⚠️ VERIFIED markers ≥ baseline", "FAIL",
+      `${drift.length} file(s) lost markers (baseline ${base.marker_count}, now ${totalNow})`, drift);
+  } else if (totalNow < base.marker_count) {
+    record("C12", "⚠️ VERIFIED markers ≥ baseline", "FAIL",
+      `total markers ${totalNow} < baseline ${base.marker_count}`);
+  } else {
+    record("C12", "⚠️ VERIFIED markers ≥ baseline", "PASS",
+      `${totalNow} markers (baseline ${base.marker_count}) — none lost`);
+  }
+}
+
 console.log(c("bold", c("cyan", "\n🔍 Cross-Surface Consistency Audit\n")));
 console.log(c("dim", "Read-only checks. No mutations.\n"));
 
@@ -406,6 +534,9 @@ check6_verifiedMarkers();
 check7_pageConfigHint();
 check8_botCommandTypesVsSnapshot();
 check9_portalFaqCategoriesSanity();
+check10_enabledCommandsHaveHandler();
+check11_featureRegistryFaqCoverage();
+check12_verifiedBaseline();
 
 console.log("");
 for (const r of results) {
