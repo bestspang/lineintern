@@ -12,6 +12,8 @@
     "smoke": "node scripts/smoke-test.mjs",
     "smoke:quick": "node scripts/smoke-test.mjs --skip-build",
     "audit:consistency": "node scripts/consistency-audit.mjs",
+    "audit:offline": "node scripts/consistency-audit.mjs --offline",
+    "check": "npm run audit:consistency && npm run smoke:quick",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -143,3 +143,53 @@ Once Phase B items are merged, ship the following so the next AI loop cannot qui
 - **EDIT** `.lovable/AI_GUARDRAILS.md` — Step 1 checklist now mandates `feature-impact.mjs` and forbids removing VERIFIED markers.
 - **Verify:** `audit:consistency` 9 pass / 0 fail / 0 warn / 3 info (was 7/0/0/2). `smoke:quick` 16/0 unchanged.
 - **Untouched:** all VERIFIED files, DB schema, RLS, FAQ rows, bot_commands, webapp_page_config.
+
+---
+
+## Phase D — Executed (2026-05-19)
+
+### Guardrail validation
+- **C12 fire-drill:** Temporarily replaced `⚠️ VERIFIED` in `src/lib/timezone.ts` → audit failed with `C12 FAIL: timezone.ts expected 1, found 0`, summary `8/1/0/0/3`. Restored → back to `9/0/0/0/3`. C12 works.
+- **Registry validator:** Wrote `/tmp/validate-registry.mjs` to resolve nested `<Route>` paths (parent `/portal/*` + child) and verify `verified_files` + `critical_files` exist. Found 3 stale paths from Phase C → fixed:
+  - `gacha-box` → `Gacha.tsx` → `GachaBox.tsx`
+  - `notification-center` → `NotificationBell.tsx` → `Notifications.tsx`
+  - `notification-preferences` → standalone route/file → consolidated into `/portal/notifications` (Notifications.tsx hosts the preferences tab; no separate page exists)
+- **feature-impact:** All 13 → 18 keys list cleanly; no crashes; all routes/files now resolve.
+
+### Coverage expansion (+5 keys, registry now 18 total)
+Added user-facing features that AI commonly regresses:
+- `leave-request` (RequestLeave, MyLeaveBalance, ApproveLeave)
+- `ot-request` (RequestOT, ApproveOT)
+- `reward-shop` (RewardShop, MyRedemptions, ApproveRedemptions)
+- `portal-profile` (MyProfile)
+- `payroll-portal` (MyPayroll, PayrollReport)
+
+### Tooling
+- **`scripts/consistency-audit.mjs`:** added `--offline` flag (skips C8/C10 cleanly with SKIP records) + startup banner reminding AI to fix root cause, never disable a check.
+- **`package.json`:** added `audit:offline` and `check` (= `audit:consistency && smoke:quick`).
+- **`.lovable/AI_GUARDRAILS.md`:** Step 1 now mandates `npm run check` before commit + bans editing `verified-baseline.json` to "go green".
+
+### Phase 1D Manual-QA (§5 checklist — closed via static source verification)
+Live browser QA blocked by admin-auth gate in sandbox preview; verified at source level instead:
+- [x] **Resend Portal Link** — `src/pages/attendance/Employees.tsx:800` button `disabled={!canEdit || !employee.line_user_id || resendingId === employee.id}`, invokes `portal-link-resend`, Thai toast with mode text.
+- [x] **OpsCenter "ตรวจการเชื่อมต่อ" button** — `OpsCenter.tsx:275` present inside Portal Performance card.
+- [x] **OpsCenter StatCard nav** — `OpsCenter.tsx:229-243` navigate to `/portal/approvals/remote-checkout`, `/early-leave`, `/ot`, `/leave`, `/attendance/employees`, `/attendance/branches`.
+- [x] **GPS retry / error UX** — `src/pages/Attendance.tsx:36` full `idle|requesting|granted|denied|timeout|unsupported|error` union; 12s timeout (line 220); distinct Thai strings (lines 1075-1081).
+- [x] **Validate-token Thai error map** — `Attendance.tsx:716` (`'ลิงก์หมดอายุแล้ว'`), `:734` (`codeMap.TOKEN_EXPIRED`), `:781` ("กลับไปที่ LINE" CTA).
+
+> Note: live click-through on Resend/Approve still requires a real admin session — recommended before any LINE-push-to-real-employees test.
+
+### Verification
+- `npm run audit:consistency` → **9 pass / 0 fail / 0 warn / 0 skip / 3 info**
+- `npm run audit:offline`     → **7 pass / 0 fail / 0 warn / 2 skip / 3 info**
+- `npm run smoke:quick`       → **16 pass / 0 fail / 5 skip (manual)**
+- Registry: 18 keys, 0 missing routes, 0 missing files.
+- `⚠️ VERIFIED` markers: 17 (baseline 17) — none lost.
+
+### Files touched (Phase D)
+- **EDIT** `.lovable/feature-registry.json` — fixed 3 stale paths, added 5 new keys, bumped `_phase` → "1E Phase D"
+- **EDIT** `scripts/consistency-audit.mjs` — `--offline` flag + banner
+- **EDIT** `package.json` — `audit:offline`, `check` scripts
+- **EDIT** `.lovable/AI_GUARDRAILS.md` — Step 1 mandate `npm run check`
+- **EDIT** `docs/PHASE_1E_DRIFT_REPORT.md` (this log)
+- **EDIT** `docs/STATUS.md` (date bump)

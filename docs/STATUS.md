@@ -1,6 +1,6 @@
 # Project Status — LINE Intern
 
-_Last updated: 2026-05-19 (Phase 1E C done — feature-registry + C10/C11/C12 guardrails to prevent AI drift)_
+_Last updated: 2026-05-19 (Phase 1E D done — guardrails validated, registry 18 keys, `npm run check`, Phase 1D QA closed)_
 
 ## Product positioning
 

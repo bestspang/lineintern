@@ -521,8 +521,13 @@ function check12_verifiedBaseline() {
   }
 }
 
+const OFFLINE = process.argv.includes("--offline");
+
 console.log(c("bold", c("cyan", "\n🔍 Cross-Surface Consistency Audit\n")));
 console.log(c("dim", "Read-only checks. No mutations.\n"));
+console.log(c("yellow", "  ⚠  If a new check FAILs, fix the root cause — DO NOT disable the check."));
+console.log(c("dim",    "     Run `node scripts/feature-impact.mjs <key>` before editing a feature.\n"));
+if (OFFLINE) console.log(c("cyan", "  ℹ Offline mode: DB-dependent checks (C8/C10) will SKIP.\n"));
 
 
 check1_routesVsSnapshot();
@@ -532,11 +537,15 @@ check4_criticalFilesExist();
 check5_supervisorRoleConsistency();
 check6_verifiedMarkers();
 check7_pageConfigHint();
-check8_botCommandTypesVsSnapshot();
+if (OFFLINE) record("C8", "bot_command types vs snapshot", "SKIP", "offline mode");
+else check8_botCommandTypesVsSnapshot();
 check9_portalFaqCategoriesSanity();
-check10_enabledCommandsHaveHandler();
+if (OFFLINE) record("C10", "enabled bot commands have parser handler", "SKIP", "offline mode");
+else check10_enabledCommandsHaveHandler();
 check11_featureRegistryFaqCoverage();
 check12_verifiedBaseline();
+
+
 
 console.log("");
 for (const r of results) {
