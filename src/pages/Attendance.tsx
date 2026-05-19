@@ -772,6 +772,22 @@ export default function Attendance() {
                 💡 {errorInfo.action}
               </AlertDescription>
             </Alert>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { window.location.href = 'line://'; }}
+              >
+                กลับไปที่ LINE
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => { window.location.href = '/p'; }}
+              >
+                เปิด Member Portal
+              </Button>
+            </div>
             <div className="text-xs text-muted-foreground">
               <p className="font-medium mb-1">คำสั่งที่ใช้ได้:</p>
               <ul className="list-disc list-inside space-y-0.5 ml-2">
