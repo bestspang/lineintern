@@ -133,7 +133,7 @@ function check1_routesVsSnapshot() {
   // Settings page uses internal nested routes (api-keys, users, roles, etc.)
   // — these are children of /settings/* which IS in snapshot
   const settingsSubRoutes = new Set(["api-keys", "users", "roles", "cute-quotes",
-    "ai-cross-group", "safety", "integrations", "alerts", "/groups"]);
+    "ai-cross-group", "safety", "integrations", "alerts", "reports", "/groups"]);
 
   const drift = [...found]
     .map(norm)
