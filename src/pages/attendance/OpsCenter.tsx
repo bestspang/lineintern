@@ -173,10 +173,11 @@ export default function OpsCenter() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Pending Actions</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} onClick={() => navigate("/portal/approve-remote-checkout")} />
-              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} onClick={() => navigate("/portal/approve-early-leave")} />
-              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} onClick={() => navigate("/portal/approve-ot")} />
-              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} onClick={() => navigate("/portal/approve-leave")} />
+              <StatCard icon={MapPin} label="Remote checkout" value={data?.pending.remoteCheckout ?? 0} warn={(data?.pending.remoteCheckout ?? 0) > 0} onClick={() => navigate("/portal/approvals/remote-checkout")} />
+              <StatCard icon={ClipboardList} label="Early leave" value={data?.pending.earlyLeave ?? 0} warn={(data?.pending.earlyLeave ?? 0) > 0} onClick={() => navigate("/portal/approvals/early-leave")} />
+              <StatCard icon={ClipboardList} label="OT approval" value={data?.pending.ot ?? 0} warn={(data?.pending.ot ?? 0) > 0} onClick={() => navigate("/portal/approvals/ot")} />
+              <StatCard icon={ClipboardList} label="Leave approval" value={data?.pending.leave ?? 0} warn={(data?.pending.leave ?? 0) > 0} onClick={() => navigate("/portal/approvals/leave")} />
+
             </CardContent>
           </Card>
 
