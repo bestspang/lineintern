@@ -185,9 +185,13 @@ export default function Attendance() {
 
   const requestLocation = () => {
     if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser');
+      setLocationStatus('unsupported');
+      setLocationError('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
       return;
     }
+
+    setLocationStatus('requesting');
+    setLocationError('');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -196,13 +200,24 @@ export default function Attendance() {
           lon: position.coords.longitude
         });
         setLocationError('');
+        setLocationStatus('granted');
       },
-      (error) => {
-        setLocationError(`Location error: ${error.message}`);
+      (err) => {
+        // PositionError codes: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+        if (err.code === 1) {
+          setLocationStatus('denied');
+          setLocationError('ไม่สามารถเข้าถึงตำแหน่งได้ — กรุณาอนุญาตการใช้ตำแหน่งในการตั้งค่า LINE หรือเบราว์เซอร์');
+        } else if (err.code === 3) {
+          setLocationStatus('timeout');
+          setLocationError('ขอตำแหน่งใช้เวลานานเกินไป กรุณาลองอีกครั้งในที่ที่สัญญาณดี');
+        } else {
+          setLocationStatus('error');
+          setLocationError('ไม่สามารถระบุตำแหน่งได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
+        }
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 12000,
         maximumAge: 0
       }
     );
