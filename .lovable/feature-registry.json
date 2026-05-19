@@ -151,6 +151,61 @@
       "tables": ["portal_faqs"],
       "verified_files": ["src/pages/portal/Help.tsx"],
       "critical_files": []
+    },
+    "leave-request": {
+      "label_th": "คำขอลา",
+      "label_en": "Leave Request",
+      "routes": ["/portal/request-leave", "/portal/my-leave", "/portal/approvals/leave"],
+      "nav_entries": [],
+      "faq_keywords": ["ขอลา", "leave request", "วันลา"],
+      "edge_fns": ["request-leave", "approve-leave"],
+      "tables": ["leave_requests", "leave_balances"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/RequestLeave.tsx", "src/pages/portal/MyLeaveBalance.tsx", "src/pages/portal/ApproveLeave.tsx"]
+    },
+    "ot-request": {
+      "label_th": "คำขอ OT",
+      "label_en": "OT Request",
+      "routes": ["/portal/request-ot", "/portal/approvals/ot"],
+      "nav_entries": [],
+      "faq_keywords": ["ขอ OT", "overtime", "โอที"],
+      "edge_fns": ["overtime-submit", "approve-ot"],
+      "tables": ["ot_requests"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/RequestOT.tsx", "src/pages/portal/ApproveOT.tsx"]
+    },
+    "reward-shop": {
+      "label_th": "ร้านแลกของรางวัล",
+      "label_en": "Reward Shop",
+      "routes": ["/portal/rewards", "/portal/my-redemptions", "/portal/approve-redemptions"],
+      "nav_entries": [],
+      "faq_keywords": ["แลกของ", "reward", "redemption"],
+      "edge_fns": ["point-redemption"],
+      "tables": ["rewards", "point_redemptions"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/RewardShop.tsx", "src/pages/portal/MyRedemptions.tsx", "src/pages/portal/ApproveRedemptions.tsx"]
+    },
+    "portal-profile": {
+      "label_th": "โปรไฟล์ของฉัน",
+      "label_en": "My Profile",
+      "routes": ["/portal/my-profile"],
+      "nav_entries": [],
+      "faq_keywords": ["โปรไฟล์", "profile"],
+      "edge_fns": ["portal-data"],
+      "tables": ["employees"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/MyProfile.tsx"]
+    },
+    "payroll-portal": {
+      "label_th": "เงินเดือน",
+      "label_en": "Payroll View",
+      "routes": ["/portal/my-payroll", "/portal/payroll-report"],
+      "nav_entries": [],
+      "faq_keywords": ["เงินเดือน", "payroll", "สลิป"],
+      "edge_fns": [],
+      "tables": ["payroll_records"],
+      "verified_files": [],
+      "critical_files": ["src/pages/portal/MyPayroll.tsx", "src/pages/portal/PayrollReport.tsx"]
     }
   }
 }
