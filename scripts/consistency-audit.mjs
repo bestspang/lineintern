@@ -133,7 +133,7 @@ function check1_routesVsSnapshot() {
   // Settings page uses internal nested routes (api-keys, users, roles, etc.)
   // — these are children of /settings/* which IS in snapshot
   const settingsSubRoutes = new Set(["api-keys", "users", "roles", "cute-quotes",
-    "ai-cross-group", "safety", "integrations", "alerts", "/groups"]);
+    "ai-cross-group", "safety", "integrations", "alerts", "reports", "/groups"]);
 
   const drift = [...found]
     .map(norm)
@@ -326,10 +326,76 @@ function check7_pageConfigHint() {
 }
 
 // ───────────────────────────────────────────────────────────
-// Run + report
+// Check 8: bot_commands ParsedCommand union ↔ snapshot.bot_command_types
+// (offline mirror of DB sync — DB itself is checked by smoke-test § C/G)
 // ───────────────────────────────────────────────────────────
+function check8_botCommandTypesVsSnapshot() {
+  const parser = readSafe("supabase/functions/line-webhook/utils/command-parser.ts");
+  const snapRaw = readSafe(".lovable/registry-snapshot.json");
+  if (!parser || !snapRaw) {
+    record("C8", "command-parser union ↔ snapshot bot_command_types", "SKIP", "missing");
+    return;
+  }
+  const snap = JSON.parse(snapRaw);
+  const unionMatch = parser.match(/commandType:\s*([^;]+);/);
+  if (!unionMatch) {
+    record("C8", "command-parser union ↔ snapshot bot_command_types", "WARN", "could not parse union");
+    return;
+  }
+  const union = new Set(
+    [...unionMatch[1].matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+  );
+  const snapTypes = new Set(snap.bot_command_types || []);
+  const inUnionNotSnap = [...union].filter(t => !snapTypes.has(t));
+  const inSnapNotUnion = [...snapTypes].filter(t => !union.has(t));
+  const drift = [
+    ...inUnionNotSnap.map(t => `union-only: ${t}`),
+    ...inSnapNotUnion.map(t => `snapshot-only: ${t}`),
+  ];
+  if (drift.length === 0) {
+    record("C8", "command-parser union ↔ snapshot bot_command_types", "PASS",
+      `${union.size} command types aligned`);
+  } else {
+    record("C8", "command-parser union ↔ snapshot bot_command_types", "FAIL",
+      `${drift.length} drift item(s)`, drift);
+  }
+}
+
+// ───────────────────────────────────────────────────────────
+// Check 9: Portal FAQ category sanity (snapshot only)
+// ───────────────────────────────────────────────────────────
+function check9_portalFaqCategoriesSanity() {
+  const snapRaw = readSafe(".lovable/registry-snapshot.json");
+  const help = readSafe("src/pages/portal/Help.tsx");
+  if (!snapRaw || !help) {
+    record("C9", "portal_faq_categories sanity", "SKIP", "missing");
+    return;
+  }
+  const snap = JSON.parse(snapRaw);
+  const cats = new Set(snap.portal_faq_categories || []);
+  // Removed categories that must never come back as live code (string-literal usage),
+  // ignoring comments (// ... or /* ... */) which legitimately reference the history.
+  const helpNoComments = help
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const forbidden = ["receipts", "deposits"];
+  const leaked = forbidden.filter(c =>
+    cats.has(c) ||
+    helpNoComments.includes(`'${c}'`) ||
+    helpNoComments.includes(`"${c}"`)
+  );
+  if (leaked.length === 0) {
+    record("C9", "portal_faq_categories sanity", "PASS",
+      `${cats.size} categories — no removed categories present`);
+  } else {
+    record("C9", "portal_faq_categories sanity", "FAIL",
+      `removed categories present`, leaked);
+  }
+}
+
 console.log(c("bold", c("cyan", "\n🔍 Cross-Surface Consistency Audit\n")));
 console.log(c("dim", "Read-only checks. No mutations.\n"));
+
 
 check1_routesVsSnapshot();
 check2_portalActionsVsRoutes();
@@ -338,6 +404,8 @@ check4_criticalFilesExist();
 check5_supervisorRoleConsistency();
 check6_verifiedMarkers();
 check7_pageConfigHint();
+check8_botCommandTypesVsSnapshot();
+check9_portalFaqCategoriesSanity();
 
 console.log("");
 for (const r of results) {
