@@ -27,11 +27,13 @@ export default function Attendance() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [tokenData, setTokenData] = useState<any>(null);
   const [error, setError] = useState<string>('');
+  const [errorCode, setErrorCode] = useState<string>('');
   
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [location, setLocation] = useState<{lat: number; lon: number} | null>(null);
   const [locationError, setLocationError] = useState<string>('');
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'timeout' | 'unsupported' | 'error'>('idle');
   const [livenessData, setLivenessData] = useState<LivenessData | null>(null);
   
   const [submitted, setSubmitted] = useState(false);
