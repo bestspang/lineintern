@@ -1,123 +1,69 @@
-# Phase C — Anti-Drift Guardrails
+## Phase D — Lock-in & Validation
 
-## สถานะของ 2 งานแรกในข้อความ
-- **Sidebar `/attendance/flexible-day-off`** — ✅ ทำในรอบก่อนแล้ว: `DashboardLayout.tsx:176` มีเมนู "Flexible Day-Off Config" → `/attendance/flexible-day-off` คู่กับ `/attendance/flexible-day-off-requests` ที่ `:175`. Route ใน `App.tsx:174` ตรงกัน
-- **FAQ 2 รายการ** — ✅ ทำในรอบก่อนแล้ว: `46359bc7…` (Remote Checkout approval flow) และ `f46c6cb1…` (เช็คอินไม่ได้ + token fallback) อัปเดตใน DB เรียบร้อย
-
-ยืนยันด้วย `psql` + `rg` แล้วในรอบนี้ — ไม่ต้องทำซ้ำ จะโฟกัส Phase C อย่างเดียว
+Phase A (audit), B (FAQ + sidebar), C (feature-registry + guardrails) เสร็จแล้ว Phase D คือทำให้ guardrail "บังคับใช้จริง" และเคลียร์รายการ manual QA ที่ค้างจาก Phase 1D
 
 ---
 
-## เป้าหมาย Phase C
-สร้างรั้วป้องกันไม่ให้ AI รอบถัดไป:
-- ลบ/แก้ฟีเจอร์ที่ทำงานอยู่โดยไม่รู้ตัว
-- เพิ่ม route/command/feature ใหม่โดยไม่ sync DB หรือ FAQ
-- ลบ `// ⚠️ VERIFIED` marker ที่กันของพังไว้
+### 1) Validate guardrail ทำงานจริง (ไม่ใช่แค่มีไฟล์)
+- จงใจลบ `// ⚠️ VERIFIED` 1 marker ใน working copy แล้วรัน `npm run audit:consistency` → ต้องได้ C12 FAIL พร้อม diff รายไฟล์ → ใส่กลับ
+- รัน `node scripts/feature-impact.mjs` โดยไม่ใส่ argument → ต้อง list 13 keys
+- รันกับทั้ง 13 keys → ต้องไม่มี key ใด crash หรือชี้ไป route/file ที่ไม่มีจริง
+- เช็คว่า `feature-registry.json` ทุก `routes[]` มี match จริงใน `src/App.tsx` (ถ้าไม่มี → แก้ registry ไม่ใช่แก้ route)
 
----
+### 2) ผูก guardrail เข้า workflow ที่ AI ต้องเจอ
+- เพิ่ม `"preinstall:guardrail": "node scripts/consistency-audit.mjs --offline"` หรือ npm script `check` ที่รวม `audit:consistency` + `smoke:quick` → ระบุใน `AI_GUARDRAILS.md` ว่าให้รันก่อน commit ใหญ่
+- เพิ่ม flag `--offline` ใน `consistency-audit.mjs` ให้ข้าม check ที่ต้อง `psql` (C1, C10, C11 ที่ดึง DB) เพื่อให้ AI รันได้แม้ไม่มี DB access — return INFO แทน FAIL สำหรับ check เหล่านั้น
+- เพิ่ม banner ใน `console.log` ตอนเริ่ม audit: "ถ้า check ใหม่ fail = AI กำลัง drift, อย่า disable check, ให้แก้ root cause"
 
-## งานที่จะทำ
+### 3) เคลียร์ Phase 1D Manual-QA (5 ปุ่ม) ผ่าน browser tool ที่ปลอดภัย
+ใช้ `browser--navigate_to_sandbox` + `browser--observe`/`screenshot` เช็คเฉพาะ render + disabled state — **ไม่กดปุ่ม mutating** (Approve/Reject/Resend จริง)
+- [ ] `/attendance/employees` — เปิดหน้า, screenshot, ยืนยัน Resend Portal Link button render + disabled เมื่อไม่มี line_user_id
+- [ ] `/attendance/ops-center` — เปิด, ยืนยัน "ตรวจการเชื่อมต่อ" button + StatCard เป็น clickable links ไป path ถูก
+- [ ] `/attendance` token page — เปิดด้วย token ปลอม/หมดอายุ, ยืนยัน Thai error map ถูก (ไม่ใช่ raw English)
+- [ ] OpsCenter StatCards → ตรวจ `<a href>` ใน DOM ว่าชี้ `/attendance/employees`, `/branches`, `/portal/approvals/*` ตามสเปก
+- บันทึกผลใน `docs/PHASE_1E_DRIFT_REPORT.md` §5 (เปลี่ยนช่อง `[ ]` เป็น `[x]` พร้อมหมายเหตุ)
 
-### 1) สร้าง `.lovable/feature-registry.json` (ใหม่)
-Source of truth ของฟีเจอร์ user-facing — โครงสร้าง:
-```json
-{
-  "_purpose": "Feature → surfaces mapping. AI must read before editing any feature.",
-  "_last_updated": "2026-05-19",
-  "features": {
-    "daily-missions": {
-      "label_th": "ภารกิจรายวัน",
-      "routes": ["/portal/my-points"],
-      "nav_entries": [],
-      "faq_keywords_th": ["ภารกิจรายวัน", "missions"],
-      "edge_fns": [],
-      "tables": ["happy_points", "point_transactions"],
-      "verified_files": []
-    },
-    "achievement-badges": { ... },
-    "gacha-box": { ... },
-    "notification-center": { ... },
-    "notification-preferences": { ... },
-    "manager-dashboard": { ... },
-    "remote-checkout": { ... },
-    "direct-checkin-fallback": { ... },
-    "resend-portal-link": { ... },
-    "ops-center-health-check": { ... },
-    "streak-shield": { ... },
-    "flexible-day-off": { ... }
-  }
-}
-```
-รวมประมาณ 12-15 ฟีเจอร์ที่เป็น user-facing สำคัญ (ไม่ต้องครบทุกอย่าง — แค่ของที่ AI ชอบเข้าไปแก้)
+### 4) Coverage gap หลัง Phase C
+ตอน Phase C เลือก 13 features ที่ "AI ชอบ regress" — ตรวจซ้ำว่ามี user-facing feature สำคัญที่หลุดจาก registry ไหม:
+- ตรวจ `src/pages/portal/*.tsx` ทุกไฟล์ vs `feature-registry.json` → list ไฟล์ที่ไม่ถูก map
+- ถ้าเจอ critical (เช่น Leave/OT request, Profile, Receipts portal) → เพิ่มเข้า registry (เฉพาะที่ AI ชอบแก้ผิด ไม่ทำให้บวม)
+- ไม่ต้องครบ 100% — เพิ่มไม่เกิน 5 keys
 
-### 2) สร้าง `.lovable/verified-baseline.json` (ใหม่)
-สแน็ปช็อตจำนวน `// ⚠️ VERIFIED` markers ปัจจุบัน:
-```json
-{
-  "_purpose": "Baseline for C12 — verified marker count must never drop below this.",
-  "_generated_at": "2026-05-19",
-  "marker_count": 17,
-  "file_count": 17,
-  "files": [ "<list of 17 files>" ]
-}
-```
-รัน `rg "⚠️ VERIFIED"` เพื่อ generate ครั้งแรก
+### 5) Verification
+- `npm run audit:consistency` → 9 pass / 0 fail / 3 info (เท่าเดิม) หรือดีกว่า
+- `npm run audit:consistency --offline` → รันได้บนเครื่องไม่มี DB
+- `npm run smoke:quick` → 16/0
+- ทั้ง 13+ feature keys ผ่าน `feature-impact.mjs` ไม่มี broken reference
+- Phase 1D §5 checklist → ครบทุกข้อ (pass หรือเขียน issue ชัดเจน)
 
-### 3) เพิ่ม 3 check ใหม่ใน `scripts/consistency-audit.mjs`
-- **C10** — ทุก `bot_commands.is_enabled=true` ต้องมี handler ใน `command-parser.ts` (เช็คว่า `commandType` มีอยู่ใน parsedUnion) → ป้องกัน command พังเงียบ
-- **C11** — ทุก `feature_key` ใน `feature-registry.json` ต้องมีอย่างน้อย 1 FAQ ที่ตรง keyword (TH หรือ EN) ใน `portal_faqs` **หรือ** มี static fallback ใน `Help.tsx` → ป้องกัน FAQ drift
-- **C12** — นับ `⚠️ VERIFIED` marker ปัจจุบัน เทียบกับ `verified-baseline.json` → ถ้าน้อยกว่า baseline = FAIL พร้อม diff รายไฟล์ → ป้องกัน AI ลบ marker
-
-C10/C11 ดึงข้อมูล DB ผ่าน `psql` (เหมือน check เดิม) — C12 อ่านไฟล์อย่างเดียว
-
-### 4) สร้าง `scripts/feature-impact.mjs` (ใหม่)
-CLI tool: `node scripts/feature-impact.mjs <feature-key>`
-- อ่าน `feature-registry.json`
-- พิมพ์รายการ routes / nav / FAQ / edge fn / verified files ที่เกี่ยวข้อง
-- เตือน "READ THESE FILES BEFORE EDITING"
-- ถ้า key ไม่มี → list keys ที่มีให้เลือก
-
-ใช้เป็นเครื่องมือให้ AI เรียกก่อนแก้ฟีเจอร์
-
-### 5) อัปเดต `.lovable/AI_GUARDRAILS.md`
-เพิ่ม Step 1 checklist:
-- "เปิด `.lovable/feature-registry.json` หาฟีเจอร์ที่เกี่ยวข้องก่อนแก้"
-- "รัน `node scripts/feature-impact.mjs <key>` เพื่อดู surfaces ทั้งหมด"
-- "อย่าลบ `⚠️ VERIFIED` marker — ถ้าจำเป็นต้องย้าย ให้ย้ายไฟล์อื่นทันที"
-- ระบุว่า C10/C11/C12 จะ fail build ถ้าละเลย
-
-### 6) Verify
-- `npm run audit:consistency` → ต้อง 10 pass / 0 fail (เพิ่มจาก 7 → 10)
-- `npm run smoke:quick` → ยัง 16/0
-- รัน `node scripts/feature-impact.mjs daily-missions` ทดสอบเอาต์พุต
-- จงใจลบ `⚠️ VERIFIED` 1 อันแล้วรัน audit → ต้องได้ C12 FAIL (แล้วใส่กลับ)
-
-### 7) Docs
-- อัปเดต `docs/PHASE_1E_DRIFT_REPORT.md` — บันทึก Phase C done + ระบุไฟล์ใหม่
-- อัปเดต `docs/STATUS.md` 1 บรรทัด
+### 6) Docs
+- Append "Phase D — Executed" log ใน `docs/PHASE_1E_DRIFT_REPORT.md` (รวมผล manual-QA, coverage additions, guardrail validation)
+- Update `docs/STATUS.md` 1 บรรทัด
+- ถ้ามี feature key เพิ่ม → update `feature-registry.json._last_updated`
 
 ---
 
 ## สิ่งที่ "ไม่แตะ"
-- ไม่แตะไฟล์ `// ⚠️ VERIFIED` ใดๆ
-- ไม่แตะ DB schema / RLS / FAQ data
-- ไม่แตะ `bot_commands`, `webapp_page_config`
-- ไม่เปลี่ยน logic ของ C1-C9 / smoke เดิม — เพิ่มอย่างเดียว
-- ไม่ทำ feature-registry แบบ "ครบ 100%" — เน้น 12-15 ฟีเจอร์ที่ AI ชอบ regress
+- `// ⚠️ VERIFIED` files ทุกไฟล์
+- DB schema / RLS / FAQ data (Phase B จบแล้ว)
+- ไม่กดปุ่ม mutating ใน live preview (Approve/Reject/Resend จริง)
+- C1-C12 logic เดิม — เพิ่มเฉพาะ `--offline` flag
+- ไม่เพิ่ม dependency ใหม่
+- ไม่ refactor `consistency-audit.mjs` — เพิ่ม flag อย่างเดียว
 
 ## ไฟล์ที่จะแก้/สร้าง
-- **NEW** `.lovable/feature-registry.json`
-- **NEW** `.lovable/verified-baseline.json`
-- **NEW** `scripts/feature-impact.mjs`
-- **EDIT** `scripts/consistency-audit.mjs` (เพิ่ม C10/C11/C12 ต่อท้าย)
-- **EDIT** `.lovable/AI_GUARDRAILS.md` (เพิ่ม Step 1 checklist)
-- **EDIT** `docs/PHASE_1E_DRIFT_REPORT.md` (Phase C done log)
+- **EDIT** `scripts/consistency-audit.mjs` — เพิ่ม `--offline` flag + banner
+- **EDIT** `package.json` — เพิ่ม script `check` (รวม audit + smoke)
+- **EDIT** `.lovable/AI_GUARDRAILS.md` — ระบุ `npm run check`
+- **EDIT** `.lovable/feature-registry.json` — เพิ่มได้สูงสุด 5 keys ถ้าจำเป็น
+- **EDIT** `docs/PHASE_1E_DRIFT_REPORT.md` — Phase D log + §5 checklist updates
 - **EDIT** `docs/STATUS.md`
 
 ## Regression checklist
-- [ ] C1-C9 ยัง pass หมด ไม่มี check เดิมพัง
-- [ ] C10/C11/C12 pass บน DB+code ปัจจุบัน
-- [ ] `smoke:quick` 16/0 ไม่เปลี่ยน
-- [ ] `feature-impact.mjs` รันได้ทุก key
+- [ ] C1-C12 ทั้งหมด pass บน DB ปัจจุบัน
+- [ ] `--offline` mode ไม่ false-fail บน check ที่ต้อง DB
+- [ ] `smoke:quick` 16/0
+- [ ] ทุก route ใน registry มีอยู่จริงใน App.tsx
 - [ ] ไม่มี VERIFIED marker หาย
 - [ ] ไม่มี FAQ ถูกแก้/ลบใน Phase นี้
+- [ ] Manual-QA §5 ครบ 5 ข้อ
